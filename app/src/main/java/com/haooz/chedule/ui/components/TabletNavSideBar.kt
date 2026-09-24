@@ -151,7 +151,8 @@ fun Density.tabletNavSideInsetPx(screenWidthDp: Int): Float {
 }
 
 /**
- * 内容左避让侧栏。展开进度只在 measure 读，只失效 layout，不进组合。
+ * 目标宽度在展开/折叠那一刻一次性测量出来（只重排一次），
+ * 中间所有帧只做 graphicsLayer 平移，内容树在动画期间零重绘
  */
 @Composable
 fun tabletNavRailStartPadding(): Modifier {
@@ -160,10 +161,17 @@ fun tabletNavRailStartPadding(): Modifier {
     val density = LocalDensity.current
     val collapsedTotalPx = with(density) { (TabletNavSideInset + TabletNavIconRailWidth).toPx() }
     val expandedWidthPx = with(density) { (screenWidthDp.dp * TabletNavSideWidthFraction).toPx() }
-    return TabletNavRailStartPaddingElement(collapsedTotalPx, expandedWidthPx)
+    return TabletNavRailTargetPaddingElement(collapsedTotalPx, expandedWidthPx)
+        .graphicsLayer {
+            val p = TabletNavSideState.expandProgress.floatValue
+            val targetPad =
+                if (TabletNavSideState.expanded) expandedWidthPx else collapsedTotalPx
+            translationX =
+                androidx.compose.ui.util.lerp(collapsedTotalPx, expandedWidthPx, p) - targetPad
+        }
 }
 
-private class TabletNavRailStartPaddingElement(
+private class TabletNavRailTargetPaddingElement(
     private val collapsedTotalPx: Float,
     private val expandedWidthPx: Float,
 ) : LayoutModifier {
@@ -172,11 +180,8 @@ private class TabletNavRailStartPaddingElement(
         measurable: Measurable,
         constraints: Constraints,
     ): MeasureResult {
-        val padPx = androidx.compose.ui.util.lerp(
-            collapsedTotalPx,
-            expandedWidthPx,
-            TabletNavSideState.expandProgress.floatValue,
-        )
+        // 只跟展开布尔，不跟进度：一次伸缩只在这里重排一次
+        val padPx = if (TabletNavSideState.expanded) expandedWidthPx else collapsedTotalPx
         val padInt = padPx.roundToInt().coerceAtLeast(0)
         // 与 Modifier.padding(start=) 同语义：只收窄子约束横向，高度跟内容，不撑满
         val placeable = measurable.measure(
@@ -194,7 +199,7 @@ private class TabletNavRailStartPaddingElement(
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is TabletNavRailStartPaddingElement) return false
+        if (other !is TabletNavRailTargetPaddingElement) return false
         return collapsedTotalPx == other.collapsedTotalPx && expandedWidthPx == other.expandedWidthPx
     }
 

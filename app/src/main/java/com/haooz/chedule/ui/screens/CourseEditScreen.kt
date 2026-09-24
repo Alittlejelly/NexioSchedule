@@ -122,8 +122,15 @@ private data class EditAnimState(
     val gesture: Float
 )
 
+/**
+ * 裁切形状。
+ *
+ * 宽度必须取当次回调的 size，不能在构造时捕获外部宽度：
+ * 平板右栏宽度随侧栏展开/折叠变化，而 clipShape 是 remember 单例，
+ * 捕获旧宽度会让裁剪停在旧值 —— 窄切宽时右侧多出的一节被裁掉看不见，
+ * 必须切换页面重建才恢复。
+ */
 private class EditAnimClipShape(
-    private val screenWidth: Float,
     private val screenCornerRadiusPx: Float,
     private val startCornerRadiusPx: Float,
     private val animState: androidx.compose.runtime.State<EditAnimState>
@@ -147,7 +154,7 @@ private class EditAnimClipShape(
         val compensate = (1f - s.gesture) / s.scale + s.gesture
         val radiusDp = (radiusPx * compensate / density.density).dp
         return ContinuousRoundedRectangle(radiusDp).createOutline(
-            androidx.compose.ui.geometry.Size(screenWidth, s.clipBottom),
+            androidx.compose.ui.geometry.Size(size.width, s.clipBottom),
             layoutDirection,
             density
         )
@@ -518,9 +525,10 @@ fun CourseEditScreen(
             .blockTouchPassThrough()
     ) {
         val s = animState.value
-        val clipShape = remember {
+        // 宽度由 createOutline 取当次 size，这里不捕获 screenWidth：
+        // 平板右栏宽度会变，捕获会让裁切停在旧值
+        val clipShape = remember(screenCornerRadius, startCornerRadiusPx) {
             EditAnimClipShape(
-                screenWidth,
                 screenCornerRadius,
                 startCornerRadiusPx,
                 animState
