@@ -293,7 +293,8 @@ private class TabletNavChromeTitleSlotElement(
             TabletNavSideState.expandProgress.floatValue,
         )
         val contentW = (maxWPx - sidePad).coerceAtLeast(0f)
-        val leftW = contentW * 0.42f
+        // 左栏标题槽与分栏同步：固定屏宽 0.39（maxWPx 即全屏宽）
+        val leftW = maxWPx * 0.39f
         val x: Int
         val w: Int
         if (isLeftColumn) {

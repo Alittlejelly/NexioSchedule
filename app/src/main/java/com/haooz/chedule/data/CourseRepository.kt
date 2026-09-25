@@ -1267,7 +1267,8 @@ class CourseRepository private constructor(context: Context) {
         val currentId = getCurrentScheduleId()
         val names = getScheduleNames().toMutableList()
         if (name !in names) {
-            names.add(0, name)
+            // 追加到末尾，保持「添加时间」顺序，不因新建/选中而重排
+            names.add(name)
             saveScheduleNames(names)
         }
         val currentPrefix = "$SCHEDULE_KEY_PREFIX${currentId}_"

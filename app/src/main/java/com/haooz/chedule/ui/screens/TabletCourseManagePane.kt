@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -97,7 +98,8 @@ fun TabletCourseManagePane(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val listWidth = maxWidth * 0.42f
+        // 左栏固定为屏宽 0.39，不随侧栏展开/收起变化；剩余宽度全给右栏
+        val listWidth = LocalConfiguration.current.screenWidthDp.dp * 0.39f
         val rightWidth = maxWidth - listWidth
         val topInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
             .asPaddingValues().calculateTopPadding()

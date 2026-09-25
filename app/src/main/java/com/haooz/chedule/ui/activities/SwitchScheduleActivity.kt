@@ -4,8 +4,10 @@ package com.haooz.chedule.ui.activities
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
@@ -29,7 +31,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,6 +78,7 @@ import com.haooz.chedule.ui.basic.collapsibleTopInset
 import com.haooz.chedule.ui.basic.rememberSharedScrollBehavior
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -95,9 +97,9 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Close
@@ -113,9 +115,6 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
 
 class SwitchScheduleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -229,7 +228,7 @@ fun SwitchScheduleScreen(
     var editScheduleName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deletingScheduleName by remember { mutableStateOf<String?>(null) }
-    var firstCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var currentCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var isSharingSchedule by remember { mutableStateOf(false) }
     var showShareConfirmDialog by remember { mutableStateOf(false) }
     var shareConfirmScheduleName by remember { mutableStateOf<String?>(null) }
@@ -244,12 +243,9 @@ fun SwitchScheduleScreen(
         )
     }
 
-    val switchToCurrentSchedule = {
-        val firstSchedule = scheduleNames.firstOrNull() ?: ""
-        com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_current", firstSchedule)
-        currentScheduleId = firstSchedule
-        repository.switchToSchedule(firstSchedule)
-        onScheduleChanged()
+    // 返回/点当前课表：保持当前选中，不重排列表，只关闭页面
+    val dismissKeepCurrent = {
+        com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_current", currentScheduleId)
         scope.launch {
             onBack(capturePageBitmap())
         }
@@ -261,10 +257,7 @@ fun SwitchScheduleScreen(
     // 而录制结果没有任何 drawBackdrop 使用，等于白烧一整条渲染管线。
     val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = if (isTablet) {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
-    } else 16.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     LaunchedEffect(showAddDialog) {
         if (showAddDialog) {
@@ -293,7 +286,7 @@ fun SwitchScheduleScreen(
     }
 
     BackHandler(enabled = !isEditMode) {
-        switchToCurrentSchedule()
+        dismissKeepCurrent()
     }
 
     var displayTitle by remember { mutableStateOf("全部课表") }
@@ -325,7 +318,7 @@ fun SwitchScheduleScreen(
                                         editMode = ""
                                         checkboxStates.clear()
                                     } else {
-                                        switchToCurrentSchedule()
+                                        dismissKeepCurrent()
                                     }
                                 },
                                 backdrop = liquidGlassBackdrop,
@@ -417,9 +410,6 @@ fun SwitchScheduleScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            // 在 graphicsLayer 的 lambda 里读 Animatable：Modifier.blur(半径) 会随半径
-                            // 变化重建整条 modifier 链，且读在组合作用域里会让整条底栏（含 drawBackdrop
-                            // 液态玻璃）每帧重组。放到 lambda 里只触发重绘，不触发重组。
                             .graphicsLayer {
                                 val r = bottombarBlur.value
                                 renderEffect = if (r > 0.01f) {
@@ -546,6 +536,22 @@ fun SwitchScheduleScreen(
                 // 注意：这里不要再 collect firstVisibleItemScrollOffset 写 state ——
                 // 那会让整页在滚动时每像素重组一次（listScrollY 之前根本没被读取，纯属白烧）。
                 val listState = rememberLazyListState()
+                // 进场形变锚点：当前课表卡片（不是列表第一项）
+                LaunchedEffect(currentCardBounds) {
+                    val bounds = currentCardBounds
+                    if (bounds != null) {
+                        val bitmap = capturePageBitmap()
+                        // 截图失败也要回调：否则 switchCapturingSnapshot 永远为 true，
+                        // 页面会一直停在 alpha=0 的黑屏上
+                        val adjustedBounds = androidx.compose.ui.geometry.Rect(
+                            left = (bounds.left - contentRootX) / pageScale,
+                            top = (bounds.top - contentRootY) / pageScale,
+                            right = (bounds.right - contentRootX) / pageScale,
+                            bottom = (bounds.bottom - contentRootY) / pageScale
+                        )
+                        onScreenReady(bitmap, adjustedBounds)
+                    }
+                }
                 Card(
                     modifier = Modifier
                         .fillMaxSize()
@@ -569,64 +575,91 @@ fun SwitchScheduleScreen(
                         contentPadding = PaddingValues(
                             start = tabletHorizontalPadding,
                             end = tabletHorizontalPadding,
-                            top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight - 82.dp,
+                            top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight - 70.dp,
                             bottom = 60.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item {
-                            SmallTitle(
-                                text = "当前课表",
-                                modifier = Modifier.offset(x = (-16).dp)
-                            )
-                            LaunchedEffect(firstCardBounds) {
-                                val bounds = firstCardBounds
-                                if (bounds != null) {
-                                val bitmap = capturePageBitmap()
-                                // 截图失败也要回调：否则 switchCapturingSnapshot 永远为 true，
-                                // 页面会一直停在 alpha=0 的黑屏上
-                                val adjustedBounds = androidx.compose.ui.geometry.Rect(
-                                    left = (bounds.left - contentRootX) / pageScale,
-                                    top = (bounds.top - contentRootY) / pageScale,
-                                    right = (bounds.right - contentRootX) / pageScale,
-                                    bottom = (bounds.bottom - contentRootY) / pageScale
+                        // 扁平列表：按添加时间顺序展示，不区分「当前/其他」，选中不重排
+                        items(
+                            count = scheduleNames.size,
+                            key = { scheduleNames[it] }
+                        ) { index ->
+                            val scheduleName = scheduleNames[index]
+                            val summary = remember(
+                                scheduleName,
+                                scheduleSummaries
+                            ) {
+                                scheduleSummaries[scheduleName]
+                                    ?: repository.getScheduleSummary(scheduleName)
+                            }
+                            val isCurrent = scheduleName == currentScheduleId
+                            var cardBounds by remember {
+                                mutableStateOf<androidx.compose.ui.geometry.Rect?>(
+                                    null
                                 )
-                                onScreenReady(bitmap, adjustedBounds)
+                            }
+                            val isDeleting = deletingScheduleName == scheduleName
+                            // 当前课表不参与入场动画，与进场形变锚点对齐
+                            val cardScale = remember { Animatable(if (isCurrent) 1f else 0.8f) }
+                            val cardAlpha = remember { Animatable(if (isCurrent) 1f else 0f) }
+                            LaunchedEffect(Unit) {
+                                if (!isCurrent) {
+                                    launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
+                                    launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
+                                }
+                            }
+                            LaunchedEffect(isDeleting) {
+                                if (isDeleting) {
+                                    launch {
+                                        cardScale.animateTo(
+                                            0.8f,
+                                            animationSpec = tween(300)
+                                        )
+                                    }
+                                    launch {
+                                        cardAlpha.animateTo(
+                                            0f,
+                                            animationSpec = tween(300)
+                                        )
+                                    }
                                 }
                             }
                             Card(
                                 cornerRadius = 20.dp,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .animateItem()
+                                    .graphicsLayer {
+                                        scaleX = cardScale.value
+                                        scaleY = cardScale.value
+                                        alpha = cardAlpha.value
+                                    }
                                     .onGloballyPositioned { coordinates ->
                                         val position =
                                             coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
                                         val size = coordinates.size
-                                        firstCardBounds = androidx.compose.ui.geometry.Rect(
+                                        val rect = androidx.compose.ui.geometry.Rect(
                                             left = position.x,
                                             top = position.y,
                                             right = position.x + size.width,
                                             bottom = position.y + size.height
                                         )
-                                        onCurrentCardBounds(firstCardBounds!!)
+                                        cardBounds = rect
+                                        if (isCurrent) {
+                                            currentCardBounds = rect
+                                            onCurrentCardBounds(rect)
+                                        }
                                     },
                                 insideMargin = PaddingValues(0.dp)
                             ) {
-                                val firstSchedule = scheduleNames.firstOrNull() ?: ""
-                                val firstSummary = remember(
-                                    firstSchedule,
-                                    scheduleSummaries
-                                ) {
-                                    scheduleSummaries[firstSchedule]
-                                        ?: repository.getScheduleSummary(firstSchedule)
-                                }
                                 if (isEditMode) {
                                     CheckboxPreference(
-                                        title = firstSchedule,
-                                        summary = firstSummary,
-                                        checked = checkboxStates[firstSchedule] ?: false,
+                                        title = scheduleName,
+                                        summary = summary,
+                                        checked = checkboxStates[scheduleName] ?: false,
                                         onCheckedChange = { isChecked ->
-                                            checkboxStates[firstSchedule] = isChecked
+                                            checkboxStates[scheduleName] = isChecked
                                         },
                                         checkboxLocation = CheckboxLocation.End
                                     )
@@ -640,123 +673,16 @@ fun SwitchScheduleScreen(
                                             vertical = 16.dp
                                         ),
                                         pressFeedbackType = PressFeedbackType.None,
-                                        onClick = { switchToCurrentSchedule() }
-                                    ) {
-                                        Text(
-                                            text = firstSchedule,
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MiuixTheme.colorScheme.onSurface
-                                        )
-                                        if (firstSummary.isNotEmpty()) {
-                                            Text(
-                                                text = firstSummary,
-                                                fontSize = 14.sp,
-                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (scheduleNames.size > 1) {
-                            items(
-                                scheduleNames.size - 1,
-                                key = { scheduleNames[it + 1] }) { index ->
-                                if (index == 0) {
-                                    SmallTitle(
-                                        text = "其他课表",
-                                        modifier = Modifier.offset(x = (-16).dp)
-                                    )
-                                }
-                                val scheduleName = scheduleNames[index + 1]
-                                val summary = remember(
-                                    scheduleName,
-                                    scheduleSummaries
-                                ) {
-                                    scheduleSummaries[scheduleName]
-                                        ?: repository.getScheduleSummary(scheduleName)
-                                }
-                                var cardBounds by remember {
-                                    mutableStateOf<androidx.compose.ui.geometry.Rect?>(
-                                        null
-                                    )
-                                }
-                                val isDeleting = deletingScheduleName == scheduleName
-                                val cardScale = remember { Animatable(0.8f) }
-                                val cardAlpha = remember { Animatable(0f) }
-                                LaunchedEffect(Unit) {
-                                    launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
-                                    launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
-                                }
-                                LaunchedEffect(isDeleting) {
-                                    if (isDeleting) {
-                                        launch {
-                                            cardScale.animateTo(
-                                                0.8f,
-                                                animationSpec = tween(300)
-                                            )
-                                        }
-                                        launch {
-                                            cardAlpha.animateTo(
-                                                0f,
-                                                animationSpec = tween(300)
-                                            )
-                                        }
-                                    }
-                                }
-                                Card(
-                                    cornerRadius = 20.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .animateItem()
-                                        .graphicsLayer {
-                                            scaleX = cardScale.value
-                                            scaleY = cardScale.value
-                                            alpha = cardAlpha.value
-                                        }
-                                        .onGloballyPositioned { coordinates ->
-                                            val position =
-                                                coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
-                                            val size = coordinates.size
-                                            cardBounds = androidx.compose.ui.geometry.Rect(
-                                                left = position.x,
-                                                top = position.y,
-                                                right = position.x + size.width,
-                                                bottom = position.y + size.height
-                                            )
-                                        },
-                                    insideMargin = PaddingValues(0.dp)
-                                ) {
-                                    if (isEditMode) {
-                                        CheckboxPreference(
-                                            title = scheduleName,
-                                            summary = summary,
-                                            checked = checkboxStates[scheduleName] ?: false,
-                                            onCheckedChange = { isChecked ->
-                                                checkboxStates[scheduleName] = isChecked
-                                            },
-                                            checkboxLocation = CheckboxLocation.End
-                                        )
-                                    } else {
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            cornerRadius = 20.dp,
-                                            showIndication = true,
-                                            insideMargin = PaddingValues(
-                                                horizontal = 16.dp,
-                                                vertical = 16.dp
-                                            ),
-                                            pressFeedbackType = PressFeedbackType.None,
-                                            onClick = {
+                                        onClick = {
+                                            if (isCurrent) {
+                                                dismissKeepCurrent()
+                                            } else {
                                                 com.haooz.chedule.ui.utils.CrashLogHelper.trace(
                                                     "切换课表", "select_other", scheduleName
                                                 )
-                                                val names = scheduleNames.toMutableList()
-                                                names.remove(scheduleName)
-                                                names.add(0, scheduleName)
-                                                repository.saveScheduleNames(names)
+                                                // 不重排列表，只切换当前课表
                                                 repository.switchToSchedule(scheduleName)
+                                                currentScheduleId = scheduleName
                                                 onScheduleChanged()
                                                 val bounds = cardBounds
                                                 if (bounds != null) {
@@ -799,18 +725,33 @@ fun SwitchScheduleScreen(
                                                     onBack(null)
                                                 }
                                             }
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = scheduleName,
-                                                fontSize = 17.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MiuixTheme.colorScheme.onSurface
-                                            )
-                                            if (summary.isNotEmpty()) {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = summary,
-                                                    fontSize = 14.sp,
-                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                                    text = scheduleName,
+                                                    fontSize = 17.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurface
+                                                )
+                                                if (summary.isNotEmpty()) {
+                                                    Text(
+                                                        text = summary,
+                                                        fontSize = 14.sp,
+                                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                                    )
+                                                }
+                                            }
+                                            if (isCurrent) {
+                                                Icon(
+                                                    imageVector = MiuixIcons.Basic.Check,
+                                                    contentDescription = "当前课表",
+                                                    tint = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
                                                 )
                                             }
                                         }
