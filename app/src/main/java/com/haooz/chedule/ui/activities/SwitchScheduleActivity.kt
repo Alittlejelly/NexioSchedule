@@ -18,6 +18,10 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +46,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,6 +73,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.ScheduleFolder
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -94,6 +98,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -101,11 +106,16 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.AddFolder
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
+import top.yukonga.miuix.kmp.icon.extended.Folder
+import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Forward
+import top.yukonga.miuix.kmp.icon.extended.MoveFile
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
@@ -114,6 +124,7 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.state.ToggleableState
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 class SwitchScheduleActivity : ComponentActivity() {
@@ -219,6 +230,14 @@ fun SwitchScheduleScreen(
     LaunchedEffect(initialScheduleSummaries) {
         scheduleSummaries = initialScheduleSummaries?.toMutableMap() ?: mutableMapOf()
     }
+    // 文件夹：只存「课表名引用」，课表全局顺序仍由 scheduleNames 决定
+    var folders by remember { mutableStateOf(repository.getScheduleFolders()) }
+    // 当前课表所在文件夹默认展开，保证主页的卡片形变动画能取到它的位置
+    var expandedFolderIds by remember {
+        mutableStateOf(
+            repository.getFolderIdOfSchedule(currentScheduleId)?.let { setOf(it) } ?: emptySet()
+        )
+    }
     var showAddDialog by remember { mutableStateOf(false) }
     var newScheduleName by remember { mutableStateOf("") }
     var isEditMode by remember { mutableStateOf(false) }
@@ -228,6 +247,15 @@ fun SwitchScheduleScreen(
     var editScheduleName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deletingScheduleName by remember { mutableStateOf<String?>(null) }
+    // 编辑模式选中项：课表名与文件夹 id 分开存，底部栏靠两者判断是否可操作
+    var selectedSchedules by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showAddFolderDialog by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var showEditFolderDialog by remember { mutableStateOf(false) }
+    var editingFolderId by remember { mutableStateOf("") }
+    var editFolderName by remember { mutableStateOf("") }
+    var showMoveDialog by remember { mutableStateOf(false) }
     var currentCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var isSharingSchedule by remember { mutableStateOf(false) }
     var showShareConfirmDialog by remember { mutableStateOf(false) }
@@ -250,9 +278,128 @@ fun SwitchScheduleScreen(
             onBack(capturePageBitmap())
         }
     }
+
+    /** 选中另一张课表：切换后带着卡片截图做形变退出（根目录与文件夹内共用） */
+    fun selectSchedule(scheduleName: String, bounds: androidx.compose.ui.geometry.Rect?) {
+        if (scheduleName == currentScheduleId) {
+            dismissKeepCurrent()
+            return
+        }
+        com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_other", scheduleName)
+        // 不重排列表，只切换当前课表
+        repository.switchToSchedule(scheduleName)
+        currentScheduleId = scheduleName
+        onScheduleChanged()
+        if (bounds != null) {
+            scope.launch {
+                val fullBitmap = capturePageBitmap()
+                if (fullBitmap != null) {
+                    val x = (bounds.left - contentRootX).toInt()
+                        .coerceIn(0, fullBitmap.width - 1)
+                    val y = (bounds.top - contentRootY).toInt()
+                        .coerceIn(0, fullBitmap.height - 1)
+                    val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
+                    val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
+                    val cardBitmap = android.graphics.Bitmap.createBitmap(fullBitmap, x, y, w, h)
+                    onCardSnapshot(fullBitmap, cardBitmap, bounds)
+                }
+                onCardClick(bounds)
+            }
+        } else {
+            onBack(null)
+        }
+    }
+
+    /** 课表行：根目录与文件夹内共用一份实现 */
+    @Composable
+    fun ScheduleItem(
+        scheduleName: String,
+        indent: Boolean,
+        itemModifier: Modifier
+    ) {
+        val summary = remember(scheduleName, scheduleSummaries) {
+            scheduleSummaries[scheduleName] ?: repository.getScheduleSummary(scheduleName)
+        }
+        val isCurrent = scheduleName == currentScheduleId
+        var cardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+        ScheduleCardRow(
+            scheduleName = scheduleName,
+            summary = summary,
+            isCurrent = isCurrent,
+            isEditMode = isEditMode,
+            checked = scheduleName in selectedSchedules,
+            onCheckedChange = { isChecked ->
+                selectedSchedules = if (isChecked) selectedSchedules + scheduleName
+                else selectedSchedules - scheduleName
+            },
+            isDeleting = deletingScheduleName == scheduleName,
+            indent = indent,
+            itemModifier = itemModifier,
+            onBoundsChanged = { rect ->
+                cardBounds = rect
+                if (isCurrent) {
+                    currentCardBounds = rect
+                    onCurrentCardBounds(rect)
+                }
+            },
+            onClick = { selectSchedule(scheduleName, cardBounds) },
+            onLongClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (!isEditMode) {
+                    isEditMode = true
+                    selectedSchedules = setOf(scheduleName)
+                    selectedFolders = emptySet()
+                    repository.getFolderIdOfSchedule(scheduleName)
+                        ?.let { expandedFolderIds = expandedFolderIds + it }
+                }
+            }
+        )
+    }
+
+    /** 文件夹行：点击原地展开/折叠内部课表 */
+    @Composable
+    fun FolderItem(
+        folder: ScheduleFolder,
+        itemModifier: Modifier
+    ) {
+        FolderCardRow(
+            folderName = folder.name,
+            scheduleCount = folder.schedules.count { it in scheduleNames },
+            expanded = folder.id in expandedFolderIds,
+            isEditMode = isEditMode,
+            checked = folder.id in selectedFolders,
+            onCheckedChange = { isChecked ->
+                selectedFolders = if (isChecked) selectedFolders + folder.id
+                else selectedFolders - folder.id
+            },
+            itemModifier = itemModifier,
+            onClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+                expandedFolderIds = if (folder.id in expandedFolderIds) {
+                    expandedFolderIds - folder.id
+                } else {
+                    expandedFolderIds + folder.id
+                }
+            },
+            onLongClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (!isEditMode) {
+                    isEditMode = true
+                    selectedFolders = setOf(folder.id)
+                    selectedSchedules = emptySet()
+                }
+            }
+        )
+    }
+    fun exitEditMode() {
+        isEditMode = false
+        editMode = ""
+        selectedSchedules = emptySet()
+        selectedFolders = emptySet()
+    }
+
     val focusRequester = remember { FocusRequester() }
     val editFocusRequester = remember { FocusRequester() }
-    val checkboxStates = remember { mutableStateMapOf<String, Boolean>() }
     // 注意：这里不要再挂一个未被消费的 layerBackdrop —— 它会把整页内容每帧额外离屏录制一遍，
     // 而录制结果没有任何 drawBackdrop 使用，等于白烧一整条渲染管线。
     val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
@@ -274,15 +421,19 @@ fun SwitchScheduleScreen(
     }
 
     LaunchedEffect(isEditMode) {
-        if (isEditMode && scheduleNames.isNotEmpty()) {
-            checkboxStates[currentScheduleId] = true
+        if (isEditMode) {
+            // 当前课表若在文件夹里，展开它，保证可见（用于主页卡片形变锚点）
+            repository.getFolderIdOfSchedule(currentScheduleId)
+                ?.let { expandedFolderIds = expandedFolderIds + it }
+            // 兜底：长按进入编辑模式时都会先选中某一项；极端情况下未选中任何项时默认选中当前课表
+            if (selectedSchedules.isEmpty() && selectedFolders.isEmpty()) {
+                selectedSchedules = setOf(currentScheduleId)
+            }
         }
     }
 
     BackHandler(enabled = isEditMode) {
-        isEditMode = false
-        editMode = ""
-        checkboxStates.clear()
+        exitEditMode()
     }
 
     BackHandler(enabled = !isEditMode) {
@@ -314,9 +465,7 @@ fun SwitchScheduleScreen(
                             LiquidTopBarButton(
                                 onClick = {
                                     if (isEditMode) {
-                                        isEditMode = false
-                                        editMode = ""
-                                        checkboxStates.clear()
+                                        exitEditMode()
                                     } else {
                                         dismissKeepCurrent()
                                     }
@@ -350,10 +499,13 @@ fun SwitchScheduleScreen(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 LiquidTopBarButton(
-                                    onClick = { isEditMode = true },
+                                    onClick = {
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        showAddFolderDialog = true
+                                    },
                                     backdrop = liquidGlassBackdrop,
-                                    icon = MiuixIcons.Normal.Edit,
-                                    contentDescription = "编辑",
+                                    icon = MiuixIcons.AddFolder,
+                                    contentDescription = "新建文件夹",
                                     iconSize = 26.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -380,7 +532,7 @@ fun SwitchScheduleScreen(
                     exit = ExitTransition.None,
                     label = "BottomEditBar"
                 ) {
-                    val checkedCount = checkboxStates.values.count { it }
+                    val checkedCount = selectedSchedules.size + selectedFolders.size
                     val appear by transition.animateFloat(
                         transitionSpec = {
                             if (targetState == EnterExitState.Visible) {
@@ -432,7 +584,7 @@ fun SwitchScheduleScreen(
                         // 外面多套的动画 Box：整条胶囊作为它的内容被整体包住
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.63f)
+                                .fillMaxWidth(0.72f)
                                 .height(56.dp)
                                 .drawBackdrop(
                                     backdrop = liquidGlassBackdrop,
@@ -459,11 +611,11 @@ fun SwitchScheduleScreen(
                                 BottomBarItem(
                                     icon = MiuixIcons.Forward,
                                     label = "分享",
-                                    enabled = checkedCount == 1 && !isSharingSchedule,
+                                    enabled = selectedFolders.isEmpty() && selectedSchedules.size == 1 && !isSharingSchedule,
                                     onClick = {
                                         com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("share_dialog")
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
-                                        val selected = checkboxStates.entries.find { it.value }?.key
+                                        val selected = selectedSchedules.firstOrNull()
                                         if (selected != null && !isSharingSchedule) {
                                             if (buildShareScheduleMap(repository, selected) == null) {
                                                 Toast.makeText(
@@ -484,15 +636,33 @@ fun SwitchScheduleScreen(
                                     enabled = checkedCount == 1,
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
-                                        if (checkedCount == 1) {
-                                            val selected =
-                                                checkboxStates.entries.find { it.value }?.key
-                                            if (selected != null) {
-                                                editingScheduleName = selected
-                                                editScheduleName = selected
-                                                showEditDialog = true
+                                        if (checkedCount != 1) return@BottomBarItem
+                                        val folderId = selectedFolders.firstOrNull()
+                                        if (folderId != null) {
+                                            val folder = folders.find { it.id == folderId }
+                                            if (folder != null) {
+                                                editingFolderId = folder.id
+                                                editFolderName = folder.name
+                                                showEditFolderDialog = true
                                             }
+                                            return@BottomBarItem
                                         }
+                                        val selected = selectedSchedules.firstOrNull()
+                                        if (selected != null) {
+                                            editingScheduleName = selected
+                                            editScheduleName = selected
+                                            showEditDialog = true
+                                        }
+                                    }
+                                )
+                                BottomBarItem(
+                                    icon = MiuixIcons.MoveFile,
+                                    label = "移动",
+                                    enabled = selectedSchedules.isNotEmpty() && selectedFolders.isEmpty(),
+                                    onClick = {
+                                        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("move_dialog")
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+                                        showMoveDialog = true
                                     }
                                 )
                                 BottomBarItem(
@@ -552,6 +722,14 @@ fun SwitchScheduleScreen(
                         onScreenReady(bitmap, adjustedBounds)
                     }
                 }
+                // 兜底：当前课表被收在文件夹里、或首屏没布局到它时也要回调一次，
+                // 否则主页 switchCapturingSnapshot 一直是 true，整个页面停在 alpha=0
+                LaunchedEffect(Unit) {
+                    delay(700.milliseconds)
+                    if (currentCardBounds == null) {
+                        onScreenReady(null, androidx.compose.ui.geometry.Rect.Zero)
+                    }
+                }
                 Card(
                     modifier = Modifier
                         .fillMaxSize()
@@ -562,6 +740,11 @@ fun SwitchScheduleScreen(
                         contentColor = MiuixTheme.colorScheme.onSurface
                     )
                 ) {
+                    // 未归入任何文件夹的课表；跟着课表列表与文件夹变化重算
+                    val rootNames = remember(scheduleNames, folders) {
+                        val grouped = folders.flatMap { it.schedules }.toSet()
+                        scheduleNames.filter { it !in grouped }
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -580,184 +763,82 @@ fun SwitchScheduleScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // 扁平列表：按添加时间顺序展示，不区分「当前/其他」，选中不重排
-                        items(
-                            count = scheduleNames.size,
-                            key = { scheduleNames[it] }
-                        ) { index ->
-                            val scheduleName = scheduleNames[index]
-                            val summary = remember(
-                                scheduleName,
-                                scheduleSummaries
-                            ) {
-                                scheduleSummaries[scheduleName]
-                                    ?: repository.getScheduleSummary(scheduleName)
-                            }
-                            val isCurrent = scheduleName == currentScheduleId
-                            var cardBounds by remember {
-                                mutableStateOf<androidx.compose.ui.geometry.Rect?>(
-                                    null
-                                )
-                            }
-                            val isDeleting = deletingScheduleName == scheduleName
-                            // 当前课表不参与入场动画，与进场形变锚点对齐
-                            val cardScale = remember { Animatable(if (isCurrent) 1f else 0.8f) }
-                            val cardAlpha = remember { Animatable(if (isCurrent) 1f else 0f) }
-                            LaunchedEffect(Unit) {
-                                if (!isCurrent) {
-                                    launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
-                                    launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
-                                }
-                            }
-                            LaunchedEffect(isDeleting) {
-                                if (isDeleting) {
-                                    launch {
-                                        cardScale.animateTo(
-                                            0.8f,
-                                            animationSpec = tween(300)
-                                        )
-                                    }
-                                    launch {
-                                        cardAlpha.animateTo(
-                                            0f,
-                                            animationSpec = tween(300)
-                                        )
-                                    }
-                                }
-                            }
-                            Card(
-                                cornerRadius = 20.dp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .animateItem()
-                                    .graphicsLayer {
-                                        scaleX = cardScale.value
-                                        scaleY = cardScale.value
-                                        alpha = cardAlpha.value
-                                    }
-                                    .onGloballyPositioned { coordinates ->
-                                        val position =
-                                            coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
-                                        val size = coordinates.size
-                                        val rect = androidx.compose.ui.geometry.Rect(
-                                            left = position.x,
-                                            top = position.y,
-                                            right = position.x + size.width,
-                                            bottom = position.y + size.height
-                                        )
-                                        cardBounds = rect
-                                        if (isCurrent) {
-                                            currentCardBounds = rect
-                                            onCurrentCardBounds(rect)
-                                        }
-                                    },
-                                insideMargin = PaddingValues(0.dp)
-                            ) {
-                                if (isEditMode) {
-                                    CheckboxPreference(
-                                        title = scheduleName,
-                                        summary = summary,
-                                        checked = checkboxStates[scheduleName] ?: false,
-                                        onCheckedChange = { isChecked ->
-                                            checkboxStates[scheduleName] = isChecked
-                                        },
-                                        checkboxLocation = CheckboxLocation.End
-                                    )
-                                } else {
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        cornerRadius = 20.dp,
-                                        showIndication = true,
-                                        insideMargin = PaddingValues(
-                                            horizontal = 16.dp,
-                                            vertical = 16.dp
+                        // 根目录：文件夹（可原地展开）+ 未归档课表；文件夹内课表紧跟其文件夹卡片
+                        folders.forEach { folder ->
+                            // 文件夹卡片与它的课表放同一个 item：高度逐帧变化，
+                            // 展开/收回时下方卡片跟着一起被推走，而不是先消失再出现
+                            item(key = "folder:${folder.id}") {
+                                Column(modifier = Modifier.animateItem()) {
+                                    FolderItem(folder = folder, itemModifier = Modifier)
+                                    AnimatedVisibility(
+                                        visible = folder.id in expandedFolderIds,
+                                        enter = expandVertically(
+                                            // 锚在底部：展开时内容跟着底边向下滑出，
+                                            // 收起时一起向上滑回文件夹卡片下面，而不是从底部被裁掉
+                                            expandFrom = Alignment.Bottom,
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            )
+                                        ) + fadeIn(
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            )
                                         ),
-                                        pressFeedbackType = PressFeedbackType.None,
-                                        onClick = {
-                                            if (isCurrent) {
-                                                dismissKeepCurrent()
-                                            } else {
-                                                com.haooz.chedule.ui.utils.CrashLogHelper.trace(
-                                                    "切换课表", "select_other", scheduleName
-                                                )
-                                                // 不重排列表，只切换当前课表
-                                                repository.switchToSchedule(scheduleName)
-                                                currentScheduleId = scheduleName
-                                                onScheduleChanged()
-                                                val bounds = cardBounds
-                                                if (bounds != null) {
-                                                    scope.launch {
-                                                        val fullBitmap = capturePageBitmap()
-                                                        if (fullBitmap != null) {
-                                                            val x =
-                                                                (bounds.left - contentRootX).toInt()
-                                                                    .coerceIn(
-                                                                        0,
-                                                                        fullBitmap.width - 1
-                                                                    )
-                                                            val y =
-                                                                (bounds.top - contentRootY).toInt()
-                                                                    .coerceIn(
-                                                                        0,
-                                                                        fullBitmap.height - 1
-                                                                    )
-                                                            val w = bounds.width.toInt()
-                                                                .coerceIn(1, fullBitmap.width - x)
-                                                            val h = bounds.height.toInt()
-                                                                .coerceIn(1, fullBitmap.height - y)
-                                                            val cardBitmap =
-                                                                android.graphics.Bitmap.createBitmap(
-                                                                    fullBitmap,
-                                                                    x,
-                                                                    y,
-                                                                    w,
-                                                                    h
-                                                                )
-                                                            onCardSnapshot(
-                                                                fullBitmap,
-                                                                cardBitmap,
-                                                                bounds
-                                                            )
-                                                        }
-                                                        onCardClick(bounds)
-                                                    }
-                                                } else {
-                                                    onBack(null)
-                                                }
-                                            }
-                                        }
+                                        exit = shrinkVertically(
+                                            shrinkTowards = Alignment.Bottom,
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            )
+                                        ) + fadeOut(
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            )
+                                        )
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Column(
+                                            modifier = Modifier.padding(top = 12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
+                                            val children =
+                                                folder.schedules.filter { it in scheduleNames }
+                                            if (children.isEmpty()) {
                                                 Text(
-                                                    text = scheduleName,
-                                                    fontSize = 17.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = MiuixTheme.colorScheme.onSurface
+                                                    text = "文件夹内暂无课表",
+                                                    fontSize = 14.sp,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                                    modifier = Modifier.padding(
+                                                        start = 16.dp,
+                                                        bottom = 4.dp
+                                                    )
                                                 )
-                                                if (summary.isNotEmpty()) {
-                                                    Text(
-                                                        text = summary,
-                                                        fontSize = 14.sp,
-                                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                            } else {
+                                                children.forEach { childName ->
+                                                    ScheduleItem(
+                                                        scheduleName = childName,
+                                                        indent = true,
+                                                        itemModifier = Modifier
                                                     )
                                                 }
                                             }
-                                            if (isCurrent) {
-                                                Icon(
-                                                    imageVector = MiuixIcons.Basic.Check,
-                                                    contentDescription = "当前课表",
-                                                    tint = MiuixTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                        // 未归档课表：按添加时间顺序展示，不区分「当前/其他」，选中不重排
+                        items(
+                            count = rootNames.size,
+                            key = { "root:${rootNames[it]}" }
+                        ) { index ->
+                            ScheduleItem(
+                                scheduleName = rootNames[index],
+                                indent = false,
+                                itemModifier = Modifier.animateItem()
+                            )
                         }
                     }
                 }
@@ -934,14 +1015,12 @@ fun SwitchScheduleScreen(
                                 val oldName = editingScheduleName
                                 val newName = editScheduleName
                                 com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("rename", "$oldName->$newName")
-                                val wasChecked = checkboxStates[oldName] == true
+                                val wasChecked = oldName in selectedSchedules
                                 showEditDialog = false
                                 editScheduleName = ""
                                 scheduleNames = repository.renameSchedule(oldName, newName)
-                                checkboxStates.remove(oldName)
-                                if (wasChecked) {
-                                    checkboxStates[newName] = true
-                                }
+                                folders = repository.getScheduleFolders()
+                                selectedSchedules = if (wasChecked) setOf(newName) else selectedSchedules - oldName
                                 if (currentScheduleId == oldName) {
                                     currentScheduleId = newName
                                     repository.switchToSchedule(newName)
@@ -955,8 +1034,22 @@ fun SwitchScheduleScreen(
                 }
             }
 
+            val deleteFolderCount = selectedFolders.size
+            val deleteScheduleCount = selectedSchedules.size
+            val deleteDialogTitle = when {
+                deleteFolderCount > 0 && deleteScheduleCount > 0 -> "删除课表与文件夹"
+                deleteFolderCount > 0 -> "解散文件夹"
+                else -> "删除课表"
+            }
+            val deleteDialogText = when {
+                deleteFolderCount > 0 && deleteScheduleCount > 0 ->
+                    "选中的 $deleteScheduleCount 个课表将被删除；选中的 $deleteFolderCount 个文件夹将解散，其中课表移回「全部课表」。"
+                deleteFolderCount > 0 ->
+                    "选中的文件夹将被解散，其中课表移回「全部课表」，课表不会被删除。"
+                else -> "确定要删除选中的课表吗？"
+            }
             OverlayDialog(
-                title = "删除课表",
+                title = deleteDialogTitle,
                 show = showDeleteDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = { showDeleteDialog = false }
@@ -966,7 +1059,7 @@ fun SwitchScheduleScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "确定要删除选中的课表吗？",
+                        text = deleteDialogText,
                         style = MiuixTheme.textStyles.body1,
                         color = MiuixTheme.colorScheme.onSurface
                     )
@@ -985,16 +1078,20 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "删除",
+                            text = if (deleteScheduleCount > 0) "删除" else "解散",
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                val selectedNames = checkboxStates.filter { it.value }.keys.toList()
+                                val selectedNames = selectedSchedules.toList()
+                                val folderIds = selectedFolders.toList()
                                 com.haooz.chedule.ui.utils.FeatureLog.switchSchedule(
                                     "delete", selectedNames.joinToString()
                                 )
                                 showDeleteDialog = false
-                                isEditMode = false
-                                editMode = ""
+                                exitEditMode()
+                                // 先解散文件夹：课表回到根目录再删，避免删完留下空壳文件夹
+                                if (folderIds.isNotEmpty()) {
+                                    folderIds.forEach { id -> folders = repository.disbandScheduleFolder(id) }
+                                }
                                 scope.launch {
                                     selectedNames.forEach { name ->
                                         deletingScheduleName = name
@@ -1006,14 +1103,475 @@ fun SwitchScheduleScreen(
                                         }
                                     }
                                     deletingScheduleName = null
-                                    checkboxStates.clear()
-                                    onScheduleChanged()
+                                    folders = repository.getScheduleFolders()
+                                    if (selectedNames.isNotEmpty()) onScheduleChanged()
                                 }
                             },
                             textColor = ComposeColor(0xFFF44336),
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+            }
+
+            OverlayDialog(
+                title = "新建文件夹",
+                show = showAddFolderDialog,
+                liquidGlassBackdrop = liquidGlassBackdrop,
+                onDismissRequest = {
+                    showAddFolderDialog = false
+                    newFolderName = ""
+                }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NativeMiuixTextField(
+                        value = newFolderName,
+                        onValueChange = { newFolderName = it },
+                        label = "文件夹名称",
+                        modifier = Modifier.fillMaxWidth(),
+                        requestFocus = showAddFolderDialog
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        TextButton(
+                            text = "取消",
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                showAddFolderDialog = false
+                                newFolderName = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            text = "确定",
+                            enabled = newFolderName.isNotBlank(),
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                if (folders.any { it.name == newFolderName }) {
+                                    Toast.makeText(
+                                        context,
+                                        "已存在同名文件夹",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@TextButton
+                                }
+                                val name = newFolderName
+                                com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("add_folder", name)
+                                val created = repository.addScheduleFolder(name)
+                                folders = created
+                                // 刚建的文件夹直接展开，方便接着往里搬课表
+                                created.lastOrNull()?.id
+                                    ?.let { expandedFolderIds = expandedFolderIds + it }
+                                showAddFolderDialog = false
+                                newFolderName = ""
+                                exitEditMode()
+                            },
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            OverlayDialog(
+                title = "重命名文件夹",
+                show = showEditFolderDialog,
+                liquidGlassBackdrop = liquidGlassBackdrop,
+                onDismissRequest = {
+                    showEditFolderDialog = false
+                    editFolderName = ""
+                }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NativeMiuixTextField(
+                        value = editFolderName,
+                        onValueChange = { editFolderName = it },
+                        label = "文件夹名称",
+                        modifier = Modifier.fillMaxWidth(),
+                        requestFocus = showEditFolderDialog
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        TextButton(
+                            text = "取消",
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                showEditFolderDialog = false
+                                editFolderName = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            text = "确定",
+                            enabled = editFolderName.isNotBlank(),
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                if (editFolderName == (folders.find { it.id == editingFolderId }?.name ?: "")) {
+                                    showEditFolderDialog = false
+                                    editFolderName = ""
+                                    return@TextButton
+                                }
+                                if (folders.any { it.name == editFolderName && it.id != editingFolderId }) {
+                                    Toast.makeText(
+                                        context,
+                                        "已存在同名文件夹",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@TextButton
+                                }
+                                com.haooz.chedule.ui.utils.FeatureLog.switchSchedule(
+                                    "rename_folder", editFolderName
+                                )
+                                folders = repository.renameScheduleFolder(editingFolderId, editFolderName)
+                                showEditFolderDialog = false
+                                editFolderName = ""
+                                exitEditMode()
+                            },
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            OverlayDialog(
+                title = "移动到",
+                summary = "已选中 ${selectedSchedules.size} 个课表",
+                show = showMoveDialog,
+                liquidGlassBackdrop = liquidGlassBackdrop,
+                onDismissRequest = { showMoveDialog = false }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MoveTargetRow(
+                        title = "全部课表",
+                        subtitle = "移出文件夹，回到根目录",
+                        icon = MiuixIcons.MoveFile,
+                        onClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                            showMoveDialog = false
+                            folders = repository.moveSchedulesToFolder(selectedSchedules.toList(), null)
+                            exitEditMode()
+                        }
+                    )
+                    folders.forEach { folder ->
+                        MoveTargetRow(
+                            title = folder.name,
+                            subtitle = "${folder.schedules.size} 个课表",
+                            icon = MiuixIcons.Folder,
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                showMoveDialog = false
+                                folders = repository.moveSchedulesToFolder(
+                                    selectedSchedules.toList(),
+                                    folder.id
+                                )
+                                expandedFolderIds = expandedFolderIds + folder.id
+                                exitEditMode()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 切换页的课表卡片：编辑模式下变复选框行；indent 表示它挂在文件夹里 */
+@Composable
+private fun ScheduleCardRow(
+    scheduleName: String,
+    summary: String,
+    isCurrent: Boolean,
+    isEditMode: Boolean,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    isDeleting: Boolean,
+    indent: Boolean,
+    itemModifier: Modifier,
+    onBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    // 当前课表不参与入场动画，与进场形变锚点对齐
+    val cardScale = remember { Animatable(if (isCurrent) 1f else 0.8f) }
+    val cardAlpha = remember { Animatable(if (isCurrent) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!isCurrent) {
+            launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
+            launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
+        }
+    }
+    LaunchedEffect(isDeleting) {
+        if (isDeleting) {
+            launch { cardScale.animateTo(0.8f, animationSpec = tween(300)) }
+            launch { cardAlpha.animateTo(0f, animationSpec = tween(300)) }
+        }
+    }
+    Card(
+        cornerRadius = 20.dp,
+        modifier = itemModifier
+            .fillMaxWidth()
+            .then(if (indent) Modifier.padding(start = 14.dp) else Modifier)
+            .graphicsLayer {
+                scaleX = cardScale.value
+                scaleY = cardScale.value
+                alpha = cardAlpha.value
+            }
+            .onGloballyPositioned { coordinates ->
+                val position =
+                    coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
+                val size = coordinates.size
+                onBoundsChanged(
+                    androidx.compose.ui.geometry.Rect(
+                        left = position.x,
+                        top = position.y,
+                        right = position.x + size.width,
+                        bottom = position.y + size.height
+                    )
+                )
+            },
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        if (isEditMode) {
+            CheckboxPreference(
+                title = scheduleName,
+                summary = summary,
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                checkboxLocation = CheckboxLocation.End
+            )
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                showIndication = true,
+                insideMargin = PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 16.dp
+                ),
+                pressFeedbackType = PressFeedbackType.None,
+                onClick = onClick,
+                onLongPress = onLongClick
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = scheduleName,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                        if (summary.isNotEmpty()) {
+                            Text(
+                                text = summary,
+                                fontSize = 14.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                            )
+                        }
+                    }
+                    if (isCurrent) {
+                        Icon(
+                            imageVector = MiuixIcons.Basic.Check,
+                            contentDescription = "当前课表",
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 文件夹卡片：点击原地展开/折叠里面的课表 */
+@Composable
+private fun FolderCardRow(
+    folderName: String,
+    scheduleCount: Int,
+    expanded: Boolean,
+    isEditMode: Boolean,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    itemModifier: Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val cardScale = remember { Animatable(0.8f) }
+    val cardAlpha = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
+        launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
+    }
+    // 与展开/收回的高度动画同一条曲线同一时长，箭头和列表移动才是连贯的
+    val expandRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else -90f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "folderExpandRotation"
+    )
+    Card(
+        cornerRadius = 20.dp,
+        modifier = itemModifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = cardScale.value
+                scaleY = cardScale.value
+                alpha = cardAlpha.value
+            },
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        if (isEditMode) {
+            // 编辑模式下仍保留左侧文件夹图标，右侧放复选框（点整行即可切换选中）
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                showIndication = true,
+                insideMargin = PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 14.dp
+                ),
+                pressFeedbackType = PressFeedbackType.None,
+                onClick = { onCheckedChange(!checked) }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.FolderFill,
+                        contentDescription = "文件夹",
+                        tint = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = folderName,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "$scheduleCount 个课表",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        )
+                    }
+                    Checkbox(
+                        state = if (checked) ToggleableState.On else ToggleableState.Off,
+                        onClick = { onCheckedChange(!checked) }
+                    )
+                }
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                showIndication = true,
+                insideMargin = PaddingValues(
+                    horizontal = 16.dp,
+                    vertical = 14.dp
+                ),
+                pressFeedbackType = PressFeedbackType.None,
+                onClick = onClick,
+                onLongPress = onLongClick
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (expanded) MiuixIcons.FolderFill else MiuixIcons.Folder,
+                        contentDescription = "文件夹",
+                        tint = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = folderName,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "$scheduleCount 个课表",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        )
+                    }
+                    Icon(
+                        imageVector = MiuixIcons.ChevronForward,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer { rotationZ = expandRotation },
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 「移动到」弹窗里的目标行 */
+@Composable
+private fun MoveTargetRow(
+    title: String,
+    subtitle: String?,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 16.dp,
+        showIndication = true,
+        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface
+                )
+                if (!subtitle.isNullOrEmpty()) {
+                    Text(
+                        text = subtitle,
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    )
                 }
             }
         }

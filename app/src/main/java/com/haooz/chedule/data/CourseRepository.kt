@@ -25,6 +25,7 @@ class CourseRepository private constructor(context: Context) {
     // 几乎所有 key 拼接都经过它，全类最热路径
     private var currentScheduleIdCache: String? = null
     private var scheduleNamesCache: List<String>? = null
+    private var scheduleFoldersCache: List<ScheduleFolder>? = null
     private var globalSectionTimesCache: Map<Int, String>? = null
     private val combinationStyleCache = mutableMapOf<Long, CombinationStyle>()
 
@@ -45,6 +46,30 @@ class CourseRepository private constructor(context: Context) {
     init {
         migrateToTimeConfigsIfNeeded()
         migrateScheduleTimeConfigBindingsIfNeeded()
+        migrateSchedulesIntoDefaultFolder()
+    }
+
+    /**
+     * 首次装这个版本（或第一次使用）时，把现有课表全部收进「默认文件夹」。
+     * 只跑一次：升上来的老用户不会看到课表散在根目录，新用户也从一开始就有分组。
+     */
+    private fun migrateSchedulesIntoDefaultFolder() {
+        if (prefs.getBoolean(KEY_DEFAULT_FOLDER_MIGRATED, false)) return
+        val names = getScheduleNames()
+        val folders = getScheduleFolders().toMutableList()
+        val ungrouped = if (folders.isEmpty()) names
+        else names.filter { name -> folders.none { name in it.schedules } }
+        if (ungrouped.isNotEmpty()) {
+            folders.add(
+                ScheduleFolder(
+                    id = DEFAULT_FOLDER_ID,
+                    name = DEFAULT_FOLDER_NAME,
+                    schedules = ungrouped
+                )
+            )
+            saveScheduleFolders(folders)
+        }
+        prefs.edit(commit = true) { putBoolean(KEY_DEFAULT_FOLDER_MIGRATED, true) }
     }
 
     // 变更回调：多播列表，避免后构造的 ViewModel 覆盖先注册的监听
@@ -78,6 +103,7 @@ class CourseRepository private constructor(context: Context) {
         timeConfigIdsCache = null
         currentScheduleIdCache = null
         scheduleNamesCache = null
+        scheduleFoldersCache = null
         globalSectionTimesCache = null
         combinationStyleCache.clear()
     }
@@ -201,6 +227,11 @@ class CourseRepository private constructor(context: Context) {
         private const val KEY_EVENING_START = "evening_start"
         private const val KEY_CURRENT_SCHEDULE_ID = "current_schedule_id"
         private const val KEY_SCHEDULE_NAMES = "schedule_names"
+        private const val KEY_SCHEDULE_FOLDERS = "schedule_folders"
+        /** 首次引入文件夹时的归档标记；只跑一次 */
+        private const val KEY_DEFAULT_FOLDER_MIGRATED = "default_folder_migrated"
+        private const val DEFAULT_FOLDER_NAME = "默认文件夹"
+        private const val DEFAULT_FOLDER_ID = "folder_default"
         private const val KEY_PRE_CLASS_REMINDER = "pre_class_reminder"
         private const val KEY_PRE_CLASS_REMINDER_MINUTES = "pre_class_reminder_minutes"
         private const val KEY_NEXT_DAY_REMINDER = "next_day_reminder"
@@ -1313,6 +1344,11 @@ class CourseRepository private constructor(context: Context) {
             names.add("默认课表")
         }
         saveScheduleNames(names)
+        // 课表没了，文件夹里的引用必须同步清掉，否则会留下幽灵条目
+        val folders = getScheduleFolders()
+        if (folders.any { name in it.schedules }) {
+            saveScheduleFolders(folders.map { it.copy(schedules = it.schedules - name) })
+        }
         val prefix = "$SCHEDULE_KEY_PREFIX${name}_"
         prefs.edit {
             for (key in prefs.all.keys) {
@@ -1400,6 +1436,114 @@ class CourseRepository private constructor(context: Context) {
         }
         notifyCourseChanged("settings")
         return names
+    }
+
+    // ---------- 课表文件夹 ----------
+
+    /**
+     * 读取课表文件夹。
+     * 顺带清洗：剔除已被删除的课表名，并保证一个课表只出现在一个文件夹里（保留靠前的那个）。
+     */
+    fun getScheduleFolders(): List<ScheduleFolder> {
+        scheduleFoldersCache?.let { return it }
+        val json = prefs.getString(KEY_SCHEDULE_FOLDERS, null)
+        val allNames = getScheduleNames()
+        val parsed = try {
+            if (json.isNullOrBlank()) emptyList()
+            else {
+                val type = object : TypeToken<List<ScheduleFolder>>() {}.type
+                gson.fromJson<List<ScheduleFolder>>(json, type) ?: emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val seen = mutableSetOf<String>()
+        val result = parsed
+            .filter { it.id.isNotBlank() }
+            .map { folder ->
+                val kept = folder.schedules
+                    .filter { name -> name in allNames && seen.add(name) }
+                // 文件夹内部按全局课表顺序展示
+                val ordered = allNames.filter { it in kept }
+                folder.copy(schedules = ordered)
+            }
+        scheduleFoldersCache = result
+        return result
+    }
+
+    private fun saveScheduleFolders(folders: List<ScheduleFolder>) {
+        prefs.edit(commit = true) { putString(KEY_SCHEDULE_FOLDERS, gson.toJson(folders)) }
+        scheduleFoldersCache = folders
+    }
+
+    /** 新建空文件夹，追加到末尾 */
+    fun addScheduleFolder(name: String): List<ScheduleFolder> {
+        val folders = getScheduleFolders().toMutableList()
+        folders.add(
+            ScheduleFolder(
+                id = "folder_${System.currentTimeMillis()}_${folders.size}",
+                name = name
+            )
+        )
+        saveScheduleFolders(folders)
+        return folders
+    }
+
+    fun renameScheduleFolder(id: String, newName: String): List<ScheduleFolder> {
+        val folders = getScheduleFolders().toMutableList()
+        val index = folders.indexOfFirst { it.id == id }
+        if (index != -1) {
+            folders[index] = folders[index].copy(name = newName)
+            saveScheduleFolders(folders)
+        }
+        return folders
+    }
+
+    /**
+     * 解散文件夹：文件夹内的课表回到根目录，课表本身不删除。
+     * 只删文件夹壳，避免误删用户数据（真要删课表请走删除课表）。
+     */
+    fun disbandScheduleFolder(id: String): List<ScheduleFolder> {
+        val folders = getScheduleFolders()
+        if (folders.none { it.id == id }) return folders
+        saveScheduleFolders(folders.filter { it.id != id })
+        return getScheduleFolders()
+    }
+
+    /** 把课表移动到文件夹；folderId 为 null 表示移回根目录 */
+    fun moveSchedulesToFolder(scheduleNames: List<String>, folderId: String?): List<ScheduleFolder> {
+        if (scheduleNames.isEmpty()) return getScheduleFolders()
+        val moving = scheduleNames.distinct()
+        // 先从所有文件夹摘出来，避免同一课表同时挂在两个文件夹下
+        val folders = getScheduleFolders()
+            .map { it.copy(schedules = it.schedules.filter { name -> name !in moving }) }
+            .toMutableList()
+        if (folderId != null) {
+            val index = folders.indexOfFirst { it.id == folderId }
+            if (index != -1) {
+                val merged = (folders[index].schedules + moving).distinct()
+                // 文件夹内部仍按全局课表顺序
+                val ordered = getScheduleNames().filter { it in merged }
+                folders[index] = folders[index].copy(schedules = ordered)
+            }
+        }
+        saveScheduleFolders(folders)
+        return folders
+    }
+
+    /** 课表所属文件夹 id，不在任何文件夹时返回 null */
+    fun getFolderIdOfSchedule(scheduleName: String): String? {
+        for (folder in getScheduleFolders()) {
+            if (scheduleName in folder.schedules) return folder.id
+        }
+        return null
+    }
+
+    /** 未归入任何文件夹的课表（切换页根目录） */
+    fun getRootScheduleNames(): List<String> {
+        val folders = getScheduleFolders()
+        if (folders.isEmpty()) return getScheduleNames()
+        return getScheduleNames().filter { name -> folders.none { name in it.schedules } }
     }
 
     /** 绑定无效时回退第一个可用配置 */
@@ -2182,6 +2326,7 @@ class CourseRepository private constructor(context: Context) {
         val result = mutableMapOf<String, Any>()
         val relevantKeys = listOf(
             KEY_SCHEDULE_NAMES,
+            KEY_SCHEDULE_FOLDERS,
             KEY_CURRENT_SCHEDULE_ID,
             KEY_SHIFT_MODE,
             KEY_SHIFT_SELECTED_SCHEDULES,
@@ -2217,6 +2362,9 @@ class CourseRepository private constructor(context: Context) {
                 }
             }
             remove(KEY_SCHEDULE_NAMES)
+            remove(KEY_SCHEDULE_FOLDERS)
+            // 清掉标记：导入旧备份后重新把课表收进默认文件夹
+            remove(KEY_DEFAULT_FOLDER_MIGRATED)
             remove(KEY_CURRENT_SCHEDULE_ID)
             remove(KEY_SHIFT_MODE)
             remove(KEY_SHIFT_SELECTED_SCHEDULES)
@@ -2253,6 +2401,8 @@ class CourseRepository private constructor(context: Context) {
             }
         }
         invalidateAllCaches()
+        // 标记已在上面清掉，这里立刻重新归档，用户不用重启才看到默认文件夹
+        migrateSchedulesIntoDefaultFolder()
         dispatchCourseChanged("restore", "")
     }
 
