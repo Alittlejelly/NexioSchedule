@@ -76,6 +76,7 @@ import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -97,6 +98,8 @@ fun TabletSwitchSchedulePane(
     // 标题栏按钮驱动的弹窗开关
     val showAddDialog = remember { mutableStateOf(false) }
     val showAddFolderDialog = remember { mutableStateOf(false) }
+    // 编辑模式：左上角 Close 退出
+    val isEditMode = remember { mutableStateOf(false) }
     // 右栏滚动：供顶栏遮罩
     var rightScrollPx by remember { mutableFloatStateOf(0f) }
     // 右栏预览：跟随当前选中课表；节数/上中晚分段与主课表同一套配置
@@ -168,6 +171,7 @@ fun TabletSwitchSchedulePane(
                         onScrollYChanged = { leftScrollPx = it.toFloat().coerceAtLeast(0f) },
                         externalShowAddDialog = showAddDialog,
                         externalShowAddFolderDialog = showAddFolderDialog,
+                        externalIsEditMode = isEditMode,
                     )
                 }
                 TabletPaneTopChrome(
@@ -177,7 +181,7 @@ fun TabletSwitchSchedulePane(
                     maskAlpha = maskAlpha,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
-                // 标题栏：居中标题 + 右侧添加/文件夹按钮；玻璃随滚动显隐（设置页右上角同式）
+                // 标题栏：编辑模式左上 Close，居中标题，右侧添加/文件夹
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -185,13 +189,31 @@ fun TabletSwitchSchedulePane(
                         .offset(y = topInset)
                         .height(collapsedH),
                 ) {
+                    if (isEditMode.value) {
+                        LiquidTopBarButton(
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                isEditMode.value = false
+                            },
+                            backdrop = leftBackdrop,
+                            icon = MiuixIcons.Normal.Close,
+                            contentDescription = "关闭",
+                            iconSize = 24.dp,
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 12.dp),
+                            backdropAlpha = maskAlpha,
+                            shadowAlpha = maskAlpha,
+                        )
+                    }
                     Text(
-                        text = "切换课表",
+                        text = if (isEditMode.value) "编辑课表" else "切换课表",
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier.align(Alignment.Center),
                     )
+                    if (!isEditMode.value) {
                     Row(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
@@ -223,6 +245,7 @@ fun TabletSwitchSchedulePane(
                             backdropAlpha = maskAlpha,
                             shadowAlpha = maskAlpha,
                         )
+                    }
                     }
                 }
             }

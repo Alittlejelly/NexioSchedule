@@ -179,6 +179,8 @@ fun SwitchScheduleScreen(
     /** 内嵌标题栏「添加 / 新建文件夹」弹窗开关，由外层标题栏按钮驱动 */
     externalShowAddDialog: androidx.compose.runtime.MutableState<Boolean>? = null,
     externalShowAddFolderDialog: androidx.compose.runtime.MutableState<Boolean>? = null,
+    /** 内嵌编辑模式状态：外层标题栏可据此显示 Close 并退出编辑 */
+    externalIsEditMode: androidx.compose.runtime.MutableState<Boolean>? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -253,7 +255,8 @@ fun SwitchScheduleScreen(
         externalShowAddDialog ?: remember { mutableStateOf(false) }
     var showAddDialog by showAddDialogState
     var newScheduleName by remember { mutableStateOf("") }
-    var isEditMode by remember { mutableStateOf(false) }
+    val isEditModeState = externalIsEditMode ?: remember { mutableStateOf(false) }
+    var isEditMode by isEditModeState
     var editMode by remember { mutableStateOf("") }
     var showEditDialog by remember { mutableStateOf(false) }
     var editingScheduleName by remember { mutableStateOf("") }
@@ -448,6 +451,11 @@ fun SwitchScheduleScreen(
             if (selectedSchedules.isEmpty() && selectedFolders.isEmpty()) {
                 selectedSchedules = setOf(currentScheduleId)
             }
+        } else {
+            // 外层直接改状态退出时，清掉编辑选中，避免下次进入残留
+            editMode = ""
+            selectedSchedules = emptySet()
+            selectedFolders = emptySet()
         }
     }
 
