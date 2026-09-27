@@ -749,7 +749,7 @@ fun MainScheduleScreen(
             }
         }
 
-// beyondViewportPageCount=2：邻近 2 周提前 composition，快滑跨周时目标页多半已就绪
+
     HorizontalPager(
         state = pagerState,
         modifier = Modifier
@@ -761,7 +761,7 @@ fun MainScheduleScreen(
                     latestIsWallpaperEditing || latestDraggingCourseIds.isNotEmpty()
                 },
             ),
-        beyondViewportPageCount = 2,
+        beyondViewportPageCount = 1,
         // 横向触摸改由 pagerAxisTakeoverGesture 驱动；纵滑主导时交给 verticalScroll
         userScrollEnabled = false
     ) { page ->
@@ -1744,6 +1744,9 @@ private fun AnimatedDropTargetMask(
     val height = remember { Animatable(0f) }
     val alpha = remember { Animatable(0f) }
     val lastTarget = remember { mutableStateOf<DropMaskBox?>(null) }
+
+    // 没有落点且遮罩已淡尽时不挂这棵树：BoxWithConstraints 是 SubcomposeLayout
+    if (dropHighlight == null && dropHighlightOrigin == null && alpha.value <= 0.01f) return
 
     BoxWithConstraints(
         modifier = Modifier

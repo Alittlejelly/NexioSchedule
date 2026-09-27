@@ -3659,14 +3659,15 @@ fun CourseScheduleApp() {
                                     beyondViewportPageCount = 0,
                                 ) { page -> mainPagerPageContent(page) }
                             } else {
-                                // 手机切 tab 是 spring 平移动画，必须保证目标页已组合好，
-                                // 否则动画过程中现组目标页会直接掉帧。3 页时 1 已覆盖全部页。
+                                // 手机切 tab 是 spring 平移动画。beyond=1 时目标页隔壁那页会在动画
+                                // 途中才首次组合（我的/今日各约 23~31ms），直接砸在动画首帧上。
+                                // 3 页用 beyond=2 让三页常驻，切页变成纯位移动画，零组合成本。
                                 HorizontalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
                                     key = mainPagerPageKey,
                                     userScrollEnabled = false,
-                                    beyondViewportPageCount = 1,
+                                    beyondViewportPageCount = 2,
                                 ) { page -> mainPagerPageContent(page) }
                             }
                         }
