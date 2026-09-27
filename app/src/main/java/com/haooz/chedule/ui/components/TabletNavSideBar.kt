@@ -10,6 +10,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -140,11 +141,14 @@ fun TabletNavExpandAnimator() {
     }
 }
 
-/** 侧栏避让宽度 px。只在 layout/draw 阶段调用。 */
-fun Density.tabletNavSideInsetPx(screenWidthDp: Int): Float {
+/** 侧栏避让宽度 px。竖屏展开为叠层时固定按折叠轨，不随展开变宽。 */
+fun Density.tabletNavSideInsetPx(screenWidthDp: Int, screenHeightDp: Int = screenWidthDp): Float {
     if (screenWidthDp < 600) return 0f
     val expandedWidth = screenWidthDp.dp * TabletNavSideWidthFraction
     val collapsedTotal = TabletNavSideInset + TabletNavIconRailWidth
+    if (screenHeightDp > screenWidthDp) {
+        return collapsedTotal.toPx()
+    }
     return androidx.compose.ui.unit.lerp(
         collapsedTotal,
         expandedWidth,
@@ -154,15 +158,23 @@ fun Density.tabletNavSideInsetPx(screenWidthDp: Int): Float {
 
 /**
  * 目标宽度在展开/折叠那一刻一次性测量出来（只重排一次），
- * 中间所有帧只做 graphicsLayer 平移，内容树在动画期间零重绘
+ * 中间所有帧只做 graphicsLayer 平移，内容树在动画期间零重绘。
+ * 竖屏：展开是纯叠层（侧栏浮在内容上 + 压暗），内容始终按折叠轨避让，布局不动。
+ * 横屏：展开仍让位给侧栏。
  */
 @Composable
 fun tabletNavRailStartPadding(): Modifier {
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
     if (screenWidthDp < 600) return Modifier
+    val isPortrait = configuration.screenHeightDp > configuration.screenWidthDp
     val density = LocalDensity.current
     val collapsedTotalPx = with(density) { (TabletNavSideInset + TabletNavIconRailWidth).toPx() }
     val expandedWidthPx = with(density) { (screenWidthDp.dp * TabletNavSideWidthFraction).toPx() }
+    // 竖屏叠层：内容 start padding 恒为折叠轨，展开不改变布局
+    if (isPortrait) {
+        return TabletNavRailTargetPaddingElement(collapsedTotalPx, collapsedTotalPx)
+    }
     return TabletNavRailTargetPaddingElement(collapsedTotalPx, expandedWidthPx)
         .graphicsLayer {
             val p = TabletNavSideState.expandProgress.floatValue
@@ -258,8 +270,10 @@ private class TabletNavPanelWidthElement(
 
 /**
  * 设置页叠层标题槽：左/右栏顶栏标题随侧栏避让平移与分宽。
+ * 竖屏侧栏为叠层，标题不跟随展开；横屏仍随避让。
  * 进度只在 measure 读。
  */
+@Composable
 internal fun Modifier.tabletNavChromeTitleSlot(
     maxWPx: Float,
     collapsedTotalPx: Float,
@@ -267,14 +281,19 @@ internal fun Modifier.tabletNavChromeTitleSlot(
     statusBarPx: Int,
     heightPx: Int,
     isLeftColumn: Boolean,
-): Modifier = this then TabletNavChromeTitleSlotElement(
-    maxWPx = maxWPx,
-    collapsedTotalPx = collapsedTotalPx,
-    expandedWidthPx = expandedWidthPx,
-    statusBarPx = statusBarPx,
-    heightPx = heightPx,
-    isLeftColumn = isLeftColumn,
-)
+): Modifier {
+    val configuration = LocalConfiguration.current
+    val lockCollapsed = configuration.screenHeightDp > configuration.screenWidthDp
+    return this then TabletNavChromeTitleSlotElement(
+        maxWPx = maxWPx,
+        collapsedTotalPx = collapsedTotalPx,
+        expandedWidthPx = expandedWidthPx,
+        statusBarPx = statusBarPx,
+        heightPx = heightPx,
+        isLeftColumn = isLeftColumn,
+        lockCollapsed = lockCollapsed,
+    )
+}
 
 private class TabletNavChromeTitleSlotElement(
     private val maxWPx: Float,
@@ -283,17 +302,22 @@ private class TabletNavChromeTitleSlotElement(
     private val statusBarPx: Int,
     private val heightPx: Int,
     private val isLeftColumn: Boolean,
+    private val lockCollapsed: Boolean = false,
 ) : LayoutModifier {
 
     override fun MeasureScope.measure(
         measurable: Measurable,
         constraints: Constraints,
     ): MeasureResult {
-        val sidePad = androidx.compose.ui.util.lerp(
-            collapsedTotalPx,
-            expandedWidthPx,
-            TabletNavSideState.expandProgress.floatValue,
-        )
+        val sidePad = if (lockCollapsed) {
+            collapsedTotalPx
+        } else {
+            androidx.compose.ui.util.lerp(
+                collapsedTotalPx,
+                expandedWidthPx,
+                TabletNavSideState.expandProgress.floatValue,
+            )
+        }
         val contentW = (maxWPx - sidePad).coerceAtLeast(0f)
         // 左栏标题槽与分栏同步：固定屏宽 0.39（maxWPx 即全屏宽）
         val leftW = maxWPx * 0.39f
@@ -325,7 +349,8 @@ private class TabletNavChromeTitleSlotElement(
             expandedWidthPx == other.expandedWidthPx &&
             statusBarPx == other.statusBarPx &&
             heightPx == other.heightPx &&
-            isLeftColumn == other.isLeftColumn
+            isLeftColumn == other.isLeftColumn &&
+            lockCollapsed == other.lockCollapsed
     }
 
     override fun hashCode(): Int {
@@ -406,6 +431,15 @@ fun TabletNavSideBar(
     modifier: Modifier = Modifier,
 ) {
     TabletNavExpandAnimator()
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.screenHeightDp > configuration.screenWidthDp
+    // 仅竖屏默认折叠（初始化一次）；横屏保持原默认展开
+    LaunchedEffect(Unit) {
+        if (isPortrait) {
+            TabletNavSideState.expanded = false
+            TabletNavSideState.expandProgress.floatValue = 0f
+        }
+    }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topPadding = if (statusBarPadding > 0.dp) statusBarPadding else 36.dp
     val isLightTheme = !isAppDarkTheme()
@@ -447,6 +481,32 @@ fun TabletNavSideBar(
     var dataGroupHeightPx by remember { mutableFloatStateOf(0f) }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // 竖屏展开压暗：淡入淡出；折叠时不占命中；独立合成层不进模糊采样
+        if (isPortrait) {
+            AnimatedVisibility(
+                visible = TabletNavSideState.expanded,
+                enter = fadeIn(animationSpec = tween(180)),
+                exit = fadeOut(animationSpec = tween(180)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = 0.12f
+                            // 离屏合成，避免被 drawBackdrop/模糊采样进玻璃
+                            compositingStrategy =
+                                androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                        }
+                        .background(Color.Black)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            TabletNavSideState.expanded = false
+                        }
+                )
+            }
+        }
         Column(
             modifier = Modifier
                 .padding(
