@@ -7,6 +7,7 @@ import android.view.RoundedCorner
 import android.view.WindowManager
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -565,8 +566,7 @@ fun TabletNavSideBar(
                                 selectedBg = selectedBg,
                                 showSelectedBg = true,
                                 showLabel = true,
-                                emphasized = index == selectedTab &&
-                                    TabletNavSideState.expanded,
+                                labelFontWeight = FontWeight.Normal,
                                 // 折叠且未选中时不可见，同时也不应响应点击
                                 onClick = {
                                     if (TabletNavSideState.expanded || index == selectedTab) {
@@ -584,8 +584,6 @@ fun TabletNavSideBar(
                             selectedBg = selectedBg,
                             showSelectedBg = true,
                             showLabel = true,
-                            // 字重只跟布尔展开态，动画中途不触发文本重组
-                            emphasized = index == selectedTab && TabletNavSideState.expanded,
                             onClick = { onTabSelected(index) },
                         )
                     }
@@ -623,7 +621,7 @@ fun TabletNavSideBar(
 
 /**
  * 侧栏条目：展开/折叠共用。
- * 图标与文字始终同黑白主色；选中只靠底色。[showLabel]=false 时不显示右侧文字。
+ * 图标与文字始终同黑白主色；选中遮罩底色淡入淡出。[showLabel]=false 时不显示右侧文字。
  */
 @Composable
 private fun TabletNavSideItem(
@@ -634,7 +632,7 @@ private fun TabletNavSideItem(
     selectedBg: Color,
     showSelectedBg: Boolean,
     showLabel: Boolean,
-    emphasized: Boolean = false,
+    labelFontWeight: FontWeight = FontWeight.Medium,
     onClick: () -> Unit,
 ) {
     Box(
@@ -647,12 +645,19 @@ private fun TabletNavSideItem(
                 onClick = onClick,
             ),
     ) {
-        if (showSelectedBg && selected) {
+        // 选中遮罩：旧的淡出与新的淡入同时交叉进行
+        val maskAlpha by animateFloatAsState(
+            targetValue = if (showSelectedBg && selected) 1f else 0f,
+            animationSpec = tween(durationMillis = 320),
+            label = "navItemMaskAlpha",
+        )
+        if (showSelectedBg) {
             Box(
                 modifier = Modifier
                     .padding(horizontal = 4.dp, vertical = 2.dp)
                     .fillMaxWidth()
                     .height(48.dp)
+                    .graphicsLayer { alpha = maskAlpha }
                     .clip(ContinuousCapsule())
                     .background(selectedBg),
             )
@@ -675,8 +680,8 @@ private fun TabletNavSideItem(
             if (showLabel) {
                 Text(
                     text = label,
-                    fontSize = 15.sp,
-                    fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
+                    fontSize = 16.sp,
+                    fontWeight = labelFontWeight,
                     color = textColor,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,

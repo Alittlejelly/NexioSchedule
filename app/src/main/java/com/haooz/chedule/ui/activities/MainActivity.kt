@@ -1086,6 +1086,21 @@ private fun MorePopupMenus(
                     )
                 }
             )
+            LiquidGlassDropdownMenuItem(
+                text = "课表外观",
+                onClick = {
+                    onTodayMorePopupDismiss()
+                    onEnterCustomize()
+                },
+                icon = {
+                    Icon(
+                        imageVector = MiuixIcons.Background,
+                        contentDescription = null,
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(23.dp)
+                    )
+                }
+            )
         }
     }
 }
@@ -2636,17 +2651,24 @@ fun CourseScheduleApp() {
             val scaffoldContent = @Composable {
                 val onMainTabSelected: (Int) -> Unit = { idx ->
                     if (idx != selectedTab) {
+                        // 先锁状态、立刻改选中，选中遮罩淡入淡出由侧栏自行驱动
                         mainTabProgrammatic = true
                         selectedTab = idx
-                        com.haooz.chedule.ui.utils.CrashLogHelper.trace(
-                            "主页", "tab", "idx=$idx shift=$isShiftMode rail=${navBarStyle == "rail"}"
-                        )
                         coroutineScope.launch {
                             try {
-                                if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
-                                if (pagerState.isScrollInProgress) pagerState.cancelScroll()
-                                if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
-                                mainPagerState.animateMainTabTo(idx)
+                                // pad：只取消主 pager 未完成滚动，尽快落页，保证点击跟手
+                                if (navBarStyle == "rail") {
+                                    if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
+                                    mainPagerState.scrollToPage(idx)
+                                } else {
+                                    if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
+                                    if (pagerState.isScrollInProgress) pagerState.cancelScroll()
+                                    if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
+                                    mainPagerState.animateMainTabTo(idx)
+                                }
+                                com.haooz.chedule.ui.utils.CrashLogHelper.trace(
+                                    "主页", "tab", "idx=$idx shift=$isShiftMode rail=${navBarStyle == "rail"}"
+                                )
                             } finally {
                                 mainTabProgrammatic = false
                             }
@@ -2797,6 +2819,13 @@ fun CourseScheduleApp() {
                                             }
                                         },
                                         onMoreClick = { showMorePopup = true },
+                                        onJumpWeek = { viewModel.showJumpWeekDialog() },
+                                        onEnterCustomize = {
+                                            coroutineScope.launch {
+                                                delay(200.milliseconds)
+                                                enterCustomizePage()
+                                            }
+                                        },
                                         isTablet = isTablet,
                                         isShiftMode = isShiftMode,
                                         liquidGlassBackdrop = chromeBackdrop,
@@ -2861,6 +2890,13 @@ fun CourseScheduleApp() {
                                     isToday = todayIsToday,
                                     onBackToToday = { scrollToTodayTrigger++ },
                                     onMoreClick = { showTodayMorePopup = true },
+                                    onJumpToDate = { todayJumpToDateTrigger++ },
+                                    onEnterCustomize = {
+                                        coroutineScope.launch {
+                                            delay(200.milliseconds)
+                                            enterCustomizePage()
+                                        }
+                                    },
                                     scrollBehavior = todayScrollBehavior,
                                     showMorePopup = showTodayMorePopup,
                                     visible = showTodayTitle,
@@ -4670,6 +4706,25 @@ fun CourseScheduleApp() {
                         applyAppearance(newAppearance)
                     },
                     hasWallpaper = wallpaperBitmap != null,
+                    previewPage = if (selectedTab == 1) 1 else 0,
+                    onPreviewPageChange = { page ->
+                        val target = if (page == 1) 1 else 0
+                        if (selectedTab != target) {
+                            mainTabProgrammatic = true
+                            selectedTab = target
+                            coroutineScope.launch {
+                                try {
+                                    if (navBarStyle == "rail") {
+                                        mainPagerState.scrollToPage(target)
+                                    } else {
+                                        mainPagerState.animateMainTabTo(target)
+                                    }
+                                } finally {
+                                    mainTabProgrammatic = false
+                                }
+                            }
+                        }
+                    },
                 )
             }
         }
@@ -5282,6 +5337,8 @@ private fun TodayTopBar(
     isToday: Boolean = true,
     onBackToToday: () -> Unit = {},
     onMoreClick: () -> Unit = {},
+    onJumpToDate: () -> Unit = {},
+    onEnterCustomize: () -> Unit = {},
     scrollBehavior: SharedScrollBehavior? = null,
     showMorePopup: Boolean = false,
     visible: Boolean = true,
@@ -5327,26 +5384,28 @@ private fun TodayTopBar(
             endAction = { backdropAlpha, shadowAlpha ->
                 if (visible) {
                     if (isTabletLiquidGlass) {
-                        // 返回今日改由侧栏底部「今」按钮承担
+                        // pad：课程管理已在侧栏，右上角直接放跳转日期 + 课表外观
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             LiquidTopBarButton(
-                                onClick = onMoreClick,
+                                onClick = onJumpToDate,
                                 backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.More,
-                                contentDescription = "更多",
+                                icon = MiuixIcons.Basic.FastForward,
+                                contentDescription = "跳转日期",
                                 iconSize = 23.dp,
                                 backdropAlpha = backdropAlpha,
                                 shadowAlpha = shadowAlpha,
-                                modifier = Modifier.offset {
-                                    val f = buttonFraction.value
-                                    IntOffset(
-                                        x = (-100 * f).dp.roundToPx(),
-                                        y = (45 * f).dp.roundToPx()
-                                    )
-                                }
+                            )
+                            LiquidTopBarButton(
+                                onClick = onEnterCustomize,
+                                backdrop = liquidGlassBackdrop,
+                                icon = MiuixIcons.Background,
+                                contentDescription = "课表外观",
+                                iconSize = 23.dp,
+                                backdropAlpha = backdropAlpha,
+                                shadowAlpha = shadowAlpha,
                             )
                         }
                     } else {
