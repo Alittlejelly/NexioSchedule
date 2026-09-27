@@ -137,6 +137,7 @@ import com.haooz.chedule.ui.screens.ScheduleGridGeometry
 import com.haooz.chedule.ui.screens.SettingsScreen
 import com.haooz.chedule.ui.screens.ShiftScheduleScreen
 import com.haooz.chedule.ui.screens.TabletCourseManagePane
+import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
 import com.haooz.chedule.ui.screens.TodayScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
@@ -1657,10 +1658,10 @@ fun CourseScheduleApp() {
         pageCount = { todayMaxDateOffset * 2 }
     )
 
-    // 主 tab 平移容器：今日/课程表/设置（排班模式为排班/设置），仅点底栏 tab 驱动
+    // 主 tab 平移容器：今日/课程表/我的/课程管理/切换课表（排班模式为排班/设置），仅点底栏/侧栏 tab 驱动
     val mainPagerState = rememberPagerState(
-        initialPage = selectedTab.coerceIn(0, 3),
-        pageCount = { if (isShiftMode) 2 else 4 }
+        initialPage = selectedTab.coerceIn(0, 4),
+        pageCount = { if (isShiftMode) 2 else 5 }
     )
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
@@ -1668,7 +1669,7 @@ fun CourseScheduleApp() {
     // 二级页侧栏点选主 tab（无转场回来后处理）
     LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab) {
         val pending = com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab
-        if (pending in 0..3 && shiftModeInitialized) {
+        if (pending in 0..4 && shiftModeInitialized) {
             selectedTab = pending
             mainPagerState.scrollToPage(pending)
             com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = -1
@@ -3549,6 +3550,14 @@ fun CourseScheduleApp() {
                                     3 -> {
                                         TabletCourseManagePane(
                                             viewModel = viewModel,
+                                            settingsViewModel = settingsViewModel,
+                                            liquidGlassBackdrop = liquidGlassBackdrop,
+                                        )
+                                    }
+                                    4 -> {
+                                        TabletSwitchSchedulePane(
+                                            viewModel = viewModel,
+                                            scheduleViewModel = scheduleViewModel,
                                             settingsViewModel = settingsViewModel,
                                             liquidGlassBackdrop = liquidGlassBackdrop,
                                         )

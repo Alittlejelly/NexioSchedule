@@ -72,6 +72,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.Backup
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
+import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.Months
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Sidebar
@@ -434,6 +435,7 @@ fun TabletNavSideBar(
             "课程表" to MiuixIcons.Months,
             "我的" to MiuixIcons.ContactsCircle,
             "课程管理" to MiuixIcons.Backup,
+            "切换课表" to MiuixIcons.ConvertFile,
         )
     }
 
@@ -492,56 +494,66 @@ fun TabletNavSideBar(
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 tabs.forEachIndexed { index, (label, icon) ->
-                    // 「数据管理」分组（分界线 + 小标题 + 课程管理）：
-                    // 折叠态只保留今日/课程表/设置；若「课程管理」正被选中则保留该项，
+                    // 「数据管理」分组（分界线 + 小标题 + 课程管理 + 切换课表）：
+                    // 折叠态只保留今日/课程表/我的；若分组内某项正被选中则保留该项，
                     // 并随分界线/标题收拢连贯上移贴近上方选项。
-                    val isDataGroup = !isShiftMode && index == tabs.lastIndex
-                    if (isDataGroup) {
-                        // 分界线 + 小标题：折叠全程只做淡入淡出，并且始终占着自己的高度
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .graphicsLayer {
-                                    alpha = TabletNavSideState.expandProgress.floatValue
-                                }
-                                .onGloballyPositioned {
-                                    dataGroupHeightPx = it.size.height.toFloat()
-                                },
-                            verticalArrangement = Arrangement.spacedBy(0.dp),
-                        ) {
-                            Box(
+                    val dataGroupStart = if (isShiftMode) -1 else tabs.size - 2
+                    val inDataGroup = !isShiftMode && index >= dataGroupStart
+                    if (inDataGroup) {
+                        val isFirstDataItem = index == dataGroupStart
+                        if (isFirstDataItem) {
+                            // 分界线 + 小标题：折叠全程只做淡入淡出，并且始终占着自己的高度
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(
-                                        top = 14.dp,
-                                        bottom = 12.dp,
-                                        start = 10.dp,
-                                        end = 10.dp
-                                    )
-                                    .height(0.8.dp)
-                                    .background(
-                                        if (isLightTheme) Color.Black.copy(alpha = 0.08f)
-                                        else Color.White.copy(alpha = 0.12f)
-                                    )
-                            )
-                            Text(
-                                text = "数据管理",
-                                fontSize = 13.4.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                    .copy(alpha = 0.6f),
-                                modifier = Modifier
-                                    // 与条目图标同一条左缘
-                                    .padding(start = 10.dp, top = 12.dp, bottom = 6.dp)
-                            )
+                                    .graphicsLayer {
+                                        alpha = TabletNavSideState.expandProgress.floatValue
+                                    }
+                                    .onGloballyPositioned {
+                                        dataGroupHeightPx = it.size.height.toFloat()
+                                    },
+                                verticalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            top = 14.dp,
+                                            bottom = 12.dp,
+                                            start = 10.dp,
+                                            end = 10.dp
+                                        )
+                                        .height(0.8.dp)
+                                        .background(
+                                            if (isLightTheme) Color.Black.copy(alpha = 0.08f)
+                                            else Color.White.copy(alpha = 0.12f)
+                                        )
+                                )
+                                Text(
+                                    text = "数据管理",
+                                    fontSize = 13.4.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                        .copy(alpha = 0.6f),
+                                    modifier = Modifier
+                                        // 与条目图标同一条左缘
+                                        .padding(start = 10.dp, top = 12.dp, bottom = 6.dp)
+                                )
+                            }
                         }
-                        // 课程管理条目：选中时用反向平移补掉上方留白——展开时在原位
+                        // 分组条目：选中时用反向平移补掉上方留白——展开时在原位
+                        // 第二项还要再让开第一条数据项的行高，才能贴到「我的」下方
+                        val itemHeightPx = with(density) { 52.dp.toPx() }
+                        val extraOffsetPx = (index - dataGroupStart) * itemHeightPx
                         Box(
                             modifier = Modifier.graphicsLayer {
                                 val p = TabletNavSideState.expandProgress.floatValue
                                 // 仅选中项在折叠时上移到「我的」下方；未选中不位移，只原地淡出
                                 translationY =
-                                    if (index == selectedTab) -(1f - p) * dataGroupHeightPx
-                                    else 0f
+                                    if (index == selectedTab) {
+                                        -(1f - p) * (dataGroupHeightPx + extraOffsetPx)
+                                    } else {
+                                        0f
+                                    }
                                 alpha = if (index == selectedTab) 1f else p
                             }
                         ) {

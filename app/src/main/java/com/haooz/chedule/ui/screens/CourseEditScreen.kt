@@ -225,6 +225,8 @@ fun CourseEditScreen(
     embedded: Boolean = false,
     /** 弹窗/底部抽屉的玻璃采样层：内嵌时传全屏层，使弹窗能采样到左栏内容 */
     dialogBackdrop: Backdrop? = null,
+    /** 内嵌时由外部指定内容顶距（与左栏 chromeTop 对齐），替代按顶栏高度推算 */
+    contentTopPadding: androidx.compose.ui.unit.Dp? = null,
 ) {
     // 弹窗默认跟随自身玻璃层；内嵌时由外层指定全屏层
     val dialogGlass: Backdrop? = dialogBackdrop ?: liquidGlassBackdrop
@@ -706,7 +708,8 @@ fun CourseEditScreen(
                                     .nestedScroll(scrollBehavior.nestedScrollConnection),
                                 contentPadding = PaddingValues(
                                     start = tabletHorizontalPadding,
-                                    top = paddingValues.calculateTopPadding() + topBarHeightDp - 74.dp,
+                                    top = contentTopPadding
+                                        ?: (paddingValues.calculateTopPadding() + topBarHeightDp - 74.dp),
                                     end = tabletHorizontalPadding,
                                     bottom = 120.dp
                                 ),

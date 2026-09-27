@@ -49,6 +49,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -167,7 +169,16 @@ fun SwitchScheduleScreen(
     pageScale: Float = 1f,
     initialScheduleNames: List<String>? = null,
     initialCurrentScheduleId: String? = null,
-    initialScheduleSummaries: Map<String, String>? = null
+    initialScheduleSummaries: Map<String, String>? = null,
+    /** 平板左栏内嵌：无卡片形变、无返回关闭，标题由外层分栏绘制 */
+    embedded: Boolean = false,
+    /** 内嵌时由外部指定内容顶距，替代按整屏状态栏+折叠标题推算 */
+    contentTopPadding: androidx.compose.ui.unit.Dp? = null,
+    /** 列表纵向滚动量回调，供内嵌顶栏遮罩使用 */
+    onScrollYChanged: (Int) -> Unit = {},
+    /** 内嵌标题栏「添加 / 新建文件夹」弹窗开关，由外层标题栏按钮驱动 */
+    externalShowAddDialog: androidx.compose.runtime.MutableState<Boolean>? = null,
+    externalShowAddFolderDialog: androidx.compose.runtime.MutableState<Boolean>? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -238,7 +249,9 @@ fun SwitchScheduleScreen(
             repository.getFolderIdOfSchedule(currentScheduleId)?.let { setOf(it) } ?: emptySet()
         )
     }
-    var showAddDialog by remember { mutableStateOf(false) }
+    val showAddDialogState: androidx.compose.runtime.MutableState<Boolean> =
+        externalShowAddDialog ?: remember { mutableStateOf(false) }
+    var showAddDialog by showAddDialogState
     var newScheduleName by remember { mutableStateOf("") }
     var isEditMode by remember { mutableStateOf(false) }
     var editMode by remember { mutableStateOf("") }
@@ -250,7 +263,9 @@ fun SwitchScheduleScreen(
     // 编辑模式选中项：课表名与文件夹 id 分开存，底部栏靠两者判断是否可操作
     var selectedSchedules by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var showAddFolderDialog by remember { mutableStateOf(false) }
+    val showAddFolderDialogState: androidx.compose.runtime.MutableState<Boolean> =
+        externalShowAddFolderDialog ?: remember { mutableStateOf(false) }
+    var showAddFolderDialog by showAddFolderDialogState
     var newFolderName by remember { mutableStateOf("") }
     var showEditFolderDialog by remember { mutableStateOf(false) }
     var editingFolderId by remember { mutableStateOf("") }
@@ -274,8 +289,10 @@ fun SwitchScheduleScreen(
     // 返回/点当前课表：保持当前选中，不重排列表，只关闭页面
     val dismissKeepCurrent = {
         com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_current", currentScheduleId)
-        scope.launch {
-            onBack(capturePageBitmap())
+        if (!embedded) {
+            scope.launch {
+                onBack(capturePageBitmap())
+            }
         }
     }
 
@@ -290,6 +307,8 @@ fun SwitchScheduleScreen(
         repository.switchToSchedule(scheduleName)
         currentScheduleId = scheduleName
         onScheduleChanged()
+        // 内嵌分栏：切换后留在当前页，不做卡片形变
+        if (embedded) return
         if (bounds != null) {
             scope.launch {
                 val fullBitmap = capturePageBitmap()
@@ -436,7 +455,7 @@ fun SwitchScheduleScreen(
         exitEditMode()
     }
 
-    BackHandler(enabled = !isEditMode) {
+    BackHandler(enabled = !isEditMode && !embedded) {
         dismissKeepCurrent()
     }
 
@@ -452,6 +471,8 @@ fun SwitchScheduleScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
+                // 内嵌分栏：标题/操作由外层顶栏承载，这里不画系统式顶栏
+                if (!embedded) {
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
                 ) {
@@ -513,6 +534,7 @@ fun SwitchScheduleScreen(
                             }
                         } else null,
                     )
+                }
                 }
             },
             bottomBar = {
@@ -706,8 +728,19 @@ fun SwitchScheduleScreen(
                 // 注意：这里不要再 collect firstVisibleItemScrollOffset 写 state ——
                 // 那会让整页在滚动时每像素重组一次（listScrollY 之前根本没被读取，纯属白烧）。
                 val listState = rememberLazyListState()
+                if (embedded) {
+                    val currentOnScrollYChanged by rememberUpdatedState(onScrollYChanged)
+                    LaunchedEffect(listState) {
+                        // 与设置页左栏同式：index*8000+offset，越过首项后 offset 归零也不闪
+                        snapshotFlow {
+                            listState.firstVisibleItemIndex * 8_000 +
+                                listState.firstVisibleItemScrollOffset
+                        }.collect { offset -> currentOnScrollYChanged(offset) }
+                    }
+                }
                 // 进场形变锚点：当前课表卡片（不是列表第一项）
                 LaunchedEffect(currentCardBounds) {
+                    if (embedded) return@LaunchedEffect
                     val bounds = currentCardBounds
                     if (bounds != null) {
                         val bitmap = capturePageBitmap()
@@ -725,6 +758,7 @@ fun SwitchScheduleScreen(
                 // 兜底：当前课表被收在文件夹里、或首屏没布局到它时也要回调一次，
                 // 否则主页 switchCapturingSnapshot 一直是 true，整个页面停在 alpha=0
                 LaunchedEffect(Unit) {
+                    if (embedded) return@LaunchedEffect
                     delay(700.milliseconds)
                     if (currentCardBounds == null) {
                         onScreenReady(null, androidx.compose.ui.geometry.Rect.Zero)
@@ -753,12 +787,18 @@ fun SwitchScheduleScreen(
                             .scrollEndHaptic(
                                 hapticFeedbackType = HapticFeedbackType.TextHandleMove
                             )
-                            .collapsibleTopInset(scrollBehavior)
-                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+                            // 内嵌没有手机式折叠顶栏，collapsibleTopInset/nestedScroll 会干扰列表滚动
+                            .then(
+                                if (embedded) Modifier
+                                else Modifier
+                                    .collapsibleTopInset(scrollBehavior)
+                                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                            ),
                         contentPadding = PaddingValues(
                             start = tabletHorizontalPadding,
                             end = tabletHorizontalPadding,
-                            top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight - 70.dp,
+                            top = contentTopPadding
+                                ?: (paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight - 70.dp),
                             bottom = 60.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)

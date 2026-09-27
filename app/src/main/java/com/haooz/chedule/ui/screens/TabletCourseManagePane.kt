@@ -105,7 +105,7 @@ fun TabletCourseManagePane(
             .asPaddingValues().calculateTopPadding()
         val collapsedH = CollapsibleTopAppBarDefaults.CollapsedHeight
         // 内容自「状态栏 + 折叠标题」下方开始，与设置页 chromeTop 一致
-        val chromeTop = topInset + collapsedH + 12.dp
+        val chromeTop = topInset + collapsedH + 24.dp
         val maskHeight = topInset + 80.dp
         val surfaceColor = MiuixTheme.colorScheme.surface
         val dividerColor =
@@ -246,6 +246,8 @@ fun TabletCourseManagePane(
                             embedded = true,
                             // 弹窗采样全屏层，才能把左栏内容一起虚化
                             dialogBackdrop = liquidGlassBackdrop,
+                            // 右栏内容顶距与左栏 chromeTop 对齐（状态栏 + 52 + 24）
+                            contentTopPadding = chromeTop,
                         )
                     }
                 }
