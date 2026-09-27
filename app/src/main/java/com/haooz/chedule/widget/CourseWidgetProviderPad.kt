@@ -65,7 +65,7 @@ class CourseWidgetProviderPad : AppWidgetProvider() {
         val repository = CourseRepository(context)
         val dark = WidgetTextSizes.isDark(context)
 
-        val currentWeek = repository.getCurrentWeek()
+        val currentWeek = repository.getLiveTeachingWeek()
         val todayCourses = CourseReminderHelper.getTodayCourses(context)
 
         val calendar = Calendar.getInstance()
@@ -74,8 +74,7 @@ class CourseWidgetProviderPad : AppWidgetProvider() {
         val isNextDayReminderEnabled = repository.getNextDayReminder()
         val reminderMinutes = repository.getNextDayReminderHour() * 60 + repository.getNextDayReminderMinute()
         val todayCoursesFinished = if (todayCourses.isNotEmpty()) {
-            val lastCourse = todayCourses.maxByOrNull { it.endSection }
-            val lastEndTime = lastCourse?.let { getCourseEndTime(it, repository) }
+            val lastEndTime = CourseReminderHelper.getLatestCourseEndTime(todayCourses, repository)
             if (lastEndTime != null) {
                 val parts = lastEndTime.split(":")
                 if (parts.size == 2) {
@@ -87,7 +86,7 @@ class CourseWidgetProviderPad : AppWidgetProvider() {
         val showTomorrow = isNextDayReminderEnabled && currentMinutes >= reminderMinutes && todayCoursesFinished
 
         val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-        // 今日/明日统一走 resolveDaySchedule：节假日空课、调休按映射查课
+        // 今日/明日统一走 resolveDaySchedule：节假日末日例外按节次保留课程、调休按映射查课
         val resolution = CourseReminderHelper.resolveDaySchedule(context, forTomorrow = showTomorrow)
         val targetWeek = resolution.displayWeek
         val targetCourses = resolution.courses

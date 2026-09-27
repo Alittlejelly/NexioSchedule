@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -63,6 +67,7 @@ import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.overlay.BackdropHolder
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
+import top.yukonga.miuix.kmp.overlay.LocalBlurBottomSheetContentExpanded
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -274,10 +279,15 @@ fun AddEditCourseBottomSheet(
         )
     }
 
+    val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val sheetContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (LocalBlurBottomSheetContentExpanded.current) Modifier.fillMaxHeight()
+                    else Modifier
+                )
                 .overScrollVertical()
                 .scrollEndHaptic(
                     hapticFeedbackType = HapticFeedbackType.TextHandleMove
@@ -635,7 +645,7 @@ fun AddEditCourseBottomSheet(
                 }
             }
             }
-            Spacer(modifier = Modifier.height(if (isTablet) 4.dp else 160.dp))
+            Spacer(modifier = Modifier.height(if (isTablet) 4.dp else statusBarsPadding + 60.dp))
         }
     }
 
@@ -644,6 +654,7 @@ fun AddEditCourseBottomSheet(
             show = show,
             title = if (isEditMode) "编辑课程" else "添加课程",
             dimBackground = true,
+            enableContentHeightSnap = true,
             onDismissRequest = onDismissRequest,
             liquidGlassBackdrop = null,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
@@ -658,8 +669,9 @@ fun AddEditCourseBottomSheet(
             title = if (isEditMode) "编辑课程" else "添加课程",
             liquidGlassBackdrop = null,
             dimBackground = true,
+            enableContentHeightSnap = true,
             onDismissRequest = onDismissRequest,
-            sheetOffsetDp = 100.dp,
+            sheetOffsetDp = statusBarsPadding + 5.dp,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
             startAction = startAction,
             endAction = endAction,

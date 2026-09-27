@@ -51,6 +51,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -1117,6 +1118,9 @@ fun CourseScheduleApp() {
     val shiftViewModel: ShiftViewModel = viewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     var selectedTab by remember { mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1) }
+    // 点 tab 时立刻翻转的高亮目标：只有底栏/侧栏读它。
+    // selectedTab 挪到切页落定后才更新，避免「整树重组」砸在动画第一帧上（实测那一帧组合要 50~60ms）。
+    var mainTabTarget by remember { mutableIntStateOf(selectedTab) }
     var showShiftLoading by remember { mutableStateOf(false) }
     var isExitingShift by remember { mutableStateOf(false) }
     var shiftModeInitialized by remember { mutableStateOf(false) }
@@ -1151,6 +1155,7 @@ fun CourseScheduleApp() {
     val totalSections = morningSections + afternoonSections + eveningSections
     val activity = LocalActivity.current as? MainActivity
     val resumeCount = activity?.resumeCount ?: 0
+    val holidayDataRevision by com.haooz.chedule.data.HolidayManager.dataRevision.collectAsState()
     // 只在「返回」时刷新；冷启动首次 onResume 时 ViewModel 刚加载完，再全量刷会拖慢首屏
     LaunchedEffect(resumeCount) {
         if (resumeCount > 1) {
@@ -1167,7 +1172,7 @@ fun CourseScheduleApp() {
             com.haooz.chedule.data.HolidayManager.getVersion(context)
         )
     }
-    LaunchedEffect(resumeCount) {
+    LaunchedEffect(resumeCount, holidayDataRevision) {
         val holidayV = com.haooz.chedule.data.HolidayManager.getVersion(context)
         if (holidayV != seenHolidayVersion) {
             seenHolidayVersion = holidayV
@@ -1650,13 +1655,18 @@ fun CourseScheduleApp() {
     val calendar = Calendar.getInstance()
     val currentDayOfWeek = (calendar.get(Calendar.DAY_OF_WEEK) + 5) % 7 + 1
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
+    val dataVersion by viewModel.dataVersion.collectAsState()
+    val teachingWeekRepository = remember(context) { com.haooz.chedule.data.CourseRepository.getInstance(context) }
+    val teachingWeekRules = remember(teachingWeekRepository, dataVersion, classStartTime) {
+        teachingWeekRepository.getTeachingWeekReorganizations()
+    }
     // 节假日/调休保存后需能重算跳周；resume 时刷新版本号
-    val holidayVersion = remember(resumeCount, context) {
+    val holidayVersion = remember(resumeCount, holidayDataRevision, context) {
         com.haooz.chedule.data.HolidayManager.getVersion(context)
     }
 
     val basePage = (currentWeek - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
-    val autoAdvancePage = remember(currentWeek, totalWeeks, currentDayOfWeek, smartWeekend, holidayVersion) {
+    val autoAdvancePage = remember(currentWeek, totalWeeks, currentDayOfWeek, smartWeekend, holidayVersion, dataVersion, teachingWeekRules) {
         if (settingsViewModel.shouldAdvanceToNextWeek(currentDayOfWeek, currentWeek)) {
             (basePage + 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
         } else basePage
@@ -1681,11 +1691,21 @@ fun CourseScheduleApp() {
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
 
+    // 落页后才同步 selectedTab：组合开销从「动画第一帧」挪到「动画结束帧」，
+    // 此时画面已静止，掉帧不再可见。settledPage 在滚动进行中保持旧值，落定才变。
+    LaunchedEffect(mainPagerState) {
+        snapshotFlow { mainPagerState.settledPage }.collect { page ->
+            if (page != selectedTab) selectedTab = page
+            if (page != mainTabTarget) mainTabTarget = page
+        }
+    }
+
     // 二级页侧栏点选主 tab（无转场回来后处理）
     LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab) {
         val pending = com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab
         if (pending in 0..4 && shiftModeInitialized) {
             selectedTab = pending
+            mainTabTarget = pending
             mainPagerState.scrollToPage(pending)
             com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = -1
         }
@@ -1693,20 +1713,23 @@ fun CourseScheduleApp() {
 
     LaunchedEffect(isShiftMode) {
         if (shiftModeInitialized) {
+            // pageCount 会随模式变化（5 ↔ 2），这里必须直接落定，不能只改高亮目标
             selectedTab = if (isShiftMode) 0 else if (defaultHomepage == "今日") 0 else 1
+            mainTabTarget = selectedTab
             mainPagerState.scrollToPage(selectedTab)
         }
         shiftModeInitialized = true
     }
 
-    LaunchedEffect(currentWeek, totalWeeks, smartWeekend, holidayVersion) {
-        val base = (currentWeek - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
-        val target = if (settingsViewModel.shouldAdvanceToNextWeek(currentDayOfWeek, currentWeek)) {
-            (base + 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
-        } else base
-        if (pagerState.currentPage != target) {
-            pagerState.scrollToPage(target)
+    var lastAutoPage by remember { mutableIntStateOf(autoAdvancePage) }
+    var lastAutoWeek by remember { mutableIntStateOf(currentWeek) }
+    LaunchedEffect(currentWeek, totalWeeks, autoAdvancePage) {
+        // A rule edit must recalculate the default, but must not pull a manually browsed page back.
+        if (currentWeek != lastAutoWeek || pagerState.currentPage == lastAutoPage) {
+            if (pagerState.currentPage != autoAdvancePage) pagerState.scrollToPage(autoAdvancePage)
         }
+        lastAutoWeek = currentWeek
+        lastAutoPage = autoAdvancePage
     }
 
     var todaySelectedDayOfWeek by remember { mutableIntStateOf(currentDayOfWeek) }
@@ -1715,19 +1738,18 @@ fun CourseScheduleApp() {
 
     val currentViewingWeek = pagerState.currentPage + 1
     val courses by viewModel.courses.collectAsState()
-    val dataVersion by viewModel.dataVersion.collectAsState()
     // dataVersion + courses 引用都进 key：调课 size 可能不变，只靠 size 会让智能周末星期行停在旧值
     val dayRange = remember(currentViewingWeek, smartWeekend, courses, dataVersion) {
         (1..5).toList() + settingsViewModel.getWeekendDaysForWeek(currentViewingWeek)
             .filter { it in 6..7 }
     }
     val viewingIsHoliday = viewModel.isWeekHoliday(currentViewingWeek)
-    val weekDates = remember(currentViewingWeek, classStartTime) {
+    val weekDates = remember(currentViewingWeek, classStartTime, teachingWeekRules) {
         try {
             val startDate = LocalDate.parse(classStartTime.replace("/", "-"))
-            val startMonday = startDate.minusDays((startDate.dayOfWeek.value - 1).toLong())
-            val weekMonday = startMonday.plusDays((currentViewingWeek - 1).toLong() * 7)
-            (0..6).map { dayOffset -> weekMonday.plusDays(dayOffset.toLong()) }
+            com.haooz.chedule.data.TeachingWeekReorganization.datesForTeachingWeek(
+                startDate, currentViewingWeek, teachingWeekRules,
+            )
         } catch (_: Exception) {
             emptyList()
         }
@@ -1767,6 +1789,7 @@ fun CourseScheduleApp() {
                 mainPagerState.cancelScroll()
                 mainPagerState.scrollToPage(target)
                 // 底栏与当前页对齐，避免 tab 还停在未完成的目标页
+                if (mainTabTarget != target) mainTabTarget = target
                 if (selectedTab != target) selectedTab = target
             }
         }
@@ -2650,10 +2673,11 @@ fun CourseScheduleApp() {
         ) {
             val scaffoldContent = @Composable {
                 val onMainTabSelected: (Int) -> Unit = { idx ->
-                    if (idx != selectedTab) {
-                        // 先锁状态、立刻改选中，选中遮罩淡入淡出由侧栏自行驱动
+                    if (idx != mainTabTarget) {
+                        // 只翻高亮目标；selectedTab 等落页后由 settledPage 同步，
+                        // 避免点击瞬间整树重组抢在动画第一帧
                         mainTabProgrammatic = true
-                        selectedTab = idx
+                        mainTabTarget = idx
                         coroutineScope.launch {
                             try {
                                 // pad：只取消主 pager 未完成滚动，尽快落页，保证点击跟手
@@ -2682,12 +2706,12 @@ fun CourseScheduleApp() {
                             ScheduleBottomBar(
                                 navBarStyle = navBarStyle,
                                 isShiftMode = isShiftMode,
-                                selectedTab = selectedTab,
+                                selectedTab = mainTabTarget,
                                 onTabSelected = { idx ->
-                                    if (idx != selectedTab) {
-                                        // 先锁 programmatic，再改 selectedTab，避免动画中途被拉回
+                                    if (idx != mainTabTarget) {
+                                        // 先锁 programmatic，只改高亮目标，避免动画中途被拉回
                                         mainTabProgrammatic = true
-                                        selectedTab = idx
+                                        mainTabTarget = idx
                                         com.haooz.chedule.ui.utils.CrashLogHelper.trace(
                                             "主页", "tab", "idx=$idx shift=$isShiftMode"
                                         )
@@ -2781,6 +2805,7 @@ fun CourseScheduleApp() {
                                         currentDayOfWeek = currentDayOfWeek,
                                         isCurrentWeek = pagerState.currentPage + 1 == currentWeek && currentWeek in 1..totalWeeks,
                                         weekDates = weekDates,
+                                        isReorganized = teachingWeekRules.isNotEmpty(),
                                         onBackToCurrentWeek = {
                                             coroutineScope.launch {
                                                 val targetPage =
@@ -3605,6 +3630,7 @@ fun CourseScheduleApp() {
                                         shiftViewModel = shiftViewModel,
                                         settingsViewModel = settingsViewModel,
                                         pagerState = pagerState,
+                                        scheduleDataVersion = dataVersion,
                                         cardHeightPerSection = currentAppearance().cardHeight,
                                         liquidGlassBackdrop = liquidGlassBackdrop,
                                         scheduleScrollBehavior = scheduleScrollBehavior,
@@ -4051,9 +4077,9 @@ fun CourseScheduleApp() {
                     // 平板：胶囊/侧栏叠层（不占 Scaffold bottomBar，内容可正常滚动）
                     if (navBarStyle == "rail") {
                         val onTabletTabSelected: (Int) -> Unit = { idx ->
-                            if (idx != selectedTab) {
+                            if (idx != mainTabTarget) {
                                 mainTabProgrammatic = true
-                                selectedTab = idx
+                                mainTabTarget = idx
                                 coroutineScope.launch {
                                     try {
                                         if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
@@ -4067,7 +4093,7 @@ fun CourseScheduleApp() {
                             }
                         }
                         com.haooz.chedule.ui.components.LiquidNavigationRail(
-                            selectedTab = selectedTab,
+                            selectedTab = mainTabTarget,
                             onTabSelected = onTabletTabSelected,
                             backdrop = chromeBackdrop,
                             isShiftMode = isShiftMode,
@@ -4706,12 +4732,12 @@ fun CourseScheduleApp() {
                         applyAppearance(newAppearance)
                     },
                     hasWallpaper = wallpaperBitmap != null,
-                    previewPage = if (selectedTab == 1) 1 else 0,
+                    previewPage = if (mainTabTarget == 1) 1 else 0,
                     onPreviewPageChange = { page ->
                         val target = if (page == 1) 1 else 0
-                        if (selectedTab != target) {
+                        if (mainTabTarget != target) {
                             mainTabProgrammatic = true
-                            selectedTab = target
+                            mainTabTarget = target
                             coroutineScope.launch {
                                 try {
                                     if (navBarStyle == "rail") {
@@ -4889,6 +4915,7 @@ fun CourseScheduleApp() {
                 cardSnapshot = detailSnapshot,
                 sectionTimes = sectionTimes,
                 classStartTime = classStartTime,
+                teachingWeekReorganizations = teachingWeekRules,
                 targetWeek = detailTargetWeek,
                 onBackStart = {
                     coroutineScope.launch {
@@ -5275,6 +5302,7 @@ fun CourseScheduleApp() {
                     com.haooz.chedule.ui.utils.FeatureLog.shift("exit_confirmed")
                     shiftViewModel.exitShiftMode()
                     selectedTab = 0
+                    mainTabTarget = 0
                     coroutineScope.launch { mainPagerState.scrollToPage(0) }
                 } else {
                     com.haooz.chedule.ui.utils.FeatureLog.shift("enter_confirmed")

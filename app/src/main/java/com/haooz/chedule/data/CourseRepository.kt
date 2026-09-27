@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.core.graphics.scale
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import java.time.LocalDate
 
@@ -52,6 +53,9 @@ class CourseRepository private constructor(context: Context) {
     /**
      * 首次装这个版本（或第一次使用）时，把现有课表全部收进「默认文件夹」。
      * 只跑一次：升上来的老用户不会看到课表散在根目录，新用户也从一开始就有分组。
+     *
+     * 备份恢复会清掉迁移标记再跑一遍：此时可能已有同 id 的默认文件夹，
+     * 必须并入而不是再 add 一个，否则 LazyColumn 的 folder key 冲突会闪退。
      */
     private fun migrateSchedulesIntoDefaultFolder() {
         if (prefs.getBoolean(KEY_DEFAULT_FOLDER_MIGRATED, false)) return
@@ -60,13 +64,22 @@ class CourseRepository private constructor(context: Context) {
         val ungrouped = if (folders.isEmpty()) names
         else names.filter { name -> folders.none { name in it.schedules } }
         if (ungrouped.isNotEmpty()) {
-            folders.add(
-                ScheduleFolder(
-                    id = DEFAULT_FOLDER_ID,
-                    name = DEFAULT_FOLDER_NAME,
-                    schedules = ungrouped
+            val existingIndex = folders.indexOfFirst { it.id == DEFAULT_FOLDER_ID }
+            if (existingIndex >= 0) {
+                val existing = folders[existingIndex]
+                val merged = (existing.schedules + ungrouped).distinct()
+                folders[existingIndex] = existing.copy(
+                    schedules = names.filter { it in merged }
                 )
-            )
+            } else {
+                folders.add(
+                    ScheduleFolder(
+                        id = DEFAULT_FOLDER_ID,
+                        name = DEFAULT_FOLDER_NAME,
+                        schedules = ungrouped
+                    )
+                )
+            }
             saveScheduleFolders(folders)
         }
         prefs.edit(commit = true) { putBoolean(KEY_DEFAULT_FOLDER_MIGRATED, true) }
@@ -120,18 +133,18 @@ class CourseRepository private constructor(context: Context) {
     private fun notifyCourseChanged(action: String, courseId: String = "") {
         if (action == "settings") {
             if (batchingSettings) return
-            commitSettingsChanged()
+            commitSettingsChanged(courseId)
             return
         }
         dispatchCourseChanged(action, courseId)
     }
 
     /** 更新时间戳（本地修改不被远程覆盖）、失效时间缓存、通知 UI */
-    private fun commitSettingsChanged() {
+    private fun commitSettingsChanged(changeId: String = "") {
         val prefix = getScheduleKeyPrefix()
         prefs.edit { putLong("${prefix}_settings_last_modified", System.currentTimeMillis()) }
         invalidateTimeCaches()
-        dispatchCourseChanged("settings", "")
+        dispatchCourseChanged("settings", changeId)
     }
 
     /**
@@ -140,13 +153,13 @@ class CourseRepository private constructor(context: Context) {
      * - 仅当写入的是当前课表时才失效缓存并通知 UI / 触发重排
      * - 写非当前课表时不碰当前课表时间戳，也不通知当前 UI
      */
-    private fun markScheduleSettingsChanged(scheduleId: String) {
+    private fun markScheduleSettingsChanged(scheduleId: String, changeId: String = "") {
         val prefix = getScheduleKeyPrefix(scheduleId)
         prefs.edit { putLong("${prefix}_settings_last_modified", System.currentTimeMillis()) }
         if (scheduleId != getCurrentScheduleId()) return
         if (batchingSettings) return
         invalidateTimeCaches()
-        dispatchCourseChanged("settings", "")
+        dispatchCourseChanged("settings", changeId)
     }
 
     companion object {
@@ -210,11 +223,14 @@ class CourseRepository private constructor(context: Context) {
         fun normalizeClassStartDate(raw: String?): String? =
             parseFlexibleDate(raw)?.let { formatClassStartDate(it) }
 
+        const val MAX_TOTAL_WEEKS = 30
+
         private const val PREFS_NAME = "course_schedule_prefs"
         private const val KEY_COURSES = "courses"
         private const val KEY_CURRENT_WEEK = "current_week"
         private const val KEY_TOTAL_WEEKS = "total_weeks"
         private const val KEY_CLASS_START_TIME = "class_start_time"
+        private const val KEY_TEACHING_WEEK_REORGANIZATIONS = "teaching_week_reorganizations"
         private const val KEY_SHOW_WEEKEND = "show_weekend"
         private const val KEY_SMART_WEEKEND = "smart_weekend"
         private const val KEY_SHOW_NON_CURRENT_WEEK = "show_non_current_week"
@@ -711,6 +727,11 @@ class CourseRepository private constructor(context: Context) {
         return safeGetInt(key, 1)
     }
 
+    /** Background readers cannot assume the persisted UI week was refreshed after midnight. */
+    fun getLiveTeachingWeek(date: LocalDate = LocalDate.now(), scheduleId: String = getCurrentScheduleId()): Int =
+        teachingWeekPositionForDate(date, scheduleId).week
+            .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
+
     fun setCurrentWeek(week: Int) {
         val key = "${getScheduleKeyPrefix()}$KEY_CURRENT_WEEK"
         prefs.edit { putInt(key, week) }
@@ -723,7 +744,7 @@ class CourseRepository private constructor(context: Context) {
 
     fun getTotalWeeks(scheduleId: String): Int {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS"
-        return safeGetInt(key, 20)
+        return safeGetInt(key, 20).coerceIn(1, MAX_TOTAL_WEEKS)
     }
 
     fun setTotalWeeks(weeks: Int) {
@@ -732,10 +753,105 @@ class CourseRepository private constructor(context: Context) {
 
     /** 写目标课表总周数；更新该课表同步时间戳，仅当前课表才通知 UI */
     fun setTotalWeeks(scheduleId: String, weeks: Int) {
-        if (weeks <= 0) return
+        if (weeks !in 1..MAX_TOTAL_WEEKS) return
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS"
         prefs.edit { putInt(key, weeks) }
         markScheduleSettingsChanged(scheduleId)
+    }
+
+    fun getTeachingWeekReorganizations(
+        scheduleId: String = getCurrentScheduleId(),
+    ): List<TeachingWeekReorganizationRule> {
+        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TEACHING_WEEK_REORGANIZATIONS"
+        val raw = prefs.getString(key, null) ?: return emptyList()
+        return runCatching {
+            // Keep a syntactically valid saved rule visible if total_weeks was later reduced;
+            // the editor can then explain/fix it instead of silently hiding the user's data.
+            TeachingWeekReorganization.decode(raw, Int.MAX_VALUE)
+        }.getOrDefault(emptyList())
+    }
+
+    /** Validate the entire ruleset before one atomic preference write. */
+    fun setTeachingWeekReorganizations(
+        rules: List<TeachingWeekReorganizationRule>,
+        scheduleId: String = getCurrentScheduleId(),
+        allowExistingOutOfRangeRules: Boolean = false,
+        changedRule: TeachingWeekReorganizationRule? = null,
+        preserveOutOfRangeRules: Boolean = false,
+    ): Boolean {
+        val totalWeeks = getTotalWeeks(scheduleId)
+        val validationError = if (preserveOutOfRangeRules) {
+            TeachingWeekReorganization.validationError(rules, Int.MAX_VALUE)
+        } else if (allowExistingOutOfRangeRules) {
+            TeachingWeekReorganization.validationErrorForRuleChange(
+                updatedRules = rules,
+                existingRules = getTeachingWeekReorganizations(scheduleId),
+                changedRule = changedRule ?: return false,
+                totalWeeks = totalWeeks,
+            )
+        } else {
+            TeachingWeekReorganization.validationError(rules, totalWeeks)
+        }
+        if (validationError != null) {
+            return false
+        }
+        val normalized = rules.sortedBy { it.firstOriginalWeek }
+        val raw = runCatching {
+            TeachingWeekReorganization.encode(
+                normalized,
+                if (allowExistingOutOfRangeRules || preserveOutOfRangeRules) Int.MAX_VALUE
+                else totalWeeks,
+            )
+        }.getOrNull() ?: return false
+        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TEACHING_WEEK_REORGANIZATIONS"
+        if (prefs.getString(key, null) == raw) return true
+        prefs.edit { putString(key, raw) }
+        markScheduleSettingsChanged(scheduleId, "teaching_week_reorganizations")
+        return true
+    }
+
+    /** Deleting a rule remains possible after the semester week limit was reduced. */
+    fun removeTeachingWeekReorganization(
+        rule: TeachingWeekReorganizationRule,
+        scheduleId: String = getCurrentScheduleId(),
+    ): Boolean {
+        val rules = getTeachingWeekReorganizations(scheduleId).toMutableList()
+        val index = rules.indexOf(rule)
+        if (index < 0) return false
+        rules.removeAt(index)
+        if (TeachingWeekReorganization.validationError(rules, Int.MAX_VALUE) != null) return false
+        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TEACHING_WEEK_REORGANIZATIONS"
+        val raw = runCatching { TeachingWeekReorganization.encode(rules, Int.MAX_VALUE) }
+            .getOrNull() ?: return false
+        prefs.edit { putString(key, raw) }
+        markScheduleSettingsChanged(scheduleId, "teaching_week_reorganizations")
+        return true
+    }
+
+    fun teachingWeekPositionForDate(
+        date: LocalDate,
+        scheduleId: String = getCurrentScheduleId(),
+    ): TeachingWeekPosition {
+        val startDate = LocalDate.parse(getClassStartTime(scheduleId).replace("/", "-"))
+        return TeachingWeekReorganization.mapDate(
+            semesterStartDate = startDate,
+            date = date,
+            rules = getTeachingWeekReorganizations(scheduleId),
+        )
+    }
+
+    fun dateForTeachingWeekDay(
+        teachingWeek: Int,
+        weekday: Int,
+        scheduleId: String = getCurrentScheduleId(),
+    ): LocalDate? {
+        val startDate = LocalDate.parse(getClassStartTime(scheduleId).replace("/", "-"))
+        return TeachingWeekReorganization.dateForPosition(
+            semesterStartDate = startDate,
+            teachingWeek = teachingWeek,
+            weekday = weekday,
+            rules = getTeachingWeekReorganizations(scheduleId),
+        )
     }
 
     /** 旧值不是可识别日期时回退当天并写回；兼容 yyyy-MM-dd / yyyy/M/d / yyyyMMdd */
@@ -839,11 +955,7 @@ class CourseRepository private constructor(context: Context) {
 
     private fun workSwapEntryOnDay(dayOfWeek: Int, week: Int): HolidayManager.Entry? {
         if (dayOfWeek !in 1..7) return null
-        val start = runCatching {
-            LocalDate.parse(getClassStartTime().replace("/", "-"))
-        }.getOrNull() ?: return null
-        val monday = start.minusDays((start.dayOfWeek.value - 1).toLong())
-        val date = monday.plusWeeks((week - 1).toLong()).plusDays((dayOfWeek - 1).toLong())
+        val date = runCatching { dateForTeachingWeekDay(week, dayOfWeek) }.getOrNull() ?: return null
         return HolidayManager.workSwap(appContext, date)
     }
 
@@ -919,6 +1031,22 @@ class CourseRepository private constructor(context: Context) {
         val configId = getScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         return config.getPeriodTimes(period)
+    }
+
+    /** All configured section times, with afternoon and evening keys using global section numbers. */
+    fun getCurrentSectionTimes(): Map<Int, String> {
+        val sectionCount = getMorningSections() + getAfternoonSections() + getEveningSections()
+        return getGlobalSectionTimes().filterKeys { it in 1..sectionCount }
+    }
+
+    fun getSectionTimes(scheduleId: String): Map<Int, String> {
+        val morningCount = getMorningSections(scheduleId)
+        val afternoonCount = getAfternoonSections(scheduleId)
+        return buildMap {
+            getPeriodTimes("morning", scheduleId).forEach { (index, time) -> put(index, time) }
+            getPeriodTimes("afternoon", scheduleId).forEach { (index, time) -> put(morningCount + index, time) }
+            getPeriodTimes("evening", scheduleId).forEach { (index, time) -> put(morningCount + afternoonCount + index, time) }
+        }
     }
 
     fun savePeriodTimes(period: String, times: Map<Int, String>) {
@@ -1262,7 +1390,7 @@ class CourseRepository private constructor(context: Context) {
         currentScheduleIdCache = scheduleId
         // 占用周次与全局节次时间都基于当前课表
         invalidateTimeCaches()
-        notifyCourseChanged("settings")
+        notifyCourseChanged("settings", "current_schedule")
     }
 
     fun addSchedule(name: String): List<String> {
@@ -1308,7 +1436,9 @@ class CourseRepository private constructor(context: Context) {
             for ((key, value) in prefs.all) {
                 if (key.startsWith(currentPrefix)) {
                     val settingName = key.removePrefix(currentPrefix)
-                    if (settingName == KEY_COURSES) continue
+                    if (settingName == KEY_COURSES ||
+                        settingName == KEY_TEACHING_WEEK_REORGANIZATIONS
+                    ) continue
                     val newKey = "$newPrefix$settingName"
                     when (value) {
                         is Int -> putInt(newKey, value)
@@ -1332,23 +1462,50 @@ class CourseRepository private constructor(context: Context) {
                 String.format(java.util.Locale.ROOT, "%04d/%02d/%02d", today.year, today.monthValue, today.dayOfMonth)
             putString("$newPrefix$KEY_CLASS_START_TIME", todayStr)
             putInt("$newPrefix$KEY_CURRENT_WEEK", 1)
+            remove("$newPrefix$KEY_TEACHING_WEEK_REORGANIZATIONS")
         }
         return names
     }
+
+    /**
+     * 从文件夹原始数据里去掉（或改名）某个课表引用，并落盘。
+     * 不能用 getScheduleFolders() 做判断：它读时已按当前 names 剔除刚删的名字，
+     * 缓存冷时条件恒为 false，幽灵引用会一直留在 prefs 并被备份导出。
+     */
+    private fun rewriteScheduleNameInFolders(oldName: String, newName: String?) {
+        val json = prefs.getString(KEY_SCHEDULE_FOLDERS, null) ?: return
+        val folders = try {
+            val type = object : TypeToken<List<ScheduleFolder>>() {}.type
+            gson.fromJson<List<ScheduleFolder>>(json, type) ?: emptyList()
+        } catch (_: Exception) {
+            return
+        }
+        if (folders.none { oldName in it.schedules }) return
+        saveScheduleFolders(
+            folders.map { folder ->
+                if (oldName !in folder.schedules) folder
+                else folder.copy(
+                    schedules = folder.schedules.map { if (it == oldName) newName else it }
+                        .filterNotNull()
+                )
+            }
+        )
+    }
+
+    private fun removeScheduleNameFromFolders(name: String) =
+        rewriteScheduleNameInFolders(name, newName = null)
 
     fun deleteSchedule(name: String): List<String> {
         val names = getScheduleNames().toMutableList()
         names.remove(name)
         // 删光后自动补默认课表，避免应用无法启动
-        if (names.isEmpty()) {
+        val replacedLastSchedule = names.isEmpty()
+        if (replacedLastSchedule) {
             names.add("默认课表")
         }
         saveScheduleNames(names)
         // 课表没了，文件夹里的引用必须同步清掉，否则会留下幽灵条目
-        val folders = getScheduleFolders()
-        if (folders.any { name in it.schedules }) {
-            saveScheduleFolders(folders.map { it.copy(schedules = it.schedules - name) })
-        }
+        removeScheduleNameFromFolders(name)
         val prefix = "$SCHEDULE_KEY_PREFIX${name}_"
         prefs.edit {
             for (key in prefs.all.keys) {
@@ -1359,6 +1516,9 @@ class CourseRepository private constructor(context: Context) {
             // 绑定键不匹配 schedule_{name}_ 前缀，必须单独删；
             // 否则同名课表再导入会撞上残留绑定
             remove("$SCHEDULE_TIME_CONFIG_PREFIX$name")
+            if (replacedLastSchedule) {
+                putString("${SCHEDULE_KEY_PREFIX}默认课表_$KEY_COURSES", "[]")
+            }
         }
         // 直接改写了 prefs，必须失效否则同名重建会读到旧数据
         invalidateAllCaches()
@@ -1380,6 +1540,8 @@ class CourseRepository private constructor(context: Context) {
             }
             names[index] = newName
             saveScheduleNames(names)
+            // 文件夹里的旧名跟着改，否则会留下幽灵条目且新名跑到根目录
+            rewriteScheduleNameInFolders(oldName, newName)
             // 迁移 schedule_{old}_* → schedule_{new}_*
             val oldPrefix = "$SCHEDULE_KEY_PREFIX${oldName}_"
             val newPrefix = "$SCHEDULE_KEY_PREFIX${newName}_"
@@ -1442,7 +1604,8 @@ class CourseRepository private constructor(context: Context) {
 
     /**
      * 读取课表文件夹。
-     * 顺带清洗：剔除已被删除的课表名，并保证一个课表只出现在一个文件夹里（保留靠前的那个）。
+     * 顺带清洗：剔除已被删除的课表名，保证一个课表只出现在一个文件夹里（保留靠前的那个），
+     * 并合并重复的文件夹 id（坏备份会让 LazyColumn key 冲突闪退）。
      */
     fun getScheduleFolders(): List<ScheduleFolder> {
         scheduleFoldersCache?.let { return it }
@@ -1458,15 +1621,26 @@ class CourseRepository private constructor(context: Context) {
             emptyList()
         }
         val seen = mutableSetOf<String>()
-        val result = parsed
+        val byId = linkedMapOf<String, ScheduleFolder>()
+        parsed
             .filter { it.id.isNotBlank() }
-            .map { folder ->
+            .forEach { folder ->
                 val kept = folder.schedules
                     .filter { name -> name in allNames && seen.add(name) }
                 // 文件夹内部按全局课表顺序展示
                 val ordered = allNames.filter { it in kept }
-                folder.copy(schedules = ordered)
+                val existing = byId[folder.id]
+                if (existing == null) {
+                    byId[folder.id] = folder.copy(schedules = ordered)
+                } else {
+                    // 同 id 并入第一个：坏备份/重复迁移会写进重复 id，UI Lazy key 会闪退
+                    val merged = (existing.schedules + ordered).distinct()
+                    byId[folder.id] = existing.copy(
+                        schedules = allNames.filter { it in merged }
+                    )
+                }
             }
+        val result = byId.values.toList()
         scheduleFoldersCache = result
         return result
     }
@@ -2350,10 +2524,35 @@ class CourseRepository private constructor(context: Context) {
                 }
             }
         }
+        if (KEY_SCHEDULE_NAMES !in result) {
+            result[KEY_SCHEDULE_NAMES] = gson.toJson(getScheduleNames())
+        }
+        if (KEY_CURRENT_SCHEDULE_ID !in result) {
+            result[KEY_CURRENT_SCHEDULE_ID] = getCurrentScheduleId()
+        }
+        ensureEmptyScheduleCourseEntries(result, getScheduleNames())
+        result.putAll(HolidayManager.exportBackupData(appContext))
+        // 文件夹用清洗后的结果导出：历史坏数据里的幽灵课表名不应进备份
+        result[KEY_SCHEDULE_FOLDERS] = gson.toJson(getScheduleFolders())
         return result
     }
 
     fun importAllPreferences(data: Map<String, Any>) {
+        val normalizedData = normalizeFullScheduleBackup(data)
+        withValidatedFullScheduleBackup(normalizedData) { holidayBackup ->
+            restoreAllPreferences(
+                normalizedData,
+                holidayBackup,
+                shouldPreserveRestoredFolderMembership(normalizedData),
+            )
+        }
+    }
+
+    private fun restoreAllPreferences(
+        data: Map<String, Any>,
+        holidayBackup: HolidayManager.BackupData,
+        preserveFolderMembership: Boolean,
+    ) {
         prefs.edit {
             for ((key) in prefs.all) {
                 if (key.startsWith(SCHEDULE_KEY_PREFIX) || key.startsWith(TIME_CONFIG_PREFIX) ||
@@ -2363,8 +2562,9 @@ class CourseRepository private constructor(context: Context) {
             }
             remove(KEY_SCHEDULE_NAMES)
             remove(KEY_SCHEDULE_FOLDERS)
-            // 清掉标记：导入旧备份后重新把课表收进默认文件夹
-            remove(KEY_DEFAULT_FOLDER_MIGRATED)
+            // Preserve root-level schedules in new backups; migrate only legacy backups.
+            if (preserveFolderMembership) putBoolean(KEY_DEFAULT_FOLDER_MIGRATED, true)
+            else remove(KEY_DEFAULT_FOLDER_MIGRATED)
             remove(KEY_CURRENT_SCHEDULE_ID)
             remove(KEY_SHIFT_MODE)
             remove(KEY_SHIFT_SELECTED_SCHEDULES)
@@ -2373,6 +2573,9 @@ class CourseRepository private constructor(context: Context) {
             remove(KEY_DEFAULT_HOMEPAGE)
 
             for ((key, value) in data) {
+                if (key == HolidayManager.BACKUP_KEY ||
+                    key == HolidayManager.BACKUP_EXCLUSION_KEY
+                ) continue
                 when (value) {
                     is String -> putString(key, value)
                     is Boolean -> putBoolean(key, value)
@@ -2400,9 +2603,9 @@ class CourseRepository private constructor(context: Context) {
                 }
             }
         }
+        HolidayManager.restoreBackupData(appContext, holidayBackup)
         invalidateAllCaches()
-        // 标记已在上面清掉，这里立刻重新归档，用户不用重启才看到默认文件夹
-        migrateSchedulesIntoDefaultFolder()
+        if (!preserveFolderMembership) migrateSchedulesIntoDefaultFolder()
         dispatchCourseChanged("restore", "")
     }
 
@@ -2413,7 +2616,33 @@ class CourseRepository private constructor(context: Context) {
     }
 
     /** @param timeConfigData 可选；有则强制新建绑定，否则无绑定时复制当前配置 */
-    fun importSingleSchedule(scheduleName: String, coursesData: List<Map<String, Any>>, timeConfigData: Map<String, Any>? = null) {
+    fun importSingleSchedule(
+        scheduleName: String,
+        coursesData: List<Map<String, Any>>,
+        timeConfigData: Map<String, Any>? = null,
+        classStartTime: String? = null,
+        currentWeek: Int? = null,
+        totalWeeks: Int? = null,
+        teachingWeekReorganizations: List<TeachingWeekReorganizationRule>? = null,
+    ) {
+        val normalizedClassStart = classStartTime?.let {
+            normalizeClassStartDate(it)
+                ?: throw IllegalArgumentException("Invalid single-schedule semester start date")
+        }
+        val importedTotalWeeks = totalWeeks ?: 20
+        require(importedTotalWeeks in 1..MAX_TOTAL_WEEKS) {
+            "Invalid single-schedule semester week count"
+        }
+        teachingWeekReorganizations?.let { rules ->
+            val error = TeachingWeekReorganization.validationError(rules, Int.MAX_VALUE)
+            require(error == null) { error ?: "Invalid single-schedule teaching-week rules" }
+            require(rules.isEmpty() || normalizedClassStart != null) {
+                "A single-schedule reorganization requires a valid semester start date"
+            }
+        }
+        // Lowering a schedule's horizon does not delete its stored course selections; backups preserve them.
+        validateSingleScheduleCourseData(coursesData, MAX_TOTAL_WEEKS)
+
         val names = getScheduleNames().toMutableList()
         if (scheduleName !in names) {
             names.add(scheduleName)
@@ -2523,6 +2752,294 @@ class CourseRepository private constructor(context: Context) {
             setScheduleTimeConfigId(scheduleName, newConfigId)
         }
 
+        if (normalizedClassStart != null || currentWeek != null || totalWeeks != null ||
+            teachingWeekReorganizations != null
+        ) {
+            val schedulePrefix = getScheduleKeyPrefix(scheduleName)
+            prefs.edit {
+                normalizedClassStart?.let { putString("$schedulePrefix$KEY_CLASS_START_TIME", it) }
+                currentWeek?.let { putInt("$schedulePrefix$KEY_CURRENT_WEEK", it) }
+                totalWeeks?.let { putInt("$schedulePrefix$KEY_TOTAL_WEEKS", it) }
+                teachingWeekReorganizations?.let { rules ->
+                    putString(
+                        "$schedulePrefix$KEY_TEACHING_WEEK_REORGANIZATIONS",
+                        TeachingWeekReorganization.encode(rules, Int.MAX_VALUE),
+                    )
+                }
+            }
+            markScheduleSettingsChanged(scheduleName)
+        }
+
         dispatchCourseChanged("restore", "")
+    }
+}
+
+internal fun <T> withValidatedFullScheduleBackup(
+    data: Map<String, Any>,
+    restore: (HolidayManager.BackupData) -> T,
+): T {
+    validateFullScheduleBackupStructure(data)
+    val holidayBackup = HolidayManager.decodeBackupData(data)
+    return restore(holidayBackup)
+}
+
+/** Export an empty slot for schedules that have never had a course persisted. */
+internal fun ensureEmptyScheduleCourseEntries(data: MutableMap<String, Any>, scheduleNames: List<String>) {
+    scheduleNames.forEach { name -> data.putIfAbsent("schedule_${name}_courses", "[]") }
+}
+
+internal fun shouldPreserveRestoredFolderMembership(data: Map<String, Any>): Boolean =
+    data.containsKey("schedule_folders")
+
+internal fun normalizeFullScheduleBackup(data: Map<String, Any>): Map<String, Any> {
+    val names = validateFullScheduleBackupStructure(data)
+    return if (data.containsKey("schedule_names")) {
+        data
+    } else {
+        data + ("schedule_names" to Gson().toJson(names))
+    }
+}
+
+internal fun validateFullScheduleBackupStructure(data: Map<String, Any>): List<String> {
+    val names = if (data.containsKey("schedule_names")) {
+        val rawNames = data["schedule_names"]
+        when (rawNames) {
+            is String -> runCatching {
+                Gson().fromJson<List<*>>(rawNames, object : TypeToken<List<*>>() {}.type)
+            }.getOrNull()
+            is List<*> -> rawNames
+            else -> null
+        }
+    } else {
+        val courseScheduleNames = data.keys.asSequence()
+            .filter { it.startsWith("schedule_") && !it.startsWith("schedule_time_config_") && it.endsWith("_courses") }
+            .map { it.removePrefix("schedule_").removeSuffix("_courses") }
+        val boundScheduleNames = data.keys.asSequence()
+            .filter { it.startsWith("schedule_time_config_") }
+            .map { it.removePrefix("schedule_time_config_") }
+        (courseScheduleNames + boundScheduleNames).distinct().toList()
+    } ?: throw IllegalArgumentException("Invalid full schedule backup: malformed schedule names")
+    require(names.isNotEmpty() && names.all { it is String && it.isNotBlank() }) {
+        "Invalid full schedule backup: schedule names are empty or malformed"
+    }
+    val scheduleNames = names.filterIsInstance<String>()
+    require(scheduleNames.distinct().size == scheduleNames.size) {
+        "Invalid full schedule backup: duplicate schedule names"
+    }
+    require(scheduleNames.all { name ->
+        data.containsKey("schedule_${name}_courses") ||
+            data.containsKey("schedule_time_config_$name")
+    }) { "Invalid full schedule backup: no matching schedule data" }
+
+    if (data.containsKey("schedule_folders")) {
+        val rawFolders = data["schedule_folders"] as? String
+            ?: throw IllegalArgumentException("Invalid schedule folders in backup")
+        val folders = runCatching { JsonParser.parseString(rawFolders) }.getOrNull()
+        require(folders != null && folders.isJsonArray) { "Invalid schedule folders in backup" }
+        folders.asJsonArray.forEach { folder ->
+            require(folder.isJsonObject) { "Invalid schedule folder in backup" }
+            val fields = folder.asJsonObject
+            val id = fields.get("id")
+            val name = fields.get("name")
+            val members = fields.get("schedules")
+            require(id?.isJsonPrimitive == true && id.asJsonPrimitive.isString && id.asString.isNotBlank() &&
+                name?.isJsonPrimitive == true && name.asJsonPrimitive.isString && name.asString.isNotBlank() &&
+                members?.isJsonArray == true && members.asJsonArray.all { member ->
+                    member.isJsonPrimitive && member.asJsonPrimitive.isString && member.asString in scheduleNames
+                }
+            ) { "Invalid schedule folder in backup" }
+        }
+    }
+
+    scheduleNames.forEach { name ->
+        val totalWeeksKey = "schedule_${name}_total_weeks"
+        val totalWeeks = if (!data.containsKey(totalWeeksKey)) {
+            20
+        } else {
+            val number = (data[totalWeeksKey] as? Number)?.toDouble()
+                ?: throw IllegalArgumentException("Invalid schedule total weeks in backup")
+            require(number.isFinite() && number % 1.0 == 0.0 &&
+                number in 1.0..CourseRepository.MAX_TOTAL_WEEKS.toDouble()
+            ) { "Invalid schedule total weeks in backup" }
+            number.toInt()
+        }
+        val currentWeekKey = "schedule_${name}_current_week"
+        if (data.containsKey(currentWeekKey)) {
+            val week = (data[currentWeekKey] as? Number)?.toDouble()
+                ?: throw IllegalArgumentException("Invalid schedule current week in backup")
+            require(
+                week.isFinite() && week % 1.0 == 0.0 &&
+                    week >= Int.MIN_VALUE.toDouble() && week <= Int.MAX_VALUE.toDouble(),
+            ) { "Invalid schedule current week in backup" }
+        }
+        val classStartKey = "schedule_${name}_class_start_time"
+        val classStartDate = if (data.containsKey(classStartKey)) {
+            val raw = data[classStartKey] as? String
+            CourseRepository.normalizeClassStartDate(raw)
+                ?: throw IllegalArgumentException("Invalid schedule semester start date in backup")
+        } else null
+
+        val coursesKey = "schedule_${name}_courses"
+        if (data.containsKey(coursesKey)) {
+            val rawCourses = data[coursesKey] as? String
+                ?: throw IllegalArgumentException("Invalid full schedule backup: malformed course data")
+            val courses = runCatching {
+                Gson().fromJson<List<*>>(rawCourses, object : TypeToken<List<*>>() {}.type)
+            }.getOrNull()
+            require(courses != null && courses.all { it is Map<*, *> }) {
+                "Invalid full schedule backup: malformed course data"
+            }
+            @Suppress("UNCHECKED_CAST")
+            validateSingleScheduleCourseData(
+                courses.filterIsInstance<Map<String, Any>>(),
+                CourseRepository.MAX_TOTAL_WEEKS,
+            )
+        }
+
+        val timeConfigBindingKey = "schedule_time_config_$name"
+        if (data.containsKey(timeConfigBindingKey)) {
+            val binding = (data[timeConfigBindingKey] as? Number)?.toDouble()
+            require(
+                binding != null && binding.isFinite() && binding % 1.0 == 0.0 &&
+                    binding >= 0.0 && binding < Long.MAX_VALUE.toDouble(),
+            ) { "Invalid full schedule backup: malformed time configuration binding" }
+        }
+
+        val rulesKey = "schedule_${name}_teaching_week_reorganizations"
+        if (data.containsKey(rulesKey)) {
+            val rawRules = data[rulesKey] as? String
+                ?: throw IllegalArgumentException("Invalid teaching-week reorganization backup entry")
+            require(classStartDate != null) {
+                "Teaching-week reorganization backup requires a valid semester start date"
+            }
+            TeachingWeekReorganization.decode(rawRules, Int.MAX_VALUE)
+        }
+    }
+
+    if (data.containsKey("current_schedule_id")) {
+        val currentScheduleId = data["current_schedule_id"] as? String
+        require(currentScheduleId != null && currentScheduleId in scheduleNames) {
+            "Invalid full schedule backup: current schedule id is malformed"
+        }
+    }
+
+    val knownRuleSuffix = "_teaching_week_reorganizations"
+    data.keys.asSequence()
+        .filter { it.startsWith("schedule_") && !it.startsWith("schedule_time_config_") && it.endsWith(knownRuleSuffix) }
+        .forEach { key ->
+            val scheduleName = key.removePrefix("schedule_").removeSuffix(knownRuleSuffix)
+            require(scheduleName in scheduleNames) {
+                "Invalid full schedule backup: reorganization belongs to an unknown schedule"
+            }
+        }
+    data.keys.asSequence()
+        .filter { it.startsWith("schedule_") && !it.startsWith("schedule_time_config_") && it.endsWith("_courses") }
+        .forEach { key ->
+            val scheduleName = key.removePrefix("schedule_").removeSuffix("_courses")
+            require(scheduleName in scheduleNames) {
+                "Invalid full schedule backup: course data belongs to an unknown schedule"
+            }
+        }
+    data.keys.asSequence()
+        .filter {
+            it.startsWith("schedule_") && it != "schedule_names" && it != "schedule_folders" &&
+                !it.startsWith("schedule_time_config_")
+        }
+        .forEach { key ->
+            require(scheduleNames.any { key.startsWith("schedule_${it}_") }) {
+                "Invalid full schedule backup: setting belongs to an unknown schedule"
+            }
+        }
+    data.keys.asSequence()
+        .filter { it.startsWith("schedule_time_config_") }
+        .map { it.removePrefix("schedule_time_config_") }
+        .forEach { scheduleName ->
+            require(scheduleName in scheduleNames) {
+                "Invalid full schedule backup: time configuration belongs to an unknown schedule"
+            }
+        }
+    return scheduleNames
+}
+
+internal fun validateSingleScheduleCourseData(
+    courses: List<Map<String, Any>>,
+    maxWeeks: Int? = null,
+) {
+    courses.forEach { course ->
+        require((course["name"] as? String)?.isNotBlank() == true) {
+            "Invalid single-schedule course name"
+        }
+        fun requiredInteger(key: String): Int {
+            val number = (course[key] as? Number)?.toDouble()
+                ?: throw IllegalArgumentException("Invalid single-schedule course $key")
+            require(number.isFinite() && number % 1.0 == 0.0 &&
+                number >= Int.MIN_VALUE.toDouble() && number <= Int.MAX_VALUE.toDouble()
+            ) { "Invalid single-schedule course $key" }
+            return number.toInt()
+        }
+        require(requiredInteger("dayOfWeek") in 1..7) {
+            "Invalid single-schedule course dayOfWeek"
+        }
+        val startSection = requiredInteger("startSection")
+        val endSection = requiredInteger("endSection")
+        require(startSection > 0 && endSection >= startSection) {
+            "Invalid single-schedule course section range"
+        }
+    }
+    validateSingleScheduleCourseWeekData(courses, maxWeeks)
+}
+
+internal fun validateSingleScheduleCourseWeekData(
+    courses: List<Map<String, Any>>,
+    maxWeeks: Int? = null,
+) {
+    require(maxWeeks == null || maxWeeks in 1..CourseRepository.MAX_TOTAL_WEEKS) {
+        "Invalid course-week validation horizon"
+    }
+    courses.forEach { course ->
+        if (course.containsKey("selectedWeeks")) {
+            val rawWeeks = course["selectedWeeks"] as? List<*>
+                ?: throw IllegalArgumentException("Invalid single-schedule selected weeks")
+            val weeks = rawWeeks.map { value ->
+                val number = (value as? Number)?.toDouble()
+                    ?: throw IllegalArgumentException("Invalid single-schedule selected week")
+                require(number.isFinite() && number % 1.0 == 0.0 &&
+                    number in 1.0..Int.MAX_VALUE.toDouble()
+                ) { "Invalid single-schedule selected week" }
+                number.toInt()
+            }
+            require(weeks.distinct().size == weeks.size) {
+                "Duplicate single-schedule selected week"
+            }
+            require(maxWeeks == null || weeks.all { it <= maxWeeks }) {
+                "Selected course week exceeds the supported schedule horizon"
+            }
+        }
+
+        fun exactWeekField(key: String): Int? {
+            if (!course.containsKey(key)) return null
+            val number = (course[key] as? Number)?.toDouble()
+                ?: throw IllegalArgumentException("Invalid single-schedule $key")
+            require(number.isFinite() && number % 1.0 == 0.0 &&
+                number >= Int.MIN_VALUE.toDouble() && number <= Int.MAX_VALUE.toDouble()
+            ) { "Invalid single-schedule $key" }
+            return number.toInt()
+        }
+
+        val startWeek = exactWeekField("startWeek")
+        val endWeek = exactWeekField("endWeek")
+        val weekType = exactWeekField("weekType")
+        require(startWeek == null || startWeek > 0) { "Invalid single-schedule startWeek" }
+        require(endWeek == null || endWeek > 0) { "Invalid single-schedule endWeek" }
+        require(maxWeeks == null || startWeek == null || startWeek <= maxWeeks) {
+            "Course startWeek exceeds the supported schedule horizon"
+        }
+        require(maxWeeks == null || endWeek == null || endWeek <= maxWeeks) {
+            "Course endWeek exceeds the supported schedule horizon"
+        }
+        require(startWeek == null || endWeek == null || endWeek >= startWeek) {
+            "Invalid single-schedule week range"
+        }
+        require(weekType == null || weekType in 0..2) { "Invalid single-schedule weekType" }
     }
 }

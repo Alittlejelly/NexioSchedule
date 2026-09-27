@@ -76,6 +76,7 @@ internal fun ScheduleTopBar(
     currentDayOfWeek: Int,
     isCurrentWeek: Boolean,
     weekDates: List<LocalDate>,
+    isReorganized: Boolean,
     onBackToCurrentWeek: () -> Unit,
     onOpenSwitchSchedule: () -> Unit,
     onMoreClick: () -> Unit = {},
@@ -199,6 +200,7 @@ internal fun ScheduleTopBar(
                 currentDayOfWeek = currentDayOfWeek,
                 isCurrentWeek = isCurrentWeek,
                 weekDates = weekDates,
+                isReorganized = isReorganized,
                 isTablet = isTablet,
                 modifier = Modifier.dayOfWeekTopPadding(statusBarHeight, scrollBehavior)
             )
@@ -212,6 +214,7 @@ private fun DayOfWeekRow(
     currentDayOfWeek: Int,
     isCurrentWeek: Boolean,
     weekDates: List<LocalDate>,
+    isReorganized: Boolean,
     isTablet: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -234,7 +237,8 @@ private fun DayOfWeekRow(
         dayRange.forEach { dayOfWeek ->
             val index = dayOfWeek - 1
             val name = DAY_NAMES[index]
-            val isToday = dayOfWeek == currentDayOfWeek && isCurrentWeek
+            val isToday = dayOfWeek == currentDayOfWeek && isCurrentWeek &&
+                (!isReorganized || weekDates.getOrNull(index) == LocalDate.now())
 
             val todayHighlightColor = Color(0xFF3482FF)
             Box(

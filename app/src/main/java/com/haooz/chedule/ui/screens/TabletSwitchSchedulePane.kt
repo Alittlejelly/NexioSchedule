@@ -106,7 +106,8 @@ fun TabletSwitchSchedulePane(
     val context = androidx.compose.ui.platform.LocalContext.current
     val repository = remember { CourseRepository(context) }
     val previewName by scheduleViewModel.currentScheduleName.collectAsState()
-    val previewCourses = remember(previewName) {
+    val currentCourses by viewModel.courses.collectAsState()
+    val previewCourses = remember(previewName, currentCourses) {
         repository.getCoursesForSchedule(previewName)
     }
     // 预览当前课表时用 SettingsViewModel 实时值（与课程表 tab 一致）；其它课表读该课表绑定的时间配置
