@@ -51,7 +51,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -1118,9 +1117,6 @@ fun CourseScheduleApp() {
     val shiftViewModel: ShiftViewModel = viewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     var selectedTab by remember { mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1) }
-    // 点 tab 时立刻翻转的高亮目标：只有底栏/侧栏读它。
-    // selectedTab 挪到切页落定后才更新，避免「整树重组」砸在动画第一帧上（实测那一帧组合要 50~60ms）。
-    var mainTabTarget by remember { mutableIntStateOf(selectedTab) }
     var showShiftLoading by remember { mutableStateOf(false) }
     var isExitingShift by remember { mutableStateOf(false) }
     var shiftModeInitialized by remember { mutableStateOf(false) }
@@ -1684,38 +1680,31 @@ fun CourseScheduleApp() {
     )
 
     // 主 tab 平移容器：今日/课程表/我的/课程管理/切换课表（排班模式为排班/设置），仅点底栏/侧栏 tab 驱动
+    // 手机底栏只有 3 个 tab，后两页（课程管理/切换课表）只有平板侧栏才到得了。
+    // 手机端按 5 页建会让这两页也常驻组合树，每次重组白陪跑。
+    val mainPagerPageCount = if (isShiftMode) 2 else if (navBarStyle == "rail") 5 else 3
     val mainPagerState = rememberPagerState(
-        initialPage = selectedTab.coerceIn(0, 4),
-        pageCount = { if (isShiftMode) 2 else 5 }
+        initialPage = selectedTab.coerceIn(0, mainPagerPageCount - 1),
+        pageCount = { mainPagerPageCount }
     )
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
-
-    // 落页后才同步 selectedTab：组合开销从「动画第一帧」挪到「动画结束帧」，
-    // 此时画面已静止，掉帧不再可见。settledPage 在滚动进行中保持旧值，落定才变。
-    LaunchedEffect(mainPagerState) {
-        snapshotFlow { mainPagerState.settledPage }.collect { page ->
-            if (page != selectedTab) selectedTab = page
-            if (page != mainTabTarget) mainTabTarget = page
-        }
-    }
 
     // 二级页侧栏点选主 tab（无转场回来后处理）
     LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab) {
         val pending = com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab
         if (pending in 0..4 && shiftModeInitialized) {
-            selectedTab = pending
-            mainTabTarget = pending
-            mainPagerState.scrollToPage(pending)
+            // 手机端只有 3 页，侧栏带过来的页号要按实际页数收口
+            val target = pending.coerceAtMost(mainPagerPageCount - 1)
+            selectedTab = target
+            mainPagerState.scrollToPage(target)
             com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = -1
         }
     }
 
     LaunchedEffect(isShiftMode) {
         if (shiftModeInitialized) {
-            // pageCount 会随模式变化（5 ↔ 2），这里必须直接落定，不能只改高亮目标
             selectedTab = if (isShiftMode) 0 else if (defaultHomepage == "今日") 0 else 1
-            mainTabTarget = selectedTab
             mainPagerState.scrollToPage(selectedTab)
         }
         shiftModeInitialized = true
@@ -1789,7 +1778,6 @@ fun CourseScheduleApp() {
                 mainPagerState.cancelScroll()
                 mainPagerState.scrollToPage(target)
                 // 底栏与当前页对齐，避免 tab 还停在未完成的目标页
-                if (mainTabTarget != target) mainTabTarget = target
                 if (selectedTab != target) selectedTab = target
             }
         }
@@ -2673,11 +2661,11 @@ fun CourseScheduleApp() {
         ) {
             val scaffoldContent = @Composable {
                 val onMainTabSelected: (Int) -> Unit = { idx ->
-                    if (idx != mainTabTarget) {
+                    if (idx != selectedTab) {
                         // 只翻高亮目标；selectedTab 等落页后由 settledPage 同步，
                         // 避免点击瞬间整树重组抢在动画第一帧
                         mainTabProgrammatic = true
-                        mainTabTarget = idx
+                        selectedTab = idx
                         coroutineScope.launch {
                             try {
                                 // pad：只取消主 pager 未完成滚动，尽快落页，保证点击跟手
@@ -2706,12 +2694,12 @@ fun CourseScheduleApp() {
                             ScheduleBottomBar(
                                 navBarStyle = navBarStyle,
                                 isShiftMode = isShiftMode,
-                                selectedTab = mainTabTarget,
+                                selectedTab = selectedTab,
                                 onTabSelected = { idx ->
-                                    if (idx != mainTabTarget) {
+                                    if (idx != selectedTab) {
                                         // 先锁 programmatic，只改高亮目标，避免动画中途被拉回
                                         mainTabProgrammatic = true
-                                        mainTabTarget = idx
+                                        selectedTab = idx
                                         com.haooz.chedule.ui.utils.CrashLogHelper.trace(
                                             "主页", "tab", "idx=$idx shift=$isShiftMode"
                                         )
@@ -3661,20 +3649,24 @@ fun CourseScheduleApp() {
                             }
                             }
                             if (navBarStyle == "rail") {
+                                // 平板是 scrollToPage 瞬间跳转，没有滚动过程，预取相邻页毫无意义，
+                                // 只会让 5 页常驻一起重组。
                                 VerticalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
                                     key = mainPagerPageKey,
                                     userScrollEnabled = false,
-                                    beyondViewportPageCount = 2,
+                                    beyondViewportPageCount = 0,
                                 ) { page -> mainPagerPageContent(page) }
                             } else {
+                                // 手机切 tab 是 spring 平移动画，必须保证目标页已组合好，
+                                // 否则动画过程中现组目标页会直接掉帧。3 页时 1 已覆盖全部页。
                                 HorizontalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
                                     key = mainPagerPageKey,
                                     userScrollEnabled = false,
-                                    beyondViewportPageCount = 2,
+                                    beyondViewportPageCount = 1,
                                 ) { page -> mainPagerPageContent(page) }
                             }
                         }
@@ -4077,9 +4069,9 @@ fun CourseScheduleApp() {
                     // 平板：胶囊/侧栏叠层（不占 Scaffold bottomBar，内容可正常滚动）
                     if (navBarStyle == "rail") {
                         val onTabletTabSelected: (Int) -> Unit = { idx ->
-                            if (idx != mainTabTarget) {
+                            if (idx != selectedTab) {
                                 mainTabProgrammatic = true
-                                mainTabTarget = idx
+                                selectedTab = idx
                                 coroutineScope.launch {
                                     try {
                                         if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
@@ -4093,7 +4085,7 @@ fun CourseScheduleApp() {
                             }
                         }
                         com.haooz.chedule.ui.components.LiquidNavigationRail(
-                            selectedTab = mainTabTarget,
+                            selectedTab = selectedTab,
                             onTabSelected = onTabletTabSelected,
                             backdrop = chromeBackdrop,
                             isShiftMode = isShiftMode,
@@ -4732,12 +4724,12 @@ fun CourseScheduleApp() {
                         applyAppearance(newAppearance)
                     },
                     hasWallpaper = wallpaperBitmap != null,
-                    previewPage = if (mainTabTarget == 1) 1 else 0,
+                    previewPage = if (selectedTab == 1) 1 else 0,
                     onPreviewPageChange = { page ->
                         val target = if (page == 1) 1 else 0
-                        if (mainTabTarget != target) {
+                        if (selectedTab != target) {
                             mainTabProgrammatic = true
-                            mainTabTarget = target
+                            selectedTab = target
                             coroutineScope.launch {
                                 try {
                                     if (navBarStyle == "rail") {
@@ -5302,7 +5294,7 @@ fun CourseScheduleApp() {
                     com.haooz.chedule.ui.utils.FeatureLog.shift("exit_confirmed")
                     shiftViewModel.exitShiftMode()
                     selectedTab = 0
-                    mainTabTarget = 0
+                    selectedTab = 0
                     coroutineScope.launch { mainPagerState.scrollToPage(0) }
                 } else {
                     com.haooz.chedule.ui.utils.FeatureLog.shift("enter_confirmed")
