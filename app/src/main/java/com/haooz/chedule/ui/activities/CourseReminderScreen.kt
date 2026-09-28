@@ -309,7 +309,8 @@ fun CourseReminderScreen(
                         ),
                     contentPadding = PaddingValues(
                         start = tabletHorizontalPadding,
-                        top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + 24.dp,
+                        top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight +
+                            (if (isTablet) 24.dp else 12.dp),
                         end = tabletHorizontalPadding,
                         bottom = 120.dp
                     ),

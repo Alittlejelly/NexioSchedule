@@ -267,7 +267,8 @@ fun BackupAndMigrationScreen(
             contentPadding = PaddingValues(
                 start = tabletHorizontalPadding,
                 end = tabletHorizontalPadding,
-                top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + 12.dp,
+                top = paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight +
+                    (if (isTablet) 12.dp else 0.dp),
                 bottom = 60.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
