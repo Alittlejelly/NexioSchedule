@@ -115,6 +115,8 @@ fun CourseCard(
     // 近处几乎立刻、远处按距离铺开；token=0（常态）不挂协程，降低新周页首帧组合成本
     val landRipple = LocalLandRipple.current
     val rippleScale = remember { Animatable(1f) }
+    // 涟漪动画期间为 true；token 不会归零，不能直接拿 token 判层
+    var rippleAnimating by remember { mutableStateOf(false) }
     val cardBoundsPx = remember { FloatArray(4) }
     // Sink：仅缩放反馈，不叠 indication 压暗；参数对齐 Miuix SinkFeedback(0.94, spring(0.8,600))
     var sinkPressed by remember { mutableStateOf(false) }
@@ -140,8 +142,13 @@ fun CourseCard(
                 ((dist - 90f) * 0.3f).toLong().coerceAtMost(400L)
             }
             if (delayMs > 0) delay(delayMs.milliseconds)
-            rippleScale.animateTo(1.08f, tween(80, easing = FastOutSlowInEasing))
-            rippleScale.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            rippleAnimating = true
+            try {
+                rippleScale.animateTo(1.08f, tween(80, easing = FastOutSlowInEasing))
+                rippleScale.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            } finally {
+                rippleAnimating = false
+            }
         }
     }
 
@@ -375,22 +382,32 @@ fun CourseCard(
         val cardShape = remember(effectiveCornerRadius) {
             ContinuousRoundedRectangle(effectiveCornerRadius.dp)
         }
+        // 静止卡不挂 graphicsLayer：几十张×两页的合成层是左右滑 draw 热点。
+        // 仅按压/拖拽/落地涟漪动画时挂；松手即撤，缩放回弹让位给无层路径。
+        val needTransformLayer = sinkPressed || isDragging || rippleAnimating
         Box(
             modifier = modifier
                 .fillMaxWidth()
                 .height(cardHeight)
                 .then(if (disablePadding) Modifier else Modifier.padding(horizontal = 2.dp, vertical = 2.dp))
-                .graphicsLayer {
-                    val s = sinkScale.value * rippleScale.value
-                    scaleX = s
-                    scaleY = s
-                    alpha = if (isDragging) 0f else 1f
-                    shape = cardShape
-                    clip = true
-                }
+                .then(
+                    if (needTransformLayer) {
+                        Modifier.graphicsLayer {
+                            val s = sinkScale.value * rippleScale.value
+                            scaleX = s
+                            scaleY = s
+                            alpha = if (isDragging) 0f else 1f
+                            shape = cardShape
+                            clip = true
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .background(cardColor, cardShape)
                 .onGloballyPositioned { coordinates ->
-                    // 与 hasBlur 分支一致：上报中心绝对坐标
+                    // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
+                    if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
                     val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
                     cardBoundsPx[0] = center.x
                     cardBoundsPx[1] = center.y
@@ -510,13 +527,16 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
     val effectiveShowClassroom = showClassroom && course.classroom.isNotEmpty()
     val effectiveShowTeacher = showTeacher && course.teacher.isNotEmpty()
 
-    // 卡片高度能放下几行就几行
+    // 卡片高度能放下几行就几行（单 Text 后按总行数限）
     val density = LocalDensity.current
     val availableHeightDp = cardHeightDp - 16f
     val courseNameLineH = with(density) { courseNameLineHeight.toDp().value }
     val infoLineH = with(density) { infoLineHeight.toDp().value }
     val reservedForInfo = ((if (effectiveShowClassroom) 1 else 0) + (if (effectiveShowTeacher) 1 else 0)) * infoLineH
     val nameMaxLines = ((availableHeightDp - reservedForInfo) / courseNameLineH).toInt().coerceAtLeast(1)
+    val bodyMaxLines = nameMaxLines +
+        (if (effectiveShowClassroom) 1 else 0) +
+        (if (effectiveShowTeacher) 1 else 0)
 
     Box(modifier = Modifier.fillMaxSize()) {
         val verticalArrangement = when (cardContentAlignment) {
@@ -537,6 +557,31 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
             com.haooz.chedule.data.CardContentAlignment.TOP_CENTER,
             com.haooz.chedule.data.CardContentAlignment.CENTER_CENTER -> TextAlign.Center
         }
+        // 课名+地点+教师合成一段 Text：省掉每卡 2 个 Text + 2 个 Spacer 的测量/绘制节点
+        val bodyText = androidx.compose.ui.text.buildAnnotatedString {
+            pushStyle(
+                androidx.compose.ui.text.SpanStyle(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = courseNameFontSize,
+                )
+            )
+            append(course.name)
+            pop()
+            if (effectiveShowClassroom) {
+                append('\n')
+                pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = infoFontSize))
+                append("@${course.classroom}")
+                pop()
+            }
+            if (effectiveShowTeacher) {
+                append('\n')
+                pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = infoFontSize))
+                append(course.teacher)
+                pop()
+            }
+        }
+        // 行高用课名（较大者），保证换行间距与原多 Text 布局接近
+        val bodyLineHeight = courseNameLineHeight
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -545,37 +590,13 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
             verticalArrangement = verticalArrangement
         ) {
             Text(
-                text = course.name,
-                fontWeight = FontWeight.Bold,
-                fontSize = courseNameFontSize,
-                lineHeight = courseNameLineHeight,
+                text = bodyText,
+                lineHeight = bodyLineHeight,
                 color = textColor,
                 textAlign = textAlign,
-                maxLines = nameMaxLines,
+                maxLines = bodyMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (effectiveShowClassroom) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "@${course.classroom}",
-                    fontSize = infoFontSize,
-                    lineHeight = infoLineHeight,
-                    color = textColor,
-                    textAlign = textAlign,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (effectiveShowTeacher) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = course.teacher,
-                    fontSize = infoFontSize,
-                    lineHeight = infoLineHeight,
-                    color = textColor,
-                    textAlign = textAlign,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
 
         if (hasMultipleCourses) {

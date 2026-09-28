@@ -699,10 +699,11 @@ fun MainScheduleScreen(
                 )
             }
         } else {
+            // 无壁纸：无人采样 courseCardBackdrop，跳过 LayerBackdrop 录制
+            //（每帧把整页课表录进 GPU 层是左右滑白烧）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
                     .background(wallpaperBackdropColor)
             )
         }
@@ -782,6 +783,8 @@ fun MainScheduleScreen(
                         hapticFeedbackType = HapticFeedbackType.TextHandleMove
                     )
                     .onGloballyPositioned { coordinates ->
+                        // 横滑时 Y 不变，跳过写入，省掉每帧两次回调体
+                        if (gridScrollFlag.scrolling == true && pagerState.isScrollInProgress) return@onGloballyPositioned
                         val pos = coordinates.positionInWindow()
                         scheduleViewport.topPx = pos.y
                         scheduleViewport.bottomPx = pos.y + coordinates.size.height

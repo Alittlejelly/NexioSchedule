@@ -183,6 +183,7 @@ import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -2511,17 +2512,20 @@ fun CourseScheduleApp() {
         // liquidGlass 录制跳帧指纹：结构量变了才 update→markNeedsRecord。
         // 必须 remember 出稳定 List，否则 equals 失败会强制录制。
         // 用 pager 当前页而非 selectedTab：点击后 selectedTab 先变，真正像素落定在 currentPage。
+        // pagerState.currentPage：无壁纸周滑跳过 mustRecord 后，靠落页变 key 补录。
         val liquidGlassRecordKey = remember(
             mainPagerState.currentPage, isShiftMode, showDetail, showCustomizePage, showSwitchSchedule,
             isWindowCutoutActive, shortcutMenuVisible, isDraggingCard, floatingCardVisible,
             dataVersion, currentWeek, totalWeeks, currentCombinationIndex, effectiveIsDark,
-            wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value
+            wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value,
+            pagerState.currentPage
         ) {
             listOf(
                 mainPagerState.currentPage, isShiftMode, showDetail, showCustomizePage, showSwitchSchedule,
                 isWindowCutoutActive, shortcutMenuVisible, isDraggingCard, floatingCardVisible,
                 dataVersion, currentWeek, totalWeeks, currentCombinationIndex, effectiveIsDark,
-                wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value
+                wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value,
+                pagerState.currentPage
             )
         }
         // 局部 val 不能直接捕获进 remember lambda，一律经 rememberUpdatedState
@@ -2542,6 +2546,9 @@ fun CourseScheduleApp() {
         val latestShowSwitch by rememberUpdatedState(showSwitchSchedule)
         val latestDraggingCard by rememberUpdatedState(isDraggingCard)
         val latestRailBlurEpoch by rememberUpdatedState(railBlurResampleEpoch.intValue)
+        // 无壁纸周左右滑：跳过 liquidGlass 整树逐帧重录（chrome 采样缓存随之跳过模糊）。
+        // 落页靠 recordKey 里的 currentPage 补一帧；有壁纸时玻璃要跟像素，仍每帧重录。
+        val latestHasWallpaperForGlass by rememberUpdatedState(wallpaperBitmap != null)
         // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结
         val liquidGlassMustRecord = remember(scheduleScrollState, todayListScrollInProgress, pagerState, todayPagerState, mainPagerState) {
             var lastRailExpand = Float.NaN
@@ -2557,7 +2564,7 @@ fun CourseScheduleApp() {
                 if (forceRail) railForceRecordFrames[0] = railForceRecordFrames[0] - 1
                 scheduleScrollState.isScrollInProgress ||
                     todayListScrollInProgress.value ||
-                    pagerState.isScrollInProgress ||
+                    (pagerState.isScrollInProgress && latestHasWallpaperForGlass) ||
                     todayPagerState.isScrollInProgress ||
                     mainPagerState.isScrollInProgress ||
                     expandMoving ||
@@ -2583,6 +2590,21 @@ fun CourseScheduleApp() {
             }
         }
         // 主内容（带缩放和裁切）
+        // 空闲态不挂 graphicsLayer：全屏离屏合成是周滑 P50 主头之一。
+        // 仅缩放/透明度/位移真正非单位时才开层；derivedStateOf 避免 Animatable 每帧重组。
+        val mainLayerNeeded by remember {
+            derivedStateOf {
+                isCustomizeExiting ||
+                    isWindowCutoutActive ||
+                    showSwitchSchedule ||
+                    showCustomizePage ||
+                    mainContentAlpha != 1f ||
+                    backgroundScale.value != 1f ||
+                    cutoutMainScale.value != 1f ||
+                    customizeExitScale.value != 1f ||
+                    sheetOffsetY.value != 0f
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -2590,39 +2612,39 @@ fun CourseScheduleApp() {
                 // RenderEffect 图层，0 半径也照常走一遍离屏合成。
                 .then(mainContentBlurModifier)
                 .then(
-                    if (navBarStyle != "rail") {
-                        // 圆角裁剪在 graphicsLayer 内部完成（见下），这里不再单独 clip
-                        Modifier
-                    } else Modifier
-                )
-                .graphicsLayer {
-                    val baseScale =
-                        if (!showSwitchSchedule) backgroundScale.value
-                        else if (isEntryAnimating) 1f
-                        else 1f
-                    val exitScale = if (isCustomizeExiting) customizeExitScale.value else 1f
-                    val cutoutScale = cutoutMainScale.value
-                    // 开洞时由 cutoutScale 控制；进出场统一由快照覆盖层处理，避免叠加闪烁
-                    val effectiveScale = if (isCustomizeExiting && isWindowCutoutActive) {
-                        cutoutScale
+                    if (mainLayerNeeded) {
+                        Modifier.graphicsLayer {
+                            val baseScale =
+                                if (!showSwitchSchedule) backgroundScale.value
+                                else if (isEntryAnimating) 1f
+                                else 1f
+                            val exitScale = if (isCustomizeExiting) customizeExitScale.value else 1f
+                            val cutoutScale = cutoutMainScale.value
+                            // 开洞时由 cutoutScale 控制；进出场统一由快照覆盖层处理，避免叠加闪烁
+                            val effectiveScale = if (isCustomizeExiting && isWindowCutoutActive) {
+                                cutoutScale
+                            } else {
+                                exitScale * cutoutScale
+                            }
+                            scaleX = baseScale * effectiveScale
+                            scaleY = baseScale * effectiveScale
+                            alpha = mainContentAlpha
+                            // 与 CustomizeScheduleScreen 共享同一 Animatable，像素级同帧
+                            val sheetScale = cutoutMainScale.value
+                            val sheetScaleProg = ((sheetScale - 0.65f) / (1f - 0.65f)).coerceIn(0f, 1f)
+                            translationY = sheetOffsetY.value * (1f - sheetScaleProg)
+                            if (isCustomizeExiting) {
+                                transformOrigin = TransformOrigin(0.5f, 0.58f)
+                            }
+                            if (isWindowCutoutActive) {
+                                // 使用 CustomizeScheduleScreen 传回的裁剪中心比例，保证两者完全对齐
+                                transformOrigin = TransformOrigin(0.5f, cutoutCenterYRatio)
+                            }
+                        }
                     } else {
-                        exitScale * cutoutScale
+                        Modifier
                     }
-                    scaleX = baseScale * effectiveScale
-                    scaleY = baseScale * effectiveScale
-                    alpha = mainContentAlpha
-                    // 与 CustomizeScheduleScreen 共享同一 Animatable，像素级同帧
-                    val sheetScale = cutoutMainScale.value
-                    val sheetScaleProg = ((sheetScale - 0.65f) / (1f - 0.65f)).coerceIn(0f, 1f)
-                    translationY = sheetOffsetY.value * (1f - sheetScaleProg)
-                    if (isCustomizeExiting) {
-                        transformOrigin = TransformOrigin(0.5f, 0.58f)
-                    }
-                    if (isWindowCutoutActive) {
-                        // 使用 CustomizeScheduleScreen 传回的裁剪中心比例，保证两者完全对齐
-                        transformOrigin = TransformOrigin(0.5f, cutoutCenterYRatio)
-                    }
-                }
+                )
                 .then(
                     // 每帧按当前缩放重裁；搭配页退出时锁定 screenCornerRadius
                     Modifier.drawWithContent {
@@ -2766,21 +2788,36 @@ fun CourseScheduleApp() {
                         Box(modifier = Modifier.fillMaxWidth()) {
                             if (showScheduleTitle) {
                                 val scheduleTitleIndex = if (isShiftMode) 0 else 1
+                                // 空闲停在本页时 delta=0：不挂 graphicsLayer，免掉顶栏整棵离屏合成。
+                                // 切 tab 过程中才开层，用 size.width 跟 pager 对齐。
+                                val scheduleTitleIdle by remember(scheduleTitleIndex, navBarStyle) {
+                                    derivedStateOf {
+                                        val page = mainPagerState.currentPage
+                                        val off = mainPagerState.currentPageOffsetFraction
+                                        (scheduleTitleIndex - page - off) == 0f
+                                    }
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .graphicsLayer {
-                                            val page = mainPagerState.currentPage
-                                            val off = mainPagerState.currentPageOffsetFraction
-                                            val delta = scheduleTitleIndex - page - off
-                                            if (navBarStyle == "rail") {
-                                                translationX = 0f
-                                                translationY = delta * screenHPx
+                                        .then(
+                                            if (scheduleTitleIdle) {
+                                                Modifier
                                             } else {
-                                                translationY = 0f
-                                                translationX = delta * size.width
+                                                Modifier.graphicsLayer {
+                                                    val page = mainPagerState.currentPage
+                                                    val off = mainPagerState.currentPageOffsetFraction
+                                                    val delta = scheduleTitleIndex - page - off
+                                                    if (navBarStyle == "rail") {
+                                                        translationX = 0f
+                                                        translationY = delta * screenHPx
+                                                    } else {
+                                                        translationY = 0f
+                                                        translationX = delta * size.width
+                                                    }
+                                                }
                                             }
-                                        }
+                                        )
                                 ) {
                                     ScheduleTopBar(
                                         visible = true,
@@ -2853,21 +2890,34 @@ fun CourseScheduleApp() {
                             // 设置页顶栏在 Activity 层级渲染，避免 drawPlainBackdrop native crash
                             if (showSettingsTitle) {
                                 val settingsTitleIndex = if (isShiftMode) 1 else 2
+                                val settingsTitleIdle by remember(settingsTitleIndex, navBarStyle) {
+                                    derivedStateOf {
+                                        val page = mainPagerState.currentPage
+                                        val off = mainPagerState.currentPageOffsetFraction
+                                        (settingsTitleIndex - page - off) == 0f
+                                    }
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .graphicsLayer {
-                                            val page = mainPagerState.currentPage
-                                            val off = mainPagerState.currentPageOffsetFraction
-                                            val delta = settingsTitleIndex - page - off
-                                            if (navBarStyle == "rail") {
-                                                translationX = 0f
-                                                translationY = delta * screenHPx
+                                        .then(
+                                            if (settingsTitleIdle) {
+                                                Modifier
                                             } else {
-                                                translationY = 0f
-                                                translationX = delta * size.width
+                                                Modifier.graphicsLayer {
+                                                    val page = mainPagerState.currentPage
+                                                    val off = mainPagerState.currentPageOffsetFraction
+                                                    val delta = settingsTitleIndex - page - off
+                                                    if (navBarStyle == "rail") {
+                                                        translationX = 0f
+                                                        translationY = delta * screenHPx
+                                                    } else {
+                                                        translationY = 0f
+                                                        translationX = delta * size.width
+                                                    }
+                                                }
                                             }
-                                        }
+                                        )
                                 ) {
                                     SettingsTopBar(
                                         liquidGlassBackdrop = chromeBackdrop,
@@ -2878,23 +2928,38 @@ fun CourseScheduleApp() {
                                     )
                                 }
                             }
-                            // 始终渲染但 alpha=0，保证 currentHeightPx 启动即就位，切页不慢一帧
+                            // 始终渲染，保证 currentHeightPx 启动即就位，切页不慢一帧
+                            // 空闲在本页时不挂层；离屏时用 graphicsLayer 位移+隐藏
+                            val todayTitleIdle by remember(navBarStyle) {
+                                derivedStateOf {
+                                    val page = mainPagerState.currentPage
+                                    val off = mainPagerState.currentPageOffsetFraction
+                                    val delta = 0 - page - off
+                                    delta == 0f && showTodayTitle
+                                }
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .graphicsLayer {
-                                        val page = mainPagerState.currentPage
-                                        val off = mainPagerState.currentPageOffsetFraction
-                                        val delta = 0 - page - off
-                                        if (navBarStyle == "rail") {
-                                            translationX = 0f
-                                            translationY = delta * screenHPx
+                                    .then(
+                                        if (todayTitleIdle) {
+                                            Modifier
                                         } else {
-                                            translationY = 0f
-                                            translationX = delta * size.width
+                                            Modifier.graphicsLayer {
+                                                val page = mainPagerState.currentPage
+                                                val off = mainPagerState.currentPageOffsetFraction
+                                                val delta = 0 - page - off
+                                                if (navBarStyle == "rail") {
+                                                    translationX = 0f
+                                                    translationY = delta * screenHPx
+                                                } else {
+                                                    translationY = 0f
+                                                    translationX = delta * size.width
+                                                }
+                                                alpha = if (showTodayTitle) 1f else 0f
+                                            }
                                         }
-                                        alpha = if (showTodayTitle) 1f else 0f
-                                    }
+                                    )
                             ) {
                                 TodayTopBar(
                                     liquidGlassBackdrop = chromeBackdrop,

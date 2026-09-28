@@ -15,6 +15,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -139,8 +141,16 @@ fun Modifier.pagerAxisTakeoverGesture(
     val overscrollX = remember { mutableFloatStateOf(0f) }
     return this
         .clipToBounds()
-        // overscrollX 是 scrollBy 坐标（正值=下一页=内容左移），视觉平移须取反
-        .graphicsLayer { translationX = -overscrollX.floatValue }
+        // overscrollX 是 scrollBy 坐标（正值=下一页=内容左移），视觉平移须取反。
+        // 用 draw 平移而不是 graphicsLayer：静止时不产生全屏离屏合成（周滑 P50）。
+        .drawWithContent {
+            val tx = -overscrollX.floatValue
+            if (tx != 0f) {
+                translate(tx, 0f) { this@drawWithContent.drawContent() }
+            } else {
+                drawContent()
+            }
+        }
         .pointerInput(pagerState, scope, settleJob, overscrollJob, overscrollX) {
             val touchSlop = viewConfiguration.touchSlop
             val domRatio = 1.3f
