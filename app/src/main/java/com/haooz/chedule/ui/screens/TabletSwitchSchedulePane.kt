@@ -143,7 +143,7 @@ fun TabletSwitchSchedulePane(
             else Color.Black.copy(alpha = 0.06f)
 
         // 左栏内容层：供顶栏渐变模糊采样
-        val leftBackdrop = rememberLayerBackdrop { drawContent() }
+        val leftBackdrop = rememberLayerBackdrop()
         // 顶栏遮罩与标题栏按钮共用同一 alpha（设置页同款）
         val maskAlpha = rememberPaneMaskAlpha(-leftScrollPx)
 

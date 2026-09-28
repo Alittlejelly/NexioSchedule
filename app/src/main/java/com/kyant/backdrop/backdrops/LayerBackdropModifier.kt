@@ -2,6 +2,8 @@ package com.kyant.backdrop.backdrops
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.DrawModifierNode
@@ -88,7 +90,6 @@ private class LayerBackdropNode(
     fun markNeedsRecord() { needsRecord = true }
 
     override fun ContentDrawScope.draw() {
-        drawContent()
         val w = size.width.roundToInt()
         val h = size.height.roundToInt()
         // recordKey == null：内容可能每帧变化（滚动中的课表/顶栏），必须每帧重录。
@@ -101,11 +102,18 @@ private class LayerBackdropNode(
             needsRecord = false
             recordedW = w
             recordedH = h
+            // 先录进图层。contentOnly 时上屏直接 blit 该图层，内容树只走一遍；
+            // 否则 onDraw 可能多画背景，上屏仍 drawContent()（内容会走两遍，但保证像素一致）。
             recordLayer(this@LayerBackdropNode, backdrop.graphicsLayer) {
                 backdrop.onDraw(this@draw)
             }
             backdrop.contentVersion++
+            if (backdrop.contentOnlyCapture) {
+                drawLayer(backdrop.graphicsLayer)
+                return
+            }
         }
+        drawContent()
     }
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {

@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -93,8 +95,19 @@ class BackdropViewport {
     @Volatile
     var bottomPx: Float = Float.POSITIVE_INFINITY
 
+    /** 横滑裁剪：左右边界（window 坐标）。默认不裁横轴。 */
+    @Volatile
+    var leftPx: Float = Float.NEGATIVE_INFINITY
+
+    @Volatile
+    var rightPx: Float = Float.POSITIVE_INFINITY
+
     fun containsOrIntersects(top: Float, bottom: Float): Boolean {
         return bottom >= topPx && top <= bottomPx
+    }
+
+    fun containsOrIntersectsX(left: Float, right: Float): Boolean {
+        return right >= leftPx && left <= rightPx
     }
 }
 
@@ -318,11 +331,11 @@ private class DrawBackdropNode(
     private var lastSampleH = -1
     private var lastSampleLayer: GraphicsLayer? = null
 
-    private val layoutLayerBlock: GraphicsLayerScope.() -> Unit = {
-        clip = true
-        shape = shapeProvider.shape
-        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-    }
+    // 外形裁剪路径缓存：尺寸/圆角未变时不重建 Path
+    private var clipPathCache: androidx.compose.ui.graphics.Path? = null
+    private var clipPathRadius = Float.NaN
+    private var clipPathW = Float.NaN
+    private var clipPathH = Float.NaN
 
     private var layoutCoordinates: LayoutCoordinates? by mutableStateOf(null, neverEqualPolicy())
 
@@ -359,16 +372,19 @@ private class DrawBackdropNode(
         if (layer != null) {
             val viewport = viewport
             if (viewport != null && layoutCoordinates != null) {
-                val winTop = try {
-                    layoutCoordinates!!.positionInWindow().y
+                val winPos = try {
+                    layoutCoordinates!!.positionInWindow()
                 } catch (_: Exception) {
-                    Float.NaN
+                    null
                 }
-                if (!winTop.isNaN()) {
-                    val winBottom = winTop + size.height
-                    if (!viewport.containsOrIntersects(winTop, winBottom)) {
-                        // 完全在视口外：跳过采样录制与放大绘制。表面色/文字仍由 draw() 照常画，
-                        // 被父级裁剪后不可见，但保证滚回视口时路径完整。
+                if (winPos != null) {
+                    val winRight = winPos.x + size.width
+                    val winBottom = winPos.y + size.height
+                    if (!viewport.containsOrIntersects(winPos.y, winBottom) ||
+                        !viewport.containsOrIntersectsX(winPos.x, winRight)
+                    ) {
+                        // 完全在视口外（含横滑屏外）：跳过采样录制与放大绘制。
+                        // 表面色/文字仍由 draw() 照常画，被父级裁剪后不可见。
                         return@drawBackdropLayer
                     }
                 }
@@ -527,8 +543,10 @@ private class DrawBackdropNode(
         constraints: Constraints
     ): MeasureResult {
         val placeable = measurable.measure(constraints)
+        // 不用 placeWithLayer：clip+shape 改到 draw 阶段 clipPath，
+        // 省掉每张卡一个合成层（周滑几十张卡）。
         return layout(placeable.width, placeable.height) {
-            placeable.placeWithLayer(IntOffset.Zero, layerBlock = layoutLayerBlock)
+            placeable.place(IntOffset.Zero)
         }
     }
 
@@ -537,6 +555,36 @@ private class DrawBackdropNode(
             updateEffects()
         }
 
+        // 与原 placeWithLayer(clip+shape) 等价：整段内容裁进卡片外形
+        val contentScope = this
+        val outline = shapeProvider.shape.createOutline(size, layoutDirection, this)
+        when (outline) {
+            is androidx.compose.ui.graphics.Outline.Rectangle ->
+                clipRect(outline.rect.left, outline.rect.top, outline.rect.right, outline.rect.bottom) {
+                    contentScope.drawCardContents()
+                }
+            is androidx.compose.ui.graphics.Outline.Rounded -> {
+                val rr = outline.roundRect
+                // Path 重建不便宜：半宽/半高/圆角未变时复用
+                val w = size.width
+                val h = size.height
+                val radius = rr.topLeftCornerRadius.x
+                var path = clipPathCache
+                if (path == null || clipPathW != w || clipPathH != h || clipPathRadius != radius) {
+                    path = androidx.compose.ui.graphics.Path().apply { addRoundRect(rr) }
+                    clipPathCache = path
+                    clipPathW = w
+                    clipPathH = h
+                    clipPathRadius = radius
+                }
+                clipPath(path) { contentScope.drawCardContents() }
+            }
+            is androidx.compose.ui.graphics.Outline.Generic ->
+                clipPath(outline.path) { contentScope.drawCardContents() }
+        }
+    }
+
+    private fun ContentDrawScope.drawCardContents() {
         onDrawBehind?.invoke(this)
         drawBackdropLayer()
         onDrawSurface?.invoke(this)
@@ -615,5 +663,6 @@ private class DrawBackdropNode(
         lastSampleW = -1
         lastSampleH = -1
         lastSampleLayer = null
+        clipPathCache = null
     }
 }

@@ -227,18 +227,26 @@ fun CourseCard(
                 androidx.compose.ui.graphics.drawscope.Stroke(with(localDensity) { 2.dp.toPx() })
             }
             val outlineCache = remember { OutlineCache() }
+            // 静止卡不挂 graphicsLayer：几十张×两页的合成层是周滑 draw 热点
+            val needTransformLayer = sinkPressed || isDragging || rippleAnimating
 
             Box(
                 modifier = modifier
                     .fillMaxWidth()
                     .height(cardHeight)
                     .then(if (disablePadding) Modifier else Modifier.padding(horizontal = 2.dp, vertical = 2.dp))
-                    .graphicsLayer {
-                        val s = sinkScale.value * rippleScale.value
-                        scaleX = s
-                        scaleY = s
-                        alpha = if (isDragging) 0f else 1f
-                    }
+                    .then(
+                        if (needTransformLayer) {
+                            Modifier.graphicsLayer {
+                                val s = sinkScale.value * rippleScale.value
+                                scaleX = s
+                                scaleY = s
+                                alpha = if (isDragging) 0f else 1f
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .onGloballyPositioned { coordinates ->
                         if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
                         val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))

@@ -37,6 +37,13 @@ class LayerBackdrop internal constructor(
     internal val onDraw: ContentDrawScope.() -> Unit
 ) : Backdrop {
 
+    /**
+     * onDraw 是否只是 drawContent()（或等价物）。
+     * 为 true 时 [LayerBackdropNode] 录制后直接把图层画上屏，内容树只走一遍；
+     * 为 false 时 onDraw 可能额外画背景等，上屏仍走 drawContent()，录制层单独走 onDraw。
+     */
+    internal val contentOnlyCapture: Boolean = onDraw === DefaultOnDraw
+
     override val isCoordinatesDependent: Boolean = true
 
     override var contentVersion: Int = 0

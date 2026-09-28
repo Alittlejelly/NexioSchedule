@@ -15,13 +15,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.ObserverModifierNode
+import androidx.compose.ui.node.invalidatePlacement
+import androidx.compose.ui.node.observeReads
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -39,8 +46,6 @@ import kotlin.math.sign
  * HorizontalPager 横竖轴主导判定翻页手势。使用方需 `userScrollEnabled = false`。
  *
  * 横滑/对角由 `pagerState.scrollBy` 驱动，松手 [settleHorizontalPager] 落页；
- * 纵滑不占 pager 写锁，交页内 verticalScroll / LazyColumn。
- * 末端 `scrollBy` 吃不下的位移走橡皮筋，松手弹簧回弹。
  *
  * 轴向锁定（越 touchSlop 后）：
  * - 横 ≥ 1.3×纵 → 横主导并 consume，防弧线 Y 带动纵向
@@ -65,9 +70,10 @@ fun rememberPagerTakeoverGestureState(): PagerTakeoverGestureState {
  * 连续切页时上一拍 settle 常未结束，起点可能是小数页；目标以
  * `max/min(currentPage, startRound)` 为基准，避免「第一次划不过去」。
  *
- * 落页规则：距离约 1/4 页认方向；甩速 ≥ 200.dp/s 时至少推进基准页 ±1。
- * 甩速阈值不宜过高（高密度屏上 400.dp/s ≈ 1200px/s，短甩到不了），
- * 位移门也不宜过窄（±0.05 页会被噪声/轻微反向挡掉）。
+ * 落页规则：距离约 1/4 页认方向；甩速 ≥ 100.dp/s 时至少推进基准页 ±1。
+ * 小幅快甩的释放速度常只有 300~600px/s，门限取 200.dp/s 会整段漏掉、
+ * 只能按距离回弹（表现为「反向拉回」）；再取低则慢拖释放的残余速度
+ * 会误翻页，100.dp/s 是两者的平衡点。
  */
 internal suspend fun settleHorizontalPager(
     pagerState: PagerState,
@@ -93,8 +99,9 @@ internal suspend fun settleHorizontalPager(
         if (targetPage > distTarget) targetPage = distTarget
     }
 
-    // 同向甩（或只带轻微反向）至少推进一页；反向拖超过 1/4 页则尊重距离结果
-    val flickThreshold = with(density) { 200.dp.toPx() }
+    // 同向甩（或只带轻微反向）至少推进一页；反向拖超过 1/4 页则尊重距离结果。
+    // 100.dp/s ≈ 300px/s（3x 屏）：小幅快甩的常见释放区间下沿，再高会漏判回弹
+    val flickThreshold = with(density) { 100.dp.toPx() }
     if (fingerVelocityX <= -flickThreshold && dragPages > -0.25f) {
         val velTarget = (baseForward + 1).coerceIn(0, pageCount - 1)
         if (targetPage < velTarget) targetPage = velTarget
@@ -125,6 +132,71 @@ private fun dampedOverscroll(raw: Float, range: Float): Float {
 }
 
 /**
+ * 末端回弹的视觉平移（placement/layer，进布局坐标）。
+ *
+ */
+private class PagerOverscrollOffsetElement(
+    private val overscrollX: androidx.compose.runtime.MutableFloatState,
+) : ModifierNodeElement<PagerOverscrollOffsetNode>() {
+    override fun create(): PagerOverscrollOffsetNode = PagerOverscrollOffsetNode(overscrollX)
+
+    override fun update(node: PagerOverscrollOffsetNode) {
+        if (node.overscrollX !== overscrollX) {
+            node.overscrollX = overscrollX
+            node.invalidatePlacement()
+        }
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "pagerOverscrollOffset"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PagerOverscrollOffsetElement) return false
+        return overscrollX === other.overscrollX
+    }
+
+    override fun hashCode(): Int = overscrollX.hashCode()
+}
+
+private class PagerOverscrollOffsetNode(
+    var overscrollX: androidx.compose.runtime.MutableFloatState,
+) : LayoutModifierNode, ObserverModifierNode, Modifier.Node() {
+
+    override fun onAttach() {
+        observeOffset()
+    }
+
+    override fun onObservedReadsChanged() {
+        invalidatePlacement()
+        observeOffset()
+    }
+
+    private fun observeOffset() {
+        observeReads { overscrollX.floatValue }
+    }
+
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) {
+            // overscrollX 是 scrollBy 坐标（正值=下一页=内容左移），视觉平移须取反
+            val tx = -overscrollX.floatValue
+            if (tx == 0f) {
+                placeable.place(0, 0)
+            } else {
+                placeable.placeWithLayer(0, 0) {
+                    translationX = tx
+                }
+            }
+        }
+    }
+}
+
+/**
  * 挂在 HorizontalPager 的 modifier 上。`blockGesture()==true` 时不驱动 pager
  * （课表页：壁纸编辑 / 课卡拖拽独占）。
  */
@@ -141,16 +213,8 @@ fun Modifier.pagerAxisTakeoverGesture(
     val overscrollX = remember { mutableFloatStateOf(0f) }
     return this
         .clipToBounds()
-        // overscrollX 是 scrollBy 坐标（正值=下一页=内容左移），视觉平移须取反。
-        // 用 draw 平移而不是 graphicsLayer：静止时不产生全屏离屏合成（周滑 P50）。
-        .drawWithContent {
-            val tx = -overscrollX.floatValue
-            if (tx != 0f) {
-                translate(tx, 0f) { this@drawWithContent.drawContent() }
-            } else {
-                drawContent()
-            }
-        }
+        // 回弹平移必须进布局坐标（placeWithLayer），课卡采样才会跟随
+        .then(PagerOverscrollOffsetElement(overscrollX))
         .pointerInput(pagerState, scope, settleJob, overscrollJob, overscrollX) {
             val touchSlop = viewConfiguration.touchSlop
             val domRatio = 1.3f
@@ -169,7 +233,9 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var xDominant = false
                 var dualAxis = false
                 var locked = false
-                var lastUptimeMillis = down.uptimeMillis
+                // 最后发生真实移动的时刻：甩完停顿再抬手时，VelocityTracker 的
+                // 100ms 窗口被静止段稀释，需要按「位移段」重新估均速兜底
+                var lastMoveUptimeMillis = down.uptimeMillis
                 // 与 overscrollX 同为 scrollBy 坐标；阻尼前的原始累积
                 var overscrollRaw = 0f
                 val viewportPx = size.width.toFloat().coerceAtLeast(1f)
@@ -178,13 +244,13 @@ fun Modifier.pagerAxisTakeoverGesture(
                     val event = awaitPointerEvent(PointerEventPass.Main)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     tracker.addPosition(change.uptimeMillis, change.position)
-                    lastUptimeMillis = change.uptimeMillis
                     if (!change.pressed) break
                     if (latestBlock.value()) break
                     val dx = change.positionChangeIgnoreConsumed().x
                     val dy = change.positionChangeIgnoreConsumed().y
                     accX += dx
                     accY += dy
+                    if (dx != 0f || dy != 0f) lastMoveUptimeMillis = change.uptimeMillis
                     if (!locked) {
                         val ax = abs(accX)
                         val ay = abs(accY)
@@ -263,14 +329,21 @@ fun Modifier.pagerAxisTakeoverGesture(
                 dragChannel = null
                 // AwaitPointerEventScope 不能 join；回 scope 等 worker 放锁后再落页
                 if (xDominant || dualAxis) {
-                    // 短甩时 VelocityTracker 可能采样不足得到 0 速，用整段位移估算兜底
+                    // 两个速度估计取幅度大者：
+                    // 1) VelocityTracker：采样不足或快甩后停顿时会被稀释/低估；
+                    // 2) 位移段均速（末次移动到按下）：补上停顿抬手与短手势的场景。
                     val trackedVelocity =
                         runCatching { tracker.calculateVelocity() }.getOrNull() ?: Velocity(0f, 0f)
-                    val fingerVelocity = if (abs(trackedVelocity.x) > 1f) {
-                        trackedVelocity
+                    val moveSpanMs =
+                        (lastMoveUptimeMillis - down.uptimeMillis).coerceAtLeast(16L)
+                    val moveAvgVelocity = Velocity(
+                        x = accX * 1000f / moveSpanMs,
+                        y = accY * 1000f / moveSpanMs,
+                    )
+                    val fingerVelocity = if (abs(moveAvgVelocity.x) > abs(trackedVelocity.x)) {
+                        moveAvgVelocity
                     } else {
-                        val dtMs = (lastUptimeMillis - down.uptimeMillis).coerceAtLeast(16L)
-                        Velocity(x = accX * 1000f / dtMs, y = accY * 1000f / dtMs)
+                        trackedVelocity
                     }
                     if (scrollWorker == null) workerDone.complete(Unit)
                     settleJob.value = scope.launch {

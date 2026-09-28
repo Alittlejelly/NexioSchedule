@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
@@ -64,7 +63,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,18 +71,19 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.HolidayCourseExclusion
+import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -788,6 +787,9 @@ fun MainScheduleScreen(
                         val pos = coordinates.positionInWindow()
                         scheduleViewport.topPx = pos.y
                         scheduleViewport.bottomPx = pos.y + coordinates.size.height
+                        // 横轴裁剪用屏幕可见区（不是本页 bounds），邻页屏外课卡才能被跳过
+                        scheduleViewport.leftPx = 0f
+                        scheduleViewport.rightPx = screenWidthPx
                     }
                     .verticalScroll(scrollState)
                     // 底部留白直接计入滚动内容高度；强制无界测量，避免 fillMaxSize/测量链把内容压回视口高

@@ -115,7 +115,7 @@ fun TabletCourseManagePane(
         val paneHeightPx = with(density) { maxHeight.toPx() }
 
         // 左栏内容层：供顶栏渐变模糊采样（不含模糊层自身，避免递归）
-        val leftBackdrop = rememberLayerBackdrop { drawContent() }
+        val leftBackdrop = rememberLayerBackdrop()
         // 右栏编辑页自带的顶栏模糊采样层，与手机课程管理 Activity 用法一致
         val editorBackdrop = rememberLayerBackdrop()
 
