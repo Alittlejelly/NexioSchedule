@@ -284,6 +284,36 @@ object CourseReminderHelper {
         return ((remain + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
     }
 
+    private fun formatClock(millis: Long): String {
+        if (millis <= 0L) return ""
+        return java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(millis))
+    }
+
+    /** 课前实况正文：第一行「N分钟后上课 · 上课时间 - 下课时间」，第二行上课地点。 */
+    private fun buildPreClassBigText(
+        minutesUntilStart: Int,
+        startTime: String,
+        endTime: String,
+        classroom: String
+    ): String = buildString {
+        val timeRange = when {
+            startTime.isNotEmpty() && endTime.isNotEmpty() -> "$startTime - $endTime"
+            startTime.isNotEmpty() -> startTime
+            endTime.isNotEmpty() -> endTime
+            else -> ""
+        }
+        if (timeRange.isEmpty()) {
+            append("${minutesUntilStart}分钟后上课")
+        } else {
+            append("${minutesUntilStart}分钟后上课 · $timeRange")
+        }
+        if (classroom.isNotEmpty()) {
+            append('\n')
+            append(classroom)
+        }
+    }
+
     fun todayMillis(hour: Int, minute: Int): Long {
         return Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, hour)
@@ -1220,6 +1250,22 @@ object CourseReminderHelper {
     }
 
     /**
+     * ColorOS（OPPO/realme/OnePlus）会优化进度条标头导致偏移，课中进度用系统默认 tracker。
+     */
+    private fun isColorOs(): Boolean {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase(java.util.Locale.ROOT)
+        val brand = android.os.Build.BRAND.lowercase(java.util.Locale.ROOT)
+        val colorOsBrands = setOf("oppo", "realme", "oneplus")
+        if (manufacturer in colorOsBrands || brand in colorOsBrands) return true
+        return runCatching {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val get = clazz.getMethod("get", String::class.java)
+            val rom = (get.invoke(null, "ro.build.version.oplusrom") as? String).orEmpty()
+            rom.isNotBlank()
+        }.getOrDefault(false)
+    }
+
+    /**
      * 原生实况课中进度：API 36+ 用 ProgressStyle + 提升 ongoing，与 SleepDown 同思路。
      * 每分钟只在剩余分钟/进度变化时重推，挂到下课自动结束。
      */
@@ -1284,7 +1330,7 @@ object CourseReminderHelper {
         val notification = if (Build.VERSION.SDK_INT >= 36) {
             val builder = Notification.Builder(context, CHANNEL_LIVE_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("$courseName | 上课中")
+                .setContentTitle(courseName)
                 .setContentText(infoLine)
                 .setStyle(Notification.BigTextStyle().bigText(expandedText))
                 .setContentIntent(contentIntent)
@@ -1293,14 +1339,16 @@ object CourseReminderHelper {
                 .setShowWhen(false)
                 .setCategory(Notification.CATEGORY_PROGRESS)
                 .setTimeoutAfter(endMillis - now)
-            builder.setStyle(
-                Notification.ProgressStyle()
-                    .setProgressTrackerIcon(
-                        android.graphics.drawable.Icon.createWithResource(context, R.drawable.ic_live_dot)
-                    )
-                    .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100)))
-                    .setProgress(progress)
-            )
+            val progressStyle = Notification.ProgressStyle()
+                .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100)))
+                .setProgress(progress)
+            // ColorOS 优化会把自定义标头挤偏，走系统默认 tracker
+            if (!isColorOs()) {
+                progressStyle.setProgressTrackerIcon(
+                    android.graphics.drawable.Icon.createWithResource(context, R.drawable.ic_live_dot)
+                )
+            }
+            builder.setStyle(progressStyle)
             runCatching { builder.setRequestPromotedOngoing(true) }
             runCatching { builder.setShortCriticalText(shortCriticalText) }
             builder.build().apply {
@@ -1310,7 +1358,7 @@ object CourseReminderHelper {
             // 低版本无 ProgressStyle：用普通进度条 + 提升请求降级
             NotificationCompat.Builder(context, CHANNEL_LIVE_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("$courseName | 上课中")
+                .setContentTitle(courseName)
                 .setContentText(expandedText)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(expandedText))
                 .setProgress(100, progress, false)
@@ -1355,7 +1403,6 @@ object CourseReminderHelper {
     private fun showStartedLiveNotification(
         context: Context,
         courseName: String,
-        classroom: String,
         startTime: String,
         testMode: Boolean = false
     ) {
@@ -1378,16 +1425,16 @@ object CourseReminderHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val bigText = buildString {
-            if (startTime.isNotEmpty()) append(startTime)
-            if (classroom.isNotEmpty()) {
-                if (isNotEmpty()) append(" · ")
-                append(classroom)
+            if (startTime.isNotEmpty()) {
+                append(startTime)
+                append(" · ")
             }
+            append("现在上课")
         }
         val startedNotification = NotificationCompat.Builder(context, CHANNEL_LIVE_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("$courseName | 已上课")
-            .setShortCriticalText("已上课")
+            .setContentTitle(courseName)
+            .setShortCriticalText(courseName)
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(bigText)
@@ -1513,25 +1560,22 @@ object CourseReminderHelper {
             else -> courseName
         }
 
-        val bigText = buildString {
-            if (startTime.isNotEmpty()) append(startTime)
-            if (classroom.isNotEmpty()) {
-                if (isNotEmpty()) append(" · ")
-                append(classroom)
-            }
-        }
+        val bigText = buildPreClassBigText(
+            minutesUntilStart = minutesUntilStart,
+            startTime = startTime,
+            endTime = formatClock(endMillis),
+            classroom = classroom
+        )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("$courseName | 即将上课")
+            .setContentTitle(courseName)
             .setShortCriticalText(shortCriticalText)
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(bigText)
             )
-            .setWhen(startMillis)
-            .setUsesChronometer(true)
-            .setChronometerCountDown(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
@@ -1719,7 +1763,6 @@ object CourseReminderHelper {
             showStartedLiveNotification(
                 context = context,
                 courseName = courseName,
-                classroom = classroom,
                 startTime = startTime,
                 testMode = testMode
             )
@@ -1729,23 +1772,24 @@ object CourseReminderHelper {
         val collapsedPrefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
         val collapsedMode = collapsedPrefs.getInt("live_right_mode", 0)
 
-        // 非倒计时模式内容不变，无需每分钟重建
-        if (collapsedMode != 2) return
-
         val minutesUntilStart = ceilMinutesUntil(startMillis, now)
 
-        // 只在分钟数变化时重建
+        // 只在分钟数变化时重建（正文含手动倒计时，各模式都要刷）
         val lastDisplayedMinutes = prefs.getInt("last_displayed_minutes", -1)
         if (minutesUntilStart == lastDisplayedMinutes) return
-        val shortCriticalText = "${minutesUntilStart}分钟"
-
-        val bigText = buildString {
-            if (startTime.isNotEmpty()) append(startTime)
-            if (classroom.isNotEmpty()) {
-                if (isNotEmpty()) append(" · ")
-                append(classroom)
-            }
+        val shortCriticalText = when (collapsedMode) {
+            0 -> courseName
+            1 -> classroom.ifEmpty { courseName }
+            2 -> "${minutesUntilStart}分钟"
+            else -> courseName
         }
+
+        val bigText = buildPreClassBigText(
+            minutesUntilStart = minutesUntilStart,
+            startTime = startTime,
+            endTime = formatClock(endMillis),
+            classroom = classroom
+        )
 
         val contentIntent = PendingIntent.getActivity(
             context, courseName.hashCode(),
@@ -1768,15 +1812,13 @@ object CourseReminderHelper {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("$courseName | 即将上课")
+            .setContentTitle(courseName)
             .setShortCriticalText(shortCriticalText)
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(bigText)
             )
-            .setWhen(startMillis)
-            .setUsesChronometer(true)
-            .setChronometerCountDown(true)
+            .setShowWhen(false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)

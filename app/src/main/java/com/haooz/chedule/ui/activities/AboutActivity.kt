@@ -1047,6 +1047,13 @@ fun AboutScreen(
                                                 .padding(start = 4.dp)
                                         )
                                     }
+                                    // APP 备案号：按工信部要求在「关于」页面显著位置展示
+                                    Text(
+                                        text = "闽ICP备2026037367号-2A",
+                                        fontSize = 13.sp,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
                                 }
                             }
                         }

@@ -81,8 +81,8 @@ fun PreferenceSettingsScreen(
     val eduPrefs = remember { context.getSharedPreferences("edu_import_prefs", Context.MODE_PRIVATE) }
     var repoUrl by remember {
         mutableStateOf(
-            eduPrefs.getString("repo_url", "https://gitee.com/com_haooz_account/shiguang_warehouse")
-                ?: "https://gitee.com/com_haooz_account/shiguang_warehouse"
+            eduPrefs.getString("repo_url", "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse")
+                ?: "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse"
         )
     }
 
