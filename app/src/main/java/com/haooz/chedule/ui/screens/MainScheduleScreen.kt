@@ -61,6 +61,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -1844,6 +1845,15 @@ private fun AnimatedDropTargetMask(
         val glassSurface = if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
         val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
         val maskShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
+        // 稳定引用：内联 lambda 会让 drawBackdrop 每次重组重建 RenderEffect
+        val maskEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+            remember(wallpaperBackdrop, blurPx) {
+                {
+                    if (wallpaperBackdrop !is SharedBlurBackdrop) blur(blurPx)
+                }
+            }
+        val maskSurface: DrawScope.() -> Unit =
+            remember(glassSurface) { { drawRect(glassSurface) } }
 
         if (hasWallpaperMask) {
             // 壁纸玻璃表面：offset+layout 跟动画几何，alpha 走 graphicsLayer
@@ -1867,13 +1877,11 @@ private fun AnimatedDropTargetMask(
                     .drawBackdrop(
                         backdrop = wallpaperBackdrop!!,
                         shape = { maskShape },
-                        effects = {
-                            if (wallpaperBackdrop !is SharedBlurBackdrop) blur(blurPx)
-                        },
+                        effects = maskEffects,
                         highlight = null,
                         shadow = null,
                         downsampleScale = 0.48f,
-                        onDrawSurface = { drawRect(glassSurface) }
+                        onDrawSurface = maskSurface
                     )
             )
         } else {

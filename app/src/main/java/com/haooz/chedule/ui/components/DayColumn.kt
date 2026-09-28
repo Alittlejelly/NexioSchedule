@@ -531,6 +531,9 @@ private fun PendingSectionBox(
                         }
                     }
                 }
+                val pendingOnSurface: DrawScope.() -> Unit = remember(surfaceColor) {
+                    { drawRect(surfaceColor) }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -542,9 +545,7 @@ private fun PendingSectionBox(
                             highlight = null,
                             shadow = null,
                             viewport = com.kyant.backdrop.LocalBackdropViewport.current,
-                            onDrawSurface = {
-                                drawRect(surfaceColor)
-                            }
+                            onDrawSurface = pendingOnSurface
                         )
                         .edgeLight(shape = edgeLightShape, edgeLight = rememberCourseCardEdgeLight())
                 ) {

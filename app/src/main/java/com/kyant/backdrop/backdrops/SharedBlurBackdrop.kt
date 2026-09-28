@@ -59,6 +59,13 @@ class SharedBlurBackdrop(
     var sharedDownsampleScale: Float = DOWNSAMPLE_SCALE
         internal set
 
+    /**
+     * 供 ImageShader 直采折射路径使用：已烘焙模糊的壁纸位图。
+     * 由调用方在壁纸变化时写入；draw 阶段只读，不触发组合。
+     */
+    @Volatile
+    var sampledBitmap: android.graphics.Bitmap? = null
+
     /** 共享层像素内容版本：每次重录源层时递增，供采样侧跳过无变化重录 */
     override var contentVersion: Int = 0
         internal set
@@ -232,10 +239,8 @@ private class SharedBlurRecorderNode(
             sharedBackdrop.contentVersion++
         }
 
-        // 应用模糊 RenderEffect（在 drawLayer 时生效）。
-        // 只在半径真正变化时赋值：每帧 new 一个 BlurEffect 会让图层反复失效、重跑一遍 GPU 模糊。
-        // 半径变化不重录源层，但必须抬 contentVersion：课卡是把「已糊好的共享层」烤进各自缓冲的，
-        // 版本不抬会让采样缓存继续用旧糊度，直到滚动/偏移变化才被冲掉。
+        // 模糊挂在共享层 RenderEffect 上：drawLayer 时生效，保证课卡毛玻璃正确。
+        // 只在半径真正变化时赋值，避免每帧 new BlurEffect 让图层反复失效。
         if (recordedBlurRadius != blurRadiusPx) {
             recordedBlurRadius = blurRadiusPx
             layer.renderEffect = if (blurRadiusPx > 0f) {

@@ -62,7 +62,15 @@ fun BackdropEffectScope.lens(
                     setFloatUniform("chromaticAberration", 1f)
                 }
             }
-            RuntimeShaderEffect(shader, "content")
+            RuntimeShaderEffect(shader, "content").also {
+                lensShader = shader
+                // 供全分辨率 ImageShader 直采路径重写 uniform（屏幕像素，未乘 downsample）
+                lensRefractionHeight = refractionHeight
+                lensRefractionAmount = refractionAmount
+                lensCornerRadii = floatArrayOf(
+                    cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3]
+                )
+            }
         } else {
             throwUnsupportedSDFException()
         }

@@ -69,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -3087,6 +3088,20 @@ fun CourseScheduleApp() {
                                 }
                                 // 课程表页索引：正常模式 1；滚过它去设置时壁纸开始位移
                                 val schedulePageIndex = if (isShiftMode) 0 else 1
+                                // mustRecord 须 remember 稳定：内联 lambda 每次重组都换引用，
+                                // LayerBackdropElement.equals 按引用比较会 markNeedsRecord，白重录全屏层。
+                                // 今日↔课程表壁纸钉死不动，只有越过课程表去设置时像素才随位移变化。
+                                val sharedWallpaperMustRecord =
+                                    remember(mainPagerState, schedulePageIndex) {
+                                        {
+                                            val scrollPos = mainPagerState.currentPage +
+                                                mainPagerState.currentPageOffsetFraction
+                                            val moving = scrollPos > schedulePageIndex
+                                            moving &&
+                                                (mainPagerState.isScrollInProgress ||
+                                                    abs(mainPagerState.currentPageOffsetFraction) > 0.001f)
+                                        }
+                                    }
                                 Image(
                                     bitmap = sharedWallpaperImage,
                                     contentDescription = null,
@@ -3104,11 +3119,7 @@ fun CourseScheduleApp() {
                                                 sharedMinScale,
                                                 schedulePageIndex,
                                             ),
-                                            mustRecord = {
-                                                // 滑向/离开设置时像素随位移变化，需重录
-                                                mainPagerState.isScrollInProgress ||
-                                                    abs(mainPagerState.currentPageOffsetFraction) > 0.001f
-                                            }
+                                            mustRecord = sharedWallpaperMustRecord
                                         )
                                         .graphicsLayer {
                                             val s = maxOf(sharedWallpaperScale, sharedMinScale)
@@ -3142,8 +3153,7 @@ fun CourseScheduleApp() {
                                 )
                                 }
                             }
-                            // 设置页不透明底：画在全屏父层（含侧栏），实色铺满。
-                            // 不能塞进 VerticalPager——pager 会裁切页面，drawBehind 负坐标画不出去。
+
                             // 平移跟设置页同步，避免切回浅色课程表时侧栏下闪白。
                             run {
                                 val settingsPageIndex = if (isShiftMode) 1 else 2

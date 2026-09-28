@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -113,7 +114,9 @@ class BackdropViewport {
 
 private fun offsetSame(a: Float, b: Float): Boolean {
     if (a.isNaN() && b.isNaN()) return true
-    return a == b
+    // 亚像素容差：切页弹簧尾段偏移每帧只动零点几像素，逐帧重录采样纯属白烧。
+    // 与上次「已录制」偏移比较（而非上一帧），小步累积超过容差仍会重录，不会漂移。
+    return kotlin.math.abs(a - b) < 0.5f
 }
 
 fun Modifier.drawBackdrop(
@@ -448,6 +451,8 @@ private class DrawBackdropNode(
                     return@drawBackdropLayer
                 }
 
+                // 折射仍走 record+RenderEffect：RuntimeShader 按 key 全局缓存
+
                 val needsRecordSample = lastSampleLayer !== sharedLayerNonNull ||
                     lastSampleVersion != sourceVersion ||
                     !offsetSame(lastSampleOffsetX, offset.x) ||
@@ -626,15 +631,35 @@ private class DrawBackdropNode(
         observeReads { updateEffects() }
     }
 
+    private var cachedEffectSize = androidx.compose.ui.geometry.Size.Unspecified
+    private var cachedEffectShape: Shape? = null
+    private var cachedEffectFn: (BackdropEffectScope.() -> Unit)? = null
+    private var cachedEffectScale = Float.NaN
+    private var cachedRenderEffect: androidx.compose.ui.graphics.RenderEffect? = null
+
     private fun updateEffects() {
         if (!isRenderEffectSupported()) return
 
+        // lens 参数未变，复用即可。
+        val same = cachedEffectFn === effects &&
+            cachedEffectShape === shapeProvider.innerShape &&
+            cachedEffectSize == effectScope.size &&
+            cachedEffectScale == downsampleScale &&
+            cachedRenderEffect != null
+        if (same) {
+            if (graphicsLayer?.renderEffect !== cachedRenderEffect) {
+                graphicsLayer?.renderEffect = cachedRenderEffect
+            }
+            return
+        }
         effectScope.apply(effects)
-        // C3：同一份 RenderEffect 对象不重复赋值，避免多余的图层失效与重新合成。
-        // 仅在对象引用真正变化（重建了不同的 effect 链）时才写回 graphicsLayer。
-        val newRenderEffect = effectScope.renderEffect
-        if (graphicsLayer?.renderEffect != newRenderEffect) {
-            graphicsLayer?.renderEffect = newRenderEffect
+        cachedEffectFn = effects
+        cachedEffectShape = shapeProvider.innerShape
+        cachedEffectSize = effectScope.size
+        cachedEffectScale = downsampleScale
+        cachedRenderEffect = effectScope.renderEffect
+        if (graphicsLayer?.renderEffect !== cachedRenderEffect) {
+            graphicsLayer?.renderEffect = cachedRenderEffect
         }
         padding = effectScope.padding
     }

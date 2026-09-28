@@ -30,6 +30,14 @@ sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
     var padding: Float
 
     var renderEffect: RenderEffect?
+
+    /** lens() 产生的 RuntimeShader，供 ImageShader 直采折射路径复用 */
+    var lensShader: RuntimeShader?
+
+    /** 全分辨率直采用的折射参数（屏幕像素） */
+    var lensRefractionHeight: Float
+    var lensRefractionAmount: Float
+    var lensCornerRadii: FloatArray?
 }
 
 internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeShaderCache {
@@ -40,6 +48,10 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
     override var layoutDirection: LayoutDirection = LayoutDirection.Ltr
     override var padding: Float = 0f
     override var renderEffect: RenderEffect? = null
+    override var lensShader: RuntimeShader? = null
+    override var lensRefractionHeight: Float = 0f
+    override var lensRefractionAmount: Float = 0f
+    override var lensCornerRadii: FloatArray? = null
     override val downsampleScale: Float = DOWNSAMPLE_SCALE
 
     private val runtimeShaderCache = RuntimeShaderCacheImpl()
@@ -72,6 +84,10 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
     fun apply(effects: BackdropEffectScope.() -> Unit) {
         padding = 0f
         renderEffect = null
+        lensShader = null
+        lensRefractionHeight = 0f
+        lensRefractionAmount = 0f
+        lensCornerRadii = null
         effects()
     }
 
@@ -82,6 +98,10 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
         layoutDirection = LayoutDirection.Ltr
         padding = 0f
         renderEffect = null
+        lensShader = null
+        lensRefractionHeight = 0f
+        lensRefractionAmount = 0f
+        lensCornerRadii = null
         runtimeShaderCache.clear()
     }
 }

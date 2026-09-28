@@ -226,6 +226,8 @@ fun LiquidBottomTabs(
                 if (chromeLens) lens(24f.dp.toPx(), 24f.dp.toPx())
             }
         }
+        val panelSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
+            remember(containerColor) { { drawRect(containerColor) } }
         Row(
             Modifier
                 .graphicsLayer { translationX = panelOffset }
@@ -240,7 +242,7 @@ fun LiquidBottomTabs(
                         scaleX = scale
                         scaleY = scale
                     },
-                    onDrawSurface = { drawRect(containerColor) }
+                    onDrawSurface = panelSurface
                 )
                 .edgeLight(shape = ContinuousCapsule(), edgeLight = defaultEdgeLight)
                 .then(interactiveHighlight.modifier)

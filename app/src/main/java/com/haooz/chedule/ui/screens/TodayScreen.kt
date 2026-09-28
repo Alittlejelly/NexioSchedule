@@ -34,6 +34,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
@@ -122,24 +123,38 @@ fun BlurCard(
     val refraction = LocalCardRefraction.current
 
     if (hasBackdrop) {
-        val shape = ContinuousRoundedRectangle(cornerRadius)
+        val shape = remember(cornerRadius) { ContinuousRoundedRectangle(cornerRadius) }
         val defaultEdgeLight = rememberDefaultEdgeLight()
+        // effects/onDrawSurface 必须 remember 稳定：内联 lambda 每次重组换引用，
+        // DrawBackdropElement.equals 会判不等并重建 RenderEffect，造成壁纸玻璃无意义重绘
+        val blurPx = with(LocalDensity.current) { remember(blurRadius) { blurRadius.dp.toPx() } }
+        val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+            remember(refraction, blurPx) {
+                {
+                    blur(blurPx)
+                    if (refraction != CardRefractionLevel.OFF) {
+                        lens(refraction.lensRadiusDp.dp.toPx(), refraction.lensStrengthDp.dp.toPx())
+                    }
+                }
+            }
+        val glassSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
+            remember(isDark, surfaceOpacity) {
+                {
+                    drawRect(
+                        if (isDark) Color.Black.copy(alpha = surfaceOpacity)
+                        else Color.White.copy(alpha = surfaceOpacity)
+                    )
+                }
+            }
         Box(
             modifier = modifier
                 .clip(shape)
                 .drawBackdrop(
                     backdrop = wallpaperBackdrop,
-                    shape = { ContinuousRoundedRectangle(cornerRadius) },
-                    effects = {
-                        blur(blurRadius.dp.toPx())
-                        if (refraction != CardRefractionLevel.OFF) {
-                            lens(refraction.lensRadiusDp.dp.toPx(), refraction.lensStrengthDp.dp.toPx())
-                        }
-                    },
+                    shape = { shape },
+                    effects = glassEffects,
                     highlight = null,
-                    onDrawSurface = {
-                        drawRect(if (isDark) Color.Black.copy(alpha = surfaceOpacity) else Color.White.copy(alpha = surfaceOpacity))
-                    }
+                    onDrawSurface = glassSurface
                 )
                 .then(
                     if (showEdgeLight) {
@@ -1571,6 +1586,25 @@ private fun CourseSectionTitle(
 
     if (wallpaperBackdrop != null) {
         val shape = ContinuousCapsule()
+        val blurPx = with(LocalDensity.current) { remember(blurRadius) { blurRadius.dp.toPx() } }
+        val titleEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+            remember(refraction, blurPx) {
+                {
+                    blur(blurPx)
+                    if (refraction != CardRefractionLevel.OFF) {
+                        lens(refraction.lensRadiusDp.dp.toPx(), refraction.lensStrengthDp.dp.toPx())
+                    }
+                }
+            }
+        val titleSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
+            remember(isDark, surfaceOpacity) {
+                {
+                    drawRect(
+                        if (isDark) Color.Black.copy(alpha = surfaceOpacity)
+                        else Color.White.copy(alpha = surfaceOpacity)
+                    )
+                }
+            }
         Box(
             modifier = modifier
                 .padding(vertical = 6.dp)
@@ -1578,16 +1612,9 @@ private fun CourseSectionTitle(
                 .drawBackdrop(
                     backdrop = wallpaperBackdrop,
                     shape = { shape },
-                    effects = {
-                        blur(blurRadius.dp.toPx())
-                        if (refraction != CardRefractionLevel.OFF) {
-                            lens(refraction.lensRadiusDp.dp.toPx(), refraction.lensStrengthDp.dp.toPx())
-                        }
-                    },
+                    effects = titleEffects,
                     highlight = null,
-                    onDrawSurface = {
-                        drawRect(if (isDark) Color.Black.copy(alpha = surfaceOpacity) else Color.White.copy(alpha = surfaceOpacity))
-                    }
+                    onDrawSurface = titleSurface
                 )
                 // 标题与课程卡一致用淡描边；亮版只留给今日助手/格言
                 .edgeLight(shape = shape, edgeLight = rememberCardEdgeLight())
