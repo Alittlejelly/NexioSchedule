@@ -16,8 +16,8 @@ android {
         applicationId = "com.haooz.chedule"
         minSdk = 31
         targetSdk = 37
-        versionCode = 156
-        versionName = "1.6.0.1-0924"
+        versionCode = 158
+        versionName = "1.6.0.2-0928"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -139,7 +139,8 @@ tasks.register<DefaultTask>("downloadEduIndex") {
         targetLocation.parentFile?.mkdirs()
         val url = "https://gitee.com/XingHeYuZhuan-gh/shiguang_warehouse/raw/index-pb-release/school_index.pb"
         try {
-            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            val connection = (
+                    URL(url).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "okhttp/4.12.0")
                 setRequestProperty("Accept", "*/*")
