@@ -47,10 +47,10 @@ import kotlin.math.sign
  *
  * 横滑/对角由 `pagerState.scrollBy` 驱动，松手 [settleHorizontalPager] 落页；
  *
- * 轴向锁定（越 touchSlop 后）：
+ * 轴向锁定（越 touchSlop 后，二选一，不双轴并行）：
  * - 横 ≥ 1.3×纵 → 横主导并 consume，防弧线 Y 带动纵向
  * - 纵 ≥ 1.3×横 → 纵主导，横轴不动
- * - 两轴接近 → 对角，不 consume，两轴并行
+ * - 两轴接近 → 取位移大的一轴锁定；横则 consume 翻页，纵则交页内滚动
  */
 
 /** 持有手势 settle Job，避免与下一次拖动抢 PagerState 写锁 */
@@ -231,7 +231,6 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var accX = 0f
                 var accY = 0f
                 var xDominant = false
-                var dualAxis = false
                 var locked = false
                 // 最后发生真实移动的时刻：甩完停顿再抬手时，VelocityTracker 的
                 // 100ms 窗口被静止段稀释，需要按「位移段」重新估均速兜底
@@ -241,7 +240,8 @@ fun Modifier.pagerAxisTakeoverGesture(
                 val viewportPx = size.width.toFloat().coerceAtLeast(1f)
                 tracker.addPosition(down.uptimeMillis, down.position)
                 while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Main)
+                    // Initial：在子级 verticalScroll 之前拿到事件，锁横后才能拦住纵向
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     tracker.addPosition(change.uptimeMillis, change.position)
                     if (!change.pressed) break
@@ -263,12 +263,13 @@ fun Modifier.pagerAxisTakeoverGesture(
                             yDominant -> {
                                 locked = true
                             }
+                            // 两轴接近：取位移大的一轴锁定，不并行
                             ax >= touchSlop && ay >= touchSlop -> {
-                                dualAxis = true
+                                xDominant = ax >= ay
                                 locked = true
                             }
                         }
-                        if ((xDominant || dualAxis) && scrollWorker == null) {
+                        if (xDominant && scrollWorker == null) {
                             settleJob.value?.cancel()
                             settleJob.value = null
                             overscrollJob.value?.cancel()
@@ -320,18 +321,15 @@ fun Modifier.pagerAxisTakeoverGesture(
                             }
                         }
                     }
-                    if (!xDominant && !dualAxis) continue
-                    // 不 consume：对角斜滑时纵向滚动仍可并行
+                    if (!xDominant) continue
                     dragChannel?.trySend(-dx)
-                    if (xDominant) change.consume()
+                    // Initial consume：子级（verticalScroll / 课卡手势）本帧不再看到位移
+                    change.consume()
                 }
                 dragChannel?.close()
                 dragChannel = null
                 // AwaitPointerEventScope 不能 join；回 scope 等 worker 放锁后再落页
-                if (xDominant || dualAxis) {
-                    // 两个速度估计取幅度大者：
-                    // 1) VelocityTracker：采样不足或快甩后停顿时会被稀释/低估；
-                    // 2) 位移段均速（末次移动到按下）：补上停顿抬手与短手势的场景。
+                if (xDominant) {
                     val trackedVelocity =
                         runCatching { tracker.calculateVelocity() }.getOrNull() ?: Velocity(0f, 0f)
                     val moveSpanMs =
