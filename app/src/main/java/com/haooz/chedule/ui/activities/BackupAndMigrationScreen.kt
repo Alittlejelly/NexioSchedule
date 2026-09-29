@@ -543,6 +543,37 @@ fun BackupAndMigrationScreen(
                             )
                         }
                     }
+                    Card(
+                        cornerRadius = 20.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(0.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            ArrowPreference(
+                                title = "导出到手环",
+                                summary = "打包JSON并推送到手表/手环",
+                                onClick = {
+                                    scope.launch {
+                                        val path = com.haooz.chedule.wearable.WearableScheduleSync
+                                            .exportToWearable(context, selectedExportSchedule)
+                                        if (path != null) {
+                                            Toast.makeText(
+                                                context,
+                                                "已导出并推送手环\n$path",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                "导出失败，请确认手环已连接",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 

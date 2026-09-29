@@ -65,6 +65,9 @@ configurations.all {
 }
 
 dependencies {
+    // ===== 小米穿戴（手表 interconnect） =====
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
+
     // ===== AndroidX / Compose 基础 =====
     // Compose BOM：统一管理所有 Compose 库版本
     implementation(platform(libs.androidx.compose.bom))
