@@ -30,6 +30,18 @@ class NexioApplication : Application() {
         com.haooz.chedule.ui.utils.CrashLogHelper.install(this)
         warmUpSharedPreferences()
         cleanupTransientFiles()
+        initWearableSync()
+    }
+
+    /** 手表课表推送：启动注册，课程变更走 CourseRepository 监听 */
+    private fun initWearableSync() {
+        runCatching {
+            com.haooz.chedule.wearable.WearableScheduleSync.init(this)
+            val repo = com.haooz.chedule.data.CourseRepository.getInstance(this)
+            repo.addCourseChangedListener { _, _ ->
+                com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-change")
+            }
+        }
     }
 
     /**

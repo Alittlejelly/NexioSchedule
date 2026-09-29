@@ -168,10 +168,16 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** 课程写盘后同步到手表（增删改/导入均经此） */
+    fun notifyWearableSchedule() {
+        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-write")
+    }
+
     private fun mutateCourses(mutation: () -> List<Course>) {
         synchronized(courseRefreshLock) {
             applyCoursesAndRefreshWidgets(mutation())
         }
+        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-mutate")
     }
 
     private fun updateWidgets() {
@@ -371,6 +377,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
             _dataVersion.value++
             updateWidgets()
         }
+        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("replace-courses")
     }
 
     fun appendCourses(courses: List<Course>) {
@@ -396,6 +403,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
             _dataVersion.value++
             updateWidgets()
         }
+        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("append-courses")
     }
 
     fun showAddDialog(

@@ -42,3 +42,7 @@ app/src/main/assets/eduloader/school_index.pb
 # --- 工作助手本地目录 ---
 .workbuddy/
 
+
+keystore.properties
+*.jks
+
