@@ -40,14 +40,14 @@ import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayEndCourseExclusion
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.ShareCodeApi
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.reminder.CourseReminderHelper
-import com.haooz.chedule.data.ShareCodeApi
 import com.haooz.chedule.data.ThirdPartyShareImporter
 import com.haooz.chedule.data.ThirdPartySharePayload
 import com.haooz.chedule.data.ThirdPartyShareSource
 import com.haooz.chedule.data.WebDavManager
+import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
@@ -55,8 +55,8 @@ import com.haooz.chedule.ui.basic.collapsibleTopInset
 import com.haooz.chedule.ui.screens.applyScheduleData
 import com.haooz.chedule.ui.screens.parseFullScheduleJson
 import com.haooz.chedule.ui.screens.parseIcsFile
-import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
+import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.performScheduleShare
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
@@ -277,7 +277,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "导入方式",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -313,7 +313,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "口令",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -354,7 +354,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "文件",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -387,7 +387,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "文件与口令",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -457,7 +457,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "导出课表",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -499,7 +499,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "导出格式",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
@@ -543,6 +543,8 @@ fun BackupAndMigrationScreen(
                             )
                         }
                     }
+                }
+                item {
                     Card(
                         cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
@@ -581,7 +583,7 @@ fun BackupAndMigrationScreen(
                 item {
                     SmallTitle(
                         text = "备份",
-                        modifier = Modifier.offset(x = (-15).dp)
+                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
                         cornerRadius = 20.dp,
