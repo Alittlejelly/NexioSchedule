@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -455,7 +458,9 @@ private fun rememberWeather(): Triple<WeatherData, Boolean, () -> Unit> {
 private data class CourseStatus(
     val currentCourse: Course? = null,
     val nextCourse: Course? = null,
-    val timeMessage: String = ""
+    val timeMessage: String = "",
+    /** 当前课结束时刻；跨过该时刻时触发下课庆祝 */
+    val currentEnd: LocalTime? = null
 )
 
 @Composable
@@ -475,24 +480,35 @@ private fun rememberCourseStatus(
             val current = ranges.find { !now.isBefore(it.start) && now.isBefore(it.end) }
             val next = ranges.find { now.isBefore(it.start) }
             val message = when {
-                current != null -> {
-                    val minutes = ceilMinutesUntil(now, current.end)
-                    "还剩 ${formatCountdownMinutes(minutes)}"
-                }
-                next != null -> {
-                    val minutes = ceilMinutesUntil(now, next.start)
-                    formatCountdownMinutes(minutes, trailing = "后")
-                }
+                current != null -> formatRemainingUntil(now, current.end, isCountdownToStart = false)
+                next != null -> formatRemainingUntil(now, next.start, isCountdownToStart = true)
                 courses.isEmpty() -> ""
                 else -> ""
             }
-            val newStatus = CourseStatus(current?.course, next?.course, message)
+            val newStatus = CourseStatus(current?.course, next?.course, message, current?.end)
             // 文案未变化时不写状态，避免每秒重组
             if (newStatus != status) status = newStatus
             delay(1000L.milliseconds)
         }
     }
     return status
+}
+
+/** 最后一分钟切换为秒级，其余仍用分钟口径。 */
+private fun formatRemainingUntil(
+    from: LocalTime,
+    to: LocalTime,
+    isCountdownToStart: Boolean
+): String {
+    val remainMillis = java.time.Duration.between(from, to).toMillis()
+    if (remainMillis < 0L) return if (isCountdownToStart) "已开始" else "已结束"
+    if (remainMillis < 60_000L) {
+        val seconds = ((remainMillis + 999L) / 1000L).toInt().coerceIn(1, 60)
+        return if (isCountdownToStart) "$seconds 秒后" else "还剩 $seconds 秒"
+    }
+    val minutes = ceilMinutesUntil(from, to)
+    return if (isCountdownToStart) formatCountdownMinutes(minutes, trailing = "后")
+    else "还剩 ${formatCountdownMinutes(minutes)}"
 }
 
 private data class CourseTimeRange(
@@ -631,7 +647,6 @@ private fun generateSmartTip(
     return when {
         // 正在上课：剩余 + 连堂，多套冷静说法
         ongoing != null -> {
-            val remaining = ceilMinutesUntil(now, ongoing.end)
             val nextAfter = ranges.find { it.start > ongoing.end }
             val gap = nextAfter?.let { ceilMinutesUntil(ongoing.end, it.start) }
             val gapPart = when {
@@ -641,6 +656,7 @@ private fun generateSmartTip(
                 gap != null && gap <= 30 -> " · 下课后有 $gap 分钟，可离开教室"
                 else -> ""
             }
+            val remaining = ceilMinutesUntil(now, ongoing.end)
             val pool = when {
                 remaining <= 1 -> listOf(
                     "马上收尾",
@@ -839,14 +855,33 @@ fun TodayAssistantCard(
         }
     }
 
-    BlurCard(
-        cornerRadius = 20.dp,
-        wallpaperBackdrop = wallpaperBackdrop,
-        blurRadius = blurRadius,
-        surfaceOpacity = surfaceOpacity,
-        showEdgeLight = wallpaperBackdrop != null && blurRadius > 0f,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    val context = LocalContext.current
+    var fireworksTrigger by remember { mutableIntStateOf(0) }
+    var lastCurrentEnd by remember { mutableStateOf<LocalTime?>(null) }
+    // 只在「今天最后一节课」下课瞬间触发；中途下课/回看历史不触发
+    LaunchedEffect(courseStatus.currentEnd) {
+        val prevEnd = lastCurrentEnd
+        lastCurrentEnd = courseStatus.currentEnd
+        if (prevEnd == null) return@LaunchedEffect
+        if (courseStatus.currentEnd == prevEnd) return@LaunchedEffect
+        val justEndedMillis = java.time.Duration.between(prevEnd, LocalTime.now()).toMillis()
+        if (justEndedMillis !in 0L..2500L) return@LaunchedEffect
+        // 最后一节结束后：无当前课、也无下一节
+        val isLastOfDay = courseStatus.currentCourse == null && courseStatus.nextCourse == null
+        if (isLastOfDay) {
+            fireworksTrigger++
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        BlurCard(
+            cornerRadius = 20.dp,
+            wallpaperBackdrop = wallpaperBackdrop,
+            blurRadius = blurRadius,
+            surfaceOpacity = surfaceOpacity,
+            showEdgeLight = wallpaperBackdrop != null && blurRadius > 0f,
+            modifier = Modifier.fillMaxWidth()
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1016,5 +1051,12 @@ fun TodayAssistantCard(
                 }
             }
         }
+    }
+        FireworksOverlay(
+            trigger = fireworksTrigger,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { clip = false }
+        )
     }
 }

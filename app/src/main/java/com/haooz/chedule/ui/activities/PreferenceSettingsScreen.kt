@@ -52,6 +52,7 @@ import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
 import com.haooz.chedule.ui.basic.collapsibleTopInset
+import com.haooz.chedule.ui.screens.ClassEndEffectSettings
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -129,6 +130,9 @@ fun PreferenceSettingsScreen(
         mutableStateOf(
             appPrefs.getBoolean(com.haooz.chedule.ui.theme.KEY_HAPTIC_FEEDBACK, true)
         )
+    }
+    var classEndFireworks by remember {
+        mutableStateOf(appPrefs.getBoolean(ClassEndEffectSettings.KEY_FIREWORKS, true))
     }
     var appMaterialLevel by remember {
         mutableStateOf(
@@ -384,6 +388,15 @@ fun PreferenceSettingsScreen(
                                             it
                                         )
                                     }
+                                }
+                            )
+                            SwitchPreference(
+                                title = "下课烟花",
+                                summary = "今日页每天最后一节课结束后播放烟花",
+                                checked = classEndFireworks,
+                                onCheckedChange = {
+                                    classEndFireworks = it
+                                    ClassEndEffectSettings.setFireworks(context, it)
                                 }
                             )
                             SwitchPreference(
