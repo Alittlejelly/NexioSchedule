@@ -63,6 +63,7 @@ import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
 import com.haooz.chedule.ui.basic.collapsibleTopInset
+import com.haooz.chedule.ui.utils.courseToShareMap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -112,6 +113,8 @@ internal data class SemesterSettings(
     val classStartTime: String?,
     val currentWeek: Int?,
     val totalWeeks: Int?,
+    val smartWeekend: Boolean? = null,
+    val showNonCurrentWeek: Boolean? = null,
 )
 
 private data class BackupFileInfo(
@@ -296,6 +299,8 @@ internal fun parseBackupPayload(json: String): BackupPayload {
                 classStartTime = classStartTime,
                 currentWeek = exactInteger("current_week"),
                 totalWeeks = exactInteger("total_weeks", positive = true),
+                smartWeekend = rawSettings["smart_weekend"] as? Boolean,
+                showNonCurrentWeek = rawSettings["show_non_current_week"] as? Boolean,
             )
         }
         val reorganizationFieldPresent = data.containsKey("teaching_week_reorganizations")
@@ -472,6 +477,8 @@ fun LocalBackupScreen(
                                 currentWeek = payload.semesterSettings?.currentWeek,
                                 totalWeeks = payload.semesterSettings?.totalWeeks,
                                 teachingWeekReorganizations = payload.teachingWeekReorganizations,
+                                smartWeekend = payload.semesterSettings?.smartWeekend,
+                                showNonCurrentWeek = payload.semesterSettings?.showNonCurrentWeek,
                             )
                         }
 
@@ -635,36 +642,21 @@ fun LocalBackupScreen(
                                                 // 获取该课表绑定的时间配置
                                                 val configId = repository.getScheduleTimeConfigId(selectedSchedule)
                                                 val timeConfig = repository.getTimeConfig(configId)
+                                                // 课程字段与导出/分享共用 courseToShareMap：颜色、周次模型保持一致
                                                 mapOf(
                                                     "schedule_name" to selectedSchedule,
                                                     "semester_settings" to mapOf(
                                                         "class_start_time" to repository.getClassStartTime(selectedSchedule),
                                                         "current_week" to repository.getCurrentWeek(selectedSchedule),
                                                         "total_weeks" to repository.getTotalWeeks(selectedSchedule),
+                                                        // 与导出 settings 对齐，避免单课表恢复后显示设置丢失
+                                                        "smart_weekend" to repository.getSmartWeekend(selectedSchedule),
+                                                        "show_non_current_week" to repository.getShowNonCurrentWeek(selectedSchedule),
                                                     ),
                                                     "teaching_week_reorganizations" to TeachingWeekReorganization.toBackupValue(
                                                         repository.getTeachingWeekReorganizations(selectedSchedule),
                                                     ),
-                                                    "courses" to courses.map { course ->
-                                                        mapOf(
-                                                            "name" to course.name,
-                                                            "classroom" to course.classroom,
-                                                            "teacher" to course.teacher,
-                                                            "dayOfWeek" to course.dayOfWeek,
-                                                            "startSection" to course.startSection,
-                                                            "endSection" to course.endSection,
-                                                            "isCustomTime" to course.isCustomTime,
-                                                            "customStartTime" to course.customStartTime,
-                                                            "customEndTime" to course.customEndTime,
-                                                            "colorRes" to course.colorRes,
-                                                            // selectedWeeks 为空时由 startWeek/endWeek/weekType 描述周次。
-                                                            // 不能把区间展开写进 selectedWeeks：那样会丢掉单双周（weekType）。
-                                                            "selectedWeeks" to course.selectedWeeks.sorted(),
-                                                            "startWeek" to course.startWeek,
-                                                            "endWeek" to course.endWeek,
-                                                            "weekType" to course.weekType
-                                                        )
-                                                    },
+                                                    "courses" to courses.map(::courseToShareMap),
                                                     "time_config" to mapOf(
                                                         "morningSections" to timeConfig.morningSections,
                                                         "afternoonSections" to timeConfig.afternoonSections,

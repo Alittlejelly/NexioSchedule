@@ -1348,7 +1348,9 @@ internal fun applyScheduleData(
             }
 
             if (selectedWeeks.isNotEmpty() || hasExplicitWeekModel) {
-                val colorRes = courseNameColorMap.getOrPut(name) {
+                // 导出带 colorRes 时原样还原；旧分享包没有则按课名轮询调色板
+                val exportedColor = (courseMap["colorRes"] as? Number)?.toLong()
+                val colorRes = exportedColor ?: courseNameColorMap.getOrPut(name) {
                     val color = Course.courseColors[colorIndex % Course.courseColors.size]
                     colorIndex++
                     color
@@ -1424,6 +1426,7 @@ internal fun applyScheduleData(
             scheduleViewModel.switchToSchedule(scheduleName)
 
             (settings["class_start_time"] as? String)?.let { viewModel.setClassStartTime(it) }
+            (settings["current_week"] as? Number)?.toInt()?.let { viewModel.setCurrentWeek(it) }
             (settings["total_weeks"] as? Number)?.toInt()?.let { viewModel.setTotalWeeks(it) }
             if (reorganizationFieldPresent && !CourseRepository.getInstance(context)
                     .setTeachingWeekReorganizations(

@@ -295,6 +295,8 @@ class CourseRepository private constructor(context: Context) {
         private const val TIME_CONFIG_PREFIX = "time_config_"
         // 不匹配 schedule_{name}_ 前缀，删/迁课表时需单独处理
         private const val SCHEDULE_TIME_CONFIG_PREFIX = "schedule_time_config_"
+        /** 兼容旧备份里的提醒设置嵌套键；已不导出，恢复时跳过 */
+        private const val KEY_REMINDER_PREFS = "reminder_prefs"
     }
 
     /** 云备份恢复可能把 Int 存成 Float，读失败时按 Float 再存回 Int */
@@ -2495,32 +2497,44 @@ class CourseRepository private constructor(context: Context) {
         }
     }
 
-    /** 导出 schedule_ / time_config_ 等前缀与全局课表配置，供云备份 */
+    /** 搭配（combination/comb）相关键不进全量备份 */
+    private fun isCombinationBackupKey(key: String): Boolean {
+        return key == KEY_COMBINATION_IDS ||
+            key == KEY_CURRENT_COMBINATION_ID ||
+            key.startsWith("combination_") ||
+            key.startsWith("comb_")
+    }
+
+    /** 提醒、勿扰、小组件等应用功能设置不进全量备份 */
+    private fun isAppFeatureBackupKey(key: String): Boolean {
+        return key == KEY_PRE_CLASS_REMINDER ||
+            key == KEY_PRE_CLASS_REMINDER_MINUTES ||
+            key == KEY_NEXT_DAY_REMINDER ||
+            key == KEY_NEXT_DAY_REMINDER_HOUR ||
+            key == KEY_NEXT_DAY_REMINDER_MINUTE ||
+            key == KEY_ISLAND_NOTIFICATION ||
+            key == KEY_CLASS_DND ||
+            key == KEY_CLASS_DND_MODE ||
+            key == KEY_WIDGET_PADDING_MODE
+    }
+
+    /**
+     * 全量备份：课表数据 + 节假日/调休。
+     * 不含搭配、提醒等应用功能设置，以及主题等应用偏好。
+     */
     fun exportAllPreferences(): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
-        val relevantKeys = listOf(
-            KEY_SCHEDULE_NAMES,
-            KEY_SCHEDULE_FOLDERS,
-            KEY_CURRENT_SCHEDULE_ID,
-            KEY_SHIFT_MODE,
-            KEY_SHIFT_SELECTED_SCHEDULES,
-            KEY_DEFAULT_HOMEPAGE,
-            KEY_TIME_CONFIG_IDS,
-            KEY_CURRENT_TIME_CONFIG_ID
-        )
         for ((key, value) in prefs.all) {
-            if (key.startsWith(SCHEDULE_KEY_PREFIX) || key.startsWith(TIME_CONFIG_PREFIX) ||
-                key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) || key in relevantKeys) {
-                when (value) {
-                    is String -> result[key] = value
-                    is Int -> result[key] = value
-                    is Boolean -> result[key] = value
-                    is Float -> result[key] = value
-                    is Long -> result[key] = value
-                    is Set<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        result[key] = (value as Set<String>).toList()
-                    }
+            if (isCombinationBackupKey(key) || isAppFeatureBackupKey(key)) continue
+            when (value) {
+                is String -> result[key] = value
+                is Int -> result[key] = value
+                is Boolean -> result[key] = value
+                is Float -> result[key] = value
+                is Long -> result[key] = value
+                is Set<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    result[key] = (value as Set<String>).toList()
                 }
             }
         }
@@ -2576,6 +2590,8 @@ class CourseRepository private constructor(context: Context) {
                 if (key == HolidayManager.BACKUP_KEY ||
                     key == HolidayManager.BACKUP_EXCLUSION_KEY
                 ) continue
+                // 搭配、提醒等应用功能设置不进备份，恢复时也不覆盖设备上的对应配置
+                if (isCombinationBackupKey(key) || isAppFeatureBackupKey(key) || key == KEY_REMINDER_PREFS) continue
                 when (value) {
                     is String -> putString(key, value)
                     is Boolean -> putBoolean(key, value)
@@ -2583,9 +2599,9 @@ class CourseRepository private constructor(context: Context) {
                         val numVal = value.toDouble()
                         val longVal = numVal.toLong()
                         val intVal = numVal.toInt()
-                        // 时间配置/绑定/组合 ID 与时间戳必须按 Long 恢复
+                        // 时间配置/绑定 ID 与时间戳必须按 Long 恢复
                         if (key == KEY_CURRENT_TIME_CONFIG_ID || key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) ||
-                            key == "current_combination_id" || key.endsWith("_last_modified")) {
+                            key.endsWith("_last_modified")) {
                             putLong(key, longVal)
                         } else if (numVal == intVal.toDouble()) {
                             putInt(key, intVal)
@@ -2595,10 +2611,8 @@ class CourseRepository private constructor(context: Context) {
                     }
 
                     is List<*> -> {
-                        // Set<String> 被导出为 List，需要还原
-                        @Suppress("UNCHECKED_CAST")
-                        val list = value.filterIsInstance<String>()
-                        putString(key, gson.toJson(list))
+                        // Set<String> 导出为 List，还原为 StringSet（不能再写成 JSON 字符串）
+                        putStringSet(key, value.filterIsInstance<String>().toSet())
                     }
                 }
             }
@@ -2624,6 +2638,8 @@ class CourseRepository private constructor(context: Context) {
         currentWeek: Int? = null,
         totalWeeks: Int? = null,
         teachingWeekReorganizations: List<TeachingWeekReorganizationRule>? = null,
+        smartWeekend: Boolean? = null,
+        showNonCurrentWeek: Boolean? = null,
     ) {
         val normalizedClassStart = classStartTime?.let {
             normalizeClassStartDate(it)
@@ -2753,7 +2769,7 @@ class CourseRepository private constructor(context: Context) {
         }
 
         if (normalizedClassStart != null || currentWeek != null || totalWeeks != null ||
-            teachingWeekReorganizations != null
+            teachingWeekReorganizations != null || smartWeekend != null || showNonCurrentWeek != null
         ) {
             val schedulePrefix = getScheduleKeyPrefix(scheduleName)
             prefs.edit {
@@ -2766,6 +2782,8 @@ class CourseRepository private constructor(context: Context) {
                         TeachingWeekReorganization.encode(rules, Int.MAX_VALUE),
                     )
                 }
+                smartWeekend?.let { putBoolean("$schedulePrefix$KEY_SMART_WEEKEND", it) }
+                showNonCurrentWeek?.let { putBoolean("$schedulePrefix$KEY_SHOW_NON_CURRENT_WEEK", it) }
             }
             markScheduleSettingsChanged(scheduleName)
         }

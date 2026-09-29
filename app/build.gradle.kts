@@ -131,8 +131,7 @@ dependencies {
 }
 
 // ===== 教务索引内置 =====
-// Release 构建时从云端拉取最新 school_index.pb 打包进 assets，使用户首次使用教务导入时
-// 无需联网即可获得学校/适配器索引（含 importUrl、脚本路径），进入后脚本仍按需下载。
+// Release 构建时从云端拉取最新 school_index.pb 打包进 assets
 tasks.register<DefaultTask>("downloadEduIndex") {
     group = "eduimport"
     description = "每次 Release 构建拉取最新 school_index.pb 到 assets/eduloader"
