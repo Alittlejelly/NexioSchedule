@@ -172,6 +172,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         synchronized(courseRefreshLock) {
             applyCoursesAndRefreshWidgets(mutation())
         }
+        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-mutate")
     }
 
     private fun updateWidgets() {

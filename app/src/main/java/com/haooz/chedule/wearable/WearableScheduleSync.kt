@@ -99,7 +99,7 @@ object WearableScheduleSync {
         }
         return try {
             val repo = CourseRepository.getInstance(context.applicationContext)
-            val json = WatchPayload.buildWeekJson(repo, scheduleName)
+            val json = WatchPayload.buildWeekJson(repo, context.applicationContext, scheduleName)
             val dir = java.io.File(context.applicationContext.filesDir, "wearable")
             if (!dir.exists()) dir.mkdirs()
             val file = java.io.File(dir, "nexio-watch-schedule.json")
@@ -193,7 +193,7 @@ object WearableScheduleSync {
         pushing.set(true)
         try {
             val repo = CourseRepository.getInstance(appContext)
-            val payload = WatchPayload.buildWeekJson(repo, scheduleName)
+            val payload = WatchPayload.buildWeekJson(repo, appContext, scheduleName)
             val api = messageApi ?: return
             api.sendMessage(id, payload.toByteArray(Charsets.UTF_8))
                 .addOnSuccessListener {
