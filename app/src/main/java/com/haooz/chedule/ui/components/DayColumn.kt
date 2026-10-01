@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -171,11 +172,24 @@ fun DayColumn(
 
             // 单节点承载所有空节次点击/长按；落点高亮已提升到 MainScheduleScreen 动画遮罩
             val emptyLayerBounds = remember { FloatArray(4) }
+            // 滑动中 onGloballyPositioned 跳过计算会留下过期/零点，长按瞬间按需重算一次
+            val emptyLayerCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+            val refreshEmptyLayerBounds = {
+                val c = emptyLayerCoords[0]
+                if (c != null && c.isAttached) {
+                    val pos = c.localToRoot(Offset.Zero)
+                    emptyLayerBounds[0] = pos.x
+                    emptyLayerBounds[1] = pos.y
+                    emptyLayerBounds[2] = c.size.width.toFloat()
+                    emptyLayerBounds[3] = c.size.height.toFloat()
+                }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .onGloballyPositioned { coordinates ->
+                        emptyLayerCoords[0] = coordinates
                         if (gridScrollFlag?.scrolling != true) {
                             val pos = coordinates.localToRoot(Offset.Zero)
                             emptyLayerBounds[0] = pos.x
@@ -215,6 +229,7 @@ fun DayColumn(
                                 }
                                 if (section in 1..totalSectionsGrid && section !in occupiedSections) {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    refreshEmptyLayerBounds()
                                     val cellTopPx = with(density) { (grid.sectionTop[section] ?: 0f).dp.toPx() }
                                     onEmptyLongPress(
                                         section,

@@ -816,6 +816,25 @@ fun MainScheduleScreen(
                         // 停滑后冲刷：滑动中 onGloballyPositioned 只写数组不递增版本号
                         if (!isScheduleScrolling) lastDayBoundsVersion++
                     }
+                    // 用当前（始终实时写入的）dayBounds 数组拼几何。
+                    // 长按瞬间同步推一次，避免“停滑冲刷”晚于长按导致上层拿到旧页 dayBounds（菜单错位/浮层消失）
+                    fun buildGridGeometry(): ScheduleGridGeometry {
+                        val boundsMap = mutableMapOf<Int, FloatArray>()
+                        for (i in 1..7) {
+                            dayBoundsArray[i]?.let { boundsMap[i] = it }
+                        }
+                        return ScheduleGridGeometry(
+                            dayBounds = boundsMap,
+                            sectionHeightPx = with(density) { cardHeightPerSection.dp.toPx() },
+                            morningSections = morningSections,
+                            afternoonSections = afternoonSections,
+                            eveningSections = eveningSections,
+                            showBreakDividers = showBreakDividers
+                        )
+                    }
+                    val pushFreshGeometry by rememberUpdatedState {
+                        onGridGeometryChange(buildGridGeometry())
+                    }
                     // 提升到 Row 之外：特殊横带按同一套列宽切分内部星期子块
                     val pageDayRange = remember(weekendDaysByWeek, week) {
                         (1..5).toList() + (weekendDaysByWeek[week] ?: emptySet()).filter { it in 6..7 }
@@ -950,6 +969,8 @@ fun MainScheduleScreen(
                             val stableOnCourseLongPress: (Course, Float, Float, Float, Float, com.kyant.backdrop.Backdrop?, Int) -> Unit =
                                 remember(page, dayOfWeek) {
                                     { course, left, top, width, height, _, cWeek ->
+                                        // 同步补一次最新几何，保证上层锚点用当前页 dayBounds
+                                        pushFreshGeometry()
                                         val backdrop = activeCardBackdrop ?: courseCardBackdrop
                                         onCourseLongPress(course, left, top, width, height, backdrop, cWeek)
                                     }
@@ -1076,21 +1097,7 @@ fun MainScheduleScreen(
                                 prevAfternoon.intValue = afternoonSections
                                 prevEvening.intValue = eveningSections
                                 prevShowBreak.value = showBreakDividers
-                                val boundsMap = mutableMapOf<Int, FloatArray>()
-                                for (i in 1..7) {
-                                    val arr = dayBoundsArray[i]
-                                    if (arr != null) boundsMap[i] = arr
-                                }
-                                onGridGeometryChange(
-                                    ScheduleGridGeometry(
-                                        dayBounds = boundsMap,
-                                        sectionHeightPx = sectionHeightPx,
-                                        morningSections = morningSections,
-                                        afternoonSections = afternoonSections,
-                                        eveningSections = eveningSections,
-                                        showBreakDividers = showBreakDividers
-                                    )
-                                )
+                                onGridGeometryChange(buildGridGeometry())
                             }
                         }
                     }

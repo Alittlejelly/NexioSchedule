@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -55,8 +56,10 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.time.Duration.Companion.milliseconds
 import android.graphics.Color as AndroidColor
@@ -68,6 +71,11 @@ data class LandRippleSpec(
 )
 
 val LocalLandRipple = compositionLocalOf { LandRippleSpec() }
+
+// 按压：快速收一下，轻触也能立刻看到反馈；松手：带一点回弹，避免生硬
+private const val SINK_SCALE = 0.94f
+private val SinkPressSpec = tween<Float>(durationMillis = 90, easing = FastOutSlowInEasing)
+private val SinkReleaseSpec = spring<Float>(dampingRatio = 0.5f, stiffness = 480f)
 
 @Composable
 fun CourseCard(
@@ -118,14 +126,30 @@ fun CourseCard(
     // 涟漪动画期间为 true；token 不会归零，不能直接拿 token 判层
     var rippleAnimating by remember { mutableStateOf(false) }
     val cardBoundsPx = remember { FloatArray(4) }
-    // Sink：仅缩放反馈，不叠 indication 压暗；参数对齐 Miuix SinkFeedback(0.94, spring(0.8,600))
+    // 最近一次布局坐标：滑动中 onGloballyPositioned 跳过计算会留下过期/零点，
+    // 长按瞬间按需重算一次，保证浮层/菜单锚点准确（无需每帧算，开销只在长按时）
+    val cardCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val refreshCardBounds = {
+        val c = cardCoords[0]
+        if (c != null && c.isAttached) {
+            val center = c.localToRoot(Offset(c.size.width / 2f, c.size.height / 2f))
+            cardBoundsPx[0] = center.x
+            cardBoundsPx[1] = center.y
+            cardBoundsPx[2] = c.size.width.toFloat()
+            cardBoundsPx[3] = c.size.height.toFloat()
+        }
+    }
+    // Sink：仅缩放反馈
     var sinkPressed by remember { mutableStateOf(false) }
+    var sinkActive by remember { mutableStateOf(false) }
     val sinkScale = remember { Animatable(1f) }
     LaunchedEffect(sinkPressed) {
+        sinkActive = true
         sinkScale.animateTo(
             targetValue = if (sinkPressed) 0.94f else 1f,
             animationSpec = spring(dampingRatio = 0.8f, stiffness = 600f)
         )
+        if (!sinkPressed) sinkActive = false
     }
     if (landRipple.token != 0) {
         val lastRippleToken = remember { mutableIntStateOf(landRipple.token) }
@@ -228,7 +252,7 @@ fun CourseCard(
             }
             val outlineCache = remember { OutlineCache() }
             // 静止卡不挂 graphicsLayer：几十张×两页的合成层是周滑 draw 热点
-            val needTransformLayer = sinkPressed || isDragging || rippleAnimating
+            val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
 
             Box(
                 modifier = modifier
@@ -248,6 +272,7 @@ fun CourseCard(
                         }
                     )
                     .onGloballyPositioned { coordinates ->
+                        cardCoords[0] = coordinates
                         if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
                         val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
                         cardBoundsPx[0] = center.x
@@ -286,97 +311,19 @@ fun CourseCard(
                             style = outlineStroke
                         )
                     }
-                    .pointerInput(course) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            sinkPressed = true
-                            val downPosition = down.position
-                            var isLongPress = false
-                            var isDraggingCard = false
-                            var menuShown = false
-                            val longPressJob = scope.launch {
-                                delay(320.milliseconds)
-                                isLongPress = true
-                                sinkPressed = false
-                                menuShown = true
-                                onLongPressStart(
-                                    cardBoundsPx[0],
-                                    cardBoundsPx[1],
-                                    cardBoundsPx[2],
-                                    cardBoundsPx[3]
-                                )
-                            }
-                            try {
-                                while (true) {
-                                    // 菜单/拖拽用 Main pass 拦截穿透；否则 Final pass 让父级滚动先处理
-                                    // （Main 子→父，卡片消费移动会吞掉父级滑动）
-                                    val pass = if (menuShown || isDraggingCard)
-                                        PointerEventPass.Main else PointerEventPass.Final
-                                    val event = awaitPointerEvent(pass)
-                                    val pressed = event.changes.any { it.pressed }
-                                    if (!pressed) {
-                                        sinkPressed = false
-                                        if (isDraggingCard) {
-                                            if (menuShown) {
-                                                onDrag(0f, 0f)
-                                            } else {
-                                                onDragEnd()
-                                            }
-                                        } else if (menuShown) {
-                                        } else {
-                                            val upChange = event.changes.firstOrNull()
-                                            if (upChange != null) {
-                                                upChange.consume()
-                                                val dist = (upChange.position - downPosition).getDistance()
-                                                if (!isLongPress && dist < 8f * density) {
-                                                    onClick()
-                                                }
-                                            }
-                                        }
-                                        break
-                                    }
-                                    val currentPos = event.changes.firstOrNull()?.position ?: continue
-                                    val dx = currentPos.x - downPosition.x
-                                    val dy = currentPos.y - downPosition.y
-                                    val dragDist = currentPos.minus(downPosition).getDistance()
-
-                                    // 水平滑动 → 释放给 HorizontalPager
-                                    if (!isLongPress && !isDraggingCard && !menuShown
-                                        && kotlin.math.abs(dx) > 5f * density
-                                        && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
-                                    ) {
-                                        sinkPressed = false
-                                        break
-                                    }
-
-                                    if (!isLongPress && dragDist > 8f * density) {
-                                        sinkPressed = false
-                                        event.changes.forEach { it.consume() }
-                                        break
-                                    }
-                                    if (menuShown && !isDraggingCard) {
-                                        isDraggingCard = true
-                                        sinkPressed = false
-                                        onDragStart()
-                                    }
-                                    if (menuShown) {
-                                        val menuDragDist = (currentPos - downPosition).getDistance()
-                                        if (menuDragDist > 8f * density) {
-                                            menuShown = false
-                                            onMenuDismiss()
-                                        }
-                                    }
-                                    if (isDraggingCard) {
-                                        onDrag(currentPos.x - downPosition.x, currentPos.y - downPosition.y)
-                                    }
-                                    event.changes.forEach { it.consume() }
-                                }
-                            } finally {
-                                longPressJob.cancel()
-                            }
-                        }
-                    },
+                    .courseCardGesture(
+                        course = course,
+                        bounds = cardBoundsPx,
+                        refreshBounds = refreshCardBounds,
+                        scope = scope,
+                        onSinkChange = { sinkPressed = it },
+                        onLongPressStart = onLongPressStart,
+                        onClick = onClick,
+                        onDragStart = onDragStart,
+                        onDrag = onDrag,
+                        onDragEnd = onDragEnd,
+                        onMenuDismiss = onMenuDismiss,
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 CardContent(course, sectionCount, textColor, hasMultipleCourses,
@@ -392,7 +339,7 @@ fun CourseCard(
         }
         // 静止卡不挂 graphicsLayer：几十张×两页的合成层是左右滑 draw 热点。
         // 仅按压/拖拽/落地涟漪动画时挂；松手即撤，缩放回弹让位给无层路径。
-        val needTransformLayer = sinkPressed || isDragging || rippleAnimating
+        val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -415,6 +362,7 @@ fun CourseCard(
                 .background(cardColor, cardShape)
                 .onGloballyPositioned { coordinates ->
                     // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
+                    cardCoords[0] = coordinates
                     if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
                     val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
                     cardBoundsPx[0] = center.x
@@ -422,100 +370,120 @@ fun CourseCard(
                     cardBoundsPx[2] = coordinates.size.width.toFloat()
                     cardBoundsPx[3] = coordinates.size.height.toFloat()
                 }
-                .pointerInput(course) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        down.consume()
-                        sinkPressed = true
-                        val downPosition = down.position
-                        var isLongPress = false
-                        var isDraggingCard = false
-                        var menuShown = false
-                            val longPressJob = scope.launch {
-                                delay(320.milliseconds)
-                                isLongPress = true
-                                sinkPressed = false
-                                menuShown = true
-                                onLongPressStart(
-                                    cardBoundsPx[0],
-                                    cardBoundsPx[1],
-                                    cardBoundsPx[2],
-                                    cardBoundsPx[3]
-                                )
-                            }
-                        try {
-                            while (true) {
-                                // 菜单/拖拽用 Main pass 拦截穿透；否则 Final pass 让父级先处理滑动
-                                val pass = if (menuShown || isDraggingCard)
-                                    PointerEventPass.Main else PointerEventPass.Final
-                                val event = awaitPointerEvent(pass)
-                                val pressed = event.changes.any { it.pressed }
-                                if (!pressed) {
-                                    sinkPressed = false
-                                    if (isDraggingCard) {
-                                        if (menuShown) {
-                                            onDrag(0f, 0f)
-                                        } else {
-                                            onDragEnd()
-                                        }
-                                    } else if (menuShown) {
-                                    } else {
-                                        val upChange = event.changes.firstOrNull()
-                                        if (upChange != null) {
-                                            upChange.consume()
-                                            val dist = (upChange.position - downPosition).getDistance()
-                                            if (!isLongPress && dist < 8f * density) {
-                                                onClick()
-                                            }
-                                        }
-                                    }
-                                    break
-                                }
-                                val currentPos = event.changes.firstOrNull()?.position ?: continue
-                                val dx = currentPos.x - downPosition.x
-                                val dy = currentPos.y - downPosition.y
-                                val dragDist = currentPos.minus(downPosition).getDistance()
-
-                                // 水平滑动 → 释放给 HorizontalPager
-                                if (!isLongPress && !isDraggingCard && !menuShown
-                                    && kotlin.math.abs(dx) > 5f * density
-                                    && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
-                                ) {
-                                    sinkPressed = false
-                                    break
-                                }
-
-                                if (!isLongPress && dragDist > 8f * density) {
-                                    sinkPressed = false
-                                    event.changes.forEach { it.consume() }
-                                    break
-                                }
-                                if (menuShown && !isDraggingCard) {
-                                    isDraggingCard = true
-                                    sinkPressed = false
-                                    onDragStart()
-                                }
-                                if (menuShown) {
-                                    val menuDragDist = (currentPos - downPosition).getDistance()
-                                    if (menuDragDist > 8f * density) {
-                                        menuShown = false
-                                        onMenuDismiss()
-                                    }
-                                }
-                                if (isDraggingCard) {
-                                    onDrag(currentPos.x - downPosition.x, currentPos.y - downPosition.y)
-                                }
-                                event.changes.forEach { it.consume() }
-                            }
-                        } finally {
-                            longPressJob.cancel()
-                        }
-                    }
-                }
+                .courseCardGesture(
+                    course = course,
+                    bounds = cardBoundsPx,
+                    refreshBounds = refreshCardBounds,
+                    scope = scope,
+                    onSinkChange = { sinkPressed = it },
+                    onLongPressStart = onLongPressStart,
+                    onClick = onClick,
+                    onDragStart = onDragStart,
+                    onDrag = onDrag,
+                    onDragEnd = onDragEnd,
+                    onMenuDismiss = onMenuDismiss,
+                )
         ) {
             CardContent(course, sectionCount, textColor, hasMultipleCourses,
                 isTablet, cardContentAlignment, cardHeight.value, cardHeightPerSection,
                 isHoliday, isWorkSwap, isCurrentWeek, showClassroom, showTeacher, cardTextScale, isDark)
+        }
+    }
+}
+
+/**
+ * 课程卡手势：有壁纸 / 无壁纸两条渲染路径共用同一实现，避免各改一份产生漂移。
+ *
+ * - 轻点（位移 < 8dp）→ [onClick]
+ * - 长按 320ms → [onLongPressStart] 弹菜单，随后任意移动进入拖拽
+ * - 长按前横滑主导 / 位移超容差 / 多指按下 → 放弃本次手势，把滚动让给 Pager
+ */
+private fun Modifier.courseCardGesture(
+    course: Course,
+    bounds: FloatArray,
+    refreshBounds: () -> Unit,
+    scope: CoroutineScope,
+    onSinkChange: (Boolean) -> Unit,
+    onLongPressStart: (left: Float, top: Float, width: Float, height: Float) -> Unit,
+    onClick: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (offsetX: Float, offsetY: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onMenuDismiss: () -> Unit,
+): Modifier = pointerInput(course) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        down.consume()
+        onSinkChange(true)
+        val downPosition = down.position
+        val slop = 8.dp.toPx()
+        val horizontalSlop = 5.dp.toPx()
+        var isLongPress = false
+        var isDragging = false
+        var menuShown = false
+        val longPressJob = scope.launch {
+            delay(320.milliseconds)
+            isLongPress = true
+            onSinkChange(false)
+            menuShown = true
+            refreshBounds()
+            onLongPressStart(bounds[0], bounds[1], bounds[2], bounds[3])
+        }
+        try {
+            while (true) {
+                // 菜单/拖拽需要拦穿透用 Main pass；否则 Final pass 让父级滚动先处理
+                val pass = if (menuShown || isDragging) PointerEventPass.Main else PointerEventPass.Final
+                val event = awaitPointerEvent(pass)
+
+                if (event.changes.none { it.pressed }) {
+                    onSinkChange(false)
+                    when {
+                        isDragging -> if (menuShown) onDrag(0f, 0f) else onDragEnd()
+                        menuShown -> Unit
+                        else -> {
+                            val up = event.changes.firstOrNull()
+                            if (up != null) {
+                                up.consume()
+                                if (!isLongPress && (up.position - downPosition).getDistance() < slop) onClick()
+                            }
+                        }
+                    }
+                    break
+                }
+
+                val pos = event.changes.firstOrNull()?.position ?: continue
+                val dx = pos.x - downPosition.x
+                val dy = pos.y - downPosition.y
+                val moved = pos.minus(downPosition).getDistance()
+
+                // 长按前横滑主导 → 交给 Pager 翻页
+                if (!isLongPress && !isDragging && !menuShown &&
+                    abs(dx) > horizontalSlop && abs(dx) > abs(dy) * 1.2f
+                ) {
+                    onSinkChange(false)
+                    break
+                }
+                // 长按前位移超容差 → 取消长按
+                if (!isLongPress && moved > slop) {
+                    onSinkChange(false)
+                    event.changes.forEach { it.consume() }
+                    break
+                }
+                // 菜单已弹出：转为拖拽；位移超容差则收起菜单（拖拽浮层保留）
+                if (menuShown && !isDragging) {
+                    isDragging = true
+                    onSinkChange(false)
+                    onDragStart()
+                }
+                if (menuShown && moved > slop) {
+                    menuShown = false
+                    onMenuDismiss()
+                }
+                if (isDragging) onDrag(dx, dy)
+                event.changes.forEach { it.consume() }
+            }
+        } finally {
+            longPressJob.cancel()
         }
     }
 }
