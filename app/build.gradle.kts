@@ -2,6 +2,7 @@
 
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -24,10 +25,30 @@ android {
         }
     }
 
+    // 正式签名：与手表 rpk（sign/*.pem）必须同一套证书，否则 interconnect 拒连
+    val keystoreProps = Properties()
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    if (keystorePropsFile.exists()) {
+        keystorePropsFile.inputStream().use { keystoreProps.load(it) }
+    }
+    signingConfigs {
+        create("release") {
+            storeFile = file(keystoreProps.getProperty("storeFile", "../keystore/nexio-release.jks"))
+            storePassword = keystoreProps.getProperty("storePassword", "")
+            keyAlias = keystoreProps.getProperty("keyAlias", "nexio")
+            keyPassword = keystoreProps.getProperty("keyPassword", "")
+        }
+    }
+
     buildTypes {
+        debug {
+            // debug 包也用正式证书，便于与手表 rpk 通信联调
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
