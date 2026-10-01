@@ -10,6 +10,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.graphics.createBitmap
@@ -23,6 +24,14 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
 
     companion object {
         const val ACTION_UPDATE_WIDGET = "com.haooz.chedule.UPDATE_TODAY_WIDGET_STANDARD"
+
+        /** ColorOS 会把 2×2 小部件内容整体放大的反补偿倍率 */
+        private const val COLOR_OS_CONTENT_SCALE = 0.92f
+
+        private val dotIds = listOf(
+            R.id.widget_dot1, R.id.widget_dot2, R.id.widget_dot3, R.id.widget_dot4,
+            R.id.widget_dot5, R.id.widget_dot6, R.id.widget_dot7, R.id.widget_dot8
+        )
 
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, TodayCourseWidgetProviderStandard::class.java).apply {
@@ -186,7 +195,17 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
 
         val views = RemoteViews(context.packageName, R.layout.widget_today_course_standard)
         applyWidgetMode(views, context, repository)
-        WidgetTextSizes.applyTodayCourse(views)
+        // 外层圆角：HyperOS（小米系）按系统规范 24dp，其余 20dp
+        views.setInt(
+            R.id.widget_today_container,
+            "setBackgroundResource",
+            if (WidgetTextSizes.isXiaomi) R.drawable.widget_today_course_background_xiaomi
+            else R.drawable.widget_today_course_background
+        )
+        // ColorOS 上 2×2 的内容会被整体放大，按 0.85 倍反补偿（字号与间距一起）
+        val contentScale = if (WidgetTextSizes.isColorOs) COLOR_OS_CONTENT_SCALE else 1f
+        WidgetTextSizes.applyTodayCourse(views, contentScale)
+        applyScaledMetrics(views, context, contentScale)
         views.setTextViewText(R.id.widget_title, titleText)
         views.setTextViewText(R.id.widget_week, weekText)
 
@@ -201,15 +220,12 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
             val remainingText = if (remainingCount > 0) "还有${remainingCount}节课" else "没有其他课程"
             views.setTextViewText(R.id.widget_remaining_text, remainingText)
 
-            val dotIds = listOf(
-                R.id.widget_dot1, R.id.widget_dot2, R.id.widget_dot3, R.id.widget_dot4,
-                R.id.widget_dot5, R.id.widget_dot6, R.id.widget_dot7, R.id.widget_dot8
-            )
             for (i in dotIds.indices) {
                 if (i < dotCourses.size) {
                     views.setViewVisibility(dotIds[i], View.VISIBLE)
                     views.setImageViewBitmap(dotIds[i], createCircleBitmap(context, dotCourses[i].colorRes.toInt(),
-                        if (dark) WidgetTextSizes.TODAY_BG_DARK else WidgetTextSizes.TODAY_BG_LIGHT))
+                        if (dark) WidgetTextSizes.TODAY_BG_DARK else WidgetTextSizes.TODAY_BG_LIGHT,
+                        contentScale))
                 } else {
                     views.setViewVisibility(dotIds[i], View.GONE)
                 }
@@ -218,10 +234,6 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_course_content, View.GONE)
             views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
             views.setTextViewText(R.id.widget_empty_text, emptyText)
-            val dotIds = listOf(
-                R.id.widget_dot1, R.id.widget_dot2, R.id.widget_dot3, R.id.widget_dot4,
-                R.id.widget_dot5, R.id.widget_dot6, R.id.widget_dot7, R.id.widget_dot8
-            )
             for (dotId in dotIds) {
                 views.setViewVisibility(dotId, View.GONE)
             }
@@ -264,8 +276,32 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         )
     }
 
-    private fun createCircleBitmap(context: Context, color: Int, background: Int): Bitmap {
-        val size = (7 * WidgetTextSizes.deviceDensity(context)).toInt()
+    /**
+     * 间距随倍率缩放（与字号一起），用于 ColorOS 的反补偿。
+     * 每次都显式下发全部数值：回到 1× 时会覆盖回原始值，不残留上次的缩放。
+     */
+    private fun applyScaledMetrics(views: RemoteViews, context: Context, scale: Float) {
+        val unit = TypedValue.COMPLEX_UNIT_DIP
+        // setViewPadding 的带单位重载是 API 37 才有的，这里统一用 px 版（API 1 起即可用）
+        fun px(value: Float): Int = WidgetTextSizes.dpToPx(context, value * scale).toInt()
+        fun margin(id: Int, type: Int, dp: Float) {
+            views.setViewLayoutMargin(id, type, dp * scale, unit)
+        }
+
+        views.setViewPadding(R.id.widget_today_container, px(10f), px(12f), px(10f), px(12f))
+        margin(R.id.widget_header, RemoteViews.MARGIN_START, 4f)
+        margin(R.id.widget_header, RemoteViews.MARGIN_END, 4f)
+        margin(R.id.widget_header, RemoteViews.MARGIN_BOTTOM, 8f)
+        views.setViewPadding(R.id.widget_course_name, px(4f), 0, 0, px(4f))
+        margin(R.id.widget_course_name, RemoteViews.MARGIN_BOTTOM, 4f)
+        dotIds.forEach { dot ->
+            views.setViewLayoutWidth(dot, 7f * scale, unit)
+            views.setViewLayoutHeight(dot, 7f * scale, unit)
+        }
+    }
+
+    private fun createCircleBitmap(context: Context, color: Int, background: Int, scale: Float = 1f): Bitmap {
+        val size = (7 * scale * WidgetTextSizes.deviceDensity(context)).toInt()
         // 用不透明的卡片底色填充，避免透明像素被桌面渲染成灰色方块
         val bitmap = createBitmap(size, size).apply { eraseColor(background) }
         val canvas = Canvas(bitmap)

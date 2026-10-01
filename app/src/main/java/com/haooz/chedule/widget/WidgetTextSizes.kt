@@ -4,9 +4,11 @@ package com.haooz.chedule.widget
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import android.util.TypedValue
 import android.widget.RemoteViews
 import com.haooz.chedule.R
+import java.util.Locale
 
 object WidgetTextSizes {
 
@@ -15,6 +17,18 @@ object WidgetTextSizes {
 
     /** 将 dp 按设备密度换算为 px */
     fun dpToPx(context: Context, dp: Float): Float = dp * deviceDensity(context)
+
+    /** HyperOS / 小米系（小米、红米、POCO）：小部件外观按 HyperOS 规范走（如圆角 24dp） */
+    val isXiaomi: Boolean by lazy {
+        val brands = setOf("xiaomi", "redmi", "poco")
+        Build.BRAND.lowercase(Locale.ROOT) in brands || Build.MANUFACTURER.lowercase(Locale.ROOT) in brands
+    }
+
+    /** ColorOS（OPPO/realme/OnePlus）：会按声明尺寸把小部件内容整体缩放，需按比例反补偿 */
+    val isColorOs: Boolean by lazy {
+        val brands = setOf("oppo", "realme", "oneplus")
+        Build.BRAND.lowercase(Locale.ROOT) in brands || Build.MANUFACTURER.lowercase(Locale.ROOT) in brands
+    }
 
     // ---- 主题相关：小组件位图背景需随深浅色选择不透明底色，避免透明像素被桌面渲染成灰色/白色框 ----
     /** 课程卡片（非进行中）底色：浅色=白 / 深色=#262626（对应 widget_card_background 两套） */
@@ -90,14 +104,22 @@ object WidgetTextSizes {
         COURSE_REMINDER_TEXTS.forEach { (id, dp) -> setTextSize(views, id, dp * scale) }
     }
 
-    /** 今日课程小组件（widget_today_course_standard） */
-    fun applyTodayCourse(views: RemoteViews) {
-        setTextSize(views, R.id.widget_title, 14f)
-        setTextSize(views, R.id.widget_week, 14f)
-        setTextSize(views, R.id.widget_course_name, 17f)
-        setTextSize(views, R.id.widget_course_time, 14f)
-        setTextSize(views, R.id.widget_course_location, 14f)
-        setTextSize(views, R.id.widget_remaining_text, 12f)
-        setTextSize(views, R.id.widget_empty_text, 14f)
+    /** 今日课程小组件各文本的基准字号（dp） */
+    private val TODAY_COURSE_TEXTS = listOf(
+        R.id.widget_title to 14f,
+        R.id.widget_week to 14f,
+        R.id.widget_course_name to 17f,
+        R.id.widget_course_time to 14f,
+        R.id.widget_course_location to 14f,
+        R.id.widget_remaining_text to 12f,
+        R.id.widget_empty_text to 14f,
+    )
+
+    /**
+     * 今日课程小组件（widget_today_course_standard）。
+     * @param scale 字号整体倍率，供 ColorOS 体型偏大时的反补偿用（默认 1 倍）
+     */
+    fun applyTodayCourse(views: RemoteViews, scale: Float = 1f) {
+        TODAY_COURSE_TEXTS.forEach { (id, dp) -> setTextSize(views, id, dp * scale) }
     }
 }

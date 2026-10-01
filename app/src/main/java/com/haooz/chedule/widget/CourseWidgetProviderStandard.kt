@@ -151,7 +151,7 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         // 卡位/课程数随小组件高度变化：2 格=2 / 3 格=3 / 4 格=5
         val rowCount = widgetRowCount(appWidgetManager.getAppWidgetOptions(appWidgetId))
         // ColorOS 拉伸到 3/4 格会把整份内容（字号与间距）一起缩小，按 1.2 倍反补偿
-        val contentScale = if (rowCount >= 3 && isColorOs) COLOR_OS_CONTENT_SCALE else 1f
+        val contentScale = if (rowCount >= 3 && WidgetTextSizes.isColorOs) COLOR_OS_CONTENT_SCALE else 1f
         val displayCourses = if (showTomorrow) {
             targetCourses.take(rowCount)
         } else {
@@ -210,6 +210,12 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
 
         val views = RemoteViews(context.packageName, R.layout.widget_course_reminder_standard)
         applyWidgetMode(views, context, repository)
+        // 外层圆角：HyperOS（小米系）按系统规范 24dp，其余 20dp
+        views.setInt(
+            R.id.widget_container,
+            "setBackgroundResource",
+            if (WidgetTextSizes.isXiaomi) R.drawable.widget_background_xiaomi else R.drawable.widget_background
+        )
         WidgetTextSizes.applyCourseReminder(views, contentScale)
         applyScaledMetrics(views, context, contentScale)
         views.setTextViewText(R.id.widget_title, titleText)
@@ -314,14 +320,6 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
             heightDp >= 226 -> 3
             else -> 2
         }
-    }
-
-    /** ColorOS（OPPO/realme/OnePlus）拉伸小部件后会把内容整体缩小，需要按比例反补偿 */
-    private val isColorOs: Boolean by lazy {
-        val manufacturer = android.os.Build.MANUFACTURER.lowercase(java.util.Locale.ROOT)
-        val brand = android.os.Build.BRAND.lowercase(java.util.Locale.ROOT)
-        val colorOsBrands = setOf("oppo", "realme", "oneplus")
-        manufacturer in colorOsBrands || brand in colorOsBrands
     }
 
     /**
