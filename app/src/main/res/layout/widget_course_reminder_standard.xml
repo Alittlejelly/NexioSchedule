@@ -12,6 +12,7 @@
     android:clipToPadding="true">
 
     <LinearLayout
+        android:id="@+id/widget_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -34,6 +35,7 @@
             android:layout_marginBottom="8dp">
 
             <ImageView
+                android:id="@+id/widget_header_icon"
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:src="@drawable/ic_miuix_logo"
@@ -244,6 +246,291 @@
 
             <TextView
                 android:id="@+id/widget_now2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14dp"
+                android:textColor="@color/widget_now_color"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Course card 3（3 格高起显示） -->
+        <LinearLayout
+            android:id="@+id/widget_course3"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_card_background"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:layout_marginBottom="8dp"
+            android:clipChildren="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="start"
+                android:layout_marginEnd="10dp">
+
+                <TextView
+                    android:id="@+id/widget_time_start3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_start_color"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/widget_time_end3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/widget_color3"
+                android:layout_width="4dp"
+                android:layout_height="match_parent"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="6dp"
+                android:scaleType="fitXY"
+                tools:ignore="ContentDescription" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                tools:ignore="NestedWeights,RtlSymmetry">
+
+                <TextView
+                    android:id="@+id/widget_name3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14dp"
+                    android:textColor="@color/widget_name_color"
+                    android:fontFamily="sans-serif-medium"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/widget_info3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="12dp"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_now3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14dp"
+                android:textColor="@color/widget_now_color"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Course card 4（4 格高起显示） -->
+        <LinearLayout
+            android:id="@+id/widget_course4"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_card_background"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:layout_marginBottom="8dp"
+            android:clipChildren="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="start"
+                android:layout_marginEnd="10dp">
+
+                <TextView
+                    android:id="@+id/widget_time_start4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_start_color"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/widget_time_end4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/widget_color4"
+                android:layout_width="4dp"
+                android:layout_height="match_parent"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="6dp"
+                android:scaleType="fitXY"
+                tools:ignore="ContentDescription" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                tools:ignore="NestedWeights,RtlSymmetry">
+
+                <TextView
+                    android:id="@+id/widget_name4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14dp"
+                    android:textColor="@color/widget_name_color"
+                    android:fontFamily="sans-serif-medium"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/widget_info4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="12dp"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_now4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14dp"
+                android:textColor="@color/widget_now_color"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Course card 5（4 格高起显示） -->
+        <LinearLayout
+            android:id="@+id/widget_course5"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_card_background"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:layout_marginBottom="8dp"
+            android:clipChildren="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="start"
+                android:layout_marginEnd="10dp">
+
+                <TextView
+                    android:id="@+id/widget_time_start5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_start_color"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/widget_time_end5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/widget_color5"
+                android:layout_width="4dp"
+                android:layout_height="match_parent"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="6dp"
+                android:scaleType="fitXY"
+                tools:ignore="ContentDescription" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                tools:ignore="NestedWeights,RtlSymmetry">
+
+                <TextView
+                    android:id="@+id/widget_name5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14dp"
+                    android:textColor="@color/widget_name_color"
+                    android:fontFamily="sans-serif-medium"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/widget_info5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textSize="12dp"
+                    android:textColor="@color/widget_time_end_color"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_now5"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="14dp"

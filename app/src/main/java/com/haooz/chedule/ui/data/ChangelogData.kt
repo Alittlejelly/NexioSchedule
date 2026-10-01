@@ -10,9 +10,11 @@ val changelogData = listOf(
         version = "v1.6.0-0924",
         date = "2026-09-24",
         changes = listOf(
+            "新增Vela端能力支持（手环版App），来自PR提供者 @Alittlejelly",
             "新增支持添加教学周重组规则，来自PR提供者 @yulimfish",
             "新增支持节假日末期课程排除，来自PR提供者 @yulimfish",
             "新增假期开始/结束提醒，来自PR提供者 @yulimfish",
+            "底部导航栏支持自适应高度，来自PR提供者 @lesetOng",
             "重新设计Pad端布局，更简单易用",
             "重新设计切换课表功能，支持文件夹分类",
             "课表外观可切换页面预览编辑效果",

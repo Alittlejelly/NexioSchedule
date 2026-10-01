@@ -46,35 +46,58 @@ object WidgetTextSizes {
         }
     }
 
-    private fun setTextSize(views: RemoteViews, id: Int, dp: Int) {
-        views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_DIP, dp.toFloat())
+    private fun setTextSize(views: RemoteViews, id: Int, dp: Float) {
+        views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_DIP, dp)
     }
 
-    /** 课程表小组件（widget_course_reminder_standard） */
-    fun applyCourseReminder(views: RemoteViews) {
-        setTextSize(views, R.id.widget_title, 14)
-        setTextSize(views, R.id.widget_week, 14)
-        setTextSize(views, R.id.widget_time_start1, 12)
-        setTextSize(views, R.id.widget_time_end1, 12)
-        setTextSize(views, R.id.widget_name1, 14)
-        setTextSize(views, R.id.widget_info1, 12)
-        setTextSize(views, R.id.widget_now1, 14)
-        setTextSize(views, R.id.widget_time_start2, 12)
-        setTextSize(views, R.id.widget_time_end2, 12)
-        setTextSize(views, R.id.widget_name2, 14)
-        setTextSize(views, R.id.widget_info2, 12)
-        setTextSize(views, R.id.widget_now2, 14)
-        setTextSize(views, R.id.widget_empty_text, 14)
+    /** 课程表小组件各文本的基准字号（dp） */
+    private val COURSE_REMINDER_TEXTS = listOf(
+        R.id.widget_title to 14f,
+        R.id.widget_week to 14f,
+        R.id.widget_time_start1 to 12f,
+        R.id.widget_time_end1 to 12f,
+        R.id.widget_name1 to 14f,
+        R.id.widget_info1 to 12f,
+        R.id.widget_now1 to 14f,
+        R.id.widget_time_start2 to 12f,
+        R.id.widget_time_end2 to 12f,
+        R.id.widget_name2 to 14f,
+        R.id.widget_info2 to 12f,
+        R.id.widget_now2 to 14f,
+        R.id.widget_time_start3 to 12f,
+        R.id.widget_time_end3 to 12f,
+        R.id.widget_name3 to 14f,
+        R.id.widget_info3 to 12f,
+        R.id.widget_now3 to 14f,
+        R.id.widget_time_start4 to 12f,
+        R.id.widget_time_end4 to 12f,
+        R.id.widget_name4 to 14f,
+        R.id.widget_info4 to 12f,
+        R.id.widget_now4 to 14f,
+        R.id.widget_time_start5 to 12f,
+        R.id.widget_time_end5 to 12f,
+        R.id.widget_name5 to 14f,
+        R.id.widget_info5 to 12f,
+        R.id.widget_now5 to 14f,
+        R.id.widget_empty_text to 14f,
+    )
+
+    /**
+     * 课程表小组件（widget_course_reminder_standard）。
+     * @param scale 字号整体倍率，供 ColorOS 拉伸后反补偿用（默认 1 倍）
+     */
+    fun applyCourseReminder(views: RemoteViews, scale: Float = 1f) {
+        COURSE_REMINDER_TEXTS.forEach { (id, dp) -> setTextSize(views, id, dp * scale) }
     }
 
     /** 今日课程小组件（widget_today_course_standard） */
     fun applyTodayCourse(views: RemoteViews) {
-        setTextSize(views, R.id.widget_title, 14)
-        setTextSize(views, R.id.widget_week, 14)
-        setTextSize(views, R.id.widget_course_name, 17)
-        setTextSize(views, R.id.widget_course_time, 14)
-        setTextSize(views, R.id.widget_course_location, 14)
-        setTextSize(views, R.id.widget_remaining_text, 12)
-        setTextSize(views, R.id.widget_empty_text, 14)
+        setTextSize(views, R.id.widget_title, 14f)
+        setTextSize(views, R.id.widget_week, 14f)
+        setTextSize(views, R.id.widget_course_name, 17f)
+        setTextSize(views, R.id.widget_course_time, 14f)
+        setTextSize(views, R.id.widget_course_location, 14f)
+        setTextSize(views, R.id.widget_remaining_text, 12f)
+        setTextSize(views, R.id.widget_empty_text, 14f)
     }
 }
