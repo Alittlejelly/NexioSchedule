@@ -539,7 +539,7 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- Empty state -->
+        <!-- Empty state（底部内边距把文案重心往上提，桌面里看起来才居中） -->
         <LinearLayout
             android:id="@+id/widget_empty"
             android:layout_width="match_parent"
@@ -547,6 +547,7 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
+            android:paddingBottom="20dp"
             android:visibility="gone">
 
             <TextView
