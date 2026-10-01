@@ -12,22 +12,14 @@ import org.json.JSONObject
  * 手机端 → 手表端 课表 JSON 组装。
  *
  * 协议与手表 `src/common/sync.js` 对齐：
- * protocol=nexio.schedule, version=1, action=replace, week: {0..6 -> Course[]}
+ * protocol=nexio.schedule, version=2, action=replace, week: {1..7 -> Course[]}
  * holidays: HolidayManager.Entry[]（type=0 假期隐藏 / type=1 调休跟 followWeekday）
- * 手表 weekday：0=周日 … 6=周六
- * 本应用 dayOfWeek：1=周一 … 7=周日
+ * 星期统一用 1=周一 … 7=周日（week 的键与 holidays.followWeekday 同一坐标系）
  */
 object WatchPayload {
 
     private const val PROTOCOL = "nexio.schedule"
-    private const val VERSION = 1
-
-    /** 手机 dayOfWeek(1=周一..7=周日) → 手表 week key(0=周日..6=周六) */
-    fun toWatchDay(dayOfWeek: Int): Int = when (dayOfWeek) {
-        7 -> 0
-        in 1..6 -> dayOfWeek
-        else -> -1
-    }
+    private const val VERSION = 2
 
     /**
      * 按「当前教学周」过滤后的整周课表 JSON 字符串。
@@ -51,15 +43,15 @@ object WatchPayload {
         val active = all.filter { it.isActiveInWeek(week) }
         val source = if (active.isEmpty()) all else active
         val weekMap = JSONObject()
-        // 手表 week key 0-6
-        val buckets = Array(7) { JSONArray() }
+        // week key 用 dayOfWeek 原值（1=周一 … 7=周日），不再换算成 0=周日 那套
+        val buckets = Array(8) { JSONArray() }
 
         for (course in source) {
-            val day = toWatchDay(course.dayOfWeek)
-            if (day < 0) continue
+            val day = course.dayOfWeek
+            if (day !in 1..7) continue
             buckets[day].put(toCourseJson(course, repository))
         }
-        for (i in 0..6) {
+        for (i in 1..7) {
             weekMap.put(i.toString(), buckets[i])
         }
 
