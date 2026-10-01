@@ -104,7 +104,7 @@ fun CourseCard(
     disablePadding: Boolean = false,
     isDark: Boolean = isAppDarkTheme(),
     // 非 state：滑动中坐标每帧变，跳过 localToRoot；读取不触发重组
-    gridScrollFlag: com.haooz.chedule.ui.screens.GridScrollFlag? = null,
+    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState? = null,
     onClick: () -> Unit,
     onLongPressStart: (cardLeft: Float, cardTop: Float, width: Float, height: Float) -> Unit = { _, _, _, _ -> },
     onDragStart: () -> Unit = {},
@@ -273,7 +273,7 @@ fun CourseCard(
                     )
                     .onGloballyPositioned { coordinates ->
                         cardCoords[0] = coordinates
-                        if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
+                        if (touchState?.scrolling == true) return@onGloballyPositioned
                         val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
                         cardBoundsPx[0] = center.x
                         cardBoundsPx[1] = center.y
@@ -313,6 +313,7 @@ fun CourseCard(
                     }
                     .courseCardGesture(
                         course = course,
+                        touchState = touchState,
                         bounds = cardBoundsPx,
                         refreshBounds = refreshCardBounds,
                         scope = scope,
@@ -332,8 +333,6 @@ fun CourseCard(
             }
         }
     } else {
-        // 无壁纸路径：手势已在外层 pointerInput 处理，不再套 Miuix Card
-        //（其 interactionSource/pressable/combinedClickable/squircle 每卡都是一笔首帧组合开销）
         val cardShape = remember(effectiveCornerRadius) {
             ContinuousRoundedRectangle(effectiveCornerRadius.dp)
         }
@@ -363,7 +362,7 @@ fun CourseCard(
                 .onGloballyPositioned { coordinates ->
                     // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
                     cardCoords[0] = coordinates
-                    if (gridScrollFlag?.scrolling == true) return@onGloballyPositioned
+                    if (touchState?.scrolling == true) return@onGloballyPositioned
                     val center = coordinates.localToRoot(Offset(coordinates.size.width / 2f, coordinates.size.height / 2f))
                     cardBoundsPx[0] = center.x
                     cardBoundsPx[1] = center.y
@@ -372,6 +371,7 @@ fun CourseCard(
                 }
                 .courseCardGesture(
                     course = course,
+                    touchState = touchState,
                     bounds = cardBoundsPx,
                     refreshBounds = refreshCardBounds,
                     scope = scope,
@@ -400,6 +400,7 @@ fun CourseCard(
  */
 private fun Modifier.courseCardGesture(
     course: Course,
+    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState?,
     bounds: FloatArray,
     refreshBounds: () -> Unit,
     scope: CoroutineScope,
@@ -423,6 +424,8 @@ private fun Modifier.courseCardGesture(
         var menuShown = false
         val longPressJob = scope.launch {
             delay(320.milliseconds)
+            // 多指（三指截图等）不当成长按
+            if (touchState?.multiTouch == true) return@launch
             isLongPress = true
             onSinkChange(false)
             menuShown = true
@@ -444,7 +447,12 @@ private fun Modifier.courseCardGesture(
                             val up = event.changes.firstOrNull()
                             if (up != null) {
                                 up.consume()
-                                if (!isLongPress && (up.position - downPosition).getDistance() < slop) onClick()
+                                // 多指时不点击：系统手势（三指截图）拦截后 Compose 会补发一个
+                                // 合成的「全部抬起」事件，看起来和松手一样，只能靠页面级多指标记区分
+                                val multiTouch = touchState?.multiTouch == true
+                                if (!isLongPress && !multiTouch &&
+                                    (up.position - downPosition).getDistance() < slop
+                                ) onClick()
                             }
                         }
                     }

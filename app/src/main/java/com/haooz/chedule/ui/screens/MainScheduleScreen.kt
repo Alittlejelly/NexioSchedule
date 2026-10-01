@@ -61,11 +61,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -136,9 +137,16 @@ private class CardBoundsHolder {
     var rect: Rect? = null
 }
 
-// 刻意不用 snapshot state：滑动中坐标用不上，state 会带着几十张卡一起重组
-class GridScrollFlag {
+/**
+ * 课程表页面级触控状态。刻意用普通 holder 而非 snapshot state：
+ * 里面的值每帧都可能变（滑动坐标、手指数量），用 state 会带着几十张卡一起重组。
+ */
+class ScheduleTouchState {
+    /** 页面是否正在滑动（横滑 pager 或页内纵滑） */
     var scrolling: Boolean = false
+    /** 本次手势是否出现过「多指」。必须放在页面层统计：Compose 只把「命中该节点的指针」
+     *  派发给节点，卡片自己看不到落在别的卡片上的手指。用于拦掉多指误触发的点击/长按。 */
+    var multiTouch: Boolean = false
 }
 
 data class ScheduleGridGeometry(
@@ -178,14 +186,14 @@ fun MainScheduleScreen(
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
     onCourseMenuDismiss: () -> Unit = {},
     wallpaperBitmap: android.graphics.Bitmap? = null,
-    wallpaperOffset: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero,
+    wallpaperOffset: Offset = Offset.Zero,
     wallpaperScale: Float = 1f,
     // true：壁纸由主 pager 后共享层绘制，本页透明叠上，切 tab 时不随页平移
     useSharedWallpaper: Boolean = false,
     // 共享壁纸层 backdrop，供卡片玻璃采样（useSharedWallpaper 时必传 LayerBackdrop）
     sharedWallpaperBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop? = null,
     isWallpaperEditing: Boolean = false,
-    onWallpaperOffsetChange: (androidx.compose.ui.geometry.Offset) -> Unit = {},
+    onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
     appearance: com.haooz.chedule.data.AppearanceConfig = com.haooz.chedule.data.AppearanceConfig(),
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
@@ -249,7 +257,7 @@ fun MainScheduleScreen(
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
     val scrollState = externalScrollState
     // 非 state 版本：卡片 onGloballyPositioned 读取不触发重组
-    val gridScrollFlag = remember { GridScrollFlag() }
+    val touchState = remember { ScheduleTouchState() }
     // 供停滑后冲刷 dayBounds 版本号；仅滑动起停各写一次
     val scheduleScrollInProgress = remember { mutableStateOf(false) }
     LaunchedEffect(pagerState, scrollState) {
@@ -257,7 +265,7 @@ fun MainScheduleScreen(
         snapshotFlow {
             pagerState.isScrollInProgress || scrollState.isScrollInProgress
         }.collect {
-            gridScrollFlag.scrolling = it
+            touchState.scrolling = it
             scheduleScrollInProgress.value = it
         }
     }
@@ -755,6 +763,24 @@ fun MainScheduleScreen(
         state = pagerState,
         modifier = Modifier
             .fillMaxSize()
+            // 页面级多指统计：多指（如三指下滑截图）时抑制卡片点击/长按
+            .pointerInput(touchState) {
+                awaitPointerEventScope {
+                    var active = false
+                    while (true) {
+                        val downCount = awaitPointerEvent(PointerEventPass.Initial)
+                            .changes.count { it.pressed }
+                        if (downCount == 0) {
+                            // 全部抬起：不清零，让最后一帧仍能被卡片读到「本手势是多指」
+                            active = false
+                        } else {
+                            if (!active) touchState.multiTouch = false
+                            if (downCount > 1) touchState.multiTouch = true
+                            active = true
+                        }
+                    }
+                }
+            }
             // 横竖主导手势（与今日页共用）：横向接管 pager，纵向仍归页内滚动
             .pagerAxisTakeoverGesture(
                 pagerState = pagerState,
@@ -784,7 +810,7 @@ fun MainScheduleScreen(
                     )
                     .onGloballyPositioned { coordinates ->
                         // 横滑时 Y 不变，跳过写入，省掉每帧两次回调体
-                        if (gridScrollFlag.scrolling == true && pagerState.isScrollInProgress) return@onGloballyPositioned
+                        if (touchState.scrolling && pagerState.isScrollInProgress) return@onGloballyPositioned
                         val pos = coordinates.positionInWindow()
                         scheduleViewport.topPx = pos.y
                         scheduleViewport.bottomPx = pos.y + coordinates.size.height
@@ -977,7 +1003,7 @@ fun MainScheduleScreen(
                                 }
                             DayColumn(
                                 dayOfWeek = dayOfWeek,
-                                gridScrollFlag = gridScrollFlag,
+                                touchState = touchState,
                                 courses = filteredDayCourses,
                                 onCourseClick = stableOnCourseClick,
                                 onEmptyClick = stableOnEmptyClick,
@@ -1026,12 +1052,12 @@ fun MainScheduleScreen(
                                         // 滑动中只写数组不递增版本号，避免逐帧重组；停后由 LaunchedEffect 冲刷
                                         if (arr == null) {
                                             dayBoundsArray[dayOfWeek] = floatArrayOf(pos.x, pos.x + w, pos.y)
-                                            if (!gridScrollFlag.scrolling) lastDayBoundsVersion++
+                                            if (!touchState.scrolling) lastDayBoundsVersion++
                                         } else if (arr[0] != pos.x || arr[1] != pos.x + w || arr[2] != pos.y) {
                                             arr[0] = pos.x
                                             arr[1] = pos.x + w
                                             arr[2] = pos.y
-                                            if (!gridScrollFlag.scrolling) lastDayBoundsVersion++
+                                            if (!touchState.scrolling) lastDayBoundsVersion++
                                         }
                                     }
                             )
@@ -1221,7 +1247,7 @@ fun MainScheduleScreen(
                                         val newOffset = latestWallpaperOffset + pan
                                         latestOnScaleChange(newScale)
                                         latestOnOffsetChange(
-                                            androidx.compose.ui.geometry.Offset(
+                                            Offset(
                                                 newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
                                                 newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
                                             )
@@ -1358,7 +1384,7 @@ fun MainScheduleScreen(
                             .padding(horizontal = 16.dp)
                             .onGloballyPositioned { coordinates ->
                                 val position =
-                                    coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
+                                    coordinates.localToRoot(Offset.Zero)
                                 val size = coordinates.size
                                 cardBoundsHolder.rect = Rect(
                                     left = position.x,
@@ -1882,7 +1908,7 @@ private fun AnimatedDropTargetMask(
                     }
                     .graphicsLayer { this.alpha = alpha.value }
                     .drawBackdrop(
-                        backdrop = wallpaperBackdrop!!,
+                        backdrop = wallpaperBackdrop,
                         shape = { maskShape },
                         effects = maskEffects,
                         highlight = null,

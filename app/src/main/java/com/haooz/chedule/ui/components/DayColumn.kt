@@ -114,7 +114,7 @@ fun DayColumn(
     // 当前列需高亮的节次范围（含起止）
     dropHighlightSections: IntRange? = null,
     // 非 state：滑动中跳过逐帧坐标计算
-    gridScrollFlag: com.haooz.chedule.ui.screens.GridScrollFlag? = null,
+    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState? = null,
     // 页面层统一读取，避免每列挂 prefs 监听
     isDark: Boolean = false,
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
@@ -190,7 +190,7 @@ fun DayColumn(
                     .fillMaxHeight()
                     .onGloballyPositioned { coordinates ->
                         emptyLayerCoords[0] = coordinates
-                        if (gridScrollFlag?.scrolling != true) {
+                        if (touchState?.scrolling != true) {
                             val pos = coordinates.localToRoot(Offset.Zero)
                             emptyLayerBounds[0] = pos.x
                             emptyLayerBounds[1] = pos.y
@@ -291,7 +291,7 @@ fun DayColumn(
                 wallpaperBackdrop = wallpaperBackdrop,
                 cardBlurRadius = cardBlurRadius,
                 draggingCourseIds = draggingCourseIds,
-                gridScrollFlag = gridScrollFlag,
+                touchState = touchState,
                 isDark = isDark,
 
                 onCourseClick = onCourseClick,
@@ -333,7 +333,7 @@ private fun CourseCardsLayer(
     wallpaperBackdrop: Backdrop?,
     cardBlurRadius: Float,
     draggingCourseIds: Set<String>,
-    gridScrollFlag: com.haooz.chedule.ui.screens.GridScrollFlag? = null,
+    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState? = null,
     isDark: Boolean,
     viewportTopDp: Float = 0f,
     viewportBottomDp: Float = Float.MAX_VALUE,
@@ -425,7 +425,7 @@ private fun CourseCardsLayer(
                 ) {
                     CourseCard(
                         course = course,
-                        gridScrollFlag = gridScrollFlag,
+                        touchState = touchState,
                         isDark = isDark,
                         isCurrentWeek = isCurrentWeekCourse,
                         isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
@@ -469,7 +469,7 @@ private fun CourseCardsLayer(
                 ) {
                     CourseCard(
                         course = displayCourse,
-                        gridScrollFlag = gridScrollFlag,
+                        touchState = touchState,
                         isDark = isDark,
                         isCurrentWeek = isCurrentWeekCourse,
                         isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
