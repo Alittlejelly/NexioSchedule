@@ -35,7 +35,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import androidx.compose.ui.Alignment
@@ -43,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -62,7 +60,6 @@ import com.haooz.chedule.ui.basic.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.utils.LocalOverScrollState
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.overScrollVertical
-import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -100,8 +97,6 @@ fun TabletSwitchSchedulePane(
     val showAddFolderDialog = remember { mutableStateOf(false) }
     // 编辑模式：左上角 Close 退出
     val isEditMode = remember { mutableStateOf(false) }
-    // 右栏滚动：供顶栏遮罩
-    var rightScrollPx by remember { mutableFloatStateOf(0f) }
     // 右栏预览：跟随当前选中课表；节数/上中晚分段与主课表同一套配置
     val context = androidx.compose.ui.platform.LocalContext.current
     val repository = remember { CourseRepository(context) }
@@ -176,10 +171,8 @@ fun TabletSwitchSchedulePane(
                     )
                 }
                 TabletPaneTopChrome(
-                    scrolledPx = leftScrollPx,
                     backdrop = leftBackdrop,
                     maskHeight = maskHeight,
-                    maskAlpha = maskAlpha,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
                 // 标题栏：编辑模式左上 Close，居中标题，右侧添加/文件夹
@@ -272,7 +265,6 @@ fun TabletSwitchSchedulePane(
                     drawRect(rightSurface)
                     drawContent()
                 }
-                val rightMaskAlpha = rememberPaneMaskAlpha(-rightScrollPx)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -286,14 +278,11 @@ fun TabletSwitchSchedulePane(
                         eveningSections = previewSections.third,
                         contentTopPadding = chromeTop,
                         modifier = Modifier.fillMaxSize(),
-                        onScrollYChanged = { rightScrollPx = it.toFloat().coerceAtLeast(0f) },
                     )
                 }
                 TabletPaneTopChrome(
-                    scrolledPx = rightScrollPx,
                     backdrop = rightBackdrop,
                     maskHeight = maskHeight,
-                    maskAlpha = rightMaskAlpha,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
             }
@@ -327,19 +316,14 @@ private fun rememberPaneMaskAlpha(contentOffset: Float): Float {
     return maskAnim.value
 }
 
-/** 顶栏表面色渐变遮罩 + 常驻渐变模糊：与设置页 TabletPaneTopChrome 一致 */
+/** 顶栏常驻表面色渐变遮罩 + 常驻渐变模糊：与设置页 TabletPaneTopChrome 一致 */
 @Composable
 private fun TabletPaneTopChrome(
-    scrolledPx: Float,
     backdrop: Backdrop?,
     maskHeight: Dp,
     modifier: Modifier = Modifier,
-    maskAlpha: Float? = null,
 ) {
-    // scrolledPx 为正=已上滑；转成 contentOffset 约定（向下滚为负）
-    val resolvedMaskAlpha = maskAlpha ?: rememberPaneMaskAlpha(-scrolledPx)
-    val gradientColor =
-        if (rememberAppSettingDark()) Color.Black else Color.White
+    val gradientColor = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = modifier
@@ -359,7 +343,6 @@ private fun TabletPaneTopChrome(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
-                .graphicsLayer { alpha = resolvedMaskAlpha }
                 .background(
                     Brush.verticalGradient(
                         0f to gradientColor.copy(alpha = 0.85f),
@@ -386,7 +369,6 @@ private fun SemesterSchedulePreview(
     eveningSections: Int,
     contentTopPadding: Dp,
     modifier: Modifier = Modifier,
-    onScrollYChanged: (Int) -> Unit = {},
 ) {
     // 实际节数：配置为基准，并覆盖课程用到的最大节次（避免课在配置之外被吃掉）
     val maxCourseSection = remember(courses) {
@@ -408,10 +390,6 @@ private fun SemesterSchedulePreview(
     val headerText = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val emptyHint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.45f)
     val scrollState = rememberScrollState()
-    LaunchedEffect(scrollState) {
-        snapshotFlow { scrollState.value.coerceAtLeast(0) }
-            .collect { onScrollYChanged(it) }
-    }
 
     // (day, startSection) -> 该格课程列表
     val slotMap = remember(courses) {

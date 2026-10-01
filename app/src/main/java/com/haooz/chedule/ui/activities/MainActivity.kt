@@ -2822,7 +2822,6 @@ fun CourseScheduleApp() {
                                 ) {
                                     ScheduleTopBar(
                                         visible = true,
-                                        navBarStyle = navBarStyle,
                                         pagerCurrentPage = pagerState.currentPage,
                                         currentWeek = currentWeek,
                                         isHoliday = viewingIsHoliday,
@@ -5418,7 +5417,7 @@ private fun SettingsTopBar(
                 showLargeTitle = if (isTablet) false else null,
                 showSmallTitle = if (isTablet) true else null,
                 showGradientOverlay = !isTablet,
-                gradientColorOverride = if (settingsBarDark) Color.Black else Color.White,
+                gradientColorOverride = MiuixTheme.colorScheme.surface,
                 modifier = Modifier.zIndex(1f),
                 scrollBehavior = if (isTablet) null else scrollBehavior,
                 startAction = null,
@@ -5446,6 +5445,12 @@ private fun TodayTopBar(
 ) {
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
+    // 平板：标题避让侧栏后左对齐用的附加修饰符
+    val titleRailPadding = if (isTabletLiquidGlass) {
+        com.haooz.chedule.ui.components.tabletNavRailStartPadding().padding(start = 12.dp)
+    } else {
+        Modifier
+    }
     val dayOfWeekNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     val dayOfWeekName = if (currentDayOfWeek in 1..7) dayOfWeekNames[currentDayOfWeek - 1] else ""
     val titleText = if (isToday) "今天是$dayOfWeekName" else dayOfWeekName
@@ -5477,7 +5482,12 @@ private fun TodayTopBar(
             largeTitle = titleText,
             modifier = Modifier.zIndex(1f),
             scrollBehavior = scrollBehavior,
-            // 平板左上角不放标题
+            // 今日页渐变遮罩保持随滚动显隐
+            gradientOverlayScrollTriggered = true,
+            // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
+            titleStartAligned = isTabletLiquidGlass,
+            titleModifier = titleRailPadding,
+            // 平板左上角不放返回按钮
             startAction = null,
             endAction = { backdropAlpha, shadowAlpha ->
                 if (visible) {

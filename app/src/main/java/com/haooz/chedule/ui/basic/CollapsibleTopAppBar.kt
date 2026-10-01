@@ -55,7 +55,6 @@ import androidx.compose.ui.util.fastFirst
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.ui.utils.LocalOverScrollState
-import com.haooz.chedule.ui.utils.isAppDarkTheme
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -340,8 +339,14 @@ fun CollapsibleTopAppBar(
     showSmallTitle: Boolean? = null,
     showShadow: Boolean? = null,
     showGradientOverlay: Boolean = true,
+    /** 渐变遮罩是否随滚动显隐；false（默认）= 常驻。仅今日/课程表页传 true */
+    gradientOverlayScrollTriggered: Boolean = false,
     /** 标题色；默认随主题。WebView 页可按页面顶色传黑白 */
     titleColor: Color = MiuixTheme.colorScheme.onSurface,
+    /** 标题左对齐（默认居中）。平板端需要避让左侧侧栏并左对齐时传 true */
+    titleStartAligned: Boolean = false,
+    /** 标题附加修饰符；平板端可传 tabletNavRailStartPadding() 避让侧栏 */
+    titleModifier: Modifier = Modifier,
     scrollBehavior: SharedScrollBehavior? = null,
     contentPadding: (Dp) -> Unit = {},
     // 左侧自定义 Composable（接收 backdropAlpha、shadowAlpha 用于液态玻璃按钮动画）
@@ -349,7 +354,7 @@ fun CollapsibleTopAppBar(
     // 右侧自定义 Composable（接收 backdropAlpha、shadowAlpha 用于液态玻璃按钮动画）
     endAction: @Composable ((backdropAlpha: Float, shadowAlpha: Float) -> Unit)? = null,
     gradientMaskHeight: Dp = CollapsibleTopAppBarDefaults.CollapsedHeight + 60.dp,
-    /** 渐变遮罩色；null=随 isAppDarkTheme。设置页应传入锁应用主题的色 */
+    /** 渐变遮罩色；null=取当前页 surface。设置页应传入锁应用主题的色 */
     gradientColorOverride: Color? = null,
     // 暴露当前的 backdropAlpha/shadowAlpha，供外部组件（如搜索框）同步动画
     onAlphaChanged: (backdropAlpha: Float, shadowAlpha: Float) -> Unit = { _, _ -> },
@@ -461,20 +466,21 @@ fun CollapsibleTopAppBar(
         }
     }
 
-    // 渐变遮罩动画
-    val gradientAlpha = remember { Animatable(0f) }
-    LaunchedEffect(showButtonShadow.value) {
-        val target = if (showButtonShadow.value) 1f else 0f
-        val spec = if (showButtonShadow.value) {
+    // 渐变遮罩动画：默认常驻（alpha=1）；仅今日/课程表页随滚动显隐
+    val gradientAlpha = remember(gradientOverlayScrollTriggered) {
+        Animatable(if (gradientOverlayScrollTriggered) 0f else 1f)
+    }
+    LaunchedEffect(showButtonShadow.value, gradientOverlayScrollTriggered) {
+        val target = if (!gradientOverlayScrollTriggered || showButtonShadow.value) 1f else 0f
+        val spec = if (target > 0f) {
             folmeSpring(damping = 1.0f, response = 0.6f)
         } else {
             folmeSpring<Float>(damping = 1.0f, response = 0.4f)
         }
         gradientAlpha.animateTo(target, spec)
     }
-    // 默认随当前页主题（课程表/今日可跟壁纸锁色）；设置页由调用方传入锁应用主题的色
-    val gradientColor = gradientColorOverride
-        ?: if (isAppDarkTheme()) Color.Black else Color.White
+    // 默认取当前页 surface 色（课程表/今日可跟壁纸锁色）；设置页由调用方传入锁应用主题的色
+    val gradientColor = gradientColorOverride ?: MiuixTheme.colorScheme.surface
 
     LaunchedEffect(backdropAlpha.value, shadowAlpha.value) {
         onAlphaChanged(backdropAlpha.value, shadowAlpha.value)
@@ -519,6 +525,7 @@ fun CollapsibleTopAppBar(
                 Box(
                     Modifier
                         .layoutId("title")
+                        .then(titleModifier)
                         .padding(horizontal = CollapsibleTopAppBarDefaults.TitlePadding)
                         .graphicsLayer {
                             alpha = smallTitleAlpha.value
@@ -658,7 +665,11 @@ fun CollapsibleTopAppBar(
                 )
 
                 titlePlaceable.placeRelative(
-                    x = (constraints.maxWidth - titlePlaceable.width) / 2,
+                    x = if (titleStartAligned) {
+                        0
+                    } else {
+                        (constraints.maxWidth - titlePlaceable.width) / 2
+                    },
                     y = verticalCenter - titlePlaceable.height / 2,
                 )
 

@@ -1,8 +1,6 @@
 /** 平板课程管理：左右分栏。左栏复用课程管理列表，右栏复用课程编辑页（自带标题与顶栏模糊） */
 package com.haooz.chedule.ui.screens
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -35,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -51,7 +47,6 @@ import com.haooz.chedule.ui.basic.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.kyant.backdrop.Backdrop
@@ -81,8 +76,6 @@ fun TabletCourseManagePane(
     val selectedCourses = remember(courses, selectedName) {
         courses.filter { it.name == selectedName }
     }
-
-    var leftScroll by remember { mutableFloatStateOf(0f) }
 
     // 长按菜单：编辑 / 删除（对齐手机课程管理）
     var menuVisible by remember { mutableStateOf(false) }
@@ -157,13 +150,11 @@ fun TabletCourseManagePane(
                         liquidGlassBackdrop = liquidGlassBackdrop,
                         contentTopPadding = chromeTop,
                         columnsOverride = 2,
-                        onScrollYChanged = { leftScroll = it.toFloat() },
                         // 选中卡加课程色描边
                         selectedCourseName = selectedName,
                     )
                 }
                 TabletPaneTopChrome(
-                    scrolledPx = leftScroll,
                     backdrop = leftBackdrop,
                     maskHeight = maskHeight,
                     modifier = Modifier.align(Alignment.TopStart),
@@ -302,26 +293,14 @@ fun TabletCourseManagePane(
     }
 }
 
-/** 顶栏表面色渐变遮罩 + 常驻渐变模糊：与设置页 TabletPaneTopChrome 一致 */
+/** 顶栏常驻表面色渐变遮罩 + 常驻渐变模糊：与设置页 TabletPaneTopChrome 一致 */
 @Composable
 private fun TabletPaneTopChrome(
-    scrolledPx: Float,
     backdrop: Backdrop?,
     maskHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val density = LocalDensity.current
-    val thresholdPx = with(density) { 10.dp.toPx() }
-    val showMask = scrolledPx > thresholdPx
-    val maskAnim = remember { Animatable(0f) }
-    LaunchedEffect(showMask) {
-        maskAnim.animateTo(
-            targetValue = if (showMask) 1f else 0f,
-            animationSpec = tween(if (showMask) 200 else 150),
-        )
-    }
-    val gradientColor =
-        if (rememberAppSettingDark()) Color.Black else Color.White
+    val gradientColor = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = modifier
@@ -341,7 +320,6 @@ private fun TabletPaneTopChrome(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
-                .graphicsLayer { alpha = maskAnim.value }
                 .background(
                     Brush.verticalGradient(
                         0f to gradientColor.copy(alpha = 0.85f),

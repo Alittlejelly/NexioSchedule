@@ -67,7 +67,6 @@ internal fun scheduleContentTopPadding(statusBarHeight: Dp): Dp {
 @Composable
 internal fun ScheduleTopBar(
     visible: Boolean,
-    navBarStyle: String,
     pagerCurrentPage: Int,
     currentWeek: Int,
     isHoliday: Boolean,
@@ -124,14 +123,20 @@ internal fun ScheduleTopBar(
         sampleTrack = blurSampleTrack,
     ) {
         Box {
+            // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
+            val titleRailPadding =
+                if (isTablet) tabletNavRailStartPadding().padding(start = 12.dp) else Modifier
             CollapsibleTopAppBar(
-                title = if (navBarStyle == "rail") "" else titleText,
+                title = titleText,
                 showLargeTitle = false,
                 showGradientOverlay = true,
+                gradientOverlayScrollTriggered = true,
+                titleStartAligned = isTablet,
+                titleModifier = titleRailPadding,
                 modifier = Modifier.zIndex(1f),
                 gradientMaskHeight = CollapsedHeight + 110.dp,
                 scrollBehavior = scrollBehavior,
-                // 平板左上角不放标题
+                // 平板左上角不放返回按钮
                 startAction = null,
                 endAction = { backdropAlpha, shadowAlpha ->
                     Row(

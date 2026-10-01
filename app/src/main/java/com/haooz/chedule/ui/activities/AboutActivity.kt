@@ -259,6 +259,8 @@ fun AboutScreen(
                     showLargeTitle = false,
                     showSmallTitle = scrollProgress > 0.5f,
                     showShadow = scrollProgress >= 1f,
+                    // 关于页渐变遮罩保持随滚动显隐
+                    gradientOverlayScrollTriggered = true,
                     modifier = Modifier,
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},

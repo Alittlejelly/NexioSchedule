@@ -34,14 +34,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -277,23 +275,17 @@ private fun rememberPaneMaskAlpha(contentOffset: Float): Float {
 }
 
 /**
- * 本栏顶部：渐变模糊常驻；表面色遮罩仅在上滑后出现。
+ * 本栏顶部：渐变模糊与表面色遮罩均常驻。
  * 糊层采样本栏本地 backdrop（兄弟节点），避免与全局层循环采样。
- * maskAlpha 传入时直接复用（供右上角按钮与之同步），否则自行计算。
  */
 @Composable
 private fun TabletPaneTopChrome(
-    scrolledPx: Float,
     backdrop: com.kyant.backdrop.Backdrop?,
     modifier: Modifier = Modifier,
-    maskAlpha: Float? = null,
 ) {
-    // scrolledPx 为正=已上滑；转成手机 contentOffset 约定（向下滚为负）
-    val resolvedMaskAlpha = maskAlpha ?: rememberPaneMaskAlpha(-scrolledPx)
     val maskHeight = TabletPaneBlurHeight
-    // 锁应用主题，不随壁纸锁色/切页跳变
-    val gradientColor =
-        if (com.haooz.chedule.ui.utils.rememberAppSettingDark()) Color.Black else Color.White
+    // 取当前页 surface 色（设置页主题已锁应用主题，不随壁纸锁色/切页跳变）
+    val gradientColor = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = modifier
@@ -310,12 +302,11 @@ private fun TabletPaneTopChrome(
                 content = {},
             )
         }
-        // 表面色遮罩：alpha 随滚动连续变化
+        // 表面色遮罩：常驻
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
-                .graphicsLayer { alpha = resolvedMaskAlpha }
                 .background(
                     Brush.verticalGradient(
                         0f to gradientColor.copy(alpha = 0.85f),
@@ -395,9 +386,6 @@ fun TabletSettingsScreen(
             com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults.CollapsedHeight +
             12.dp
 
-    // 左栏滚动用列表状态驱动遮罩；右栏用 SharedScrollBehavior.contentOffset
-    var leftScrollPx by remember { mutableFloatStateOf(0f) }
-
     // 手机端底部按钮画在各 Activity；pad 内嵌 Screen 时需要在右栏叠层补回
     var showWidgetGuideDialog by remember { mutableStateOf(false) }
     var webDavBackingUp by remember { mutableStateOf(false) }
@@ -429,18 +417,6 @@ fun TabletSettingsScreen(
     var showShiftModeConfirmDialog by remember { mutableStateOf(false) }
 
     val leftListState = rememberLazyListState()
-    LaunchedEffect(leftListState) {
-        snapshotFlow {
-            leftListState.firstVisibleItemIndex * 8_000 +
-                    leftListState.firstVisibleItemScrollOffset
-        }.collect { leftScrollPx = it.toFloat().coerceAtLeast(0f) }
-    }
-    LaunchedEffect(leftListState) {
-        snapshotFlow {
-            leftListState.firstVisibleItemIndex == 0 &&
-                    leftListState.firstVisibleItemScrollOffset == 0
-        }.collect { atTop -> if (atTop) leftScrollPx = 0f }
-    }
     // 右栏专属 overscroll：与全局 CompositionLocal 分离，避免左右栏越界状态串扰
     val rightOverScroll = remember { OverScrollState() }
 
@@ -616,7 +592,6 @@ fun TabletSettingsScreen(
                     }
                 }
                 TabletPaneTopChrome(
-                    scrolledPx = leftScrollPx,
                     backdrop = leftPaneBackdrop,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
@@ -951,10 +926,8 @@ fun TabletSettingsScreen(
                     // 关于应用页内嵌且自绘顶栏糊层/遮罩，这里不再叠加设置页右栏顶部糊层
                     if (selected != TabletSettingsDest.About) {
                         TabletPaneTopChrome(
-                            scrolledPx = -rightScrollBehavior.state.contentOffset,
                             backdrop = rightPaneBackdrop,
                             modifier = Modifier.align(Alignment.TopStart),
-                            maskAlpha = rightMaskAlpha,
                         )
                     }
 
