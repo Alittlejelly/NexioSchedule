@@ -57,6 +57,20 @@ fun buildShareScheduleMap(
     return buildShareSchedulePayload(scheduleName, settings, times, courses)
 }
 
+/** 单课表/分享共用的课程字段序列化；导出与单课表备份必须走同一份字段清单 */
+internal fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
+    "name" to course.name,
+    "classroom" to course.classroom,
+    "teacher" to course.teacher,
+    "dayOfWeek" to course.dayOfWeek,
+    "startSection" to course.startSection,
+    "endSection" to course.endSection,
+    "isCustomTime" to course.isCustomTime,
+    "customStartTime" to course.customStartTime,
+    "customEndTime" to course.customEndTime,
+    "colorRes" to course.colorRes,
+) + shareCourseWeekFields(course)
+
 internal fun buildShareSchedulePayload(
     scheduleName: String,
     settings: Map<String, Any>,
@@ -66,19 +80,7 @@ internal fun buildShareSchedulePayload(
     "schedule_name" to scheduleName,
     "settings" to settings,
     "times" to times,
-    "courses" to courses.map { course ->
-        mapOf(
-            "name" to course.name,
-            "classroom" to course.classroom,
-            "teacher" to course.teacher,
-            "dayOfWeek" to course.dayOfWeek,
-            "startSection" to course.startSection,
-            "endSection" to course.endSection,
-            "isCustomTime" to course.isCustomTime,
-            "customStartTime" to course.customStartTime,
-            "customEndTime" to course.customEndTime,
-        ) + shareCourseWeekFields(course)
-    },
+    "courses" to courses.map(::courseToShareMap),
 )
 
 internal fun shareScheduleSettings(

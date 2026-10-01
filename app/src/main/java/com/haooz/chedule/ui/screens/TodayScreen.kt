@@ -235,18 +235,7 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
             }
         }
     }
-    val initialRemaining = remember(startTime, endTime) {
-        if (initialStatus == "进行中" && startTime != null && endTime != null) {
-            val duration = java.time.Duration.between(LocalTime.now(), endTime)
-            val totalSeconds = duration.seconds
-            Pair((totalSeconds / 60).toInt(), (totalSeconds % 60).toInt())
-        } else {
-            Pair(0, 0)
-        }
-    }
     var courseStatus by remember { mutableStateOf(initialStatus) }
-    var remainingMinutes by remember { mutableIntStateOf(initialRemaining.first) }
-    var remainingSeconds by remember { mutableIntStateOf(initialRemaining.second) }
 
     LaunchedEffect(startTime, endTime, pageDate) {
         val today = LocalDate.now()
@@ -271,15 +260,7 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
                     return@LaunchedEffect
                 }
                 else -> {
-                    val duration = java.time.Duration.between(now, endTime)
-                    val totalSeconds = duration.seconds
-                    val newMinutes = (totalSeconds / 60).toInt()
-                    val newSeconds = (totalSeconds % 60).toInt()
                     if (courseStatus != "进行中") courseStatus = "进行中"
-                    // 仅值变化时写入，避免每秒触发重组
-                    if (newMinutes != remainingMinutes) remainingMinutes = newMinutes
-                    // 秒数只在最后一分钟文案使用
-                    if (newMinutes <= 0 && newSeconds != remainingSeconds) remainingSeconds = newSeconds
                 }
             }
             delay(1000L.milliseconds)
@@ -289,17 +270,8 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
     val statusText = when (courseStatus) {
         "未开始" -> "未开始"
         "已结束" -> "已结束"
-        "进行中" -> when {
-            remainingMinutes <= 0 && remainingSeconds <= 0 -> "还剩0秒"
-            remainingMinutes <= 0 -> "还剩${remainingSeconds}秒"
-            remainingMinutes >= 60 -> {
-                val hours = remainingMinutes / 60
-                val mins = remainingMinutes % 60 + 1
-                if (mins >= 60) "还剩${hours + 1}小时"
-                else "还剩${hours}小时${mins}分钟"
-            }
-            else -> "还剩${remainingMinutes + 1}分钟"
-        }
+        // 剩余时间在今日助手展示，这里只标状态
+        "进行中" -> "正在上课"
         else -> ""
     }
 
