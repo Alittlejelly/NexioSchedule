@@ -20,6 +20,7 @@ Thumbs.db
 
 # --- 签名文件（敏感信息！） ---
 keystore/
+keystore.properties
 
 # --- 部署相关（敏感：SSH 私钥） ---
 .deploy/
@@ -41,8 +42,4 @@ app/src/main/assets/eduloader/school_index.pb
 
 # --- 工作助手本地目录 ---
 .workbuddy/
-
-
-keystore.properties
-*.jks
 
