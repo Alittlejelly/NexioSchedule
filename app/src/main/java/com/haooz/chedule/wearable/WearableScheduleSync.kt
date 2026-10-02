@@ -193,7 +193,13 @@ object WearableScheduleSync {
         pushing.set(true)
         try {
             val repo = CourseRepository.getInstance(appContext)
-            val payload = WatchPayload.buildWeekJson(repo, appContext, scheduleName)
+            // 未指定课表时按日期直推，手环可正确显示任意日期；
+            // 指定课表（导出某张指定课表）仍走整周分桶，行为不变。
+            val payload = if (scheduleName.isEmpty()) {
+                WatchPayload.buildDaysJson(repo, appContext)
+            } else {
+                WatchPayload.buildWeekJson(repo, appContext, scheduleName)
+            }
             val api = messageApi ?: return
             api.sendMessage(id, payload.toByteArray(Charsets.UTF_8))
                 .addOnSuccessListener {
