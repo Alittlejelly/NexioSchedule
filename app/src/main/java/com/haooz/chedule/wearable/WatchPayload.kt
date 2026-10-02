@@ -5,8 +5,10 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeResolver
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.reminder.CourseReminderHelper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
 
 /**
  * 手机端 → 手表端 课表 JSON 组装。
@@ -16,11 +18,16 @@ import org.json.JSONObject
  * holidays: HolidayManager.Entry[]（type=0 假期隐藏 / type=1 调休跟 followWeekday）
  * 手表 weekday：0=周日 … 6=周六
  * 本应用 dayOfWeek：1=周一 … 7=周日
+ *
+ * version=3（[buildDaysJson]）：按日期直推，手表只做映射渲染。
  */
 object WatchPayload {
 
     private const val PROTOCOL = "nexio.schedule"
     private const val VERSION = 1
+
+    /** 按日期直推使用的协议版本 */
+    private const val DATED_VERSION = 3
 
     /** 手机 dayOfWeek(1=周一..7=周日) → 手表 week key(0=周日..6=周六) */
     fun toWatchDay(dayOfWeek: Int): Int = when (dayOfWeek) {
@@ -77,6 +84,90 @@ object WatchPayload {
             .put("scheduleName", sid)
             .put("holidays", holidaysArr)
             .put("week", weekMap)
+            .toString()
+    }
+
+    /**
+     * 按日期直推课表 JSON（协议 version=3）。
+     *
+     * 与 [buildWeekJson] 的区别：不再只推「当前教学周」的分桶数据，而是把每一天由本应用
+     * 解析好的课表直接发过去（含时段、节次文案、起止时间、假期/调休标记）。
+     * 手表端只做映射渲染，不做周次/节次推算，因此：
+     *   - 手环翻到任意日期都能显示正确课表（不会再固定显示同一周）
+     *   - 不会因为手环自己算教学周而与手机差一周
+     *
+     * 包结构：
+     * ```
+     * { protocol, version:3, action:"replace", sentAt, week,
+     *   days:[ { date:"2026-10-10", week:5, isHoliday:false, isWorkSwap:true,
+     *            courses:[ { id, name, startTime, endTime, period, periods, location, teacher } ] } ] }
+     * ```
+     * period 取 morning / afternoon / evening（手环直接用作分组）。
+     *
+     * @param backDays 往前推的天数（默认 14）
+     * @param forwardDays 往后推的天数（默认 14）
+     */
+    fun buildDaysJson(
+        repository: CourseRepository,
+        context: Context,
+        backDays: Int = 14,
+        forwardDays: Int = 14
+    ): String {
+        val today = LocalDate.now()
+        val sectionTimes = repository.getCurrentSectionTimes()
+        val morningSections = repository.getMorningSections()
+        val afternoonSections = repository.getAfternoonSections()
+        val days = JSONArray()
+        var packed = 0
+
+        for (offset in -backDays..forwardDays) {
+            val date = today.plusDays(offset.toLong())
+            val resolution = CourseReminderHelper.resolveDaySchedule(context, date, repository)
+            val courses = JSONArray()
+            for (course in resolution.courses) {
+                val period = when (
+                    course.periodIndex(sectionTimes, morningSections, afternoonSections)
+                ) {
+                    Course.PERIOD_MORNING -> "morning"
+                    Course.PERIOD_AFTERNOON -> "afternoon"
+                    else -> "evening"
+                }
+                courses.put(
+                    JSONObject()
+                        .put("id", course.id)
+                        .put("name", course.name)
+                        .put("startTime", CourseTimeResolver.getStartTime(course, repository) ?: "")
+                        .put("endTime", CourseTimeResolver.getEndTime(course, repository) ?: "")
+                        .put("period", period)
+                        .put("periods", course.getSectionText())
+                        .put("location", course.classroom ?: "")
+                        .put("teacher", course.teacher ?: "")
+                )
+                packed++
+            }
+            days.put(
+                JSONObject()
+                    .put("date", date.toString())
+                    .put("week", resolution.displayWeek)
+                    .put("isHoliday", resolution.isHolidayDate)
+                    .put("isWorkSwap", resolution.isWorkSwap)
+                    .put("courses", courses)
+            )
+        }
+
+        val week = repository.getLiveTeachingWeek()
+        android.util.Log.i(
+            "WatchPayload",
+            "buildDays back=$backDays forward=$forwardDays packed=$packed week=$week"
+        )
+
+        return JSONObject()
+            .put("protocol", PROTOCOL)
+            .put("version", DATED_VERSION)
+            .put("action", "replace")
+            .put("sentAt", System.currentTimeMillis())
+            .put("week", week)
+            .put("days", days)
             .toString()
     }
 
