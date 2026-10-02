@@ -629,7 +629,7 @@ fun SwitchScheduleScreen(
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight()
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
                                 )
                                 .padding(horizontal = 7.dp, vertical = 3.5.dp)
                         ) {

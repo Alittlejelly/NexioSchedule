@@ -204,7 +204,7 @@ fun BackToNowFloatingButton(
                     },
                     onDrawSurface = buttonOnDrawSurface
                 )
-                .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight())
+                .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
                 .then(interactiveHighlight.modifier)
                 .then(interactiveHighlight.gestureModifier)
                 .then(

@@ -319,7 +319,7 @@ private fun BlurBottomSheetTabletContent(
                 .then(if (isBottomAligned) Modifier.padding(bottom = 20.dp) else Modifier)
                 .clip(sheetShape)
                 // 弹窗本体不做壁纸玻璃模糊，纯实色
-                .edgeLight(shape = sheetShape, edgeLight = rememberDefaultEdgeLight())
+                .edgeLight(shape = sheetShape, edgeLight = rememberDefaultEdgeLight(baseColor = sheetBgColor))
                 .background(sheetBgColor)
                 .onGloballyPositioned { coordinates ->
                     if (enableContentHeightSnap) detentState.updateCollapsedHeight(coordinates.size.height)

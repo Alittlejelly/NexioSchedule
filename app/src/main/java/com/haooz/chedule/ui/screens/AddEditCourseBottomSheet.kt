@@ -134,7 +134,7 @@ fun AddEditCourseBottomSheet(
 
     // 勾选自定义时间时自动从节次时间预填
     LaunchedEffect(isCustomTime) {
-        if (isCustomTime) {
+        if (isCustomTime && customStartTime.isBlank() && customEndTime.isBlank()) {
             val sectionStart = sectionTimes[startSection]?.split("-")?.firstOrNull()?.trim()
             val sectionEnd = sectionTimes[endSection]?.split("-")?.lastOrNull()?.trim()
             if (sectionStart != null && sectionEnd != null) {

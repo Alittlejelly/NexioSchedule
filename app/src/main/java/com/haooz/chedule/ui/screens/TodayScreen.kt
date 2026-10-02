@@ -124,7 +124,7 @@ fun BlurCard(
 
     if (hasBackdrop) {
         val shape = remember(cornerRadius) { ContinuousRoundedRectangle(cornerRadius) }
-        val defaultEdgeLight = rememberDefaultEdgeLight()
+        val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = if (isDark) Color.Black else Color.White)
         // effects/onDrawSurface 必须 remember 稳定：内联 lambda 每次重组换引用，
         // DrawBackdropElement.equals 会判不等并重建 RenderEffect，造成壁纸玻璃无意义重绘
         val blurPx = with(LocalDensity.current) { remember(blurRadius) { blurRadius.dp.toPx() } }
@@ -164,7 +164,7 @@ fun BlurCard(
                     } else
                         Modifier.edgeLight(
                             shape = ContinuousRoundedRectangle(cornerRadius),
-                            edgeLight = rememberCardEdgeLight())
+                            edgeLight = rememberCardEdgeLight(baseColor = if (isDark) Color.Black else Color.White))
                 )
         ) {
             content()
@@ -1589,7 +1589,7 @@ private fun CourseSectionTitle(
                     onDrawSurface = titleSurface
                 )
                 // 标题与课程卡一致用淡描边；亮版只留给今日助手/格言
-                .edgeLight(shape = shape, edgeLight = rememberCardEdgeLight())
+                .edgeLight(shape = shape, edgeLight = rememberCardEdgeLight(baseColor = if (isDark) Color.Black else Color.White))
         ) {
             Text(
                 text = text,

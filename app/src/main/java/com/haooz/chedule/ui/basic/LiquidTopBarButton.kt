@@ -163,7 +163,7 @@ fun LiquidTopBarButton(
                     },
                     onDrawSurface = buttonOnDrawSurface
                 )
-                .edgeLight(shape = CircleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight())
+                .edgeLight(shape = CircleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight(baseColor = resolvedContainerColor))
                 .then(interactiveHighlight.modifier)
                 .then(if (draggable) interactiveHighlight.gestureModifier else interactiveHighlight.pressOnlyModifier)
                 .zIndex(0f)

@@ -893,7 +893,7 @@ fun ListPopupContent(
                 )
                 .edgeLight(
                     shape = rememberDynamicCornerRadiusShape(fractionProgress, cornerRadius),
-                    edgeLight = rememberDefaultEdgeLight()
+                    edgeLight = rememberDefaultEdgeLight(baseColor = backgroundColor)
                 ),
         ) {
             content()

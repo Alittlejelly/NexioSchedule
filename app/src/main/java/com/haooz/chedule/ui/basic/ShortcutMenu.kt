@@ -183,7 +183,7 @@ fun ShortcutMenu(
                         drawRect(containerColor)
                     }
                 )
-                .edgeLight(shape = ContinuousRoundedRectangle(18.dp), edgeLight = rememberDefaultEdgeLight())
+                .edgeLight(shape = ContinuousRoundedRectangle(18.dp), edgeLight = rememberDefaultEdgeLight(baseColor = containerColor))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }

@@ -455,7 +455,7 @@ fun WebViewScreen(
             drawRect(webDockSurfaceColor)
         }
     }
-    val webDockEdgeLight = rememberDefaultEdgeLight()
+    val webDockEdgeLight = rememberDefaultEdgeLight(baseColor = webDockSurfaceColor)
 
     // 委托实例要跨桌面模式切换复用：document-start 脚本的句柄挂在它身上，每次重建会丢掉旧句柄
     val compatDelegate = remember(webView) { WebCompatDelegate(webView) }

@@ -187,7 +187,7 @@ fun SearchBar(
                                         layerBlock = { alpha = backdropAlpha },
                                         onDrawSurface = {}
                                     )
-                                    .edgeLight(shape = CircleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight())
+                                    .edgeLight(shape = CircleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight(baseColor = MiuixTheme.colorScheme.surfaceContainerHigh))
                             )
                         }
                         Box(
@@ -418,7 +418,7 @@ fun InputField(
                                 },
                                 onDrawSurface = {}
                             )
-                            .edgeLight(shape = capsuleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight())
+                            .edgeLight(shape = capsuleShape, edgeLight = rememberLiquidTopBarButtonEdgeLight(baseColor = MiuixTheme.colorScheme.surfaceContainerHigh))
                     )
                 }
                 Row(

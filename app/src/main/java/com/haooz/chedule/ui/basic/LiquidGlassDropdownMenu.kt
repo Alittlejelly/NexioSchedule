@@ -324,7 +324,7 @@ fun LiquidGlassDropdownMenu(
                         fractionProgress = { fraction.value },
                         cornerRadius = cornerRadius,
                     ),
-                    edgeLight = rememberDefaultEdgeLight()
+                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
                 )
         ) {
             Column(modifier = Modifier

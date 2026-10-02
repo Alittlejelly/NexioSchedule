@@ -1197,7 +1197,7 @@ fun MainScheduleScreen(
                                                     drawRect(dividerFgSurface)
                                                 }
                                             }
-                                        ).edgeLight(shape = dividerEdgeLightShape, edgeLight = rememberCourseCardEdgeLight())
+                                        ).edgeLight(shape = dividerEdgeLightShape, edgeLight = rememberCourseCardEdgeLight(baseColor = dividerFgSurface))
                                     } else Modifier
                                 ),
                             contentAlignment = Alignment.Center

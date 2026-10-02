@@ -1004,7 +1004,7 @@ fun CustomizeScheduleScreen(
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight()
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = exitContainerColor)
                                 )
                                 .clickable(
                                     interactionSource = null,
@@ -1136,7 +1136,7 @@ fun CustomizeScheduleScreen(
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight()
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = primaryColor)
                                 )
                                 .clickable(
                                     interactionSource = null,

@@ -106,54 +106,57 @@ data class EdgeLight(
 }
 
 @Composable
-fun rememberDefaultEdgeLight(): EdgeLight {
+fun rememberDefaultEdgeLight(baseColor: Color? = null): EdgeLight {
     val isLightTheme = !isAppDarkTheme()
     val materialLevel = com.haooz.chedule.ui.utils.AppMaterialSettings.level
     val color = if (isLightTheme) Color.White.copy(alpha = 0.7f)
                 else Color.White.copy(alpha = 0.4f)
-    return remember(isLightTheme, materialLevel) {
+    return remember(isLightTheme, materialLevel, baseColor) {
         com.haooz.chedule.ui.utils.AppMaterialSettings.resolveEdgeLight(
             EdgeLight.Uniform(color = color),
             isLightTheme,
+            baseColor,
         )
     }
 }
 
 @Composable
-fun rememberCourseCardEdgeLight(): EdgeLight {
+fun rememberCourseCardEdgeLight(baseColor: Color? = null): EdgeLight {
     val isLightTheme = !isAppDarkTheme()
     val materialLevel = com.haooz.chedule.ui.utils.AppMaterialSettings.level
     val color = if (isLightTheme) Color.White.copy(alpha = 0.12f)
                 else Color.White.copy(alpha = 0.12f)
-    return remember(isLightTheme, materialLevel) {
+    return remember(isLightTheme, materialLevel, baseColor) {
         com.haooz.chedule.ui.utils.AppMaterialSettings.resolveEdgeLight(
             EdgeLight.CourseCard(color = color),
             isLightTheme,
+            baseColor,
         )
     }
 }
 
 @Composable
-fun rememberCardEdgeLight(): EdgeLight {
+fun rememberCardEdgeLight(baseColor: Color? = null): EdgeLight {
     val isLightTheme = !isAppDarkTheme()
     val materialLevel = com.haooz.chedule.ui.utils.AppMaterialSettings.level
     val color = if (isLightTheme) Color.White.copy(alpha = 0.2f)
     else Color.White.copy(alpha = 0.2f)
-    return remember(isLightTheme, materialLevel) {
+    return remember(isLightTheme, materialLevel, baseColor) {
         com.haooz.chedule.ui.utils.AppMaterialSettings.resolveEdgeLight(
             EdgeLight.Card(color = color),
             isLightTheme,
+            baseColor,
         )
     }
 }
 
 @Composable
-fun rememberLiquidTopBarButtonEdgeLight(): EdgeLight {
+fun rememberLiquidTopBarButtonEdgeLight(baseColor: Color? = null): EdgeLight {
     val isLightTheme = !isAppDarkTheme()
     val materialLevel = com.haooz.chedule.ui.utils.AppMaterialSettings.level
     val color = if (isLightTheme) Color.White.copy(alpha = 0.8f)
                 else Color.White.copy(alpha = 0.32f)
-    return remember(isLightTheme, materialLevel) {
+    return remember(isLightTheme, materialLevel, baseColor) {
         com.haooz.chedule.ui.utils.AppMaterialSettings.resolveEdgeLight(
             EdgeLight.Uniform(
                 color = color,
@@ -162,6 +165,7 @@ fun rememberLiquidTopBarButtonEdgeLight(): EdgeLight {
                 intensity = 1f
             ),
             isLightTheme,
+            baseColor,
         )
     }
 }

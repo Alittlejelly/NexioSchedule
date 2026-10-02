@@ -449,7 +449,7 @@ fun TabletNavSideBar(
     val solidContainer = if (isLightTheme) Color(0xFFF7F7F7) else Color(0xFF1C1C1E)
     val selectedBg =
         if (isLightTheme) Color.Black.copy(0.06f) else Color.White.copy(0.1f)
-    val defaultEdgeLight = rememberDefaultEdgeLight()
+    val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
     // 玻璃遮罩圆角：屏幕圆角 − 左缘间距，不写死
     val sideCorner = rememberTabletNavMaskCorner()
     val density = LocalDensity.current

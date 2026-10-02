@@ -204,7 +204,7 @@ fun AddCourseDialog(
 
     // 勾选自定义时间时自动从节次时间预填
     LaunchedEffect(form.isCustomTime) {
-        if (form.isCustomTime) {
+        if (form.isCustomTime && form.customStartTime.isBlank() && form.customEndTime.isBlank()) {
             val sectionStart = sectionTimes[form.startSection]?.split("-")?.firstOrNull()?.trim()
             val sectionEnd = sectionTimes[form.endSection]?.split("-")?.lastOrNull()?.trim()
             if (sectionStart != null && sectionEnd != null) {

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
@@ -19,6 +21,9 @@ object AppMaterialSettings {
     const val BEST = "best"
     const val BALANCED = "balanced"
     const val PERFORMANCE = "performance"
+
+    /** 性能档描边同色系提亮幅度（向白混合比例） */
+    private const val STROKE_LIGHTEN = 0.2f
 
     val entries: List<Pair<String, String>> = listOf(
         BEST to "最佳",
@@ -45,25 +50,37 @@ object AppMaterialSettings {
     fun progressiveBlurUseFake(): Boolean = level == PERFORMANCE
 
     /**
-     * 性能档：高光描边降级为普通纯色描边（浅色白 / 深色灰，无模糊、SrcOver）。
-     * 最佳 / 均衡保留原高光。
+     * 性能档：高光描边降级为普通纯色描边（无模糊、SrcOver）。
+     * 传入底板色 [baseColor] 时按同色系提亮一档作描边，彩色按钮得到同色高光；
+     * 未传时按主题回退（浅色白 / 深色灰）。最佳 / 均衡保留原高光。
      */
     fun resolveEdgeLight(
         source: com.haooz.chedule.ui.effects.edgelight.EdgeLight,
         isLightTheme: Boolean,
+        baseColor: Color? = null,
     ): com.haooz.chedule.ui.effects.edgelight.EdgeLight {
         if (level != PERFORMANCE) return source
-        val stroke =
-            if (isLightTheme) androidx.compose.ui.graphics.Color.White
-            else androidx.compose.ui.graphics.Color(0xFF333333)
+        val stroke = baseColor?.let(::lightenSameHue)
+            ?: if (isLightTheme) Color.White else Color(0xFF333333)
         return com.haooz.chedule.ui.effects.edgelight.EdgeLight(
-            width = 0.5.dp,
+            width = 0.8.dp,
             blurRadius = 0.dp,
             intensity = source.intensity,
             style = com.haooz.chedule.ui.effects.edgelight.EdgeLightStyle.Uniform(
                 color = stroke,
-                blendMode = androidx.compose.ui.graphics.BlendMode.SrcOver,
+                blendMode = BlendMode.SrcOver,
             ),
+        )
+    }
+
+    /** 同色系提亮一档：丢弃原 alpha 按不透明底色向白混合 [STROKE_LIGHTEN]，白底仍是白 */
+    private fun lightenSameHue(color: Color): Color {
+        val t = STROKE_LIGHTEN
+        return Color(
+            red = color.red + (1f - color.red) * t,
+            green = color.green + (1f - color.green) * t,
+            blue = color.blue + (1f - color.blue) * t,
+            alpha = 1f,
         )
     }
 

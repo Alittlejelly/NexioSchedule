@@ -327,7 +327,7 @@ internal fun DialogContent(
                 )
             } else Modifier
         )
-        .edgeLight(shape = ContinuousRoundedRectangle(bottomCornerRadius), edgeLight = rememberDefaultEdgeLight())
+        .edgeLight(shape = ContinuousRoundedRectangle(bottomCornerRadius), edgeLight = rememberDefaultEdgeLight(baseColor = backgroundColor))
         .background(
             color = if (liquidGlassBackdrop != null && Build.VERSION.SDK_INT >= 33) {
                 backgroundColor.copy(alpha = if (isDark) 0.87f else 0.82f)
