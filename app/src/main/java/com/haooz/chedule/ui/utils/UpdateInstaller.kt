@@ -2,6 +2,7 @@ package com.haooz.chedule.ui.utils
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.haooz.chedule.shizuku.ShizukuManager
@@ -18,6 +19,8 @@ import java.net.URL
 /** 应用更新：下载与安装的公共入口，弹窗与设置页共用 */
 internal object UpdateInstaller {
 
+    private const val TAG = "UpdateInstaller"
+
     private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     fun apkFile(context: Context, tag: String): File =
@@ -26,12 +29,31 @@ internal object UpdateInstaller {
     private fun partFile(context: Context, tag: String): File =
         File(context.filesDir, "update-$tag.apk.part")
 
+    /**
+     * 本地是否已有一份**可安装**的安装包。
+     *
+     * 校验不通过时直接把文件删掉，避免损坏包被反复复用——
+     * 这正是「安装报解析失败后，应用一直强制使用这个损坏包」的根因。
+     */
     fun hasValidApk(context: Context, tag: String): Boolean {
-        return UpdateChecker.isLikelyCompleteApk(apkFile(context, tag))
+        val file = apkFile(context, tag)
+        val check = UpdateChecker.verifyApk(context, file, UpdateChecker.rememberedApkSha256(context, tag))
+        if (!check.ok) {
+            if (file.exists()) {
+                Log.w(TAG, "本地APK无效，已删除重下: $tag 原因=${check.reason}")
+                runCatching { file.delete() }
+            }
+            return false
+        }
+        return true
     }
 
     /**
-     * 下载 APK：先写 .part，完整后再原子 rename，避免半成品被当成可安装包。
+     * 下载 APK：先写 .part，通过完整性校验后再原子 rename。
+     *
+     * 校验链见 [UpdateChecker.verifyApk]；任何一步失败都会删掉 .part，
+     * 保证不会残留半成品被当成可安装包。
+     *
      * @param onProgress 0f..1f，在主线程回调
      */
     suspend fun downloadApk(
@@ -48,11 +70,13 @@ internal object UpdateInstaller {
             val connection = URL(apkUrl).openConnection() as HttpURLConnection
             connection.connectTimeout = 30000
             connection.readTimeout = 30000
+            // 重定向到 CDN 时保持跟随，且不回退到缓存副本
+            connection.instanceFollowRedirects = true
             connection.connect()
             val fileSize = connection.contentLength.toLong()
             connection.inputStream.use { input ->
                 FileOutputStream(part).use { output ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(64 * 1024)
                     var bytesRead: Int
                     var totalRead = 0L
                     while (input.read(buffer).also { bytesRead = it } != -1) {
@@ -70,15 +94,26 @@ internal object UpdateInstaller {
                 part.delete()
                 throw java.io.IOException("APK 下载不完整: ${part.length()}/$fileSize")
             }
-            if (!UpdateChecker.isLikelyCompleteApk(part)) {
-                part.delete()
-                throw java.io.IOException("APK 包体校验失败")
+            if (fileSize <= 0) {
+                // 未声明长度（如分块传输）时无法用体积判定，交给完整校验
+                Log.w(TAG, "服务端未声明长度，改用解析级校验: $tag")
             }
+
+            // 优先用服务端下发的 SHA-256 做字节级校验，没有则退回解析级校验
+            val expectedSha = UpdateChecker.rememberedApkSha256(context, tag)
+            val check = UpdateChecker.verifyApk(context, part, expectedSha)
+            if (!check.ok) {
+                part.delete()
+                throw java.io.IOException("APK 校验失败：${check.reason}")
+            }
+
             if (finalFile.exists()) finalFile.delete()
             if (!part.renameTo(finalFile)) {
                 part.delete()
                 throw java.io.IOException("APK 落盘失败")
             }
+
+            // 记住服务端 SHA-256（若有），下次复用本地包时按字节级复核
             finalFile
         } catch (e: Exception) {
             runCatching { part.delete() }
@@ -103,25 +138,34 @@ internal object UpdateInstaller {
                 val (ok, message) = withContext(Dispatchers.IO) {
                     ShizukuManager.silentInstallApk(file.absolutePath)
                 }
-                onInstallingChanged(false)
                 if (ok) {
+                    onInstallingChanged(false)
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     onFinished?.invoke()
                 } else {
+                    Log.w(TAG, "静默安装失败，回退系统安装器: $message")
                     Toast.makeText(context, "静默安装失败，已改用系统安装器", Toast.LENGTH_SHORT).show()
-                    onInstallingChanged(true)
-                    launchSystemInstaller(context, file)
+                    // 关键：先解除 installing 状态再拉起安装器。
+                    // 否则用户在系统安装器里点取消后，弹窗会永久停在「安装中」且无法关闭。
+                    onInstallingChanged(false)
                     onFinished?.invoke()
+                    launchSystemInstaller(context, file)
                 }
             }
         } else {
-            onInstallingChanged(true)
+            // 系统安装器是外部 Activity，会被用户随时取消：
+            // 拉起后立刻交还 UI 状态，避免弹窗卡在「安装中」
             launchSystemInstaller(context, file)
+            onInstallingChanged(false)
             onFinished?.invoke()
         }
     }
 
     private fun launchSystemInstaller(context: Context, file: File) {
+        if (!file.exists()) {
+            Toast.makeText(context, "安装包不存在，请重新下载", Toast.LENGTH_SHORT).show()
+            return
+        }
         try {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {

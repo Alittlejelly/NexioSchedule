@@ -103,6 +103,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
                         .putString("latest_body", release.body)
                         .putString("latest_date", release.createdAt)
                 }
+                UpdateChecker.rememberApkDigest(context, release.tagName, release.apkSha256, release.apkSize)
                 UpdateChecker.cleanOldApks(context, release.tagName)
             }
         }
@@ -127,7 +128,10 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
         if (actuallyHasUpdate && updateReminder) {
             updateTagName = tag
             updateBody = body
-            hasDownloadedApk = UpdateInstaller.hasValidApk(context, tag)
+            // 校验需解析 APK，放 IO 线程
+            hasDownloadedApk = withContext(Dispatchers.IO) {
+                UpdateInstaller.hasValidApk(context, tag)
+            }
             if (hasDownloadedApk) {
                 downloadedFile = UpdateInstaller.apkFile(context, tag)
                 downloadComplete = true
@@ -173,11 +177,12 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             file = file,
             onInstallingChanged = { isInstalling = it },
             onFinished = {
-                if (!isInstalling) {
-                    showUpdateDialog = false
-                    downloadComplete = false
-                    downloadProgress = 0f
-                }
+                // 安装流程已交棒（静默成功 / 系统安装器已拉起）：
+                // 无条件收尾，避免用户在系统安装器点取消后弹窗卡在「安装中」
+                isInstalling = false
+                showUpdateDialog = false
+                downloadComplete = false
+                downloadProgress = 0f
             }
         )
     }
@@ -203,9 +208,13 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
         },
         show = showUpdateDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
+        // 安装/下载都不阻塞关闭：系统安装器可被用户取消，弹窗不能因此卡死。
+        // 关闭时同步清掉 transient 状态，否则下次打开会残留「安装中」无法操作。
         onDismissRequest = {
-            if (!isDownloading && !isInstalling) {
-                showUpdateDialog = false
+            showUpdateDialog = false
+            if (!isDownloading) {
+                isInstalling = false
+                downloadProgress = 0f
             }
         }
     ) {
@@ -241,17 +250,24 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (!isInstalling) {
-                    TextButton(
-                        text = if (isDownloading) "后台下载" else "稍后",
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            // 下载中点「后台下载」只关弹窗，下载继续
-                            showUpdateDialog = false
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                // 始终提供关闭入口：安装中也能关，否则用户在系统安装器点「取消」后回不来
+                TextButton(
+                    text = when {
+                        isInstalling -> "关闭"
+                        isDownloading -> "后台下载"
+                        else -> "稍后"
+                    },
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        // 下载中点「后台下载」只关弹窗，下载继续
+                        showUpdateDialog = false
+                        if (!isDownloading) {
+                            isInstalling = false
+                            downloadProgress = 0f
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
                 Button(
                     modifier = Modifier.weight(1f),
                     enabled = !isDownloading && !isInstalling,

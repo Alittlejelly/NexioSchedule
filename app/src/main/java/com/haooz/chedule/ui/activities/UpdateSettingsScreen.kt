@@ -76,7 +76,10 @@ private data class GiteeRelease(
     val body: String,
     val htmlUrl: String,
     val apkUrl: String,
-    val createdAt: String
+    val createdAt: String,
+    /** Release 资产下发的 SHA-256；拿不到时为 null，退化为解析级校验 */
+    val apkSha256: String? = null,
+    val apkSize: Long? = null
 )
 
 private fun checkForUpdate(
@@ -88,7 +91,10 @@ private fun checkForUpdate(
     return Pair(
         hasUpdate,
         release?.let {
-            GiteeRelease(it.tagName, it.name, it.body, it.htmlUrl, it.apkUrl, it.createdAt)
+            GiteeRelease(
+                it.tagName, it.name, it.body, it.htmlUrl, it.apkUrl, it.createdAt,
+                it.apkSha256, it.apkSize
+            )
         }
     )
 }
@@ -148,7 +154,10 @@ fun UpdateSettingsScreen(
                 savedBody ?: "",
                 savedUrl,
                 savedApkUrl ?: "",
-                savedDate ?: ""
+                savedDate ?: "",
+                // 期望值统一存在 update_settings 里，这里按 tag 回读
+                UpdateChecker.rememberedApkSha256(context, savedTag),
+                UpdateChecker.rememberedApkSize(context, savedTag)
             )
             else null
         )
@@ -315,16 +324,17 @@ fun UpdateSettingsScreen(
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                                     if (hasUpdate && latestRelease != null) {
                                         val tag = latestRelease!!.tagName
-                                        if (UpdateInstaller.hasValidApk(context, tag)) {
-                                            downloadedFile = UpdateInstaller.apkFile(context, tag)
-                                            downloadComplete = true
-                                            downloadProgress = 1f
-                                        } else {
-                                            downloadComplete = false
-                                            downloadProgress = 0f
+                                        coroutineScope.launch {
+                                            // 校验需解析 APK，放 IO 线程
+                                            val valid = withContext(Dispatchers.IO) {
+                                                UpdateInstaller.hasValidApk(context, tag)
+                                            }
+                                            downloadedFile = if (valid) UpdateInstaller.apkFile(context, tag) else null
+                                            downloadComplete = valid
+                                            downloadProgress = if (valid) 1f else 0f
+                                            showDownloadDialog = true
+                                            isInstalling = false
                                         }
-                                        showDownloadDialog = true
-                                        isInstalling = false
                                     } else if (!isChecking) {
                                         isChecking = true
                                         coroutineScope.launch {
@@ -354,14 +364,14 @@ fun UpdateSettingsScreen(
                                                         .putString("latest_date", release.createdAt)
                                                 }
                                                 val tag = release.tagName
-                                                if (UpdateInstaller.hasValidApk(context, tag)) {
-                                                    downloadedFile = UpdateInstaller.apkFile(context, tag)
-                                                    downloadComplete = true
-                                                    downloadProgress = 1f
-                                                } else {
-                                                    downloadComplete = false
-                                                    downloadProgress = 0f
+                                                UpdateChecker.rememberApkDigest(context, tag, release.apkSha256, release.apkSize)
+                                                // 校验需解析 APK，放 IO 线程
+                                                val valid = withContext(Dispatchers.IO) {
+                                                    UpdateInstaller.hasValidApk(context, tag)
                                                 }
+                                                downloadedFile = if (valid) UpdateInstaller.apkFile(context, tag) else null
+                                                downloadComplete = valid
+                                                downloadProgress = if (valid) 1f else 0f
                                                 showDownloadDialog = true
                                                 isInstalling = false
                                             } else if (!update) {
@@ -500,8 +510,10 @@ fun UpdateSettingsScreen(
                 liquidGlassBackdrop = liquidGlassBackdrop,
 
                 onDismissRequest = {
-                    if (!isDownloading && !isInstalling) {
-                        showDownloadDialog = false
+                    // 安装/下载都不阻塞关闭：系统安装器被取消后弹窗不能卡在「安装中」
+                    showDownloadDialog = false
+                    if (!isDownloading) {
+                        isInstalling = false
                         downloadComplete = false
                         downloadProgress = 0f
                     }
@@ -533,18 +545,18 @@ fun UpdateSettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (!isInstalling) {
-                            TextButton(
-                                text = "取消",
-                                onClick = {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    showDownloadDialog = false
-                                    downloadComplete = false
-                                    downloadProgress = 0f
-                                    isDownloading = false
-                                }, modifier = Modifier.weight(1f)
-                            )
-                        }
+                        // 始终提供关闭入口：安装中也能关掉弹窗
+                        TextButton(
+                            text = if (isInstalling) "关闭" else "取消",
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                showDownloadDialog = false
+                                downloadComplete = false
+                                downloadProgress = 0f
+                                isDownloading = false
+                                isInstalling = false
+                            }, modifier = Modifier.weight(1f)
+                        )
                         if (downloadComplete && !isInstalling) {
                             Button(
                                 modifier = Modifier.weight(1f),
@@ -556,10 +568,11 @@ fun UpdateSettingsScreen(
                                         file = file,
                                         onInstallingChanged = { isInstalling = it },
                                         onFinished = {
-                                            if (!isInstalling) {
-                                                downloadComplete = false
-                                                showDownloadDialog = false
-                                            }
+                                            // 安装流程已交棒（静默成功 / 系统安装器已拉起）：
+                                            // 无条件收尾，避免用户取消安装后弹窗锁死
+                                            isInstalling = false
+                                            downloadComplete = false
+                                            showDownloadDialog = false
                                         }
                                     )
                                 },
