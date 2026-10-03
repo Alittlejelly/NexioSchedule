@@ -11,7 +11,6 @@ val changelogData = listOf(
         date = "2026-10-03",
         changes = listOf(
             "本次更新包含应用合规性优化",
-            "最低API支持降低到30",
             "优化更新安装包校验机制",
             "修复应用部分已知问题"
         )

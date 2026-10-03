@@ -258,24 +258,6 @@ private class DragMotionHolder {
     }
 }
 
-// 按 1px 量化缓存 RenderEffect，避免 graphicsLayer 每帧 new 造成 GC 抖动。
-// 的偏差恒 ≤0.5px —— 这个量级肉眼不可辨，视觉不变。
-private class BlurEffectCache {
-    private var cachedPx = Float.NaN
-    private var cached: androidx.compose.ui.graphics.RenderEffect? = null
-
-    fun get(px: Float): androidx.compose.ui.graphics.RenderEffect {
-        val quantized = (px).toInt().toFloat()
-        if (cachedPx != quantized || cached == null) {
-            cachedPx = quantized
-            cached = android.graphics.RenderEffect.createBlurEffect(
-                quantized, quantized, android.graphics.Shader.TileMode.CLAMP
-            ).asComposeRenderEffect()
-        }
-        return cached!!
-    }
-}
-
 class MainActivity : ComponentActivity() {
 
     companion object {
@@ -5195,22 +5177,12 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         }
         // 切换课表：p 在卡片↔全屏之间形变；进入 p:1→0，退出 p:0→1
         if (showSwitchSchedule) {
-            // 注意：这里不要读 switchAnimProgress.value。原来 p 在本作用域读，动画每帧都会
-            // 连同下面整个 SwitchScheduleScreen（LazyColumn + 顶栏 + 全部卡片）一起重组，
-            // 350ms 内整页重组 20+ 次。p 的读取已下沉到 SwitchMorphOverlay 内部。
-            // 初值 0：首帧不挂 RenderEffect
-            val switchPageBlur = remember { Animatable(0f) }
-            val blurEffectCache = remember { BlurEffectCache() }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // blur/alpha 合一层，少一次离屏合成
                     .graphicsLayer {
                         alpha = if (switchCapturingSnapshot) 0f else 1f
-                        val r = switchPageBlur.value
-                        renderEffect = if (r > 0.01f) {
-                            blurEffectCache.get(r * density.density)
-                        } else null
                     }
             ) {
                 SwitchScheduleScreen(
@@ -5267,15 +5239,6 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 val currentProgress = switchAnimProgress.value
                                 val remainingDuration =
                                     ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
-                                launch {
-                                    switchPageBlur.animateTo(
-                                        5f,
-                                        animationSpec = tween(
-                                            remainingDuration,
-                                            easing = OobeQuartOutEasing
-                                        )
-                                    )
-                                }
                                 switchAnimProgress.animateTo(
                                     targetValue = 1f,
                                     animationSpec = tween(
@@ -5370,15 +5333,6 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             val currentProgress = switchAnimProgress.value
                             val remainingDuration =
                                 ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
-                            launch {
-                                switchPageBlur.animateTo(
-                                    5f,
-                                    animationSpec = tween(
-                                        remainingDuration,
-                                        easing = OobeQuartOutEasing
-                                    )
-                                )
-                            }
                             switchAnimProgress.animateTo(
                                 targetValue = 1f,
                                 animationSpec = tween(
@@ -5465,7 +5419,6 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             }
                             switchAnimJob = coroutineScope.launch {
                                 switchAnimProgress.snapTo(1f)
-                                switchPageBlur.snapTo(5f)
                                 switchReturnBgScrim.snapTo(0.4f)
                                 switchCapturingSnapshot = false
                                 switchOverlayActive = true
@@ -5473,15 +5426,6 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 switchCardSnapshot = cardSnap
                                 val remainingDuration = 350
                                 val morphExitEase = CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
-                                launch {
-                                    switchPageBlur.animateTo(
-                                        0f,
-                                        animationSpec = tween(
-                                            remainingDuration,
-                                            easing = OobeCubicOutEasing
-                                        )
-                                    )
-                                }
                                 launch {
                                     switchReturnBgScrim.animateTo(
                                         0f,

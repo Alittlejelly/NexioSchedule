@@ -937,13 +937,13 @@ fun AboutScreen(
                                             "录制中… 剩余 %d:%02d \n正在记入日志，崩溃/被杀自动结束".format(mm, ss)
                                         canShareRecording ->
                                             when (CrashLogHelper.readyReason) {
-                                                "crash" -> "已捕获崩溃日志，可分享给开发者"
+                                                "crash" -> "检测到崩溃，日志已自动保存，可直接分享"
                                                 "process_killed" -> "上次进程被杀，已自动结束录制，可分享"
                                                 "timeout_30min" -> "录制已达 30 分钟上限，可分享"
                                                 else -> "录制已结束，可分享给开发者"
                                             }
                                         else ->
-                                            "最长录制 30 分钟。开始后请复现问题，结束后点分享。日志仅存本机，需你主动分享才会离开设备"
+                                            "崩溃日志始终自动保存，无需开启录制。\n最长录制 30 分钟，开始后请复现问题，结束后点分享。日志仅存本机，需你主动分享才会离开设备"
                                     }
                                     Text(
                                         text = statusText,

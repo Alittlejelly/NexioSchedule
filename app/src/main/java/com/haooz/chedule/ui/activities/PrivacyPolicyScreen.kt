@@ -55,7 +55,7 @@ private val POLICY_SECTIONS: List<PolicySection> = listOf(
                 listOf(
                     "应用名称：Nexio 课程表",
                     "应用包名：com.haooz.chedule",
-                    "开发者：Nexio 课程表开发团队（HaoZai000）",
+                    "开发者：Nexio 课程表开发团队（王凯哲）",
                     "联系邮箱：439089703@qq.com",
                     "官方网站：nexioschedule.icu（闽ICP备2026037367号-1）",
                 )

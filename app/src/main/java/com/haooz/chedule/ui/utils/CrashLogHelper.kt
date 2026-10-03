@@ -126,8 +126,10 @@ object CrashLogHelper {
             defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                 runCatching {
+                    // 必须在 stopRecording 改写状态前取，否则报告里 wasRecording 恒为 false
+                    val wasRecording = isRecording
                     if (isRecording) stopRecording(app, reason = "crash")
-                    writeCrashFile(app, thread, throwable)
+                    writeCrashFile(app, thread, throwable, wasRecording)
                 }
                 val prev = defaultHandler
                 if (prev != null) prev.uncaughtException(thread, throwable)
@@ -301,28 +303,49 @@ object CrashLogHelper {
             return exportAndShare(context)
         }
         val file = File(path)
+        // readyRecordingPath 现在也可能是崩溃文件本身，此时只补设备信息与其它崩溃，
+        // 不再重复追加 crash 段，避免自我嵌套。
+        val isCrashReport = file.name.startsWith("crash_")
         // 补一段设备信息与历史崩溃，方便开发者一次看完
         val body = runCatching {
             val base = file.readText()
-            if (base.contains("=== 已捕获崩溃")) base
-            else buildString {
-                append(base)
-                appendLine()
-                appendLine("=== readyReason=$readyReason ===")
-                appendLine(deviceInfo(context.applicationContext))
-                appendLine()
-                appendLine("=== live trace snapshot ===")
-                appendLine(formatTrace())
-                appendLine()
-                appendLine("=== crash files ===")
-                val crashes = File(context.filesDir, CRASH_DIR).listFiles()
-                    ?.filter { it.isFile && it.name.startsWith("crash_") && !it.name.endsWith("_mem.txt") }
-                    ?.sortedByDescending { it.name }
-                    .orEmpty()
-                if (crashes.isEmpty()) appendLine("(none)")
-                else crashes.take(5).forEach { c ->
-                    appendLine("--- ${c.name} ---")
-                    appendLine(runCatching { c.readText().take(20_000) }.getOrDefault("?"))
+            if (isCrashReport) {
+                buildString {
+                    append(base)
+                    appendLine()
+                    appendLine("=== 其它崩溃记录 ===")
+                    val others = File(context.filesDir, CRASH_DIR).listFiles()
+                        ?.filter { it.isFile && it.name.startsWith("crash_") && !it.name.endsWith("_mem.txt") }
+                        ?.sortedByDescending { it.name }
+                        .orEmpty().drop(1)
+                    if (others.isEmpty()) appendLine("(无)")
+                    else others.take(4).forEach { c ->
+                        appendLine("--- ${c.name} ---")
+                        appendLine(runCatching { c.readText().take(20_000) }.getOrDefault("?"))
+                    }
+                }
+            } else if (base.contains("=== 已捕获崩溃")) {
+                base
+            } else {
+                buildString {
+                    append(base)
+                    appendLine()
+                    appendLine("=== readyReason=$readyReason ===")
+                    appendLine(deviceInfo(context.applicationContext))
+                    appendLine()
+                    appendLine("=== live trace snapshot ===")
+                    appendLine(formatTrace())
+                    appendLine()
+                    appendLine("=== crash files ===")
+                    val crashes = File(context.filesDir, CRASH_DIR).listFiles()
+                        ?.filter { it.isFile && it.name.startsWith("crash_") && !it.name.endsWith("_mem.txt") }
+                        ?.sortedByDescending { it.name }
+                        .orEmpty()
+                    if (crashes.isEmpty()) appendLine("(none)")
+                    else crashes.take(5).forEach { c ->
+                        appendLine("--- ${c.name} ---")
+                        appendLine(runCatching { c.readText().take(20_000) }.getOrDefault("?"))
+                    }
                 }
             }
         }.getOrDefault(file.readText())
@@ -576,7 +599,12 @@ object CrashLogHelper {
         appendLine("uptimeMin=${(System.currentTimeMillis() - sessionStartedAt) / 60000}")
     }
 
-    private fun writeCrashFile(context: Context, thread: Thread, throwable: Throwable) {
+    private fun writeCrashFile(
+        context: Context,
+        thread: Thread,
+        throwable: Throwable,
+        wasRecording: Boolean,
+    ) {
         val dir = crashDir(context)
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.ROOT).format(Date())
         val sw = StringWriter()
@@ -586,13 +614,15 @@ object CrashLogHelper {
             stack = stack.take(MAX_STACK_CHARS) + "\n…truncated"
         }
         val body = buildString {
+            appendLine("=== Nexio课程表 崩溃报告 ===")
             appendLine("time=${formatTime(System.currentTimeMillis())}")
             appendLine("thread=${thread.name}")
             appendLine("throwable=${throwable::class.java.name}")
             appendLine("message=${throwable.message}")
+            appendLine("cause=${rootCause(throwable)}")
             appendLine("lastFeature=$lastFeature")
             appendLine("lastEvent=$lastEvent")
-            appendLine("wasRecording=${!isRecording && readyReason == "crash"}")
+            appendLine("wasRecording=$wasRecording")
             appendLine()
             appendLine(deviceInfo(context))
             appendLine()
@@ -606,7 +636,8 @@ object CrashLogHelper {
             // 崩溃路径只抓 crash 缓冲，避免写不完
             appendLine(tryDumpLogcat(quick = true))
         }
-        runCatching { File(dir, "crash_$stamp.txt").writeText(body) }
+        val crashFile = File(dir, "crash_$stamp.txt")
+        runCatching { crashFile.writeText(body) }
         runCatching {
             val rt = Runtime.getRuntime()
             val heap = (rt.totalMemory() - rt.freeMemory()) / (1024f * 1024f)
@@ -618,16 +649,19 @@ object CrashLogHelper {
             )
         }
         trimCrashFiles(dir)
-        // 崩溃后分享按钮应亮起
+        // 崩溃后分享入口必须亮起，且要跨进程重启存活。
+        // 旧逻辑持久化的是 readyRecordingPath，它只有用户手动录制过才非空；
+        // 于是普通崩溃（未录制）重启后读到 null，文件虽在盘上但分享按钮始终灰着。
+        // 崩溃文件本身就是完整报告，直接作为可分享目标。
         hasReadyRecording = true
-        if (readyReason != "crash") {
-            // 保留 crash 标记，便于 About 页展示
-            readyReason = if (readyRecordingPath != null) readyReason else "crash"
+        readyReason = "crash"
+        readyRecordingPath = crashFile.absolutePath
+        runCatching {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("ready_reason", readyReason)
+                .putString(KEY_READY_FILE, crashFile.absolutePath)
+                .apply()
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("ready_reason", readyReason)
-            .putString(KEY_READY_FILE, readyRecordingPath)
-            .apply()
     }
 
     /**
@@ -764,6 +798,19 @@ object CrashLogHelper {
 
     private fun formatTime(millis: Long): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.ROOT).format(Date(millis))
+
+    /** 最深层异常：分享出去时一眼能看到真正的失败原因 */
+    private fun rootCause(throwable: Throwable): String {
+        var t: Throwable = throwable
+        var depth = 0
+        while (depth < 16) {
+            val next = t.cause ?: break
+            if (next === t) break
+            t = next
+            depth++
+        }
+        return "${t::class.java.name}: ${t.message ?: "(no message)"} @ depth=$depth"
+    }
 }
 
 /** 各功能统一埋点入口：稳定短名，便于崩溃轨迹对账 */
