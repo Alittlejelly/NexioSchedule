@@ -336,17 +336,27 @@ class CourseManageActivity : ComponentActivity() {
                                                 editedCourseIds = editedCourseIds + courses.map { it.id }
 
                                                 // Capture full screen snapshot
-                                                val fullSnapshot = screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
-
-                                                // Crop card area from full snapshot
-                                                cardSnapshot = try {
-                                                    val x = left.toInt().coerceIn(0, fullSnapshot.width - 1)
-                                                    val y = top.toInt().coerceIn(0, fullSnapshot.height - 1)
-                                                    val w = width.toInt().coerceIn(1, fullSnapshot.width - x)
-                                                    val h = height.toInt().coerceIn(1, fullSnapshot.height - y)
-                                                    android.graphics.Bitmap.createBitmap(fullSnapshot, x, y, w, h)
+                                                val fullSnapshot = try {
+                                                    screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
                                                 } catch (_: Exception) {
                                                     null
+                                                } catch (_: OutOfMemoryError) {
+                                                    null
+                                                }
+
+                                                // Crop card area from full snapshot
+                                                cardSnapshot = fullSnapshot?.let { snap ->
+                                                    try {
+                                                        val x = left.toInt().coerceIn(0, snap.width - 1)
+                                                        val y = top.toInt().coerceIn(0, snap.height - 1)
+                                                        val w = width.toInt().coerceIn(1, snap.width - x)
+                                                        val h = height.toInt().coerceIn(1, snap.height - y)
+                                                        android.graphics.Bitmap.createBitmap(snap, x, y, w, h)
+                                                    } catch (_: Exception) {
+                                                        null
+                                                    } catch (_: OutOfMemoryError) {
+                                                        null
+                                                    }
                                                 }
 
                                                 showEditScreen = true

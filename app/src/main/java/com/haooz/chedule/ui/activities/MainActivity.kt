@@ -258,13 +258,14 @@ private class DragMotionHolder {
     }
 }
 
-// 按 0.25px 量化缓存 RenderEffect，避免 graphicsLayer 每帧 new 造成 GC 抖动
+// 按 1px 量化缓存 RenderEffect，避免 graphicsLayer 每帧 new 造成 GC 抖动。
+// 的偏差恒 ≤0.5px —— 这个量级肉眼不可辨，视觉不变。
 private class BlurEffectCache {
     private var cachedPx = Float.NaN
     private var cached: androidx.compose.ui.graphics.RenderEffect? = null
 
     fun get(px: Float): androidx.compose.ui.graphics.RenderEffect {
-        val quantized = (px * 4f).toInt().toFloat() / 4f
+        val quantized = (px).toInt().toFloat()
         if (cachedPx != quantized || cached == null) {
             cachedPx = quantized
             cached = android.graphics.RenderEffect.createBlurEffect(
@@ -1716,12 +1717,23 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     }
     val mainSnapshotRequester = remember { MainSnapshotRequester() }
     var mainSnapshotToken by remember { mutableIntStateOf(0) }
-    val captureMainContentBitmap: suspend () -> android.graphics.Bitmap = {
+    val captureMainContentBitmap: suspend () -> android.graphics.Bitmap? = {
         mainSnapshotToken++
         // 等两帧：draw 录制完成 + 帧已提交
         withFrameNanos { }
         withFrameNanos { }
-        screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
+        // 必须单独 catch OutOfMemoryError：Bitmap 像素在 native 堆，全屏 toImageBitmap
+        // 读回是低端机上最容易 OOM 的一步，而 OOM 是 Error 不是 Exception，
+        // 只写 catch(Exception) 等于没兜底 —— 直接把进程带走。
+        // 返回 null：所有消费方都已能处理「没有快照」（切换页照样走完动画）。
+        try {
+            screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
+        } catch (_: OutOfMemoryError) {
+            com.haooz.chedule.ui.utils.CrashLogHelper.trace("主页", "main_snapshot_oom")
+            null
+        } catch (_: Exception) {
+            null
+        }
     }
     var blurSnapshotJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
@@ -2345,14 +2357,18 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             mainContentSnapshot = fullSnapshot
             hiddenCourseIds = setOf(courseIdToHide)
             val oldDetail = detailSnapshot
-            detailSnapshot = try {
-                val x = cardLeft.toInt().coerceIn(0, fullSnapshot.width - 1)
-                val y = cardTop.toInt().coerceIn(0, fullSnapshot.height - 1)
-                val w = cardWidth.toInt().coerceIn(1, fullSnapshot.width - x)
-                val h = cardHeight.toInt().coerceIn(1, fullSnapshot.height - y)
-                android.graphics.Bitmap.createBitmap(fullSnapshot, x, y, w, h)
-            } catch (_: Exception) {
-                null
+            detailSnapshot = fullSnapshot?.let { snap ->
+                try {
+                    val x = cardLeft.toInt().coerceIn(0, snap.width - 1)
+                    val y = cardTop.toInt().coerceIn(0, snap.height - 1)
+                    val w = cardWidth.toInt().coerceIn(1, snap.width - x)
+                    val h = cardHeight.toInt().coerceIn(1, snap.height - y)
+                    android.graphics.Bitmap.createBitmap(snap, x, y, w, h)
+                } catch (_: Exception) {
+                    null
+                } catch (_: OutOfMemoryError) {
+                    null
+                }
             }
             recycleIndependentBitmap(oldDetail, detailSnapshot, fullSnapshot)
 
@@ -2382,11 +2398,17 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             val oldCombSnapshots = combinations.mapNotNull { it.snapshot }
             combinations = combinations.map { it.copy(snapshot = null) }
             delay(50.milliseconds)
-            // toImageBitmap 硬件位图直接画回会与背景模糊形成 RenderNode 自引用导致栈溢出，
-            // 必须复制为独立 ARGB_8888 切断引用；~10MB 拷贝挪到 IO
+            // 复制为独立 ARGB_8888 切断引用
+            // 截不到（OOM）就不做开洞快照，直接照常进搭配页
             val captured = captureMainContentBitmap()
-            val currentSnapshot = withContext(Dispatchers.IO) {
-                captured.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: captured
+            val currentSnapshot = captured?.let { snap ->
+                try {
+                    withContext(Dispatchers.IO) {
+                        snap.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: snap
+                    }
+                } catch (_: OutOfMemoryError) {
+                    null
+                }
             }
             val oldCustomize = customizeSnapshot
             val oldCover = snapshotCoverBitmap
@@ -2630,9 +2652,6 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         val latestIsWindowCutout by rememberUpdatedState(isWindowCutoutActive)
         val latestShowCustomize by rememberUpdatedState(showCustomizePage)
         val latestIsCustomizeExiting by rememberUpdatedState(isCustomizeExiting)
-        val latestSwitchAnimRunning by rememberUpdatedState(switchAnimRunning)
-        val latestSwitchAnimForward by rememberUpdatedState(switchAnimForward)
-        val latestShowSwitch by rememberUpdatedState(showSwitchSchedule)
         val latestDraggingCard by rememberUpdatedState(isDraggingCard)
         val latestRailBlurEpoch by rememberUpdatedState(railBlurResampleEpoch.intValue)
         // 无壁纸周左右滑：跳过 liquidGlass 整树逐帧重录（chrome 采样缓存随之跳过模糊）。
@@ -2662,8 +2681,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                     // 开洞编辑时主内容持续缩放，绝不能停录
                     latestIsWindowCutout ||
                     (latestShowCustomize && latestIsCustomizeExiting) ||
-                    latestShowSwitch && latestSwitchAnimForward && latestSwitchAnimRunning ||
-                    latestSwitchAnimRunning ||
+                    // 切换课表进/退场动画期间刻意「不」录：这一段里主内容 alpha=0
                     latestShortcutBlur > 0.01f ||
                     latestManageBlur > 0.01f ||
                     // 非静止端点视为动画进行中
@@ -5232,6 +5250,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                     android.graphics.Bitmap.createBitmap(screenBitmap, x, y, w, h)
                                 } catch (_: Exception) {
                                     null
+                                } catch (_: OutOfMemoryError) {
+                                    null
                                 }
                                 val currentProgress = switchAnimProgress.value
                                 val remainingDuration =
@@ -5417,6 +5437,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                         .coerceIn(1, screenBitmap.height - y)
                                     android.graphics.Bitmap.createBitmap(screenBitmap, x, y, w, h)
                                 } catch (_: Exception) {
+                                    null
+                                } catch (_: OutOfMemoryError) {
                                     null
                                 }
                             } else null

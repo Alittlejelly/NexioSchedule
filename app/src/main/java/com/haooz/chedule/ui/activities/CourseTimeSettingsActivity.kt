@@ -242,7 +242,7 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                                                 cardSnapshot = try {
                                                     val fullBitmap = screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
                                                     Bitmap.createBitmap(fullBitmap, lx, ly, lw, lh)
-                                                } catch (_: Exception) { null }
+                                                } catch (_: Exception) { null } catch (_: OutOfMemoryError) { null }
                                             }
                                             // 等待一帧后启动背景动画
                                             coroutineScope.launch {
@@ -277,7 +277,7 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                                                 cardSnapshot = try {
                                                     val fullBitmap = screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
                                                     Bitmap.createBitmap(fullBitmap, lx, ly, lw, lh)
-                                                } catch (_: Exception) { null }
+                                                } catch (_: Exception) { null } catch (_: OutOfMemoryError) { null }
                                             }
                                             // 等待一帧后启动背景动画
                                             coroutineScope.launch {

@@ -201,6 +201,12 @@ fun SwitchScheduleScreen(
         withFrameNanos { }
         try {
             screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
+        } catch (_: OutOfMemoryError) {
+            // OOM 是 Error 不是 Exception：全屏读回在低端机上最容易触发
+            com.haooz.chedule.ui.utils.CrashLogHelper.trace(
+                "切换课表", "page_snapshot_oom"
+            )
+            null
         } catch (_: Exception) {
             null
         }
@@ -214,8 +220,7 @@ fun SwitchScheduleScreen(
         )
     }
     LaunchedEffect(Unit) {
-        // initial 值来自 ScheduleViewModel 的实时 StateFlow，已经是最新；再读一次磁盘只会
-        // 让首帧之后立刻多一次重组，正好压在进场动画的头几帧上。独立 Activity 启动时
+        // initial 值来自 ScheduleViewModel 的实时 StateFlow，已经是最新
         // （initial 为 null）仍然需要读。
         if (initialScheduleNames == null) {
             scheduleNames = repository.getScheduleNames()
@@ -316,14 +321,29 @@ fun SwitchScheduleScreen(
             scope.launch {
                 val fullBitmap = capturePageBitmap()
                 if (fullBitmap != null) {
-                    val x = (bounds.left - contentRootX).toInt()
-                        .coerceIn(0, fullBitmap.width - 1)
-                    val y = (bounds.top - contentRootY).toInt()
-                        .coerceIn(0, fullBitmap.height - 1)
-                    val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
-                    val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
-                    val cardBitmap = android.graphics.Bitmap.createBitmap(fullBitmap, x, y, w, h)
-                    onCardSnapshot(fullBitmap, cardBitmap, bounds)
+                    // 裁剪也要兜 OOM：这里原来完全没有 try，一张全屏位图裁失败就是闪退
+                    val cardBitmap = try {
+                        val x = (bounds.left - contentRootX).toInt()
+                            .coerceIn(0, fullBitmap.width - 1)
+                        val y = (bounds.top - contentRootY).toInt()
+                            .coerceIn(0, fullBitmap.height - 1)
+                        val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
+                        val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
+                        android.graphics.Bitmap.createBitmap(fullBitmap, x, y, w, h)
+                    } catch (_: Exception) {
+                        null
+                    } catch (_: OutOfMemoryError) {
+                        com.haooz.chedule.ui.utils.CrashLogHelper.trace(
+                            "切换课表", "card_crop_oom"
+                        )
+                        null
+                    }
+                    if (cardBitmap != null) {
+                        onCardSnapshot(fullBitmap, cardBitmap, bounds)
+                    } else {
+                        // 裁不出卡片快照：整屏素材没人消费，直接回收（宿主会走无快照退出）
+                        runCatching { if (!fullBitmap.isRecycled) fullBitmap.recycle() }
+                    }
                 }
                 onCardClick(bounds)
             }
