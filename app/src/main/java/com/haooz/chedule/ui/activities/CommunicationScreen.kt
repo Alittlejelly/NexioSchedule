@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -90,10 +89,8 @@ fun CommunicationScreen(
                 item {
                     SmallTitle(
                         text = "联系我们",
-                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
@@ -122,10 +119,8 @@ fun CommunicationScreen(
                 item {
                     SmallTitle(
                         text = "反馈与建议",
-                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -327,6 +328,8 @@ private fun rememberWeather(): Triple<WeatherData, Boolean, () -> Unit> {
     val context = LocalContext.current
     val weatherPrefs = remember { context.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE) }
     val weatherSource = weatherPrefs.getString("weather_source", "caiyun") ?: "caiyun"
+    // 合规：可观察的隐私同意状态；未同意前不定位/不查询，同意后自动重新执行
+    val privacyConsented by com.haooz.chedule.data.PrivacyConsent.consented.collectAsState()
 
     var weather by remember { mutableStateOf(cachedWeather ?: WeatherData()) }
     var hasLocationPermission by remember {
@@ -348,7 +351,9 @@ private fun rememberWeather(): Triple<WeatherData, Boolean, () -> Unit> {
 
     var refreshTrigger by remember { mutableStateOf(0) }
 
-    LaunchedEffect(hasLocationPermission, weatherSource, refreshTrigger) {
+    LaunchedEffect(hasLocationPermission, weatherSource, refreshTrigger, privacyConsented) {
+        // 合规：用户同意隐私政策前，不进行定位与天气数据获取；同意后会因 key 变化自动重跑
+        if (!privacyConsented) return@LaunchedEffect
         val now = System.currentTimeMillis()
         if (now - lastWeatherFetchTime < WEATHER_REFRESH_INTERVAL && cachedWeather != null) {
             weather = cachedWeather!!
@@ -444,15 +449,19 @@ private fun rememberWeather(): Triple<WeatherData, Boolean, () -> Unit> {
             }
         }
     }
-    return Triple(weather, hasLocationPermission) {
-        if (!hasLocationPermission) {
-            permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-        } else {
-            lastWeatherFetchTime = 0L
-            weather = WeatherData(loaded = false)
-            refreshTrigger++
+    // 合规：未同意隐私政策前不申请定位权限，也不触发天气查询
+    val onRequestWeather: () -> Unit = {
+        if (privacyConsented) {
+            if (!hasLocationPermission) {
+                permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            } else {
+                lastWeatherFetchTime = 0L
+                weather = WeatherData(loaded = false)
+                refreshTrigger++
+            }
         }
     }
+    return Triple(weather, hasLocationPermission, onRequestWeather)
 }
 
 private data class CourseStatus(
@@ -875,7 +884,6 @@ fun TodayAssistantCard(
 
     Box(modifier = Modifier.fillMaxWidth()) {
         BlurCard(
-            cornerRadius = 20.dp,
             wallpaperBackdrop = wallpaperBackdrop,
             blurRadius = blurRadius,
             surfaceOpacity = surfaceOpacity,

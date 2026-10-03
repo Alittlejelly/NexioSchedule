@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -58,13 +57,13 @@ import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
 import com.haooz.chedule.ui.basic.collapsibleTopInset
 import com.haooz.chedule.ui.utils.FeatureLog
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.parseShareCourseWeekModel
 import com.haooz.chedule.ui.utils.parseShareCourses
 import com.haooz.chedule.ui.utils.parseShareSelectedWeeks
 import com.haooz.chedule.ui.utils.parseShareSettings
 import com.haooz.chedule.ui.utils.parseShareTotalWeeks
-import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -223,10 +222,8 @@ fun SettingsScreen(
         drawContent()
     }
     val isDark = isAppDarkTheme()
-    val tabletHorizontalPadding = if (navBarStyle == "rail") {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
-    } else 16.dp
+    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Scaffold(
@@ -275,10 +272,8 @@ fun SettingsScreen(
                 item(key = "basic") {
                     SmallTitle(
                         text = "基本设置",
-                        modifier = Modifier.offset(x = (-16).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
@@ -377,10 +372,8 @@ fun SettingsScreen(
                     item(key = "features") {
                         SmallTitle(
                             text = "特色功能",
-                            modifier = Modifier.offset(x = (-16).dp)
                         )
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
@@ -428,10 +421,8 @@ fun SettingsScreen(
                     item(key = "shift_schedules") {
                         SmallTitle(
                             text = "选择对比课表",
-                            modifier = Modifier.offset(x = (-16).dp)
                         )
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
@@ -484,10 +475,8 @@ fun SettingsScreen(
                     item(key = "data_manage") {
                         SmallTitle(
                             text = "数据管理",
-                            modifier = Modifier.offset(x = (-16).dp)
                         )
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
@@ -533,10 +522,8 @@ fun SettingsScreen(
                     item(key = "others_title") {
                         SmallTitle(
                             text = "其他",
-                            modifier = Modifier.offset(x = (-16).dp)
                         )
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
@@ -557,7 +544,6 @@ fun SettingsScreen(
                     }
                     item(key = "others_prefs") {
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {

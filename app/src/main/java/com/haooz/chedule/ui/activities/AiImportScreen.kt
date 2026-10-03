@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -201,7 +200,7 @@ fun AiImportScreen(
     }
 
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 20.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(
         topBar = {}
@@ -234,7 +233,6 @@ fun AiImportScreen(
             item {
                 SmallTitle(
                     text = "课表数据",
-                    modifier = Modifier.offset(x = (-16).dp)
                 )
                 NativeMiuixTextField(
                     value = inputText,
@@ -274,10 +272,8 @@ fun AiImportScreen(
                     ) {
                         SmallTitle(
                             text = "解析预览",
-                            modifier = Modifier.offset(x = (-15).dp)
                         )
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
@@ -346,7 +342,6 @@ fun AiImportScreen(
                             Column {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Card(
-                                    cornerRadius = 20.dp,
                                     modifier = Modifier.fillMaxWidth(),
                                     insideMargin = PaddingValues(0.dp)
                                 ) {
@@ -387,10 +382,8 @@ fun AiImportScreen(
             item {
                 SmallTitle(
                     text = "使用说明",
-                    modifier = Modifier.offset(x = (-15).dp)
                 )
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth(),
                     insideMargin = PaddingValues(16.dp)
                 ) {

@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -726,7 +725,6 @@ fun CourseEditScreen(
                                         colorColumns
                                     ) { (totalItems + colorColumns - 1) / colorColumns }
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(top = 14.dp),
                                     ) {
@@ -1107,12 +1105,10 @@ private fun CourseGroupCard(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(
-            text = weekText,
-            modifier = Modifier.offset(x = (-16).dp)
+            text = weekText
         )
 
         Card(
-            cornerRadius = 20.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = { onEdit(group) }
         ) {

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -178,7 +177,7 @@ fun CourseDetailScreen(
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
     val tabletHorizontalPadding = if (isTablet) {
         val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
+        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
     } else 16.dp
 
     val semesterStartDate = remember(classStartTime) {
@@ -573,10 +572,8 @@ fun CourseDetailScreen(
                                             Column {
                                                 SmallTitle(
                                                     text = "第${week}周",
-                                                    modifier = Modifier.offset(x = (-15).dp)
                                                 )
                                                 Card(
-                                                    cornerRadius = 20.dp,
                                                     modifier = Modifier.fillMaxWidth(),
                                                     insideMargin = PaddingValues(0.dp)
                                                 ) {

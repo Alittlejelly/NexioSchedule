@@ -477,10 +477,8 @@ fun TabletSettingsScreen(
                             item(key = "g_$group") {
                                 SmallTitle(
                                     text = group,
-                                    modifier = Modifier.offset(x = (-16).dp)
                                 )
                                 Card(
-                                    cornerRadius = 20.dp,
                                     modifier = Modifier.fillMaxWidth(),
                                     insideMargin = PaddingValues(0.dp)
                                 ) {
@@ -522,7 +520,6 @@ fun TabletSettingsScreen(
                             if (group == TabletSettingsDest.ScheduleExport.group && StandaloneDests.isNotEmpty()) {
                                 item(key = "x_export") {
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -544,7 +541,6 @@ fun TabletSettingsScreen(
                             if (group == TabletSettingsDest.About.group && BottomMoreDests.isNotEmpty()) {
                                 item(key = "x_about_more") {
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -1229,7 +1225,6 @@ private fun TabletSemesterPane(
     ) {
         item {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp)
             ) {
@@ -1307,10 +1302,8 @@ private fun TabletSemesterPane(
             item(key = "shift_schedules") {
                 SmallTitle(
                     text = "选择对比课表",
-                    modifier = Modifier.offset(x = (-16).dp)
                 )
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth(),
                     insideMargin = PaddingValues(0.dp)
                 ) {
@@ -1340,10 +1333,8 @@ private fun TabletSemesterPane(
             item(key = "new_semester") {
                 SmallTitle(
                     text = "其他操作",
-                    modifier = Modifier.offset(x = (-16).dp)
                 )
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth(),
                     insideMargin = PaddingValues(0.dp)
                 ) {

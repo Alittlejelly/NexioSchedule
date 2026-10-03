@@ -1722,7 +1722,6 @@ private fun SheetCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        cornerRadius = 20.dp,
         colors = CardDefaults.defaultColors(
             color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface

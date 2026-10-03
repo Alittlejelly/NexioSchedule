@@ -31,6 +31,9 @@ import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.DialogLayout
  * @param enableWindowDim Whether to enable window dimming when the [OverlayDialog] is shown.
  * @param onDismissRequest Will called when the user tries to dismiss the Dialog by clicking outside or pressing the back button.
  * @param onDismissFinished The callback when the [OverlayDialog] is completely dismissed.
+ * @param enablePredictiveBackGesture Whether the dialog follows the predictive back gesture.
+ *   Set to false for dialogs that must not be dismissed by back (e.g. a blocking consent dialog):
+ *   the back gesture is still consumed, but no follow animation is played.
  * @param outsideMargin The margin outside the [OverlayDialog].
  * @param insideMargin The margin inside the [OverlayDialog].
  * @param defaultWindowInsetsPadding Whether to apply default window insets padding to the [OverlayDialog].
@@ -52,6 +55,7 @@ fun OverlayDialog(
     enableWindowDim: Boolean = true,
     onDismissRequest: (() -> Unit)? = null,
     onDismissFinished: (() -> Unit)? = null,
+    enablePredictiveBackGesture: Boolean = true,
     outsideMargin: DpSize = DialogDefaults.outsideMargin,
     insideMargin: DpSize = DialogDefaults.insideMargin,
     defaultWindowInsetsPadding: Boolean = true,
@@ -89,6 +93,7 @@ fun OverlayDialog(
         enableWindowDim = enableWindowDim,
         onDismissRequest = onDismissRequest,
         onDismissFinished = onDismissFinished,
+        enablePredictiveBackGesture = enablePredictiveBackGesture,
         defaultWindowInsetsPadding = defaultWindowInsetsPadding,
         content = content,
     )

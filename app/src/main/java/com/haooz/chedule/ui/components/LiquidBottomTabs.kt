@@ -328,7 +328,7 @@ fun LiquidBottomTabs(
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
                         drawRect(
-                            if (isLightTheme) Color.Black.copy(0.08f)
+                            if (isLightTheme) Color.Black.copy(0.06f)
                             else Color.White.copy(0.1f),
                             alpha = 1f - progress
                         )

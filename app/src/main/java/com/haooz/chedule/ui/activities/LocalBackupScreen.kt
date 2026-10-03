@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -516,7 +515,7 @@ fun LocalBackupScreen(
     }
 
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 20.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(
         topBar = {}
@@ -545,7 +544,6 @@ fun LocalBackupScreen(
         ) {
             item {
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     insideMargin = PaddingValues(0.dp)
                 ) {
@@ -607,7 +605,6 @@ fun LocalBackupScreen(
 
             item {
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     insideMargin = PaddingValues(0.dp)
                 ) {
@@ -714,13 +711,12 @@ fun LocalBackupScreen(
             item(key = "history_title") {
                 SmallTitle(
                     text = "备份历史",
-                    modifier = Modifier.offset(x = (-16).dp).animateItem()
+                    modifier = Modifier.animateItem()
                 )
             }
             if (backupHistory.isEmpty()) {
                 item(key = "history_empty") {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth().animateItem(),
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                     ) {
@@ -747,7 +743,6 @@ fun LocalBackupScreen(
                     }
                 }
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth()
                         .padding(bottom = 12.dp)
                         .animateItem()
@@ -836,10 +831,9 @@ fun LocalBackupScreen(
             item(key = "other_operations") {
                 SmallTitle(
                     text = "其他操作",
-                    modifier = Modifier.offset(x = (-16).dp).animateItem()
+                    modifier = Modifier.animateItem()
                 )
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth().animateItem(),
                     insideMargin = PaddingValues(0.dp)
                 ) {

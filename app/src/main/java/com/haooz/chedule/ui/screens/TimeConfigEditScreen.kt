@@ -835,7 +835,6 @@ fun TimeConfigEditScreen(
                                 item(key = "config_name") {
                                     SmallTitle(
                                         text = "配置名称",
-                                        modifier = Modifier.offset(x = (-16).dp)
                                     )
                                     NativeMiuixTextField(
                                         value = configName,
@@ -849,10 +848,8 @@ fun TimeConfigEditScreen(
                                 item(key = "section_count") {
                                     SmallTitle(
                                         text = "节次与时间",
-                                        modifier = Modifier.offset(x = (-16).dp)
                                     )
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -1175,11 +1172,9 @@ fun TimeConfigEditScreen(
                                 // 特殊课程（无编号时段块）
                                 item(key = "special_courses") {
                                     SmallTitle(
-                                        text = "特殊课程",
-                                        modifier = Modifier.offset(x = (-16).dp),
+                                        text = "特殊课程"
                                     )
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -1224,10 +1219,8 @@ fun TimeConfigEditScreen(
                                 item(key = "morning") {
                                     SmallTitle(
                                         text = "上午",
-                                        modifier = Modifier.offset(x = (-16).dp)
                                     )
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -1265,10 +1258,8 @@ fun TimeConfigEditScreen(
                                 item(key = "afternoon") {
                                     SmallTitle(
                                         text = "下午",
-                                        modifier = Modifier.offset(x = (-16).dp)
                                     )
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
@@ -1306,10 +1297,8 @@ fun TimeConfigEditScreen(
                                 item(key = "evening") {
                                     SmallTitle(
                                         text = "晚上",
-                                        modifier = Modifier.offset(x = (-16).dp)
                                     )
                                     Card(
-                                        cornerRadius = 20.dp,
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {

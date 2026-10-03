@@ -2,7 +2,9 @@
 package com.haooz.chedule.ui.activities
 
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +28,7 @@ import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.basic.rememberSharedScrollBehavior
+import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -36,9 +39,6 @@ import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
 
 class WebDavSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,11 +60,8 @@ class WebDavSettingsActivity : ComponentActivity() {
             }
             val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
             val scrollBehavior = rememberSharedScrollBehavior()
-            val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-            val tabletHorizontalPadding = if (isTablet) {
-                val screenWidthDp = LocalConfiguration.current.screenWidthDp
-                ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
-            } else 16.dp
+                val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+                val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
             var connected by remember { mutableStateOf(false) }
             var onTestConnection by remember { mutableStateOf({}) }

@@ -882,7 +882,6 @@ private fun BasicInfoCard(
     form: AddCourseFormState,
 ) {
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -981,7 +980,6 @@ private fun WeekdayCard(
     form: AddCourseFormState,
 ) {
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -1066,7 +1064,6 @@ private fun SectionTimeCard(
     onShowSectionDialog: () -> Unit,
 ) {
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -1117,7 +1114,6 @@ private fun WeekSettingCard(
 ) {
     val noDaySelected = form.dayOfWeek == 0
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier
             .fillMaxWidth()
             .alpha(if (noDaySelected) 0.5f else 1f),
@@ -1282,7 +1278,6 @@ private fun ColorCard(
     onShowColorDialog: () -> Unit,
 ) {
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),

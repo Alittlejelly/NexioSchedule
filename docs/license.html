@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="EADmZ2ZGVfqWmHKEjqu2V5">
+<head data-page-node-id="PoherdywIdh6fmsnkHepdo">
+  <meta charset="UTF-8" data-page-node-id="tq0eSTYiCx4fgAM0o4M0f8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="ogaA333ruaGrTcn8ers9jv">
+  <meta name="color-scheme" content="light dark" data-page-node-id="CgwJ3egYUxHikVMngNoDN3">
+  <title>开源协议 - Nexio 课程表</title>
+  <meta name="description" content="Nexio 课程表开源协议：采用 GNU Affero General Public License v3.0 (AGPL-3.0)，本页提供中文摘要与完整协议原文。" data-page-node-id="YnQ879M7OFlyrRZmqQSkJn">
+  <meta name="robots" content="index, follow" data-page-node-id="cwVgwWBKCExdrpr61WEBJk">
+  <link rel="preconnect" href="https://fonts.googleapis.com" data-page-node-id="xCVPBYejgGAa6B9zU2Espl">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin data-page-node-id="JO39lm8FlHjUc0LCkgowOX">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" data-page-node-id="jwNVLElINLN1h8Cc2OGO7Z">
+  <link rel="stylesheet" href="style.css" data-page-node-id="TvAggrNxEzycLg7kPBXInX">
+  <link rel="icon" type="image/jpeg" href="picture/favicon.jpg" data-page-node-id="8hJG1gDKbSB65GtDJ9vo5J">
+  <script>
+    /* 主题防闪屏：在首帧渲染前根据本地偏好或系统偏好设置 data-theme */
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <style>
+
+    /* ==================== 开源协议页专用样式 ==================== */
+    .legal-page{padding:150px 0 40px;position:relative;z-index:1}
+    .legal-inner{max-width:920px;margin:0 auto}
+    .legal-head{text-align:center;margin-bottom:32px}
+    .legal-head h1{font-size:clamp(28px,4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.2}
+    .legal-head .lic-sub{margin-top:10px;font-size:14px;color:var(--text-2)}
+    .legal-meta{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+    .legal-meta span{
+      display:inline-flex;align-items:center;padding:5px 13px;border-radius:999px;
+      font-size:12px;font-weight:600;color:var(--text-2);
+      background:var(--glass);border:1px solid var(--stroke);
+      backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);
+    }
+    .legal-meta span.lic-badge{
+      color:var(--accent);border-color:var(--accent);background:var(--accent-soft);
+    }
+    .legal-card{padding:20px 36px 22px;margin-bottom:18px}
+    .legal-toc{padding:24px 30px}
+    .legal-toc h2{font-size:15px;font-weight:700;margin-bottom:14px}
+    .legal-toc ol{margin:0;padding-left:20px;columns:2;column-gap:32px}
+    .legal-toc li{margin:5px 0;font-size:13.5px;color:var(--text-2)}
+    .legal-toc a{color:var(--text-2);text-decoration:none;transition:color .2s ease}
+    .legal-toc a:hover{color:var(--accent)}
+    .legal-toc .toc-sub{
+      margin:18px 0 8px;padding-top:14px;border-top:1px solid var(--stroke);
+      font-size:12.5px;font-weight:650;color:var(--text-3);columns:1;
+    }
+    .legal-toc ol.toc-sections{columns:3;column-gap:24px}
+    .legal-toc ol.toc-sections li{font-size:12.5px;margin:4px 0}
+    .legal-toc ol.toc-sections a{color:var(--text-3)}
+
+    .lic-title-cn{
+      margin:0 0 4px;font-size:clamp(19px,2.6vw,23px);font-weight:700;
+      letter-spacing:-.01em;color:var(--text);line-height:1.3;
+    }
+    .lic-title-en{
+      margin:0 0 14px;font-size:13.5px;color:var(--text-3);
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    .lic-copy-note{
+      margin:0 0 4px;padding:12px 15px;border-radius:var(--radius-sm);
+      background:var(--accent-soft);border:1px solid var(--stroke);
+      font-size:12.5px;color:var(--text-2);line-height:1.65;
+      word-break:break-word;
+    }
+    .lic-copy-note a{color:var(--accent);text-decoration:none;word-break:break-all}
+    .lic-copy-note a:hover{text-decoration:underline}
+    .legal-body h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:0 0 14px;scroll-margin-top:96px}
+    .legal-body section+section{margin-top:30px;padding-top:30px;border-top:1px solid var(--stroke)}
+    .legal-body h3{font-size:14.5px;font-weight:650;margin:20px 0 8px;scroll-margin-top:96px}
+    .legal-body h3:first-child{margin-top:0}
+    .legal-body p{font-size:14px;color:var(--text-2);margin:0 0 10px}
+    .legal-body ul,.legal-body ol{margin:8px 0 12px;padding-left:22px}
+    .legal-body li{font-size:14px;color:var(--text-2);margin:6px 0}
+    .legal-body strong{color:var(--text);font-weight:650}
+    .legal-body a{color:var(--accent);text-decoration:none;word-break:break-word}
+    .legal-body a:hover{text-decoration:underline}
+    .legal-body em{font-style:normal;color:var(--text);font-weight:600}
+    .legal-intro{
+      margin:0 0 18px;padding:11px 15px;border-radius:var(--radius-sm);
+      background:var(--accent-soft);border:1px solid var(--stroke);
+      font-size:13px;color:var(--text-2);
+    }
+    .legal-note{
+      margin:16px 0 0;padding:13px 16px;border-radius:var(--radius-sm);
+      background:var(--accent-soft);border:1px solid var(--stroke);
+      font-size:13.5px;color:var(--text-2);
+    }
+    .legal-note strong{color:var(--accent)}
+    .legal-pre{
+      margin:12px 0;padding:14px 16px;border-radius:var(--radius-sm);
+      background:var(--accent-soft);border:1px solid var(--stroke);
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12.5px;line-height:1.7;color:var(--text-2);
+      white-space:pre-wrap;word-break:break-word;overflow-x:auto;
+    }
+    .lic-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+    .lic-links a{
+      display:inline-flex;align-items:center;padding:8px 15px;border-radius:999px;
+      font-size:13px;font-weight:600;text-decoration:none;color:var(--text);
+      background:var(--glass);border:1px solid var(--stroke-strong);
+      transition:color .2s ease,border-color .2s ease,box-shadow .25s ease;
+    }
+    .lic-links a:hover{color:var(--accent);border-color:var(--accent);box-shadow:var(--glow);text-decoration:none}
+    .legal-foot-note{
+      margin:6px 0 0;text-align:center;font-size:12.5px;color:var(--text-3);
+    }
+
+    @media (max-width:860px){
+      .legal-toc ol.toc-sections{columns:2}
+    }
+    @media (max-width:640px){
+      .legal-page{padding:120px 0 30px}
+      .legal-card{padding:18px 20px 20px}
+      .legal-toc{padding:20px}
+      .legal-toc ol{columns:1}
+      .legal-toc ol.toc-sections{columns:1}
+    }
+
+  </style>
+</head>
+<body data-page-node-id="2LJnqnzPLzGKoBOIysgaWS">
+  <nav class="navbar" data-page-node-id="HHU3ufUCIReMCvGY5GUVll">
+    <div class="container nav-content" data-page-node-id="r1esADkNmPO9cu9qa3z5TK">
+      <a href="index.html" class="logo" data-page-node-id="xkFllqBZsDzykCdKFTd7vF"><img class="logo-icon" src="picture/app-icon.jpg" alt="Nexio 图标" data-page-node-id="2PZVoxCWEEXKobARRP5EFu">Nexio课程表</a>
+      <div class="nav-right" data-page-node-id="znDke3AHlHzqcbdMwMLeL4">
+        <div class="nav-links" data-page-node-id="Xv90AynIIRxNDwne2k11zC">
+          <a href="index.html#features" data-page-node-id="OTkjegrJ7LnFf64LE4Ds7O">功能</a>
+          <a href="index.html#preview" data-page-node-id="dBhmv4XhKY5W6CqxXHs4uf">预览</a>
+          <a href="index.html#download" data-page-node-id="EF4kYDSyab72BBJ1jrYo9a">下载</a>
+          <a href="https://github.com/HaoZai000/NexioSchedule" target="_blank" class="nav-cta" data-page-node-id="SKdCkZP1q6EZVgxvg0DMq7">GitHub</a>
+        </div>
+        <button class="hamburger" id="hamburger" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-menu" data-page-node-id="o1T5Jzx1HhI2nX9E4Bz7iZ">
+          <span data-page-node-id="4X0zfhEnEn7RKD0NWErV7z"></span><span data-page-node-id="WdNrVBwHYIVZUFUKFFGoia"></span><span data-page-node-id="rFne4iIvA0qxcuzwZ335hY"></span>
+        </button>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换深色/浅色主题" data-page-node-id="PbdgjPIVMJFHrFANSBpGsJ">
+          <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" data-page-node-id="7p83ovHHrCkPMZDMqmyrKB"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" data-page-node-id="vHkVKfLla7NUeu7Bn6i2uZ"/></svg>
+          <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" data-page-node-id="m5YYAZ5F19FVNndx5QnWxg"><circle cx="12" cy="12" r="4" data-page-node-id="mrdrWHCP7NTlve0ayDyB2N"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" data-page-node-id="2jdJjaj1Z2f4LuKR22jFEF"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="mobile-menu" id="mobile-menu" aria-hidden="true" data-page-node-id="j3pkJU9q1U1waXuPs11FDf">
+    <a href="index.html#features" data-page-node-id="n3D8n89NJQke1FOhHBNm7e">功能</a>
+    <a href="index.html#preview" data-page-node-id="DtwOaBpQlSMmXSisz8Y6nr">预览</a>
+    <a href="index.html#download" data-page-node-id="alLA22XS3iPCaEkLZadbzS">下载</a>
+  </div>
+
+  <main class="legal-page" data-page-node-id="ybSZFqTyUvyHLNmGzwCl3P">
+    <div class="container" data-page-node-id="hOL4jCnFZiZ3XDZGX8MDKy">
+      <div class="legal-inner" data-page-node-id="ha7kmKhoIApRRNzsj8PPCK">
+        <div class="legal-head" data-page-node-id="4EQFqQ4FOChHiw0ixh8ygt">
+          <h1 data-page-node-id="vcC31tCFMDQ8Uw4YTgqyUS">Nexio 课程表 开源协议</h1>
+          <p class="lic-sub" data-page-node-id="p3n3mkcotlzlayCIBR4rXd">本项目源代码完全公开，欢迎阅读、学习与二次开发。</p>
+          <div class="legal-meta" data-page-node-id="uCFhA9W7SkfKWIDF8hnBbr">
+            <span class="lic-badge" data-page-node-id="N5WrYHR66NxFShIbogzwJG">GNU AGPL v3.0</span>
+            <span data-page-node-id="yJtCGUH8ewNMgdKRCO3HGk">发布日期：2007 年 11 月 19 日</span>
+            <span data-page-node-id="9nvMamBjUC0cpMw1qGNBjR">协议版本：v3.0</span>
+            <span data-page-node-id="I80zNa0NC5YciDU0mYAi6f">适用项目：Nexio 课程表</span>
+          </div>
+        </div>
+
+
+<div class="legal-card glass legal-toc" data-page-node-id="63KVGARgKlM4mbbfvGzGLi">
+  <h2 data-page-node-id="T5EinSbBiXjI2n0CFTWQzj">目录</h2>
+  <ol data-page-node-id="lTN7OcA6gW5vh8De4h9yVh">
+    <li data-page-node-id="h7N2sL7rQJUUuluR8jISJN"><a href="#lic-summary" data-page-node-id="YHRV0HAfnxNbyEtQvHglBz">开源协议摘要（通俗版）</a></li>
+    <li data-page-node-id="UZOKvxlrt1uTXdtYhKwQYN"><a href="#agpl-preamble" data-page-node-id="S1MCaRHfX1bh4ZNWrFWZLC">前言 Preamble</a></li>
+    <li data-page-node-id="Jv3Yx9fIEa2DOPfh886tiH"><a href="#agpl-terms" data-page-node-id="VwAKFMTCgl5qEs0uwvVaTW">条款正文 Terms and Conditions</a></li>
+    <li data-page-node-id="EP3vuyckloxmYKI8VxE2DM"><a href="#agpl-apply" data-page-node-id="I8E0KeoCzcQZOKHAVcP4Ya">如何将本协议应用到您的新程序</a></li>
+  </ol>
+  <p class="toc-sub" data-page-node-id="xluigQTnBwi94G9iWCsuXv">条款正文包含以下 18 条：</p>
+  <ol class="toc-sections" data-page-node-id="BqsMzr0WLT2Rz6W696ZtyX">
+    <li data-page-node-id="FVAVvIH8JeZkX3IVDQUwrn"><a href="#sec-0" data-page-node-id="Sn51dNTcDqaawOQCyBdnME">0. Definitions（定义）</a></li>
+    <li data-page-node-id="H8u5wlBH2MQP4EKQDN6eeH"><a href="#sec-1" data-page-node-id="ZzjtylcL77ASY4TepolUNi">1. Source Code（源代码）</a></li>
+    <li data-page-node-id="Nlb2izwNlqur3ZSdSOd6do"><a href="#sec-2" data-page-node-id="3FbAM2tCEVu9YxVf8B6eUK">2. Basic Permissions（基本许可）</a></li>
+    <li data-page-node-id="rQ6kxtJ1OSE2c00grHCEJ8"><a href="#sec-3" data-page-node-id="1kfvEPHzDJH7oTLSqbKZ5g">3. Protecting Users' Legal Rights（保护用户权利）</a></li>
+    <li data-page-node-id="XAOewLu3FV2S3PdaIXXeF8"><a href="#sec-4" data-page-node-id="qcQSc6wbaiBQbLbroWdoIx">4. Conveying Verbatim Copies（分发原始副本）</a></li>
+    <li data-page-node-id="1LHg8847JXEAAfB8XovMAY"><a href="#sec-5" data-page-node-id="LxSnOiFCcYv1iaBcVXMxSQ">5. Conveying Modified Source Versions（分发修改版）</a></li>
+    <li data-page-node-id="ZoldEGDKHzlqwFthZqLKit"><a href="#sec-6" data-page-node-id="C2HBOXcL4jpDomcds2cbKg">6. Conveying Non-Source Forms（非源代码形式）</a></li>
+    <li data-page-node-id="50o6Y3IGF8zlxudHpsAkyc"><a href="#sec-7" data-page-node-id="fYBzI7tFlhlY1NxsRMpfyj">7. Additional Terms（附加条款）</a></li>
+    <li data-page-node-id="s0QIeFTVyGM40Nly60uf0x"><a href="#sec-8" data-page-node-id="3S2SwnhkDCw0zjbkYiQEJn">8. Termination（终止授权）</a></li>
+    <li data-page-node-id="AExZmuzVBXFfpABZHSRsgY"><a href="#sec-9" data-page-node-id="AGNVPhVu8u7m2NHpQPaWvP">9. Acceptance Not Required（无需接受）</a></li>
+    <li data-page-node-id="dsXszBWzkiTOE2m9LOA9Ks"><a href="#sec-10" data-page-node-id="wLgITSAH1Qm46tiHpz2dUH">10. Automatic Licensing of Downstream Recipients（下游自动授权）</a></li>
+    <li data-page-node-id="46PYLnvdv8gxdKW7GwtSjK"><a href="#sec-11" data-page-node-id="7eH8vuK2BgPCLNdVkQ9pJe">11. Patents（专利）</a></li>
+    <li data-page-node-id="jQXdvMhhKNnVZzHiT9z3Ef"><a href="#sec-12" data-page-node-id="O7gqB8MDPCsJ1EePn8HksP">12. No Surrender of Others' Freedom（不放弃他人自由）</a></li>
+    <li data-page-node-id="KyEEqDBuC7mtO0fa3ooILT"><a href="#sec-13" data-page-node-id="2Zez1205SVd5LNgn5M0NEs">13. Remote Network Interaction（远程网络交互）</a></li>
+    <li data-page-node-id="nbSm94tt1uMolWCKIMehxU"><a href="#sec-14" data-page-node-id="eWGFbKXIatMKXXTws3Jlfa">14. Revised Versions（本协议的修订版本）</a></li>
+    <li data-page-node-id="Z1G7DFrt323K49AEkMW8ln"><a href="#sec-15" data-page-node-id="lZp6NBrzLszgrjgSyotrRx">15. Disclaimer of Warranty（免责）</a></li>
+    <li data-page-node-id="9RMhgfxkRpmArufwCGN6FR"><a href="#sec-16" data-page-node-id="tV5Zqo9DviYkPwGcPNCTL7">16. Limitation of Liability（责任限制）</a></li>
+    <li data-page-node-id="sggdwEnf7095I42I9t6W3y"><a href="#sec-17" data-page-node-id="srFNVIwvu1nUCSHf3ByEwd">17. Interpretation of Sections 15 and 16（第 15、16 条的解释）</a></li>
+  </ol>
+</div>
+
+
+        <div class="legal-card glass legal-body" data-page-node-id="cHx2Q3RjoHYkzv58IfBEqa">
+<section id="lic-summary" data-page-node-id="g7hM3YHoYCmhK6eRWp91l9">
+<h2 data-page-node-id="XECsCTlapMjJzQIuAUzH73">一、开源协议摘要</h2>
+
+<div class="lic-title-cn" data-page-node-id="SAUTEapi97VkTWQxRxBLnd">GNU Affero General Public License</div>
+<p class="lic-title-en" data-page-node-id="JFH4vbpHDDAM1eVgL7eewW">Version 3, 19 November 2007</p>
+<p class="lic-copy-note" data-page-node-id="gLuLEBqpNThCLvkBf6tS0a">Copyright (C) 2007 Free Software Foundation, Inc.
+ Everyone is permitted to copy and distribute verbatim copies of this license document,
+ but changing it is not allowed.</p>
+
+<h3 data-page-node-id="GZICHnh37nwFHBaKlvajjJ">一句话概括</h3>
+<p data-page-node-id="KPYBKbGPZEWOSnEiXXbMeT">Nexio 课程表采用<strong data-page-node-id="qJH70PBvl9LVtOSBBbnGmZ">GNU Affero General Public License v3.0（AGPL-3.0）</strong>开源。
+你可以自由使用、学习、修改甚至用于商业目的，但如果你把本应用（或其修改版）<strong data-page-node-id="CgM6Hx9qUEID2Fi5DYqQNa">通过网络提供给他人使用</strong>，就必须同时向这些用户提供完整的对应源代码。</p>
+
+<div class="legal-note" data-page-node-id="KxzY9wTm2L0E6kKRbaefd6">
+  <strong data-page-node-id="PEMSzZHZWFLDmA4mDzP9EA">这是 AGPL 与 MIT 最主要的区别：</strong>MIT 只要求"分发二进制时附带许可证"。
+  AGPL 多了一条——<em data-page-node-id="Tz0uETuXL19HJoUFQr6lJz">只要通过网络向用户提供服务，就必须开放源码</em>。
+  如果你只是个人下载安装自用，AGPL 不会向你提出任何要求。
+</div>
+
+<h3 data-page-node-id="3MX1MmF9LdijKxiOAfaHTY">你可以做什么</h3>
+<ul data-page-node-id="13l32a5hcg00gEMkg37RWv">
+  <li data-page-node-id="qe9vdhFnPT6VHF6LmvdVd7"><strong data-page-node-id="oeDpKY9JTc6D2CZ8OUbZOw">自由使用</strong>：个人学习、备份、多设备安装、非商业目的使用，无需申请。</li>
+  <li data-page-node-id="JD21BfzgeNknmwXLM2i4jS"><strong data-page-node-id="aYuhFZRq9CwgjdvtUuaWKC">研究源码</strong>：本应用全部代码开源，可自由查看、理解其实现方式。</li>
+  <li data-page-node-id="jlXKeC9pXByCaWMV6fD1Yc"><strong data-page-node-id="gACZx2r6BBA8qrAkohQ6c9">二次分发</strong>：可以重新发布原版或修改版，但必须保留本协议声明与版权信息。</li>
+  <li data-page-node-id="HHy24M9k12bVLf97RfjEFw"><strong data-page-node-id="Cs8aain1yFhll2wwLTDx3H">商用</strong>：允许收费销售软件、基于它提供收费服务，AGPL 并不禁止商业使用。</li>
+  <li data-page-node-id="s96dgaNohEaMykVeyJNr5p"><strong data-page-node-id="APQ4aYGKZ1OSPqzjwPGlv0">修改与再创作</strong>：可以 fork 并自由修改，功能、配色、课表逻辑都可以换成你自己的。</li>
+</ul>
+
+<h3 data-page-node-id="bK9oHkp6bXXud79f3M6OYU">你需要做什么</h3>
+<ul data-page-node-id="viaQtiD56zXJKHV2HIl8mc">
+  <li data-page-node-id="QIKRF5E5mInWODOUlAYneh"><strong data-page-node-id="IR8TlU9Hi1IQsRPg5WXlvo">保留声明</strong>：再分发时必须保留原版权声明与本协议副本。</li>
+  <li data-page-node-id="CDuNBOdJeEYwL94rb7Nbzi"><strong data-page-node-id="b527FqGC5f9cfYI4h8V1k5">标明修改</strong>：修改过原版后，需在作品中注明你做过改动及改动内容。</li>
+  <li data-page-node-id="lGaFJFPux5ug4aNVd4Rjyc"><strong data-page-node-id="MACa07VarCaKsmPXQmlpsi">开放源码</strong>：把修改版提供给他人（包括通过网络提供服务）时，需同时提供完整对应源码。</li>
+  <li data-page-node-id="ecPSO970omI6FsmLSA5Rxw"><strong data-page-node-id="VORjw0u0OLfc7hOZ6Wibpo">同等协议</strong>：衍生作品须以本协议继续授权（第 13 条允许改用 GPL v3）。</li>
+  <li data-page-node-id="eV3yeCUkARJwqECv6extJk"><strong data-page-node-id="gGIzVc8Bt28AqjAY0jHA72">不作担保</strong>：软件按"现状"提供，作者不承担使用后果（第 15、16 条）。</li>
+</ul>
+
+<h3 data-page-node-id="gBYzaGLm5L0QuZkvSaDnCI">如果你要二次开发</h3>
+<p data-page-node-id="xNa2AzAHV5og5h8Sh25o9g">建议在 fork 仓库的 README 中说明：项目名称、基于 Nexio 课程表修改、源码获取方式。
+如果你希望用户能直接看到源码链接，可以在应用内放一个指向你 fork 仓库的入口——AGPL 第 13 条正是为此设计的。</p>
+<p data-page-node-id="J2E8sae7vytvb5NYcPtnQn">官方在协议第 13 条给出的建议做法是：在应用界面中提供一个"Source"链接，指向一份代码归档；对于桌面应用，通常指向公开的代码仓库即可。</p>
+
+<div class="legal-note" data-page-node-id="vU5HtmzXLxCzufGFjmmGJE">
+  <strong data-page-node-id="39o2By9299BkfCF5IiFBZA">免责声明：</strong>本摘要为便于阅读的通俗说明，<strong data-page-node-id="kAgAY8tKDe6MEHeH4BDWGh">不构成法律意见</strong>，
+  也不能替代协议原文。摘要与英文原文表述不一致时，
+  <strong data-page-node-id="4CPy60c6f80kipqPYc038Y">以第三、四节的 AGPL-3.0 英文原文为准</strong>。
+  如需确认某项使用方式是否合规，建议咨询专业法律人士。
+</div>
+
+<div class="lic-links" data-page-node-id="E27WZjJeGBjX0wxXp0kBve">
+  <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer" data-page-node-id="34Tpr3i9lYb9CpzOdR5hHc">AGPL-3.0 官方文本（GNU）</a>
+  <a href="https://www.gnu.org/licenses/gpl-faq.html" target="_blank" rel="noopener noreferrer" data-page-node-id="iGXxWaS3utPzvqfXVdjpJw">GNU 许可证常见问题</a>
+  <a href="https://github.com/HaoZai000/NexioSchedule/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-page-node-id="dEkgpi6F6WOqWVZB5nnqPC">仓库中的 LICENSE 原文件</a>
+</div>
+
+</section>
+<section id="agpl-preamble" data-page-node-id="NXx7lHM4vltANe22AqMPCL">
+<h2 data-page-node-id="5S1hNF7m7dkNs0h3i2Q7g1">二、前言 Preamble</h2>
+<p data-page-node-id="DmQMigE0Rz68lb5NQ9ksew">Preamble</p>
+<p data-page-node-id="bCgwJj3lhGbASh7feCF7Gn">The GNU Affero General Public License is a free, copyleft license for software and other kinds of works, specifically designed to ensure cooperation with the community in the case of network server software.</p>
+<p data-page-node-id="WIcyzjRqsxlRKF9E1jHAzW">The licenses for most software and other practical works are designed to take away your freedom to share and change the works.  By contrast, our General Public Licenses are intended to guarantee your freedom to share and change all versions of a program--to make sure it remains free software for all its users.</p>
+<p data-page-node-id="0Uj2uvhx3DjPN10mPM3caH">When we speak of free software, we are referring to freedom, not price.  Our General Public Licenses are designed to make sure that you have the freedom to distribute copies of free software (and charge for them if you wish), that you receive source code or can get it if you want it, that you can change the software or use pieces of it in new free programs, and that you know you can do these things.</p>
+<p data-page-node-id="eHYA3ksY38q9zpZzEnCt8L">Developers that use our General Public Licenses protect your rights with two steps: (1) assert copyright on the software, and (2) offer you this License which gives you legal permission to copy, distribute and/or modify the software.</p>
+<p data-page-node-id="fTt9pFThGI752TIh1pC2Xi">A secondary benefit of defending all users' freedom is that improvements made in alternate versions of the program, if they receive widespread use, become available for other developers to incorporate.  Many developers of free software are heartened and encouraged by the resulting cooperation.  However, in the case of software used on network servers, this result may fail to come about. The GNU General Public License permits making a modified version and letting the public access it on a server without ever releasing its source code to the public.</p>
+<p data-page-node-id="KROsvka3p23iWAi7nuGSpy">The GNU Affero General Public License is designed specifically to ensure that, in such cases, the modified source code becomes available to the community.  It requires the operator of a network server to provide the source code of the modified version running there to the users of that server.  Therefore, public use of a modified version, on a publicly accessible server, gives the public access to the source code of the modified version.</p>
+<p data-page-node-id="jbutBnN2u3atV1fHQdU4QU">An older license, called the Affero General Public License and published by Affero, was designed to accomplish similar goals.  This is a different license, not a version of the Affero GPL, but Affero has released a new version of the Affero GPL which permits relicensing under this license.</p>
+<p data-page-node-id="Cibl3uB6gXqfPdMIc3Ao4I">The precise terms and conditions for copying, distribution and modification follow.</p>
+</section>
+<section id="agpl-terms" data-page-node-id="yHFnw0DgFm1GanolCiy3CS">
+<h2 data-page-node-id="KoGJx8ptptdfFixOPBaWOf">三、条款正文 Terms and Conditions</h2>
+<p class="lic-intro" data-page-node-id="IJ620IDORf7iMp7HvRfHU4">以下为 GNU Affero General Public License Version 3 的完整条款原文（第 0 条至第 17 条），逐字摘自官方文本，未作任何删改。如中文摘要与本节英文原文表述不一致，以英文原文为准。</p>
+<h3 id="sec-0" data-page-node-id="ojXH0bCyGZaf5zozLYsOTw">0. Definitions.</h3>
+<p data-page-node-id="EhmfqHTxBANBcK3WDHQUEM">"This License" refers to version 3 of the GNU Affero General Public License.</p>
+<p data-page-node-id="CNLryCp8WMHv6N647Ekte2">"Copyright" also means copyright-like laws that apply to other kinds of works, such as semiconductor masks.</p>
+<p data-page-node-id="iSeRafy0AwJwmUVp5729CM">"The Program" refers to any copyrightable work licensed under this License.  Each licensee is addressed as "you".  "Licensees" and "recipients" may be individuals or organizations.</p>
+<p data-page-node-id="u57KyOLfjZjH5N1aH3g3iA">To "modify" a work means to copy from or adapt all or part of the work in a fashion requiring copyright permission, other than the making of an exact copy.  The resulting work is called a "modified version" of the earlier work or a work "based on" the earlier work.</p>
+<p data-page-node-id="T3aAn64DkKJxOCfpiyIcFW">A "covered work" means either the unmodified Program or a work based on the Program.</p>
+<p data-page-node-id="VBnRhjmQeVYMQfKRA8gxzM">To "propagate" a work means to do anything with it that, without permission, would make you directly or secondarily liable for infringement under applicable copyright law, except executing it on a computer or modifying a private copy.  Propagation includes copying, distribution (with or without modification), making available to the public, and in some countries other activities as well.</p>
+<p data-page-node-id="eLC1C8K1CzaQZcVC6AHGhZ">To "convey" a work means any kind of propagation that enables other parties to make or receive copies.  Mere interaction with a user through a computer network, with no transfer of a copy, is not conveying.</p>
+<p data-page-node-id="iJtgvjTUVRDeKSqgJ48Kiq">An interactive user interface displays "Appropriate Legal Notices" to the extent that it includes a convenient and prominently visible feature that (1) displays an appropriate copyright notice, and (2) tells the user that there is no warranty for the work (except to the extent that warranties are provided), that licensees may convey the work under this License, and how to view a copy of this License.  If the interface presents a list of user commands or options, such as a menu, a prominent item in the list meets this criterion.</p>
+<h3 id="sec-1" data-page-node-id="sCySo7xOHZkYB5REBzBMwx">1. Source Code.</h3>
+<p data-page-node-id="FXTXg8hzPs8bj4LhPcYQM6">The "source code" for a work means the preferred form of the work for making modifications to it.  "Object code" means any non-source form of a work.</p>
+<p data-page-node-id="IWwGXvLAGkxn1P3LRjpG5i">A "Standard Interface" means an interface that either is an official standard defined by a recognized standards body, or, in the case of interfaces specified for a particular programming language, one that is widely used among developers working in that language.</p>
+<p data-page-node-id="agZFoRk62wvwiAm5EwVhGs">The "System Libraries" of an executable work include anything, other than the work as a whole, that (a) is included in the normal form of packaging a Major Component, but which is not part of that Major Component, and (b) serves only to enable use of the work with that Major Component, or to implement a Standard Interface for which an implementation is available to the public in source code form.  A "Major Component", in this context, means a major essential component (kernel, window system, and so on) of the specific operating system (if any) on which the executable work runs, or a compiler used to produce the work, or an object code interpreter used to run it.</p>
+<p data-page-node-id="RSXOyCJMW9A4mjVk2fm5sP">The "Corresponding Source" for a work in object code form means all the source code needed to generate, install, and (for an executable work) run the object code and to modify the work, including scripts to control those activities.  However, it does not include the work's System Libraries, or general-purpose tools or generally available free programs which are used unmodified in performing those activities but which are not part of the work.  For example, Corresponding Source includes interface definition files associated with source files for the work, and the source code for shared libraries and dynamically linked subprograms that the work is specifically designed to require, such as by intimate data communication or control flow between those subprograms and other parts of the work.</p>
+<p data-page-node-id="0feq1gtp2mmK0KDXqbYHkJ">The Corresponding Source need not include anything that users can regenerate automatically from other parts of the Corresponding Source.</p>
+<p data-page-node-id="wA9s2y4jHLLTBDyyTZW0F2">The Corresponding Source for a work in source code form is that same work.</p>
+<h3 id="sec-2" data-page-node-id="DVwCo0AvnRhtmU8vBtmTgB">2. Basic Permissions.</h3>
+<p data-page-node-id="YGPUaURfVm1v0DHodqgiuI">All rights granted under this License are granted for the term of copyright on the Program, and are irrevocable provided the stated conditions are met.  This License explicitly affirms your unlimited permission to run the unmodified Program.  The output from running a covered work is covered by this License only if the output, given its content, constitutes a covered work.  This License acknowledges your rights of fair use or other equivalent, as provided by copyright law.</p>
+<p data-page-node-id="EeMLkPPcjPaYm3fGrts8vz">You may make, run and propagate covered works that you do not convey, without conditions so long as your license otherwise remains in force.  You may convey covered works to others for the sole purpose of having them make modifications exclusively for you, or provide you with facilities for running those works, provided that you comply with the terms of this License in conveying all material for which you do not control copyright.  Those thus making or running the covered works for you must do so exclusively on your behalf, under your direction and control, on terms that prohibit them from making any copies of your copyrighted material outside their relationship with you.</p>
+<p data-page-node-id="ABDdhYIertjSn9Oc7kCdvS">Conveying under any other circumstances is permitted solely under the conditions stated below.  Sublicensing is not allowed; section 10 makes it unnecessary.</p>
+<h3 id="sec-3" data-page-node-id="GD0C6O1JnFLKUuxBoG3XVr">3. Protecting Users' Legal Rights From Anti-Circumvention Law.</h3>
+<p data-page-node-id="35NLtDcQGApxuhaBFLWoSz">No covered work shall be deemed part of an effective technological measure under any applicable law fulfilling obligations under article 11 of the WIPO copyright treaty adopted on 20 December 1996, or similar laws prohibiting or restricting circumvention of such measures.</p>
+<p data-page-node-id="OqpFTCFuSdUgmGkEud43CA">When you convey a covered work, you waive any legal power to forbid circumvention of technological measures to the extent such circumvention is effected by exercising rights under this License with respect to the covered work, and you disclaim any intention to limit operation or modification of the work as a means of enforcing, against the work's users, your or third parties' legal rights to forbid circumvention of technological measures.</p>
+<h3 id="sec-4" data-page-node-id="HH10B9kcFqWa2VAsqupigr">4. Conveying Verbatim Copies.</h3>
+<p data-page-node-id="08PxoEfYKkqvDtYz1pkHdj">You may convey verbatim copies of the Program's source code as you receive it, in any medium, provided that you conspicuously and appropriately publish on each copy an appropriate copyright notice; keep intact all notices stating that this License and any non-permissive terms added in accord with section 7 apply to the code; keep intact all notices of the absence of any warranty; and give all recipients a copy of this License along with the Program.</p>
+<p data-page-node-id="8QsY2pJO2kdllVX9gaZG2J">You may charge any price or no price for each copy that you convey, and you may offer support or warranty protection for a fee.</p>
+<h3 id="sec-5" data-page-node-id="L02rB8l7AuRAZLhrfNdZnT">5. Conveying Modified Source Versions.</h3>
+<p data-page-node-id="4Hwh1jEF5epGpO3Pw2uWhW">You may convey a work based on the Program, or the modifications to produce it from the Program, in the form of source code under the terms of section 4, provided that you also meet all of these conditions:</p>
+<ul data-page-node-id="ed9AT3DiBYHc5p1u0VpCL1"><li data-page-node-id="ibckiL7ZmWwBzFyEgb8VC8">The work must carry prominent notices stating that you modified</li></ul>
+<p data-page-node-id="2Qe7rNpIyGPbQSY7o86QPn">it, and giving a relevant date.</p>
+<ul data-page-node-id="bI94nDMheRA5e7b6bELHbI"><li data-page-node-id="1Rwh4YnDooo7BpQgEhSFVC">The work must carry prominent notices stating that it is</li></ul>
+<p data-page-node-id="phoJX0vI6L31jlLqghuKM0">released under this License and any conditions added under section 7.  This requirement modifies the requirement in section 4 to "keep intact all notices".</p>
+<ul data-page-node-id="MxD2DAEiCmHuWDa58qLKHb"><li data-page-node-id="79iLQzsfwc5PRBnwwLF64u">You must license the entire work, as a whole, under this</li></ul>
+<p data-page-node-id="XRlu0ZX8SdMIB1Mnn4xiof">License to anyone who comes into possession of a copy.  This License will therefore apply, along with any applicable section 7 additional terms, to the whole of the work, and all its parts, regardless of how they are packaged.  This License gives no permission to license the work in any other way, but it does not invalidate such permission if you have separately received it.</p>
+<ul data-page-node-id="i3slaQeiMa6LqMVjpX4hAC"><li data-page-node-id="YH8cx0rYSqEN5GBa4YNdGp">If the work has interactive user interfaces, each must display</li></ul>
+<p data-page-node-id="QbxYwILUaVHcIZ0AZ8vVcL">Appropriate Legal Notices; however, if the Program has interactive interfaces that do not display Appropriate Legal Notices, your work need not make them do so.</p>
+<p data-page-node-id="ol5Tftnd2IzBuZIWvXPVyC">A compilation of a covered work with other separate and independent works, which are not by their nature extensions of the covered work, and which are not combined with it such as to form a larger program, in or on a volume of a storage or distribution medium, is called an "aggregate" if the compilation and its resulting copyright are not used to limit the access or legal rights of the compilation's users beyond what the individual works permit.  Inclusion of a covered work in an aggregate does not cause this License to apply to the other parts of the aggregate.</p>
+<h3 id="sec-6" data-page-node-id="sx05WONskeLtlHwI9oH47n">6. Conveying Non-Source Forms.</h3>
+<p data-page-node-id="ugj5jD9FWZgHpTOKQwTUMo">You may convey a covered work in object code form under the terms of sections 4 and 5, provided that you also convey the machine-readable Corresponding Source under the terms of this License, in one of these ways:</p>
+<ul data-page-node-id="T1I0rFyjmPGWNvZDkjwNTA"><li data-page-node-id="zw6fbt5ThV2ivYgA8TuMc2">Convey the object code in, or embodied in, a physical product</li></ul>
+<p data-page-node-id="Jw9Jztci7XPxOsFToYGECr">(including a physical distribution medium), accompanied by the Corresponding Source fixed on a durable physical medium customarily used for software interchange.</p>
+<ul data-page-node-id="ySVcJadqCoMHmFk4IoEa1K"><li data-page-node-id="mYGVazHt7kAfLzRTER9c4U">Convey the object code in, or embodied in, a physical product</li></ul>
+<p data-page-node-id="IJWJImhH6HgLiBBQDPeo1C">(including a physical distribution medium), accompanied by a written offer, valid for at least three years and valid for as long as you offer spare parts or customer support for that product model, to give anyone who possesses the object code either (1) a copy of the Corresponding Source for all the software in the product that is covered by this License, on a durable physical medium customarily used for software interchange, for a price no more than your reasonable cost of physically performing this conveying of source, or (2) access to copy the Corresponding Source from a network server at no charge.</p>
+<ul data-page-node-id="09grlR53ynKMPPrmhGYEJJ"><li data-page-node-id="d8uNWvkfOz2nLAYOSW42yf">Convey individual copies of the object code with a copy of the</li></ul>
+<p data-page-node-id="emHAq1tHhwIBJxhMxw2Gf7">written offer to provide the Corresponding Source.  This alternative is allowed only occasionally and noncommercially, and only if you received the object code with such an offer, in accord with subsection 6b.</p>
+<ul data-page-node-id="fg4x5hKZ80ZnNAGR7yv3Fz"><li data-page-node-id="p7G4f2xAgxaRtArLZINt2A">Convey the object code by offering access from a designated</li></ul>
+<p data-page-node-id="ZUCuT2A4g8OnnM8nVICWAg">place (gratis or for a charge), and offer equivalent access to the Corresponding Source in the same way through the same place at no further charge.  You need not require recipients to copy the Corresponding Source along with the object code.  If the place to copy the object code is a network server, the Corresponding Source may be on a different server (operated by you or a third party) that supports equivalent copying facilities, provided you maintain clear directions next to the object code saying where to find the Corresponding Source.  Regardless of what server hosts the Corresponding Source, you remain obligated to ensure that it is available for as long as needed to satisfy these requirements.</p>
+<ul data-page-node-id="vFKrFzDnuwSC7zUiY5laGO"><li data-page-node-id="l0VHb9Avf1uc4KhlbnXf6o">Convey the object code using peer-to-peer transmission, provided</li></ul>
+<p data-page-node-id="uKcp54U2RWBsxihDXgFm2i">you inform other peers where the object code and Corresponding Source of the work are being offered to the general public at no charge under subsection 6d.</p>
+<p data-page-node-id="v1Ex0Zs9tfMZRX9HWPad9y">A separable portion of the object code, whose source code is excluded from the Corresponding Source as a System Library, need not be included in conveying the object code work.</p>
+<p data-page-node-id="0BiDAWoF8SLuuYvLMQxdeE">A "User Product" is either (1) a "consumer product", which means any tangible personal property which is normally used for personal, family, or household purposes, or (2) anything designed or sold for incorporation into a dwelling.  In determining whether a product is a consumer product, doubtful cases shall be resolved in favor of coverage.  For a particular product received by a particular user, "normally used" refers to a typical or common use of that class of product, regardless of the status of the particular user or of the way in which the particular user actually uses, or expects or is expected to use, the product.  A product is a consumer product regardless of whether the product has substantial commercial, industrial or non-consumer uses, unless such uses represent the only significant mode of use of the product.</p>
+<p data-page-node-id="LJubEZmniEo7518aUsH5Vi">"Installation Information" for a User Product means any methods, procedures, authorization keys, or other information required to install and execute modified versions of a covered work in that User Product from a modified version of its Corresponding Source.  The information must suffice to ensure that the continued functioning of the modified object code is in no case prevented or interfered with solely because modification has been made.</p>
+<p data-page-node-id="Ci26KH0xSOlsbsEuXoZybT">If you convey an object code work under this section in, or with, or specifically for use in, a User Product, and the conveying occurs as part of a transaction in which the right of possession and use of the User Product is transferred to the recipient in perpetuity or for a fixed term (regardless of how the transaction is characterized), the Corresponding Source conveyed under this section must be accompanied by the Installation Information.  But this requirement does not apply if neither you nor any third party retains the ability to install modified object code on the User Product (for example, the work has been installed in ROM).</p>
+<p data-page-node-id="ATgb8QdN2XxiaWFnsHoHLJ">The requirement to provide Installation Information does not include a requirement to continue to provide support service, warranty, or updates for a work that has been modified or installed by the recipient, or for the User Product in which it has been modified or installed.  Access to a network may be denied when the modification itself materially and adversely affects the operation of the network or violates the rules and protocols for communication across the network.</p>
+<p data-page-node-id="gNDHweQV5id5dCwn0JiRXk">Corresponding Source conveyed, and Installation Information provided, in accord with this section must be in a format that is publicly documented (and with an implementation available to the public in source code form), and must require no special password or key for unpacking, reading or copying.</p>
+<h3 id="sec-7" data-page-node-id="vhCcYz8lUwSg3hkuVPkAWW">7. Additional Terms.</h3>
+<p data-page-node-id="5poCHhn3k9zXTFx2xVizoA">"Additional permissions" are terms that supplement the terms of this License by making exceptions from one or more of its conditions. Additional permissions that are applicable to the entire Program shall be treated as though they were included in this License, to the extent that they are valid under applicable law.  If additional permissions apply only to part of the Program, that part may be used separately under those permissions, but the entire Program remains governed by this License without regard to the additional permissions.</p>
+<p data-page-node-id="kPtCSIB6Sm2ZAZM9B49GBG">When you convey a copy of a covered work, you may at your option remove any additional permissions from that copy, or from any part of it.  (Additional permissions may be written to require their own removal in certain cases when you modify the work.)  You may place additional permissions on material, added by you to a covered work, for which you have or can give appropriate copyright permission.</p>
+<p data-page-node-id="3MFFn00UZm6MBZqWXckpHi">Notwithstanding any other provision of this License, for material you add to a covered work, you may (if authorized by the copyright holders of that material) supplement the terms of this License with terms:</p>
+<ul data-page-node-id="CvIptrCLzdggUsR8R1qU1K"><li data-page-node-id="wmBI45dROMoNOudQOBcuhM">Disclaiming warranty or limiting liability differently from the</li></ul>
+<p data-page-node-id="70sKW3pJJMpiCTOFH9MpJj">terms of sections 15 and 16 of this License; or</p>
+<ul data-page-node-id="flJU1S7R4cWaeRdLjIHmd0"><li data-page-node-id="Vnt9wPA6OYJYsURnNG3h44">Requiring preservation of specified reasonable legal notices or</li></ul>
+<p data-page-node-id="67QmOLsThuIy3SuFM5aMMt">author attributions in that material or in the Appropriate Legal Notices displayed by works containing it; or</p>
+<ul data-page-node-id="ViGL5NMHRDzbHk6lXArCmW"><li data-page-node-id="WdJbEncCXggI971MuKXq5c">Prohibiting misrepresentation of the origin of that material, or</li></ul>
+<p data-page-node-id="bV2uDlkBfqVnF6EzTH6nm7">requiring that modified versions of such material be marked in reasonable ways as different from the original version; or</p>
+<ul data-page-node-id="e76Q02Hio7HBtIaYRzGO2X"><li data-page-node-id="h81Kvsahix8FIps61CvFKH">Limiting the use for publicity purposes of names of licensors or</li></ul>
+<p data-page-node-id="DYJ4HDpfOdfVxUkA7wykiY">authors of the material; or</p>
+<ul data-page-node-id="2QsMzgEBVjIei2MAeyyDS6"><li data-page-node-id="mAUKDMB80awZ9PukqtQEmO">Declining to grant rights under trademark law for use of some</li></ul>
+<p data-page-node-id="OIZrLrGzu40CNor5OYgnlP">trade names, trademarks, or service marks; or</p>
+<ul data-page-node-id="wW3zqFbj0EJbZ2D9FeROEk"><li data-page-node-id="7oJHMDHZxG5tlgKxpeMElC">Requiring indemnification of licensors and authors of that</li></ul>
+<p data-page-node-id="0B8zwxqQXj7EsFeySHU0FI">material by anyone who conveys the material (or modified versions of it) with contractual assumptions of liability to the recipient, for any liability that these contractual assumptions directly impose on those licensors and authors.</p>
+<p data-page-node-id="RT0c19KLFyZowRVvOAjh87">All other non-permissive additional terms are considered "further restrictions" within the meaning of section 10.  If the Program as you received it, or any part of it, contains a notice stating that it is governed by this License along with a term that is a further restriction, you may remove that term.  If a license document contains a further restriction but permits relicensing or conveying under this License, you may add to a covered work material governed by the terms of that license document, provided that the further restriction does not survive such relicensing or conveying.</p>
+<p data-page-node-id="VsRtrVhhEu9kh5PUB9IfxA">If you add terms to a covered work in accord with this section, you must place, in the relevant source files, a statement of the additional terms that apply to those files, or a notice indicating where to find the applicable terms.</p>
+<p data-page-node-id="69n7VuxMNjImkFGk3I8AVC">Additional terms, permissive or non-permissive, may be stated in the form of a separately written license, or stated as exceptions; the above requirements apply either way.</p>
+<h3 id="sec-8" data-page-node-id="f3AiKxZ94SnFdvGJBFAh53">8. Termination.</h3>
+<p data-page-node-id="5wEYlO9vJJg54YabfL4vBe">You may not propagate or modify a covered work except as expressly provided under this License.  Any attempt otherwise to propagate or modify it is void, and will automatically terminate your rights under this License (including any patent licenses granted under the third paragraph of section 11).</p>
+<p data-page-node-id="BcBEHKUMqQtC8ZOOi6Lqiq">However, if you cease all violation of this License, then your license from a particular copyright holder is reinstated (a) provisionally, unless and until the copyright holder explicitly and finally terminates your license, and (b) permanently, if the copyright holder fails to notify you of the violation by some reasonable means prior to 60 days after the cessation.</p>
+<p data-page-node-id="VaqsLTa2yviNLmIBMPx8Hy">Moreover, your license from a particular copyright holder is reinstated permanently if the copyright holder notifies you of the violation by some reasonable means, this is the first time you have received notice of violation of this License (for any work) from that copyright holder, and you cure the violation prior to 30 days after your receipt of the notice.</p>
+<p data-page-node-id="2oEuBbawnrDELuULEpt8hD">Termination of your rights under this section does not terminate the licenses of parties who have received copies or rights from you under this License.  If your rights have been terminated and not permanently reinstated, you do not qualify to receive new licenses for the same material under section 10.</p>
+<h3 id="sec-9" data-page-node-id="WvuhiqYPgetlkDjoJXK3YT">9. Acceptance Not Required for Having Copies.</h3>
+<p data-page-node-id="3ah985U8iFG9C0rMe6svR0">You are not required to accept this License in order to receive or run a copy of the Program.  Ancillary propagation of a covered work occurring solely as a consequence of using peer-to-peer transmission to receive a copy likewise does not require acceptance.  However, nothing other than this License grants you permission to propagate or modify any covered work.  These actions infringe copyright if you do not accept this License.  Therefore, by modifying or propagating a covered work, you indicate your acceptance of this License to do so.</p>
+<h3 id="sec-10" data-page-node-id="pvTChIIzsgtRDHdxAEpfrU">10. Automatic Licensing of Downstream Recipients.</h3>
+<p data-page-node-id="pJBJebMQBCEShSJ6yD7Y25">Each time you convey a covered work, the recipient automatically receives a license from the original licensors, to run, modify and propagate that work, subject to this License.  You are not responsible for enforcing compliance by third parties with this License.</p>
+<p data-page-node-id="yxFRkSU4vqNzXU4xOtoaPm">An "entity transaction" is a transaction transferring control of an organization, or substantially all assets of one, or subdividing an organization, or merging organizations.  If propagation of a covered work results from an entity transaction, each party to that transaction who receives a copy of the work also receives whatever licenses to the work the party's predecessor in interest had or could give under the previous paragraph, plus a right to possession of the Corresponding Source of the work from the predecessor in interest, if the predecessor has it or can get it with reasonable efforts.</p>
+<p data-page-node-id="GFOcOoVnjP12WlCGmock1J">You may not impose any further restrictions on the exercise of the rights granted or affirmed under this License.  For example, you may not impose a license fee, royalty, or other charge for exercise of rights granted under this License, and you may not initiate litigation (including a cross-claim or counterclaim in a lawsuit) alleging that any patent claim is infringed by making, using, selling, offering for sale, or importing the Program or any portion of it.</p>
+<h3 id="sec-11" data-page-node-id="Lt9Sk79NkxfVXY7imdydZD">11. Patents.</h3>
+<p data-page-node-id="hrBcsF8DjScCwZCDUadqLk">A "contributor" is a copyright holder who authorizes use under this License of the Program or a work on which the Program is based.  The work thus licensed is called the contributor's "contributor version".</p>
+<p data-page-node-id="zsKKkdp0fWqKbYrrY3vzpt">A contributor's "essential patent claims" are all patent claims owned or controlled by the contributor, whether already acquired or hereafter acquired, that would be infringed by some manner, permitted by this License, of making, using, or selling its contributor version, but do not include claims that would be infringed only as a consequence of further modification of the contributor version.  For purposes of this definition, "control" includes the right to grant patent sublicenses in a manner consistent with the requirements of this License.</p>
+<p data-page-node-id="EzMERUKiW025yq6EYNFfJ3">Each contributor grants you a non-exclusive, worldwide, royalty-free patent license under the contributor's essential patent claims, to make, use, sell, offer for sale, import and otherwise run, modify and propagate the contents of its contributor version.</p>
+<p data-page-node-id="1bXu5Xbmy9cq760wGZ8IFO">In the following three paragraphs, a "patent license" is any express agreement or commitment, however denominated, not to enforce a patent (such as an express permission to practice a patent or covenant not to sue for patent infringement).  To "grant" such a patent license to a party means to make such an agreement or commitment not to enforce a patent against the party.</p>
+<p data-page-node-id="gPDXiheGKYR9oGasRBjTEj">If you convey a covered work, knowingly relying on a patent license, and the Corresponding Source of the work is not available for anyone to copy, free of charge and under the terms of this License, through a publicly available network server or other readily accessible means, then you must either (1) cause the Corresponding Source to be so available, or (2) arrange to deprive yourself of the benefit of the patent license for this particular work, or (3) arrange, in a manner consistent with the requirements of this License, to extend the patent license to downstream recipients.  "Knowingly relying" means you have actual knowledge that, but for the patent license, your conveying the covered work in a country, or your recipient's use of the covered work in a country, would infringe one or more identifiable patents in that country that you have reason to believe are valid.</p>
+<p data-page-node-id="fEQ03NjjqkdAau932g4Q4J">If, pursuant to or in connection with a single transaction or arrangement, you convey, or propagate by procuring conveyance of, a covered work, and grant a patent license to some of the parties receiving the covered work authorizing them to use, propagate, modify or convey a specific copy of the covered work, then the patent license you grant is automatically extended to all recipients of the covered work and works based on it.</p>
+<p data-page-node-id="uLBG9k9z1okliJsussz42T">A patent license is "discriminatory" if it does not include within the scope of its coverage, prohibits the exercise of, or is conditioned on the non-exercise of one or more of the rights that are specifically granted under this License.  You may not convey a covered work if you are a party to an arrangement with a third party that is in the business of distributing software, under which you make payment to the third party based on the extent of your activity of conveying the work, and under which the third party grants, to any of the parties who would receive the covered work from you, a discriminatory patent license (a) in connection with copies of the covered work conveyed by you (or copies made from those copies), or (b) primarily for and in connection with specific products or compilations that contain the covered work, unless you entered into that arrangement, or that patent license was granted, prior to 28 March 2007.</p>
+<p data-page-node-id="Gzd5tE0zt067gSnowSnJrR">Nothing in this License shall be construed as excluding or limiting any implied license or other defenses to infringement that may otherwise be available to you under applicable patent law.</p>
+<h3 id="sec-12" data-page-node-id="MSwLESjsvClBX2vVFUKta4">12. No Surrender of Others' Freedom.</h3>
+<p data-page-node-id="zHhPnwRxAGwenkfOooTDMI">If conditions are imposed on you (whether by court order, agreement or otherwise) that contradict the conditions of this License, they do not excuse you from the conditions of this License.  If you cannot convey a covered work so as to satisfy simultaneously your obligations under this License and any other pertinent obligations, then as a consequence you may not convey it at all.  For example, if you agree to terms that obligate you to collect a royalty for further conveying from those to whom you convey the Program, the only way you could satisfy both those terms and this License would be to refrain entirely from conveying the Program.</p>
+<h3 id="sec-13" data-page-node-id="naXUihNVGk4ZCGVguc3ZUt">13. Remote Network Interaction; Use with the GNU General Public License.</h3>
+<p data-page-node-id="uJQpa6dGZ2fXHiZJoHvQja">Notwithstanding any other provision of this License, if you modify the Program, your modified version must prominently offer all users interacting with it remotely through a computer network (if your version supports such interaction) an opportunity to receive the Corresponding Source of your version by providing access to the Corresponding Source from a network server at no charge, through some standard or customary means of facilitating copying of software.  This Corresponding Source shall include the Corresponding Source for any work covered by version 3 of the GNU General Public License that is incorporated pursuant to the following paragraph.</p>
+<p data-page-node-id="ekDxmWMDMSbCm4lzPymeq2">Notwithstanding any other provision of this License, you have permission to link or combine any covered work with a work licensed under version 3 of the GNU General Public License into a single combined work, and to convey the resulting work.  The terms of this License will continue to apply to the part which is the covered work, but the work with which it is combined will remain governed by version 3 of the GNU General Public License.</p>
+<h3 id="sec-14" data-page-node-id="T7uAEwjZmWUeiocO2boRX4">14. Revised Versions of this License.</h3>
+<p data-page-node-id="7puYDXiBNq7CNBg7ymrrHT">The Free Software Foundation may publish revised and/or new versions of the GNU Affero General Public License from time to time.  Such new versions will be similar in spirit to the present version, but may differ in detail to address new problems or concerns.</p>
+<p data-page-node-id="sa7Z6iSN10r4V8pmgADyP6">Each version is given a distinguishing version number.  If the Program specifies that a certain numbered version of the GNU Affero General Public License "or any later version" applies to it, you have the option of following the terms and conditions either of that numbered version or of any later version published by the Free Software Foundation.  If the Program does not specify a version number of the GNU Affero General Public License, you may choose any version ever published by the Free Software Foundation.</p>
+<p data-page-node-id="C0gACo3dRTdZ6RtEehI2nh">If the Program specifies that a proxy can decide which future versions of the GNU Affero General Public License can be used, that proxy's public statement of acceptance of a version permanently authorizes you to choose that version for the Program.</p>
+<p data-page-node-id="0ae6pKnQiReHnXC1u9hQwi">Later license versions may give you additional or different permissions.  However, no additional obligations are imposed on any author or copyright holder as a result of your choosing to follow a later version.</p>
+<h3 id="sec-15" data-page-node-id="ReGvMRRGn8WiPTvnwm4eNX">15. Disclaimer of Warranty.</h3>
+<h3 data-page-node-id="oiqKoOH8xUi2tecCr0zcNT">THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY</h3>
+<p data-page-node-id="hPJuDgGhtYlIlorV90vAjL">APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF</p>
+<h3 data-page-node-id="u1sX9TqPSX9erHEcplaI9D">ALL NECESSARY SERVICING, REPAIR OR CORRECTION.</h3>
+<h3 id="sec-16" data-page-node-id="b6lNjP8mZVvehMnqt40fSX">16. Limitation of Liability.</h3>
+<h3 data-page-node-id="1kgWuDZU6YzLN2B4fdV5FZ">IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING</h3>
+<p data-page-node-id="lg2Cmis0F0jRCzm6OifV4E">WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF</p>
+<h3 data-page-node-id="U8vfPNnGVR3LhYASiGGD6W">SUCH DAMAGES.</h3>
+<h3 id="sec-17" data-page-node-id="dLz9P92vQKxHDztVQL18Oh">17. Interpretation of Sections 15 and 16.</h3>
+<p data-page-node-id="EPEZvI1ftvwm8iSppy0CUD">If the disclaimer of warranty and limitation of liability provided above cannot be given local legal effect according to their terms, reviewing courts shall apply local law that most closely approximates an absolute waiver of all civil liability in connection with the Program, unless a warranty or assumption of liability accompanies a copy of the Program in return for a fee.</p>
+</section>
+<section id="agpl-apply" data-page-node-id="THFG7WWVxHavjafID2i8MF">
+<h2 data-page-node-id="1lT9sEAvq4lGF95f42UhpD">四、如何将本协议应用到您的新程序</h2>
+<p class="lic-intro" data-page-node-id="09RsOskHwtKy9hM6hDbxXR">How to Apply These Terms to Your New Programs</p>
+<p data-page-node-id="7Niz1IYH8rGbXiSBjI5H2t">If you develop a new program, and you want it to be of the greatest possible use to the public, the best way to achieve this is to make it free software which everyone can redistribute and change under these terms.</p>
+<p data-page-node-id="xru86zCRikPRKorpXQNwVK">To do so, attach the following notices to the program.  It is safest to attach them to the start of each source file to most effectively state the exclusion of warranty; and each file should have at least the "copyright" line and a pointer to where the full notice is found.</p>
+<pre class="legal-pre" data-page-node-id="X2IQwQ1CmB2KRXdg71IBQ5">    Nexio 课程表 - 基于 Jetpack Compose 的 Android 课程表应用
+    Copyright (C) 2026  Nexio 课程表开发团队</pre>
+<pre class="legal-pre" data-page-node-id="Q3zvHlMCC3JAQ3isWxKaQn">    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.</pre>
+<pre class="legal-pre" data-page-node-id="YJaDKfBYKWzedFCZLWuRE4">    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.</pre>
+<pre class="legal-pre" data-page-node-id="fSmE4V5HMA6kHDmgnlvSfi">    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <a href="https://www.gnu.org/licenses/" target="_blank" rel="noopener noreferrer" data-page-node-id="5yEKnm5Uhn3pxSDOWvDYyS">https://www.gnu.org/licenses/</a>.</pre>
+<p data-page-node-id="qpLj2Dj2XnAKwywSQmMCCc">Also add information on how to contact you by electronic and paper mail.</p>
+<p data-page-node-id="rbTYHEPFpUAuSx393hAsEV">If your software can interact with users remotely through a computer network, you should also make sure that it provides a way for users to get its source.  For example, if your program is a web application, its interface could display a "Source" link that leads users to an archive of the code.  There are many ways you could offer source, and different solutions will be better for different programs; see section 13 for the specific requirements.</p>
+<p data-page-node-id="uH9AqV8m4nT9tEwpiFz9wT">You should also get your employer (if you work as a programmer) or school, if any, to sign a "copyright disclaimer" for the program, if necessary. For more information on this, and how to apply and follow the GNU AGPL, see <a href="https://www.gnu.org/licenses/" target="_blank" rel="noopener noreferrer" data-page-node-id="0TS1XaDwTgG6lhgiFMs0oW">https://www.gnu.org/licenses/</a>.</p>
+</section>
+        </div>
+
+        <p class="legal-foot-note" data-page-node-id="jmT8WoI67xnje4htbB55Wv">
+          本页协议原文与仓库根目录的 <a href="https://github.com/HaoZai000/NexioSchedule/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-page-node-id="dcyPAwvCGtwuJEeoDO5Au1">LICENSE</a> 文件一致 · Nexio 课程表
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <footer data-page-node-id="3mvjsFuBzDOemKsvMUgWPK">
+    <div class="container" data-page-node-id="aimJ6SAcBXrAkz9dGgtGxv">
+      <div class="foot-links" data-page-node-id="h6zyygK6MSt9OxdRZmjgtD">
+        <a href="privacy.html" data-page-node-id="64yjUGjZxsssMIZAUgEumE">隐私政策</a><span data-page-node-id="0GEfV3gShC8ePBxE4Q8L9K">·</span>
+        <a href="license.html" data-page-node-id="57FfIxLh2ofsGPX7nXHxto">开源协议</a>
+      </div>
+      <p data-page-node-id="vfAKXCsY6iGGwmgInMePpn">Nexio 课程表 &copy; 2026 &middot; GNU AGPL v3.0</p>
+      <p class="foot-beian" data-page-node-id="ypUixjaIFZwfBXcJYU1fLv">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" data-page-node-id="ytoMJAI48n91PGKtBclpp8">闽ICP备2026037367号-1</a>
+      </p>
+    </div>
+  </footer>
+
+  <button class="back-to-top" id="back-to-top" type="button" aria-label="回到顶部" data-page-node-id="NBpilb3VQDj0ZgDxvW3g39">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-page-node-id="0hMFIA5HhuUvsSBQcYi1xh"><path d="M18 15l-6-6-6 6" data-page-node-id="DqGEu2yiIaW4w7fioH6T7d"/></svg>
+  </button>
+
+  <script>
+    /* ==================== 主题切换 ==================== */
+    var themeToggle = document.getElementById('theme-toggle');
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('theme', t); } catch (e) {}
+      themeToggle.setAttribute('aria-label', t === 'dark' ? '切换为浅色主题' : '切换为深色主题');
+      themeToggle.setAttribute('aria-pressed', String(t === 'dark'));
+    }
+    themeToggle.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      setTheme(cur === 'dark' ? 'light' : 'dark');
+    });
+    setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+
+    /* ==================== 滚动时导航栏背景 ==================== */
+    var navbar = document.querySelector('.navbar');
+    var onScroll = function () {
+      navbar.classList.toggle('scrolled', window.scrollY > 20);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    /* ==================== 汉堡菜单 ==================== */
+    var hamburger = document.getElementById('hamburger');
+    var mobileMenu = document.getElementById('mobile-menu');
+    function closeMobileMenu() {
+      hamburger.setAttribute('aria-expanded', 'false');
+      mobileMenu.classList.remove('open');
+      mobileMenu.setAttribute('aria-hidden', 'true');
+    }
+    hamburger.addEventListener('click', function () {
+      var open = hamburger.getAttribute('aria-expanded') === 'true';
+      if (open) {
+        closeMobileMenu();
+      } else {
+        hamburger.setAttribute('aria-expanded', 'true');
+        mobileMenu.classList.add('open');
+        mobileMenu.setAttribute('aria-hidden', 'false');
+      }
+    });
+    mobileMenu.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', closeMobileMenu);
+    });
+
+    /* ==================== 回到顶部 ==================== */
+    var backToTop = document.getElementById('back-to-top');
+    window.addEventListener('scroll', function () {
+      backToTop.classList.toggle('visible', window.scrollY > 500);
+    }, { passive: true });
+    backToTop.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>

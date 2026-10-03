@@ -310,7 +310,6 @@ fun AddEditCourseBottomSheet(
             }
             RevealItem(visible = revealCount >= 1) {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
                     color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -374,7 +373,6 @@ fun AddEditCourseBottomSheet(
 
             RevealItem(visible = revealCount >= 2) {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
                     color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -452,7 +450,6 @@ fun AddEditCourseBottomSheet(
 
             RevealItem(visible = revealCount >= 3) {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
                     color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
@@ -503,7 +500,6 @@ fun AddEditCourseBottomSheet(
             val noDaySelected = dayOfWeek == 0
             RevealItem(visible = revealCount >= 4) {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .alpha(if (noDaySelected) 0.5f else 1f),

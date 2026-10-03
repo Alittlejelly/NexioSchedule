@@ -747,11 +747,18 @@ fun SwitchScheduleScreen(
                     }
                 }
                 // 进场形变锚点：当前课表卡片（不是列表第一项）
+                // 一页只截一次：currentCardBounds 之后每次变化（文件夹展开动画、列表滚动、
+                // 顶部折叠标题高度变化…）都会重跑这个 effect，而每次 capturePageBitmap()
+                // 都是一张全屏 toImageBitmap。宿主此时 switchPendingReverse 早已是 false，
+                // 回调会被直接忽略——纯浪费一张全屏位图，动画收尾时正好和别的快照叠峰值。
+                val switchSnapshotDelivered = remember { intArrayOf(0) }
                 LaunchedEffect(currentCardBounds) {
                     if (embedded) return@LaunchedEffect
+                    if (switchSnapshotDelivered[0] != 0) return@LaunchedEffect
                     val bounds = currentCardBounds
                     if (bounds != null) {
                         val bitmap = capturePageBitmap()
+                        switchSnapshotDelivered[0] = 1
                         // 截图失败也要回调：否则 switchCapturingSnapshot 永远为 true，
                         // 页面会一直停在 alpha=0 的黑屏上
                         val adjustedBounds = androidx.compose.ui.geometry.Rect(
@@ -768,7 +775,8 @@ fun SwitchScheduleScreen(
                 LaunchedEffect(Unit) {
                     if (embedded) return@LaunchedEffect
                     delay(700.milliseconds)
-                    if (currentCardBounds == null) {
+                    if (currentCardBounds == null && switchSnapshotDelivered[0] == 0) {
+                        switchSnapshotDelivered[0] = 1
                         onScreenReady(null, androidx.compose.ui.geometry.Rect.Zero)
                     }
                 }
@@ -1374,7 +1382,6 @@ private fun ScheduleCardRow(
         }
     }
     Card(
-        cornerRadius = 20.dp,
         modifier = itemModifier
             .fillMaxWidth()
             .then(if (indent) Modifier.padding(start = 14.dp) else Modifier)
@@ -1409,7 +1416,6 @@ private fun ScheduleCardRow(
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
                 showIndication = true,
                 insideMargin = PaddingValues(
                     horizontal = 16.dp,
@@ -1478,7 +1484,6 @@ private fun FolderCardRow(
         label = "folderExpandRotation"
     )
     Card(
-        cornerRadius = 20.dp,
         modifier = itemModifier
             .fillMaxWidth()
             .graphicsLayer {
@@ -1492,7 +1497,6 @@ private fun FolderCardRow(
             // 编辑模式下仍保留左侧文件夹图标，右侧放复选框（点整行即可切换选中）
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
                 showIndication = true,
                 insideMargin = PaddingValues(
                     horizontal = 16.dp,
@@ -1534,7 +1538,6 @@ private fun FolderCardRow(
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
                 showIndication = true,
                 insideMargin = PaddingValues(
                     horizontal = 16.dp,

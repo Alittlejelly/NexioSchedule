@@ -23,7 +23,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param modifier The modifier to be applied to the [SmallTitle].
  * @param textColor The color of the [SmallTitle].
  * @param insideMargin The margin inside the [SmallTitle].
- * @param hasWallpaper 是否叠加与课表节次一致的柔和阴影（有壁纸时保证可读性）。
  */
 @Composable
 @NonRestartableComposable
@@ -38,7 +37,7 @@ fun SmallTitle(
     val style = if (hasWallpaper) {
         val isDark = isAppDarkTheme()
         val shadowColor = if (isDark) Color.Black else Color.White
-        remember(hasWallpaper, isDark) {
+        remember(true, isDark) {
             baseStyle.copy(
                 shadow = Shadow(
                     color = shadowColor.copy(alpha = 0.92f),
@@ -57,6 +56,11 @@ fun SmallTitle(
 
 /** Contains default values used by [SmallTitle]. */
 object SmallTitleDefaults {
-    /** The default inside margin of the [SmallTitle]. */
-    val InsideMargin = PaddingValues(28.dp, 8.dp)
+    /**
+     * The default inside margin of the [SmallTitle].
+     *
+     * 水平留白只保留 12.dp：调用方的列表一般已有 16.dp(手机)/20.dp(平板) 的 contentPadding，
+     * 叠加后正好是 MIUI 小标题的 28.dp/32.dp 起始位置，调用处无需再手动 offset 负值做补偿。
+     */
+    val InsideMargin = PaddingValues(12.dp, 8.dp)
 }

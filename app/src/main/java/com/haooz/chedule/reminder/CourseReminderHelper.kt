@@ -340,20 +340,46 @@ object CourseReminderHelper {
         triggerAt: Long,
         pendingIntent: PendingIntent
     ) {
+        if (alarmManager.canScheduleExactAlarms()) {
+            try {
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(triggerAt, null),
+                    pendingIntent
+                )
+                return
+            } catch (_: SecurityException) {
+            }
+        }
+        // 未授予精准闹钟权限（或调用被拒）：退回非精准闹钟，保证提醒仍会触发（时间可能有少量偏差）
         try {
-            alarmManager.setAlarmClock(
-                AlarmManager.AlarmClockInfo(triggerAt, null),
-                pendingIntent
-            )
-        } catch (_: SecurityException) {
-            // 精确闹钟权限被撤销时退回，至少不让闹钟静默丢失
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * 精准闹钟（不显示状态栏闹钟图标）：已授权时用 setExactAndAllowWhileIdle，
+     * 未授权时退回非精准 set，避免闹钟静默丢失。
+     */
+    fun setExactOrInexactAlarm(
+        alarmManager: AlarmManager,
+        triggerAt: Long,
+        pendingIntent: PendingIntent
+    ) {
+        if (alarmManager.canScheduleExactAlarms()) {
             try {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     triggerAt,
                     pendingIntent
                 )
-            } catch (_: SecurityException) { }
+                return
+            } catch (_: SecurityException) {
+            }
+        }
+        try {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        } catch (_: Exception) {
         }
     }
 
@@ -753,13 +779,7 @@ object CourseReminderHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                alarmTime.timeInMillis,
-                pendingIntent
-            )
-        } catch (_: SecurityException) { }
+        setExactOrInexactAlarm(alarmManager, alarmTime.timeInMillis, pendingIntent)
     }
 
     private fun scheduleWidgetRefresh(context: Context, alarmManager: AlarmManager) {
@@ -897,13 +917,7 @@ object CourseReminderHelper {
         alarmManager.cancel(pendingIntent)
 
         val triggerAt = computeNextWidgetRefreshTime(context)
-        try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        } catch (_: SecurityException) { }
+        setExactOrInexactAlarm(alarmManager, triggerAt, pendingIntent)
     }
 
     // 只按节次相邻判断；不限上午/下午分段，否则跨段连堂识别不出、提醒会落进上一节课堂

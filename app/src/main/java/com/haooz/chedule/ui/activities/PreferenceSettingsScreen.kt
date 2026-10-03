@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -228,7 +227,6 @@ fun PreferenceSettingsScreen(
                         )
                     }
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
@@ -253,7 +251,6 @@ fun PreferenceSettingsScreen(
                     val todayShowWallpaper by settingsViewModel.todayShowWallpaper.collectAsState()
 
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
@@ -314,10 +311,8 @@ fun PreferenceSettingsScreen(
                 item {
                     SmallTitle(
                         text = "应用设置",
-                        modifier = Modifier.offset(x = (-15).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
@@ -416,10 +411,8 @@ fun PreferenceSettingsScreen(
                 item {
                     SmallTitle(
                         text = "数据源",
-                        modifier = Modifier.offset(x = (-15).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {

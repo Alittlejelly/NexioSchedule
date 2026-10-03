@@ -1378,7 +1378,6 @@ fun MainScheduleScreen(
                             )
                     ) {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)

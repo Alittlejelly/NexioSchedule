@@ -243,7 +243,6 @@ fun ShiftScheduleScreen(
             detailCourses.forEach { (scheduleName, course) ->
 
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),

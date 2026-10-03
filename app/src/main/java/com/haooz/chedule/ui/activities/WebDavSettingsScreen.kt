@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -188,7 +187,7 @@ fun WebDavSettingsScreen(
         drawContent()
     }
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 20.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val doTestConnection = {
         if (!testing) {
@@ -256,10 +255,8 @@ fun WebDavSettingsScreen(
                 item {
                     SmallTitle(
                         text = "服务器配置",
-                        modifier = Modifier.offset(x = (-15).dp)
                     )
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(horizontal = 16.dp),
                     ) {
@@ -352,7 +349,6 @@ fun WebDavSettingsScreen(
                 item {
                     val isConfigured = webDavManager.isConfigured()
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                     ) {
@@ -376,7 +372,6 @@ fun WebDavSettingsScreen(
                 // 使用提示
                 item {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                         colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surface),
@@ -402,7 +397,6 @@ fun WebDavSettingsScreen(
                 // 备份与恢复说明
                 item {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
                         colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surface),

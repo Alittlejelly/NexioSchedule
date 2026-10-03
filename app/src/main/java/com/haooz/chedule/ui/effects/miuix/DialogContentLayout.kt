@@ -94,6 +94,7 @@ internal fun DialogContentLayout(
     enableWindowDim: Boolean = true,
     onDismissRequest: (() -> Unit)? = null,
     onDismissFinished: (() -> Unit)? = null,
+    enablePredictiveBackGesture: Boolean = true,
     defaultWindowInsetsPadding: Boolean = true,
     topInset: Dp? = null,
     content: @Composable () -> Unit,
@@ -176,6 +177,8 @@ internal fun DialogContentLayout(
         )
 
         LaunchedEffect(Unit) {
+            // 不响应预测性返回手势时，连手势进度都不订阅，避免弹窗被拖动
+            if (!enablePredictiveBackGesture) return@LaunchedEffect
             snapshotFlow { navigationEventState.transitionState }
                 .collect { transitionState ->
                     if (

@@ -68,7 +68,7 @@ fun WidgetIntroScreen(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 20.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     val backdropColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(backdropColor)
@@ -431,7 +431,6 @@ private fun WidgetPaddingSelector(
         selectedContainerColor = ComposeColor.Transparent,
     )
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier
             .fillMaxWidth(),
         insideMargin = PaddingValues(0.dp)

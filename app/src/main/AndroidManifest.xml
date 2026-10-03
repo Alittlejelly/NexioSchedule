@@ -15,9 +15,9 @@
         tools:ignore="RequestInstallPackagesPolicy" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- 精准闹钟：需用户在系统「闹钟和提醒」中手动授权，应用内提供申请入口。
+         不声明 USE_EXACT_ALARM——该系统权限安装即自动授予，仅限核心功能为闹钟/日历/计时器的应用。 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"
-        tools:ignore="ExactAlarm" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -127,6 +127,18 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
             android:label="桌面小部件"
+            android:theme="@style/Theme.课程表" />
+        <activity
+            android:name=".ui.activities.PrivacyPolicyActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:label="隐私政策"
+            android:theme="@style/Theme.课程表" />
+        <activity
+            android:name=".ui.activities.LicenseActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:label="开源协议"
             android:theme="@style/Theme.课程表" />
         <activity
             android:name=".ui.activities.SwitchScheduleActivity"

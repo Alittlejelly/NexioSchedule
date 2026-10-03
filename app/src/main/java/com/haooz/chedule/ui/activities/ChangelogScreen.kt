@@ -67,7 +67,7 @@ fun ChangelogScreen(
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
     val tabletHorizontalPadding = if (isTablet) {
         val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
+        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
     } else 16.dp
 
     val expandedStates = remember {
@@ -119,7 +119,6 @@ fun ChangelogScreen(
             ) {
                 item {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {

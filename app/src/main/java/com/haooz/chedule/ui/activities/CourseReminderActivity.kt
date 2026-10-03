@@ -3,7 +3,9 @@ package com.haooz.chedule.ui.activities
 
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +21,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBar
@@ -26,6 +29,7 @@ import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.basic.rememberSharedScrollBehavior
+import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -35,10 +39,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
 
 class CourseReminderActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,11 +64,8 @@ class CourseReminderActivity : ComponentActivity() {
             }
             val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
             val scrollBehavior = rememberSharedScrollBehavior()
-            val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-            val tabletHorizontalPadding = if (isTablet) {
-                val screenWidthDp = LocalConfiguration.current.screenWidthDp
-                ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
-            } else 16.dp
+                val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+                val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
             Scaffold(
                 topBar = {

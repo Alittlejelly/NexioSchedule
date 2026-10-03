@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -76,6 +78,10 @@ internal fun ScheduleTopBar(
     scrollBehavior: SharedScrollBehavior? = null,
     blurResampleKey: Int = 0,
     blurSampleTrack: () -> Float = { 0f },
+    // 布局期上报「更多」占位槽的真实位置，供下拉菜单按实际位置定位（避免首帧 inset 未到导致偏位）
+    onMoreSlotTop: (Float) -> Unit = {},
+    // 上报顶栏滚动材质透明度，供「更多」控件收起态同步渐显渐隐
+    onMoreMaterial: (Float) -> Unit = {},
 ) {
     if (!visible || liquidGlassBackdrop == null) return
 
@@ -110,6 +116,7 @@ internal fun ScheduleTopBar(
                 scrollBehavior = scrollBehavior,
                 // 平板左上角不放返回按钮
                 startAction = null,
+                onAlphaChanged = { backdrop, _ -> onMoreMaterial(backdrop) },
                 endAction = { backdropAlpha, shadowAlpha ->
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -150,7 +157,11 @@ internal fun ScheduleTopBar(
                                 )
                             }
                             // 「更多」按钮由下拉菜单组件自带（收起态即那颗按钮，唯一一份），这里只占位对齐
-                            Spacer(modifier = Modifier.size(42.dp))
+                            Spacer(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
+                            )
                         }
                     }
                 }

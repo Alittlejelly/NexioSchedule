@@ -121,7 +121,7 @@ fun CourseTimeSettingsScreen(
         drawContent()
     }
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 20.dp
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     fun refreshList() {
         configIds = repository.getTimeConfigIds()
@@ -194,7 +194,6 @@ fun CourseTimeSettingsScreen(
                         }
                         var cardBounds by remember { mutableStateOf(TimeConfigCardBounds(0f, 0f, 0f, 0f)) }
                         Card(
-                            cornerRadius = 20.dp,
                             modifier = Modifier.fillMaxWidth()
                                 .then(
                                     if (isNewCard || isDeleting) Modifier.graphicsLayer {

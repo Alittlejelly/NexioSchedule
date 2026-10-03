@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -81,6 +82,7 @@ import com.haooz.chedule.ui.utils.CrashLogHelper
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.overScrollVertical
+import com.kyant.backdrop.Backdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -105,7 +107,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import androidx.compose.ui.graphics.BlendMode as ComposeBlendMode
-import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 class AboutActivity : ComponentActivity() {
@@ -144,10 +145,12 @@ fun AboutScreen(
     val hapticFeedback = LocalHapticFeedback.current
     val scrollBehavior = rememberSharedScrollBehavior()
     val context = LocalContext.current
+    // 撤回同意后需要关闭整个应用，用 Activity 引用执行 finishAffinity
+    val activity = LocalActivity.current
     val uriHandler = LocalUriHandler.current
     val isInDark = isAppDarkTheme()
     val isTablet = LocalConfiguration.current.screenWidthDp >= 600
-    val tabletHorizontalPadding = 4.dp
+    val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
 
     val packageInfo = remember {
         try {
@@ -215,6 +218,7 @@ fun AboutScreen(
     
     var dynamicBackground by remember { mutableStateOf(true) }
     var showRepoDialog by remember { mutableStateOf(false) }
+    var showRevokeDialog by remember { mutableStateOf(false) }
 
     val logoBlend = remember(isInDark) {
         if (isInDark) {
@@ -1034,19 +1038,48 @@ fun AboutScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "© 2026 Nexio课程表 · 作者:",
+                                            text = "© 2026 Nexio课程表 · ",
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
+                                        // 开源协议入口：应用内展示 AGPL-3.0 全文，与隐私政策入口同构
                                         Text(
-                                            text = "Haooz",
+                                            text = "开源协议",
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.primary,
                                             modifier = Modifier
                                                 .clickable {
-                                                    uriHandler.openUri("https://www.coolapk.com/u/29693763")
+                                                    activity?.startActivity(
+                                                        Intent(activity, LicenseActivity::class.java)
+                                                    )
                                                 }
                                                 .padding(start = 4.dp)
+                                        )
+                                    }
+                                    // 隐私政策入口 + 撤回同意：用户可随时查阅政策或撤回授权
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "《隐私政策》",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable {
+                                                activity?.startActivity(
+                                                    Intent(activity, PrivacyPolicyActivity::class.java)
+                                                )
+                                            }
+                                        )
+                                        Text(
+                                            text = "撤回同意",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            modifier = Modifier.clickable {
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                                showRevokeDialog = true
+                                            }
                                         )
                                     }
                                     // APP 备案号：按工信部要求在「关于」页面显著位置展示
@@ -1136,6 +1169,42 @@ fun AboutScreen(
                         showRepoDialog = false
                     },
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // 撤回隐私政策同意：确认后清空同意状态并关闭整个应用
+        OverlayDialog(
+            title = "撤回隐私政策同意",
+            summary = "撤回后将关闭应用，且需要重新同意隐私政策才能继续使用。确定撤回吗？",
+            show = showRevokeDialog,
+            liquidGlassBackdrop = dialogGlass,
+            onDismissRequest = { showRevokeDialog = false }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextButton(
+                    text = "取消",
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        showRevokeDialog = false
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    text = "撤回并退出",
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        com.haooz.chedule.data.PrivacyConsent.revoke(context)
+                        showRevokeDialog = false
+                        activity?.finishAffinity()
+                    },
+                    textColor = Color(0xFFF44336),
+                    modifier = Modifier.weight(1f)
                 )
             }
         }

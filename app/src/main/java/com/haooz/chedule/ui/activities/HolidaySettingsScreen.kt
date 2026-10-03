@@ -561,7 +561,6 @@ fun HolidaySettingsScreen(
                 )
                 if (teachingWeekReorganizations.isNotEmpty()) {
                     Card(
-                        cornerRadius = 20.dp,
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp),
                     ) {
@@ -597,7 +596,6 @@ fun HolidaySettingsScreen(
                     Spacer(modifier = Modifier.fillMaxWidth().height(12.dp))
                 }
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth(),
                     insideMargin = PaddingValues(0.dp),
                 ) {
@@ -615,7 +613,6 @@ fun HolidaySettingsScreen(
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 Card(
-                    cornerRadius = 20.dp,
                     modifier = Modifier.fillMaxWidth(),
                     insideMargin = PaddingValues(0.dp),
                 ) {
@@ -949,7 +946,6 @@ private fun TeachingWeekRuleEditDialog(
     val sheetContent: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
                 colors = CardDefaults.defaultColors(
@@ -973,7 +969,6 @@ private fun TeachingWeekRuleEditDialog(
                 }
             }
             Card(
-                cornerRadius = 20.dp,
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
                 colors = CardDefaults.defaultColors(
@@ -1116,7 +1111,6 @@ private fun TeachingWeekRulePreviewCard(
     )
 
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(0.dp),
         colors = CardDefaults.defaultColors(
@@ -1490,9 +1484,7 @@ private fun SectionTitleRow(
     liquidGlassBackdrop: Backdrop?,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .offset((-16).dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SmallTitle(
@@ -1665,7 +1657,6 @@ private fun DataManagementCard(
         selectedContainerColor = Color.Transparent,
     )
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(0.dp),
     ) {
@@ -1695,7 +1686,6 @@ private fun HolidayEntriesCard(
     onEdit: (HolidayManager.Entry) -> Unit,
 ) {
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(0.dp),
     ) {
@@ -1760,7 +1750,6 @@ private fun entrySummary(entry: HolidayManager.Entry): String {
 private fun AddEntryCard(type: Int, onAdd: () -> Unit) {
     val isHoliday = type == HolidayManager.TYPE_HOLIDAY
     Card(
-        cornerRadius = 20.dp,
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(0.dp),
     ) {

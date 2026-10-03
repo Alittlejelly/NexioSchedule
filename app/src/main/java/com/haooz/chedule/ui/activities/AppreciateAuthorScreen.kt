@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -180,11 +179,9 @@ private fun PodiumStage(entries: List<AppreciationItem>, isTablet: Boolean = fal
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(
             text = "累计赞助",
-            modifier = Modifier.offset(x = (-16).dp)
         )
         // 与赞赏码/捐赠明细同卡容器：宽度与兄弟区块一致，小屏不再被固定台座挤爆
         Card(
-            cornerRadius = 20.dp,
             modifier = Modifier.fillMaxWidth(),
             insideMargin = PaddingValues(0.dp)
         ) {
@@ -439,7 +436,6 @@ private fun DonateQrCard(isTablet: Boolean = false) {
         contentAlignment = Alignment.Center
     ) {
         Card(
-            cornerRadius = 20.dp,
             modifier = Modifier
                 .fillMaxWidth(if (isTablet) 0.8f else 1f)
                 .aspectRatio(1f),
@@ -467,7 +463,6 @@ private fun DonationDetailSection(donationList: List<AppreciationItem>) {
         ) {
             SmallTitle(
                 text = "捐赠明细",
-                modifier = Modifier.offset(x = (-16).dp)
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
@@ -478,7 +473,6 @@ private fun DonationDetailSection(donationList: List<AppreciationItem>) {
             )
         }
         Card(
-            cornerRadius = 20.dp,
             modifier = Modifier.fillMaxWidth(),
             insideMargin = PaddingValues(0.dp)
         ) {
