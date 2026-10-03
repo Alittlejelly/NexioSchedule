@@ -99,7 +99,7 @@ object WearableScheduleSync {
         }
         return try {
             val repo = CourseRepository.getInstance(context.applicationContext)
-            val json = WatchPayload.buildWeekJson(repo, context.applicationContext, scheduleName)
+            val json = WatchPayload.buildFullJson(repo, context.applicationContext, scheduleName)
             val dir = java.io.File(context.applicationContext.filesDir, "wearable")
             if (!dir.exists()) dir.mkdirs()
             val file = java.io.File(dir, "nexio-watch-schedule.json")
@@ -193,13 +193,9 @@ object WearableScheduleSync {
         pushing.set(true)
         try {
             val repo = CourseRepository.getInstance(appContext)
-            // 未指定课表时按日期直推，手环可正确显示任意日期；
-            // 指定课表（导出某张指定课表）仍走整周分桶，行为不变。
-            val payload = if (scheduleName.isEmpty()) {
-                WatchPayload.buildDaysJson(repo, appContext)
-            } else {
-                WatchPayload.buildWeekJson(repo, appContext, scheduleName)
-            }
+            // v4 整表推送：一次下发完整学期（课程+周次规则+设置+节次时间+假期），
+            // 手表自行推算任意日期。
+            val payload = WatchPayload.buildFullJson(repo, appContext, scheduleName)
             val api = messageApi ?: return
             api.sendMessage(id, payload.toByteArray(Charsets.UTF_8))
                 .addOnSuccessListener {

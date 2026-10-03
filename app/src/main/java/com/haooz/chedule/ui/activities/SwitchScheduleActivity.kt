@@ -50,8 +50,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +70,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -126,7 +127,6 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.state.ToggleableState
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 class SwitchScheduleActivity : ComponentActivity() {
@@ -1613,11 +1613,16 @@ private fun MoveTargetRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit
 ) {
+    val cancelButtonColors = ButtonDefaults.textButtonColors()
+    val rowColor = remember(cancelButtonColors) {
+        cancelButtonColors.color.copy(alpha = cancelButtonColors.alpha)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 16.dp,
         showIndication = true,
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        colors = CardDefaults.defaultColors(color = rowColor),
         onClick = onClick
     ) {
         Row(
@@ -1668,8 +1673,8 @@ private fun RowScope.BottomBarItem(
         animationSpec = tween(150),
         label = "pressScale"
     )
-    val pressColor = if (isAppDarkTheme()) ComposeColor.White.copy(alpha = 0.11f * pressAlpha)
-    else ComposeColor.Black.copy(alpha = 0.07f * pressAlpha)
+    val pressColor = if (isAppDarkTheme()) ComposeColor.White.copy(alpha = 0.1f * pressAlpha)
+    else ComposeColor.Black.copy(alpha = 0.06f * pressAlpha)
     Column(
         modifier = Modifier
             .pointerInput(enabled) {
