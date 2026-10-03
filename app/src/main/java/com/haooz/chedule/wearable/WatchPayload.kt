@@ -19,6 +19,47 @@ import java.time.LocalDate
  * 星期统一用 1=周一 … 7=周日（week 的键与 holidays.followWeekday 同一坐标系）
  *
  * version=3（[buildDaysJson]）：按日期直推，手表只做映射渲染。
+ *
+ * version=4（[buildFullJson]）：整表推送 —— 一次下发完整学期，手表端自行推算
+ * 学期内任意日期，不再依赖「当前周快照 + 按日期窗口」的滚动补丁。
+ *
+ * ## version=4 推送规范
+ *
+ * ```
+ * {
+ *   "protocol": "nexio.schedule",
+ *   "version": 4,
+ *   "action": "replace",
+ *   "sentAt": 1760000000000,
+ *   "schedule_name": "默认课表",
+ *   "settings": {                       // 学期设置（手表推算周次的唯一依据）
+ *     "class_start_time": "2026/09/13", // 开学日：第 1 周 = 该日所在周的周一（周一起算）
+ *     "current_week": 4,                // 推送时刻的实时教学周（手表用于校准调休合并周偏移）
+ *     "total_weeks": 18,
+ *     "morning_sections": 6, "afternoon_sections": 5, "evening_sections": 3
+ *   },
+ *   "times": {                          // 相对节次号 -> "HH:mm-HH:mm"，即 getPeriodTimes 原格式
+ *     "morning": {"1": "08:00-08:40", ...}, "afternoon": {...}, "evening": {...}
+ *   },
+ *   "courses": [{                       // 整学期全部课程，不做任何周次过滤
+ *     "id": "...", "name": "...",
+ *     "dayOfWeek": 1,                   // 1=周一 … 7=周日
+ *     "startSection": 1, "endSection": 2,
+ *     "startWeek": 2, "endWeek": 12,    // 原始值，0 表示未设置（手表按 isActiveInWeek 严格语义隐藏）
+ *     "weekType": 0,                    // 0=全周 1=单周 2=双周
+ *     "selectedWeeks": [2,3,4],         // 非空时优先于 startWeek/endWeek/weekType
+ *     "isCustomTime": false, "customStartTime": "", "customEndTime": "",
+ *     "location": "...", "teacher": "..."
+ *   }],
+ *   "holidays": [ HolidayManager.Entry.toJson() ]   // 假期/调休，缺失则手表无法显示调休日
+ * }
+ * ```
+ *
+ * 手表端约定（src/common/sync.js 整表分支）：
+ *   - 周次 = floorDiv(开学日到当天天数 + (开学日星期-1), 7) + 1，并用 settings.current_week
+ *     校准偏移（±2 内吸收，兼容调休合并周）；
+ *   - 周次过滤与 Course.isActiveInWeek 严格一致（endWeek=0 的缺陷数据一律隐藏）；
+ *   - 收到 version=4 会清掉旧的按日期缓存与周归档，以整表为准。
  */
 object WatchPayload {
 
@@ -27,6 +68,9 @@ object WatchPayload {
 
     /** 按日期直推使用的协议版本 */
     private const val DATED_VERSION = 3
+
+    /** 整表推送使用的协议版本 */
+    private const val FULL_VERSION = 4
 
     /**
      * 按「当前教学周」过滤后的整周课表 JSON 字符串。
@@ -171,6 +215,92 @@ object WatchPayload {
             arr.put(entry.toJson())
         }
         return arr
+    }
+
+    /**
+     * 整表推送 JSON（协议 version=4，规范见类注释）。
+     * 课程字段直接取自 Course 原始值（不做周次过滤、不换算星期坐标系，
+     * dayOfWeek 1=周一..7=周日 与手表端约定一致）；周次规则交给手表端过滤。
+     */
+    fun buildFullJson(
+        repository: CourseRepository,
+        context: Context,
+        scheduleId: String = ""
+    ): String {
+        val sid = scheduleId.ifEmpty { repository.getCurrentScheduleId() }
+        val all = if (sid == repository.getCurrentScheduleId()) {
+            repository.getAllCourses()
+        } else {
+            repository.getCoursesForSchedule(sid)
+        }
+
+        val courseArr = JSONArray()
+        for (course in all) {
+            if (course.dayOfWeek !in 1..7) continue
+            courseArr.put(
+                JSONObject()
+                    .put("id", course.id)
+                    .put("name", course.name)
+                    .put("dayOfWeek", course.dayOfWeek)
+                    .put("startSection", course.startSection)
+                    .put("endSection", course.endSection)
+                    .put("startWeek", course.startWeek)
+                    .put("endWeek", course.endWeek)
+                    .put("weekType", course.weekType)
+                    .put("selectedWeeks", JSONArray(course.selectedWeeks))
+                    .put("isCustomTime", course.isCustomTime)
+                    .put("customStartTime", course.customStartTime ?: "")
+                    .put("customEndTime", course.customEndTime ?: "")
+                    .put("location", course.classroom ?: "")
+                    .put("teacher", course.teacher ?: "")
+            )
+        }
+
+        val settings = JSONObject()
+            .put("class_start_time", repository.getClassStartTime(sid))
+            .put("current_week", repository.getLiveTeachingWeek(scheduleId = sid))
+            .put("total_weeks", repository.getTotalWeeks(sid))
+            .put("morning_sections", repository.getMorningSections(sid))
+            .put("afternoon_sections", repository.getAfternoonSections(sid))
+            .put("evening_sections", repository.getEveningSections(sid))
+
+        val times = JSONObject()
+            .put("morning", periodTimesJson(repository, "morning", sid))
+            .put("afternoon", periodTimesJson(repository, "afternoon", sid))
+            .put("evening", periodTimesJson(repository, "evening", sid))
+
+        val holidaysArr = buildHolidaysJson(context)
+        android.util.Log.i(
+            "WatchPayload",
+            "buildFull sid=$sid total=${all.size} packed=${courseArr.length()} " +
+                "week=${settings.optInt("current_week")}/${settings.optInt("total_weeks")} " +
+                "holidays=${holidaysArr.length()}"
+        )
+
+        return JSONObject()
+            .put("protocol", PROTOCOL)
+            .put("version", FULL_VERSION)
+            .put("action", "replace")
+            .put("sentAt", System.currentTimeMillis())
+            .put("schedule_name", sid)
+            .put("settings", settings)
+            .put("times", times)
+            .put("courses", courseArr)
+            .put("holidays", holidaysArr)
+            .toString()
+    }
+
+    /** 节次时间 → 手表格式 {相对节次号: 'HH:mm-HH:mm'}（getPeriodTimes 本身即此格式） */
+    private fun periodTimesJson(
+        repository: CourseRepository,
+        period: String,
+        scheduleId: String
+    ): JSONObject {
+        val obj = JSONObject()
+        for ((index, time) in repository.getPeriodTimes(period, scheduleId)) {
+            obj.put(index.toString(), time ?: "")
+        }
+        return obj
     }
 
     private fun toCourseJson(course: Course, repository: CourseRepository): JSONObject {
