@@ -424,6 +424,16 @@ private fun WidgetPaddingSelector(
                 selected = selectedMode == 2,
                 onClick = { onSelect(2) }
             ),
+            DropdownItem(
+                text = "4×6 无字",
+                selected = selectedMode == 3,
+                onClick = { onSelect(3) }
+            ),
+            DropdownItem(
+                text = "4×7 无字",
+                selected = selectedMode == 4,
+                onClick = { onSelect(4) }
+            ),
         )
     )
     val liquidGlassDropdownColors = DropdownDefaults.dropdownColors(

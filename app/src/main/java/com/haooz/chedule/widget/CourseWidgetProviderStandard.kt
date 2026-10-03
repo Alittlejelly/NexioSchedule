@@ -293,10 +293,12 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         context: Context,
         repository: CourseRepository
     ) {
-        // 0=标准(0/0), 1=4×6(12/14), 2=4×7(8/10)
+        // 0=标准(0/0), 1=4×6(12/14), 2=4×7(8/10), 3=4×6无字(21/5), 4=4×7无字(17/2)
         val (top, bottom) = when (repository.getWidgetPaddingMode()) {
             1 -> 12f to 14f
             2 -> 8f to 10f
+            3 -> 21f to 5f
+            4 -> 17f to 2f
             else -> 0f to 0f
         }
         views.setViewPadding(

@@ -2,12 +2,14 @@ package com.haooz.chedule.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.core.content.edit
 import androidx.core.graphics.scale
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import java.time.LocalDate
+import java.util.Locale
 
 /** 课程数据仓库（SharedPreferences，单例） */
 class CourseRepository private constructor(context: Context) {
@@ -297,6 +299,18 @@ class CourseRepository private constructor(context: Context) {
         private const val SCHEDULE_TIME_CONFIG_PREFIX = "schedule_time_config_"
         /** 兼容旧备份里的提醒设置嵌套键；已不导出，恢复时跳过 */
         private const val KEY_REMINDER_PREFS = "reminder_prefs"
+
+        /**
+         * 小组件 padding 档位的出厂默认档，仅在用户从未手动选过时生效：
+         * 小米系（HyperOS 桌面按 4×6 规格绘制小部件）默认 4×6，其余机型默认标准档。
+         * 用户一旦选择就落盘，之后不再随设备判断变化。
+         */
+        private val defaultWidgetPaddingMode: Int = run {
+            val xiaomiBrands = setOf("xiaomi", "redmi", "poco")
+            val isXiaomi = Build.BRAND.lowercase(Locale.ROOT) in xiaomiBrands ||
+                Build.MANUFACTURER.lowercase(Locale.ROOT) in xiaomiBrands
+            if (isXiaomi) 1 else 0
+        }
     }
 
     /** 云备份恢复可能把 Int 存成 Float，读失败时按 Float 再存回 Int */
@@ -1190,12 +1204,12 @@ class CourseRepository private constructor(context: Context) {
         prefs.edit { putInt(KEY_NEXT_DAY_REMINDER_MINUTE, minute) }
     }
 
-    /** 获取今日课程/课程提醒标准版小组件的 padding 档位（0=标准, 1=4×6, 2=4×7） */
+    /** 获取今日课程/课程提醒标准版小组件的 padding 档位（0=标准, 1=4×6, 2=4×7, 3=4×6无字, 4=4×7无字） */
     fun getWidgetPaddingMode(): Int {
-        return safeGetInt(KEY_WIDGET_PADDING_MODE, 1)
+        return safeGetInt(KEY_WIDGET_PADDING_MODE, defaultWidgetPaddingMode)
     }
 
-    /** 设置今日课程/课程提醒标准版小组件的 padding 档位（0=标准, 1=4×6, 2=4×7） */
+    /** 设置今日课程/课程提醒标准版小组件的 padding 档位（0=标准, 1=4×6, 2=4×7, 3=4×6无字, 4=4×7无字） */
     fun setWidgetPaddingMode(mode: Int) {
         prefs.edit { putInt(KEY_WIDGET_PADDING_MODE, mode) }
     }
