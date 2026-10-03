@@ -1228,6 +1228,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val morningSections by settingsViewModel.morningSections.collectAsState()
     val afternoonSections by settingsViewModel.afternoonSections.collectAsState()
     val eveningSections by settingsViewModel.eveningSections.collectAsState()
+    val configuredSectionTimes by settingsViewModel.sectionTimes.collectAsState()
     val totalSections = morningSections + afternoonSections + eveningSections
     val activity = LocalActivity.current as? MainActivity
     val resumeCount = activity?.resumeCount ?: 0
@@ -1819,7 +1820,17 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val currentViewingWeek = pagerState.currentPage + 1
     val courses by viewModel.courses.collectAsState()
     // dataVersion + courses 引用都进 key：调课 size 可能不变，只靠 size 会让智能周末星期行停在旧值
-    val dayRange = remember(currentViewingWeek, smartWeekend, courses, dataVersion) {
+    val dayRange = remember(
+        currentViewingWeek,
+        smartWeekend,
+        courses,
+        dataVersion,
+        holidayVersion,
+        configuredSectionTimes,
+        morningSections,
+        afternoonSections,
+        eveningSections,
+    ) {
         (1..5).toList() + settingsViewModel.getWeekendDaysForWeek(currentViewingWeek)
             .filter { it in 6..7 }
     }

@@ -154,7 +154,11 @@ fun HolidaySettingsScreen(
     val endCourseExclusion = remember(context, holidayDataRevision) {
         HolidayManager.loadEndCourseExclusion(context)
     }
+    val beforeCourseExclusion = remember(context, holidayDataRevision) {
+        HolidayManager.loadBeforeCourseExclusion(context)
+    }
     var showSectionRangeDialog by remember { mutableStateOf(false) }
+    var editingBeforeCourseExclusion by remember { mutableStateOf(false) }
     var pendingStartSection by remember { mutableIntStateOf(1) }
     var pendingEndSection by remember { mutableIntStateOf(1) }
     // 编辑弹窗
@@ -608,8 +612,11 @@ fun HolidaySettingsScreen(
 
             item {
                 SectionTitleRow(
-                    text = "节假日末期课程排除",
-                    description = "• 假期最后一天的某几节课可能需要正常上课\n• 可以将节假日最后一天的某几节课程排除在休假情况以外",
+                    text = "节假日课程排除",
+                    description =
+                        "• 假期前一天或最后一天的几节课不用上课\n" +
+                        "• 可以将节假日前后的某几节课进行排除\n" +
+                        "「假期前一天即使是调休上班日也会照常应用该规则」",
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 Card(
@@ -617,7 +624,41 @@ fun HolidaySettingsScreen(
                     insideMargin = PaddingValues(0.dp),
                 ) {
                     SwitchPreference(
-                        title = "开启节次排除",
+                        title = "假期前日课程排除",
+                        checked = beforeCourseExclusion.enabled,
+                        onCheckedChange = { enabled ->
+                            val updated = beforeCourseExclusion.copy(enabled = enabled)
+                            if (HolidayManager.saveBeforeCourseExclusion(context, updated)) {
+                                CourseReminderHelper.onHolidayDataChanged(context)
+                            }
+                        },
+                    )
+                    ArrowPreference(
+                        title = "节次范围",
+                        summary = "第${beforeCourseExclusion.startSection}–${beforeCourseExclusion.endSection}节",
+                        onClick = {
+                            if (configuredSectionCount <= 0) {
+                                Toast.makeText(context, "当前课表尚未配置节次", Toast.LENGTH_SHORT).show()
+                            } else {
+                                editingBeforeCourseExclusion = true
+                                val maxSection = configuredSectionCount
+                                pendingStartSection = beforeCourseExclusion.startSection
+                                    .coerceIn(1, maxSection)
+                                pendingEndSection = beforeCourseExclusion.endSection
+                                    .coerceIn(pendingStartSection, maxSection)
+                                showSectionRangeDialog = true
+                            }
+                        },
+                    )
+                }
+                Spacer(modifier = Modifier.fillMaxWidth().height(12.dp))
+                Card(
+                    cornerRadius = 20.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    SwitchPreference(
+                        title = "假期末天课程排除",
                         checked = endCourseExclusion.enabled,
                         onCheckedChange = { enabled ->
                             val updated = endCourseExclusion.copy(enabled = enabled)
@@ -633,6 +674,7 @@ fun HolidaySettingsScreen(
                             if (configuredSectionCount <= 0) {
                                 Toast.makeText(context, "当前课表尚未配置节次", Toast.LENGTH_SHORT).show()
                             } else {
+                                editingBeforeCourseExclusion = false
                                 val maxSection = configuredSectionCount
                                 pendingStartSection = endCourseExclusion.startSection.coerceIn(1, maxSection)
                                 pendingEndSection = endCourseExclusion.endSection
@@ -743,11 +785,24 @@ fun HolidaySettingsScreen(
             val rangeFitsCurrentSchedule = configuredSectionCount > 0 &&
                 pendingStartSection in 1..configuredSectionCount &&
                 pendingEndSection in pendingStartSection..configuredSectionCount
-            val updated = endCourseExclusion.copy(
-                startSection = pendingStartSection,
-                endSection = pendingEndSection,
-            )
-            if (rangeFitsCurrentSchedule && HolidayManager.saveEndCourseExclusion(context, updated)) {
+            val saved = rangeFitsCurrentSchedule && if (editingBeforeCourseExclusion) {
+                HolidayManager.saveBeforeCourseExclusion(
+                    context,
+                    beforeCourseExclusion.copy(
+                        startSection = pendingStartSection,
+                        endSection = pendingEndSection,
+                    ),
+                )
+            } else {
+                HolidayManager.saveEndCourseExclusion(
+                    context,
+                    endCourseExclusion.copy(
+                        startSection = pendingStartSection,
+                        endSection = pendingEndSection,
+                    ),
+                )
+            }
+            if (saved) {
                 CourseReminderHelper.onHolidayDataChanged(context)
                 showSectionRangeDialog = false
             } else {
@@ -1621,7 +1676,13 @@ private fun InfoDropdown(
             imageVector = MiuixIcons.Info,
             contentDescription = null,
             colorFilter = ColorFilter.tint(infoColor),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                // CenterEnd 会把图标贴到 36dp Box 的右边缘，而这个 Box 是 fillMaxWidth
+                // Row 的末项、没有尾部 padding，结果图标右边缘与列表内容右边缘重合、
+                // 看着是顶在边上。让出 8dp（其余行的内容都有内边距，视觉上才齐平）；
+                // padding 套在 size 外层，36dp 的可点区域保持不变。
+                .padding(end = 8.dp)
+                .size(20.dp),
         )
         OverlayListPopup(
             show = expanded,

@@ -16,6 +16,7 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseScheduleDateBounds
 import com.haooz.chedule.data.HolidayCourseExclusion
+import com.haooz.chedule.data.HolidayBeforeCourseExclusion
 import com.haooz.chedule.data.HolidayEndCourseExclusion
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekPosition
@@ -971,6 +972,8 @@ object CourseReminderHelper {
         val isWorkSwap: Boolean,
         /** 目标日是节假日末日，且配置启用了节次课程排除 */
         val isHolidayEndCourseExclusionActive: Boolean = false,
+        /** 目标日是假期前一天，且配置启用了节次课程排除 */
+        val isHolidayBeforeCourseExclusionActive: Boolean = false,
     )
 
     /** 由开学日推目标日期所在日历课表周；仅作相对偏移，不直接当「当前周」 */
@@ -1065,10 +1068,12 @@ object CourseReminderHelper {
         val displayWeek = targetEntry?.followWeek?.takeIf { it > 0 }
             ?: alignedStoredWeekForDate(repository, date)
         val exclusion = HolidayManager.loadEndCourseExclusion(context)
+        val beforeExclusion = HolidayManager.loadBeforeCourseExclusion(context)
         return resolveDaySchedule(
             date = date,
             entriesByYear = entriesByYear,
             exclusion = exclusion,
+            beforeExclusion = beforeExclusion,
             displayDayOfWeek = displayDay,
             displayWeek = displayWeek,
             calendarDayOfWeek = calendarDay,
@@ -1110,6 +1115,7 @@ object CourseReminderHelper {
         candidates: () -> List<Course>,
         sectionTimes: () -> Map<Int, String>,
         sectionCount: () -> Int,
+        beforeExclusion: HolidayBeforeCourseExclusion = HolidayBeforeCourseExclusion(),
     ): DayScheduleResolution {
         val dayResolution = HolidayCourseExclusion.resolveDayCourses(
             entriesByYear = entriesByYear,
@@ -1118,6 +1124,7 @@ object CourseReminderHelper {
             candidates = candidates,
             sectionTimes = sectionTimes,
             sectionCount = sectionCount,
+            beforeExclusion = beforeExclusion,
         )
         return DayScheduleResolution(
             courses = dayResolution.courses,
@@ -1127,6 +1134,8 @@ object CourseReminderHelper {
             isHolidayDate = dayResolution.isHolidayDate,
             isWorkSwap = isWorkSwap,
             isHolidayEndCourseExclusionActive = dayResolution.isHolidayEndCourseExclusionActive,
+            isHolidayBeforeCourseExclusionActive =
+                dayResolution.isHolidayBeforeCourseExclusionActive,
         )
     }
 
@@ -1135,6 +1144,7 @@ object CourseReminderHelper {
         startReminderService(context)
         reconcileActiveHolidayCourse(context)
         ClassDndHelper.applyCurrentState(context)
+        com.haooz.chedule.provider.TodayCoursesProvider.notifyScheduleChanged(context)
         WidgetUpdateCache.updateInstalledWidgets(context)
     }
 
