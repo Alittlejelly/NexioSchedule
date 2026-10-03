@@ -364,7 +364,7 @@ fun InputField(
         interactionSource = internalInteractionSource,
         decorationBox = { innerTextField ->
             val isLightTheme = !isAppDarkTheme()
-            val containerColor = if (isLightTheme) Color(0xFFF7F7F7).copy(0.76f)
+            val containerColor = if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
                 else Color(0xFF242424).copy(0.84f)
             val shadowColor = if (isLightTheme) android.graphics.Color.parseColor("#12000000")
                 else android.graphics.Color.parseColor("#20000000")

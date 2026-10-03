@@ -130,7 +130,7 @@ fun LiquidBottomTabs(
         if (isLightTheme) Color.Black
         else Color.White
     val containerColor =
-        if (isLightTheme) Color(0xFFF7F7F7).copy(0.6f)
+        if (isLightTheme) Color(0xFFFAFAFA).copy(0.6f)
         else Color(0xFF242424).copy(0.6f)
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 

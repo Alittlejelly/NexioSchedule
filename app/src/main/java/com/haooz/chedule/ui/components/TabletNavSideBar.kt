@@ -446,7 +446,7 @@ fun TabletNavSideBar(
     val textColor = if (isLightTheme) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.8f)
     val containerColor =
         if (isLightTheme) Color(0xFFFFFFFF).copy(0.8f) else Color(0xFF242424).copy(0.8f)
-    val solidContainer = if (isLightTheme) Color(0xFFF7F7F7) else Color(0xFF1C1C1E)
+    val solidContainer = if (isLightTheme) Color(0xFFFBFBFB) else Color(0xFF1C1C1E)
     val selectedBg =
         if (isLightTheme) Color.Black.copy(0.06f) else Color.White.copy(0.1f)
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)

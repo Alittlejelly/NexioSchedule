@@ -840,7 +840,7 @@ fun CourseEditScreen(
                                                                             )
                                                                             else if (isDark) Color(
                                                                                 0xFF363636
-                                                                            ) else Color(0xFFF7F7F7)
+                                                                            ) else MiuixTheme.colorScheme.surface
                                                                         ),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {

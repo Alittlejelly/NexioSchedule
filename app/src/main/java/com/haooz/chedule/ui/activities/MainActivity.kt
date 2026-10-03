@@ -3203,7 +3203,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             if (showSharedWallpaperLayer && sharedWallpaperBitmap != null) {
                                 // 全屏垫背景色 + 裁切：壁纸切页平移时露出的空隙由背景色盖住（侧栏下始终有内容，不出漏）
                                 val wallpaperPadColor =
-                                    if (isAppDarkTheme()) Color(0xFF000000) else Color(0xFFF7F7F7)
+                                    MiuixTheme.colorScheme.surface
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()

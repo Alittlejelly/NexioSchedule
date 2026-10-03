@@ -106,7 +106,7 @@ fun LiquidGlassDropdownMenu(
 ) {
     val isLightTheme = !isAppDarkTheme()
     // 与顶栏液态玻璃按钮同色：收起态即那颗按钮，形变过程中玻璃不突变
-    val containerColor = if (isLightTheme) Color(0xFFF7F7F7).copy(0.76f)
+    val containerColor = if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
         else Color(0xFF242424).copy(0.84f)
     val chromeLens = AppMaterialSettings.chromeLensEnabled()
     val triggerIconTint = if (isLightTheme) Color.Black.copy(0.85f) else Color.White.copy(0.85f)
