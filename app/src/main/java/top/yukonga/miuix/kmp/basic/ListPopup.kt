@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -1030,6 +1031,23 @@ private fun PopupMenuLayer(
     onSizeChange: (IntSize) -> Unit,
     content: @Composable () -> Unit,
 ) {
+
+    // 内容按**宽度**等比缩放（contentScale = rect宽 / 内容宽），但面板早期近乎方形、
+    // 内容是长条，两者宽高比不一致 → 缩放后的高度会顶穿面板上下边。
+    val clipShape: Shape = AnimatedPanelRectShape(
+        rectKey = listOf(style.frame),
+        cornerRadius = style.cornerRadius,
+        rectProvider = { w, h ->
+            val rect = style.rectOf(w, h)(w + 2 * style.overshootRoomPx, h + 2 * style.overshootRoomPx)
+            floatArrayOf(
+                rect[0] - style.overshootRoomPx,
+                rect[1] - style.overshootRoomPx,
+                rect[2],
+                rect[3],
+            )
+        },
+    )
+
     Box(
         modifier = Modifier
             // 上报自然尺寸给外部（Popup 定位策略 / maxHeight 判断）。
@@ -1038,6 +1056,8 @@ private fun PopupMenuLayer(
                 val size = coordinates.size
                 if (reportedSize != size) onSizeChange(size)
             }
+            // clip 排在 graphicsLayer 之前（外层）→ 作用于变换之后的坐标系，见 clipShape
+            .clip(clipShape)
             .graphicsLayer {
                 val fr = style.fractionProgress()
                 // 本层节点实测尺寸就是内容自然尺寸，据此自算画布 ——

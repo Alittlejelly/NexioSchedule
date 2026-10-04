@@ -3090,19 +3090,9 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                     isShiftMode = isShiftMode,
                                     // 平板（rail）右上角不显示「更多」
                                     enabled = navBarStyle != "rail",
-                                    // 预测性返回：手势推进时菜单缩回按钮处（按钮随之淡入），取消时恢复展开
-                                    onMoreBackProgress = { progress ->
-                                        coroutineScope.launch { morePopupFraction.snapTo(1f - progress) }
-                                    },
-                                    onMoreBackCancelled = {
-                                        coroutineScope.launch { morePopupFraction.animateTo(1f, tween(150)) }
-                                    },
-                                    onTodayMoreBackProgress = { progress ->
-                                        coroutineScope.launch { todayMorePopupFraction.snapTo(1f - progress) }
-                                    },
-                                    onTodayMoreBackCancelled = {
-                                        coroutineScope.launch { todayMorePopupFraction.animateTo(1f, tween(150)) }
-                                    },
+                                    // 预测性返回由 LiquidGlassDropdownMenu 内部驱动：
+                                    // 它操作的就是这里传入的同一个 fraction Animatable，
+                                    // 外面再 snapTo/animateTo 一遍会和它互相 cancel，动画直接卡死。
                                     onJumpWeek = { viewModel.showJumpWeekDialog() },
                                     onCourseManage = {
                                         val intent = Intent(context, CourseManageActivity::class.java)
