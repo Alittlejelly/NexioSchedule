@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.DropdownColors
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -51,7 +52,8 @@ fun OverlayDropdownPopup(
     collapseOnSelection: Boolean = true,
     liquidGlassBackdrop: Backdrop? = null,
     onFractionProgress: ((Float) -> Unit)? = null,
-    revealLimitHeight: Dp = 0.dp,
+    collapseSize: IntSize? = null,
+    collapseExtra: DpSize = DpSize.Zero,
 ) {
     val entries = remember(entry) { listOf(entry) }
     OverlayDropdownPopup(
@@ -65,7 +67,8 @@ fun OverlayDropdownPopup(
         collapseOnSelection = collapseOnSelection,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onFractionProgress = onFractionProgress,
-        revealLimitHeight = revealLimitHeight,
+        collapseSize = collapseSize,
+        collapseExtra = collapseExtra,
     )
 }
 
@@ -94,7 +97,8 @@ fun OverlayDropdownPopup(
     collapseOnSelection: Boolean = entries.size <= 1,
     liquidGlassBackdrop: Backdrop? = null,
     onFractionProgress: ((Float) -> Unit)? = null,
-    revealLimitHeight: Dp = 0.dp,
+    collapseSize: IntSize? = null,
+    collapseExtra: DpSize = DpSize.Zero,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val currentEntries by rememberUpdatedState(entries)
@@ -121,7 +125,8 @@ fun OverlayDropdownPopup(
         renderInRootScaffold = renderInRootScaffold,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onFractionProgress = onFractionProgress,
-        revealLimitHeight = revealLimitHeight,
+        collapseSize = collapseSize,
+        collapseExtra = collapseExtra,
     ) {
         ListPopupColumn {
             DropdownEntriesPopupContent(

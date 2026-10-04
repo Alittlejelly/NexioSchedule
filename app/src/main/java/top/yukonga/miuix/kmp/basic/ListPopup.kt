@@ -4,7 +4,6 @@
 package top.yukonga.miuix.kmp.basic
 
 import android.graphics.BlurMaskFilter
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusGroup
@@ -22,15 +21,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.translate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -63,17 +65,17 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.SinOutEasing
-import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 // =====================================================================
 // 工具函数
@@ -728,25 +730,80 @@ fun rememberListPopupLayoutInfo(
     )
 }
 
+/**
+ * 面板矩形 Shape：每次重组都新建实例，配合 [equals] 让相等判定仍能命中。
+ *
+ * 存在的理由是 `EdgeLightNode` 的 outline 缓存用**引用比较**（`cachedOutlineShape === shape`）
+ * 判断能否复用，而弹窗节点尺寸在动画中恒定不变 —— 若 shape 实例被 remember 住，
+ * outline 会被冻结在第一帧的 42dp 小圆上（表现为描边消失、背景框像被钉死）。
+ * 每帧换引用可强制它重算。
+ *
+ * @param rectKey 量化后的矩形标识（整数三元组：动画帧号 + 面板宽 + 面板高），用于 [equals]/[hashCode]
+ * @param cornerRadius 圆角半径
+ * @param rectProvider 返回 (left, top, width, height) 的 px 计算函数
+ */
+private class AnimatedPanelRectShape(
+    private val rectKey: List<Int>,
+    private val cornerRadius: Dp,
+    private val rectProvider: (Float, Float) -> FloatArray,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val rect = rectProvider(size.width, size.height)
+        val base = ContinuousRoundedRectangle(cornerRadius)
+            .createOutline(Size(rect[2], rect[3]), layoutDirection, density)
+        val offset = Offset(rect[0], rect[1])
+        return when (base) {
+            // Outline.Rounded 不是 data class（无 copy），只能重新构造
+            is Outline.Rounded -> Outline.Rounded(base.roundRect.translate(offset))
+            // Path.translate 是原地修改的成员函数，必须新建 Path 承接，否则会污染 base
+            is Outline.Generic -> Outline.Generic(Path().apply {
+                addPath(base.path)
+                translate(offset)
+            })
+            else -> base
+        }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is AnimatedPanelRectShape) return false
+        return rectKey == other.rectKey
+    }
+
+    override fun hashCode(): Int = rectKey.hashCode()
+}
+
 // =====================================================================
 // ListPopupContent - 弹窗内容容器
 // =====================================================================
 
 /**
- * 弹窗内容容器，提供缩放、淡入淡出和方向性裁剪揭示效果。
+ * 弹窗内容容器，动画与 [com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu] 完全一致（1:1 复刻）：
  *
- * 这是弹窗的视觉容器，负责：
- * - 缩放动画：从0.15倍缩放到1倍
- * - 透明度动画：从0到1
- * - 裁剪揭示：根据弹窗显示方向，从锚点位置逐渐揭示内容
+ * - 面板矩形从「收起态尺寸」起按每轴 `lerp(收起态, 面板尺寸, f)` **真实插值**（不是 scale，容器永不变形），
+ *   矩形锚在锚点角（[localTransformOrigin]，朝上/朝下/朝左/朝右四种 —— 唯一区别于标准实现的地方）。
+ *   收起态尺寸由 [collapseSize] 给出（触发区「选中文字 + 箭头」的实测宽高），未传入时退回 42dp。
+ * - 锚点迁移位移（`k = 0.5p(1-s)`，`s = 当前宽度比`）与退出回弹位移叠加在矩形左上角。
+ * - 内容按 `w / 面板宽` **等比**缩放并移到矩形中心（对应标准的 contentScale + align(Center)）。
+ * - 裁剪 / 玻璃 / 边缘光共用同一个矩形，圆角恒为 25dp（收起态被胶囊化成正圆），不做反向补偿。
+ * - 内容按 `((f-0.3)/0.4)` 淡入、按 `6dp*(1-|2f-1|)` 起雾。
+ *
+ * 弹窗节点自身尺寸始终是自然尺寸（不随动画变化），因此弹窗定位不会抖动。
  *
  * @param popupContentSize 弹窗内容的当前大小
  * @param onPopupContentSizeChange 内容大小变化时的回调
- * @param fractionProgress 提供当前缩放/裁剪进度（0→1）
- * @param alphaProgress 提供当前透明度（0→1）
- * @param popupLayoutPosition 弹窗的放置方向
- * @param localTransformOrigin 本地坐标系下的变换原点
+ * @param fractionProgress 提供当前展开进度（0→1，spring 可能过冲）
+ * @param originProgress 提供锚点迁移进度（比 fraction 更快到 1）
+ * @param localTransformOrigin 本地坐标系下的变换原点（= 锚点角）
  * @param modifier 修饰符
+ * @param collapseSize 收起态尺寸（px）。通常是触发区「选中文字 + 箭头图标」的实测尺寸，
+ *   弹窗从这块内容原位长成面板。为 null 或 0 时退回 42dp。
+ * @param collapseExtra 收起态尺寸的额外补偿（加在 lerp 的起点上）
+ * @param isEntering 是否正在进场。进场/退场用不同的淡入淡出时机档位。
  * @param content 弹窗内容
  */
 @Composable
@@ -754,12 +811,13 @@ fun ListPopupContent(
     popupContentSize: IntSize,
     onPopupContentSizeChange: (IntSize) -> Unit,
     fractionProgress: () -> Float,
-    alphaProgress: () -> Float,
-    popupLayoutPosition: PopupLayoutPosition,
+    originProgress: () -> Float,
     localTransformOrigin: TransformOrigin,
     modifier: Modifier = Modifier,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
-    revealLimitHeight: Dp = 0.dp,
+    collapseSize: IntSize? = null,
+    collapseExtra: DpSize = DpSize.Zero,
+    isEntering: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     // ============================================
@@ -769,120 +827,182 @@ fun ListPopupContent(
     val backgroundColor = MiuixTheme.colorScheme.surfaceContainer
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
 
+    // 收起态尺寸：跟随触发区（选中文字 + 箭头图标）的实测尺寸 + collapseExtra 补偿，
+    // 未传入时退回 LiquidGlassDropdownMenu 的圆形按钮直径 42dp。
+    // 每轴分别 lerp，所以文字区那种扁矩形也能正确地从原位长成面板。
+    // 补偿只需满足「看起来是从这块内容里长出来的」，故直接加在起点上，不改 lerp 公式。
+    val localDensity = LocalDensity.current
+    val fallbackCollapsePx = with(localDensity) { 42.dp.toPx() }
+    val extraW = with(localDensity) { collapseExtra.width.toPx() }
+    val extraH = with(localDensity) { collapseExtra.height.toPx() }
+    val collapseW = (collapseSize?.width?.takeIf { it > 0 }?.toFloat() ?: fallbackCollapsePx) + extraW
+    val collapseH = (collapseSize?.height?.takeIf { it > 0 }?.toFloat() ?: fallbackCollapsePx) + extraH
     val shadowPadding = 24.dp
+    // 过冲余量：spring（阻尼比 0.78）展开末尾会冲过 1，面板矩形比自然尺寸大；
+    // 而 clip 会生成一个按节点尺寸界定的 RenderNode，超出部分会被裁掉。
+    // 所以玻璃层要额外撑出一圈余量；外层 padding 同时缩小同样的量，
+    // 保证弹窗整体测量尺寸不变（变了会影响 Popup 定位）。
+    val overshootRoom = 14.dp
+    val overshootRoomPx = with(localDensity) { overshootRoom.toPx() }
+    val chromeLens = AppMaterialSettings.chromeLensEnabled()
 
-    // 阴影渐变动画：进入时升到 0.78 显示，退出时降到 0.99 消失
-    val shadowAlphaState = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        var prevFraction = fractionProgress()
-        var shadowVisible = false
-        var animationJob: Job? = null
-        snapshotFlow { fractionProgress() }
-            .collect { current ->
-                val isEntering = current >= prevFraction
-                prevFraction = current
-                val newVisible = if (isEntering) {
-                    current >= 0.78f
-                } else {
-                    current >= 0.99f
-                }
-                if (newVisible != shadowVisible) {
-                    shadowVisible = newVisible
-                    animationJob?.cancel()
-                    animationJob = launch {
-                        if (newVisible) {
-                            // 进入：渐变出现
-                            shadowAlphaState.animateTo(1f, tween(200))
-                        } else {
-                            // 退出：若进入动画未播完则立即消失，否则快速渐出
-                            if (shadowAlphaState.value >= 1f) {
-                                shadowAlphaState.animateTo(0f, tween(50))
-                            } else {
-                                shadowAlphaState.snapTo(0f)
-                            }
-                        }
-                    }
-                }
-            }
+    // 读 fraction 驱动尺寸；不钳到 1，保留 spring 过冲（末尾回弹）
+    // 注意：这些派生量都在绘制块内现算（见下），composition 期不缓存动画中间值
+    // 淡入 / 淡出时机。进场用 Enter 档、退场用 Exit 档 —— 单条曲线做不到
+    // 「淡入早一点 + 淡出晚一点」这两个相反方向，必须按方向分档。
+    // 做法与 LiquidGlassDropdownMenu 的 `iconK = if (show) 2.5f else 1.7f` 同源。
+    //
+    // 容器（玻璃盒）：系数越大 → 越早饱和为 1
+    val containerAlphaEnter = 7f    // 标准 5f：alpha 在 f=0.20 就到 1
+    val containerAlphaExit = 3.6f   // 标准 5f：alpha 到 f=0.28 才开始降（淡出更晚）
+    // 内容：alpha 窗口 [起点, 终点]，f 升到终点才全显；退场时终点抬高 → 淡出更晚
+    val contentEnterFrom = 0.22f    // 标准 0.30
+    val contentEnterTo = 0.62f      // 标准 0.70
+    val contentExitFrom = 0.30f
+    val contentExitTo = 0.78f       // 标准 0.70 → 退场时 f 降到 0.78 才开始淡出
+
+    fun containerAlphaOf(f: Float): Float {
+        val k = if (isEntering) containerAlphaEnter else containerAlphaExit
+        return (f * k).coerceIn(0f, 1f)
     }
+
+    fun contentAlphaOf(f: Float): Float {
+        val from = if (isEntering) contentEnterFrom else contentExitFrom
+        val to = if (isEntering) contentEnterTo else contentExitTo
+        return ((f - from) / (to - from)).coerceIn(0f, 1f)
+    }
+
+    fun contentBlurOf(f: Float): androidx.compose.ui.unit.Dp =
+        6.dp * (1f - abs(2f * f - 1f)).coerceIn(0f, 1f)
+
+    // 背景模糊度固定 24dp（面板尺寸，需要比收起态更强的模糊）。
+    // 折射 lens(8, 24) 保持常量：它作用在边缘 SDF 上，面板变大时跟着涨反而会让边缘变形。
+    // blur 固定 → effects lambda 引用稳定，drawBackdrop 的 RenderEffect 缓存能一直命中，
+    // 不必再量化成 8 档（那是为了对付每帧换引用才加的）。
+    val blurDp = 24f
+
+    // 锚点角：右对齐 → 面板从右侧长出；上对齐（showAbove）→ 从下侧长出
+    val anchorRight = localTransformOrigin.pivotFractionX >= 0.5f
+    val anchorBottom = localTransformOrigin.pivotFractionY >= 0.5f
+
+    // 面板矩形（left, top, width, height，px）。
+    // ⚠️ 入参必须是**玻璃层节点**的尺寸（含过冲余量），坐标系原点 = 玻璃层左上角。
+    // 玻璃层自己的 drawBehind / clip 天然满足；内容层要自己补上余量再传。
+    val panelRect: (Float, Float) -> FloatArray = { layerW, layerH ->
+        val fr = fractionProgress()
+        // 扣掉过冲余量，拿到自然尺寸作为 lerp 终点
+        val naturalW = layerW - 2f * overshootRoomPx
+        val naturalH = layerH - 2f * overshootRoomPx
+        // 每轴独立 lerp：容器是真插值而非 scale，因此不会变形
+        val w = collapseW + (naturalW - collapseW) * fr
+        val h = collapseH + (naturalH - collapseH) * fr
+        // 锚点迁移：比尺寸更快到 1，先「移向面板中心」再放大
+        val p = originProgress()
+        val s = if (naturalW > 0f) w / naturalW else 1f
+        val k = 0.5f * p * (1f - s)
+        val migrationX = (if (anchorRight) -1f else 1f) * naturalW * k
+        val migrationY = (if (anchorBottom) -1f else 1f) * naturalH * k
+        // 永久去除：退出时的方向性回弹（沿收回方向越过终点再弹回）。
+        // 原实现（LiquidGlassDropdownMenu 的 settleBounce）已废弃，不用恢复：
+        //   val pulse = (-settleBounce()).coerceAtLeast(0f)
+        //   val bouncePx = pulse * 12f * densityScale
+        //   val bounceX = (if (anchorRight) 1f else -1f) * bouncePx
+        //   val bounceY = (if (anchorBottom) 1f else -1f) * bouncePx
+        // 自然尺寸区域在玻璃层坐标系里从 overshootRoomPx 开始
+        val left = overshootRoomPx + (if (anchorRight) naturalW - w else 0f) + migrationX
+        val top = overshootRoomPx + (if (anchorBottom) naturalH - h else 0f) + migrationY
+        floatArrayOf(left, top, w, h)
+    }
+
+    // 裁剪 / 玻璃 / 边缘光共用同一矩形：圆角恒为 cornerRadius，不做放大补偿。
+    //
+    // 每次重组换新实例：edgeLight 的 outline 缓存是**引用比较**（`cachedOutlineShape === shape`），
+    // 而弹窗节点尺寸在动画中恒定不变，shape 实例若被 remember 住，outline 就会冻结在
+    // 第一帧的 42dp 小圆上 —— 表现为描边消失 + 背景框像被钉死。
+    // equals/hashCode 让矩形相同时 drawBackdrop 仍判定「没变」，不重建 RenderEffect。
+    //
+    // 重组触发源：动画期间把 fraction 换算成 0.5px 精度的整数帧号，帧号变化即重组。
+    // 静止时不重组，避免无谓重绘。
+    val animFrame = remember(popupContentSize.width, popupContentSize.height) {
+        derivedStateOf { (fractionProgress() * 400f).roundToInt() }
+    }
+    // 读一次触发订阅
+    val frame = animFrame.value
+    val panelShape: Shape = AnimatedPanelRectShape(
+        rectKey = listOf(frame, popupContentSize.width, popupContentSize.height),
+        cornerRadius = cornerRadius,
+        rectProvider = panelRect,
+    )
+
+    val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+        remember(chromeLens) {
+            {
+                vibrancy()
+                blur(blurDp.dp.toPx())
+            }
+        }
 
     Box(
         modifier = modifier
-            .padding(shadowPadding)
-            .drawBehind {
-                val shadowAlpha = shadowAlphaState.value
-                if (shadowAlpha <= 0f) return@drawBehind
-                val baseAlpha = (32 * shadowAlpha).toInt().coerceIn(0, 255)
-                val shadowColor = android.graphics.Color.argb(baseAlpha, 0, 0, 0)
-                val blurRadius = 16f * density
-                val cornerRadiusPx = cornerRadius.toPx()
-                val nativePath = android.graphics.Path().apply {
-                    addRoundRect(
-                        0f, 0f, size.width, size.height,
-                        cornerRadiusPx, cornerRadiusPx,
-                        android.graphics.Path.Direction.CW
-                    )
-                }
-                val paint = android.graphics.Paint().apply {
-                    color = shadowColor
-                    maskFilter = BlurMaskFilter(
-                        blurRadius.coerceAtLeast(0.1f),
-                        BlurMaskFilter.Blur.NORMAL
-                    )
-                }
-                drawIntoCanvas { canvas ->
-                    canvas.nativeCanvas.drawPath(nativePath, paint)
-                }
-            }
+            // 外层 padding 扣掉玻璃层撑出的那圈余量，保证弹窗总测量尺寸不变 ——
+            // ListPopupLayout 用 placeable 尺寸算 Popup 定位，尺寸变了就会偏移。
+            .padding(shadowPadding - overshootRoom)
     ) {
         Box(
             modifier = Modifier
-                .onGloballyPositioned { coordinates ->
-                    val size = coordinates.size
-                    if (popupContentSize != size) onPopupContentSizeChange(size)
+                // 阴影必须和玻璃层同一个节点，且在 padding 外层 —— panelRect 的入参
+                // 是该节点的完整尺寸（含过冲余量），挂到外层或放在 padding 内侧都会算错。
+                .drawBehind {
+                    // 与 LiquidGlassDropdownMenu 同一套阴影：环形（外圈减内圈）+ 模糊/外扩随材质衰减
+                    val spread = containerAlphaOf(fractionProgress())
+                    if (spread > 0.01f) {
+                        val rect = panelRect(size.width, size.height)
+                        val left = rect[0]
+                        val top = rect[1]
+                        val boxW = rect[2]
+                        val boxH = rect[3]
+                        val shadowArgb = if (isDark) 0x20000000 else 0x12000000
+                        val blurRadius = 10f * density * spread
+                        val shadowSpread = 2f * density * spread
+                        val r = cornerRadius.toPx()
+                        val nativePath = android.graphics.Path().apply {
+                            addRoundRect(
+                                left - shadowSpread, top - shadowSpread,
+                                left + boxW + shadowSpread, top + boxH + shadowSpread,
+                                r + shadowSpread, r + shadowSpread,
+                                android.graphics.Path.Direction.CW
+                            )
+                            addRoundRect(
+                                left, top, left + boxW, top + boxH, r, r,
+                                android.graphics.Path.Direction.CCW
+                            )
+                        }
+                        val paint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.argb(
+                                (android.graphics.Color.alpha(shadowArgb) * 3.2f).coerceAtMost(255f).toInt(),
+                                android.graphics.Color.red(shadowArgb),
+                                android.graphics.Color.green(shadowArgb),
+                                android.graphics.Color.blue(shadowArgb)
+                            )
+                            maskFilter = BlurMaskFilter(
+                                blurRadius.coerceAtLeast(0.1f),
+                                BlurMaskFilter.Blur.NORMAL
+                            )
+                        }
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawPath(nativePath, paint)
+                        }
+                    }
                 }
-                .graphicsLayer {
-                    // 缩放动画：先快后慢的曲线效果
-                    val fraction = fractionProgress()
-                    // X轴：从0.2倍缩放到1.0倍
-                    val scaleXL = 0.24f + 0.76f * fraction
-                    // Y轴：从0.2倍缩放到1.0倍
-                    val scaleXY = 0.24f + 0.76f * fraction
-                    scaleX = scaleXL
-                    scaleY = scaleXY
-                    alpha = alphaProgress()
-                    // 缩放中心点：从原位置移动到弹窗中心，先快后慢
-                    val targetOrigin = TransformOrigin(0.5f, 0.5f)
-                    transformOrigin = TransformOrigin(
-                        pivotFractionX = localTransformOrigin.pivotFractionX + (targetOrigin.pivotFractionX - localTransformOrigin.pivotFractionX) * fraction,
-                        pivotFractionY = localTransformOrigin.pivotFractionY + (targetOrigin.pivotFractionY - localTransformOrigin.pivotFractionY) * fraction
-                    )
-                }
-                // 方向性裁剪揭示效果（位于 blur 外层，裁掉模糊产生的圆角溢出）
-                .popupClipReveal(
-                    fractionProgress = fractionProgress,
-                    popupLayoutPosition = popupLayoutPosition,
-                    cornerRadius = cornerRadius,
-                    squircleEnabled = isSquircleEnabled(),
-                    revealLimitHeightPx = with(LocalDensity.current) { revealLimitHeight.toPx() },
-                )
-                // 模糊效果：进入时从7dp变小到0，退出时从0变大到7dp
-                .blur(radius = (8f * (1f - fractionProgress())).dp)
+                // 玻璃可见度：随展开进度早出晚消
+                .graphicsLayer { alpha = containerAlphaOf(fractionProgress()) }
+                .clip(panelShape)
                 .then(
                     if (liquidGlassBackdrop != null && android.os.Build.VERSION.SDK_INT >= 33) {
                         Modifier.drawBackdrop(
                             backdrop = liquidGlassBackdrop,
-                            shape = {
-                                // 圆角随缩放反向放大，保持视觉圆角不变（与 popupClipReveal 一致）
-                                val fraction = fractionProgress().coerceIn(0f, 1f)
-                                val avgScale = 0.24f + 0.76f * fraction
-                                val scaledCornerRadius = cornerRadius / avgScale
-                                ContinuousRoundedRectangle(scaledCornerRadius)
-                            },
-                            effects = {
-                                vibrancy()
-                                blur(24.dp.toPx())
-                            },
+                            shape = { panelShape },
+                            effects = glassEffects,
                             highlight = null,
                             shadow = null,
                             onDrawSurface = {
@@ -892,11 +1012,44 @@ fun ListPopupContent(
                     } else Modifier
                 )
                 .edgeLight(
-                    shape = rememberDynamicCornerRadiusShape(fractionProgress, cornerRadius),
+                    shape = panelShape,
                     edgeLight = rememberDefaultEdgeLight(baseColor = backgroundColor)
-                ),
+                )
+                // 过冲余量放最内层：撑大节点边界让 RenderNode 有余量容纳 spring 过冲，
+                // 但不能放在 clip/drawBehind 外层 —— 那会让它们读到 padding 后的净尺寸。
+                .padding(overshootRoom),
         ) {
-            content()
+            // 菜单内容：按面板宽度比等比缩放（标准的 contentScale = w / PanelWidth），
+            // 中心对齐到面板矩形（对应 align(Center)），按窗口淡入、按驼峰起雾
+            // 注意：这里不能用 matchParentSize()，它是 Box 里唯一的子节点，
+            // 用它会让 Box 尺寸变成 0（Box 只按非 matchParentSize 的子节点定尺寸）
+            Box(
+                modifier = Modifier
+                    // 尺寸上报挂在内容层：它是真实自然尺寸。
+                    // 不能挂玻璃层 —— 那边多了一层过冲余量的 padding，会污染 popupContentSize。
+                    .onGloballyPositioned { coordinates ->
+                        val size = coordinates.size
+                        if (popupContentSize != size) onPopupContentSizeChange(size)
+                    }
+                    .graphicsLayer {
+                        val fr = fractionProgress()
+                        // 这里 size 是内容层自然尺寸，需补上过冲余量才是玻璃层坐标系
+                        val rect = panelRect(
+                            size.width + 2f * overshootRoomPx,
+                            size.height + 2f * overshootRoomPx,
+                        )
+                        val contentScale = if (size.width > 0f) rect[2] / size.width else 1f
+                        scaleX = contentScale
+                        scaleY = contentScale
+                        alpha = contentAlphaOf(fr)
+                        // 内容中心移到面板矩形中心（内容层原点在玻璃层内偏移了余量）
+                        translationX = rect[0] + rect[2] / 2f - overshootRoomPx - size.width / 2f
+                        translationY = rect[1] + rect[3] / 2f - overshootRoomPx - size.height / 2f
+                    }
+                    .blur(contentBlurOf(fractionProgress())),
+            ) {
+                content()
+            }
         }
     }
 }

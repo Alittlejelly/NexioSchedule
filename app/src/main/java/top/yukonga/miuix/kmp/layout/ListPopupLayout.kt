@@ -4,6 +4,7 @@
 package top.yukonga.miuix.kmp.layout
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,6 +29,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntRect
@@ -39,7 +41,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import top.yukonga.miuix.kmp.basic.ListPopupContent
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
-import top.yukonga.miuix.kmp.basic.PopupLayoutPosition
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.PopupPositionResult
 import top.yukonga.miuix.kmp.basic.rememberListPopupLayoutInfo
@@ -52,11 +53,15 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 
-// 本地动画参数（库版本没有这些属性）
-private val FractionEnterAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 232f, visibilityThreshold = 0.0001f)
-private val FractionExitAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 400f, visibilityThreshold = 0.0001f)
-private val AlphaEnterAnimSpec = tween<Float>(durationMillis = 120)
-private val AlphaExitAnimSpec = tween<Float>(durationMillis = 320)
+// 动画参数：与 LiquidGlassDropdownMenu 完全一致（1:1 复刻）
+// 进场：fraction spring 0.78/240，锚点迁移 spring 0.78/500（比尺寸更快到 1）
+private val FractionEnterAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 240f, visibilityThreshold = 0.0001f)
+// 退场：fraction spring 0.85/650，锚点迁移 tween(340, CubicBezierEasing(0,0,0,1))
+private val FractionExitAnimSpec = spring<Float>(dampingRatio = 0.85f, stiffness = 650f, visibilityThreshold = 0.0001f)
+private val OriginEnterAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 500f, visibilityThreshold = 0.0001f)
+private val OriginExitAnimSpec = tween<Float>(340, easing = CubicBezierEasing(0.0f, 0.0f, 0.0f, 1.0f))
+// 预测性返回取消后回到展开态
+private val BackCancelAnimSpec = tween<Float>(150)
 private val DimEnterAnimSpec = tween<Float>(durationMillis = 200, easing = SinOutEasing)
 private val DimExitAnimSpec = tween<Float>(durationMillis = 300, easing = SinOutEasing)
 private val LocalMinPopupHeight = 50.dp
@@ -85,8 +90,8 @@ fun liquidDropdownPositionProvider(): PopupPositionProvider = object : PopupPosi
         popupMargin: IntRect,
         alignment: PopupPositionProvider.Align,
     ): PopupPositionResult {
-        val offsetXDelta = 82  //@ 3x density
-        val offsetYDelta = 94  //@ 3x density
+        val offsetXDelta = 102  //@ 3x density
+        val offsetYDelta = 102  //@ 3x density
 
         val offsetX = if (alignment.resolve(layoutDirection) == PopupPositionProvider.Align.End) {
             anchorBounds.right - popupContentSize.width - popupMargin.right + offsetXDelta
@@ -158,12 +163,16 @@ fun ListPopupLayout(
     minWidth: Dp = ListPopupDefaults.MinWidth,
     liquidGlassBackdrop: Backdrop? = null,
     onFractionProgress: ((Float) -> Unit)? = null,
-    revealLimitHeight: Dp = 0.dp,
+    collapseSize: IntSize? = null,
+    collapseExtra: DpSize = DpSize.Zero,
     content: @Composable () -> Unit,
 ) {
     val fractionProgress = remember { Animatable(0f) }
-    val alphaProgress = remember { Animatable(0f) }
+    // 锚点迁移进度：比尺寸更快到 1，先「移向面板中心」再放大
+    val originProgress = remember { Animatable(0f) }
     val dimProgress = remember { Animatable(0f) }
+    // 预测性返回手势进度（取消时据此决定是否要恢复）
+    val backProgress = remember { Animatable(0f) }
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
     val currentOnDismissFinished by rememberUpdatedState(onDismissFinished)
     val internalVisible = remember { mutableStateOf(false) }
@@ -174,7 +183,7 @@ fun ListPopupLayout(
         if (show) {
             internalVisible.value = true
             launch { fractionProgress.animateTo(1f, FractionEnterAnimSpec) }
-            launch { alphaProgress.animateTo(1f, AlphaEnterAnimSpec) }
+            launch { originProgress.animateTo(1f, OriginEnterAnimSpec) }
             if (enableWindowDim) {
                 launch { dimProgress.animateTo(1f, DimEnterAnimSpec) }
             }
@@ -184,9 +193,11 @@ fun ListPopupLayout(
             if (enableWindowDim) {
                 launch { dimProgress.animateTo(0f, DimExitAnimSpec) }
             }
-            alphaProgress.animateTo(0f, AlphaExitAnimSpec)
+            // 这里必须「等」动画跑完（不能立刻 snapTo，否则会把上面的动画取消掉）；
+            // 用锚点 tween 兜住，结束后再收尾
+            originProgress.animateTo(0f, OriginExitAnimSpec)
             fractionProgress.snapTo(0f)
-            alphaProgress.snapTo(0f)
+            originProgress.snapTo(0f)
             dimProgress.snapTo(0f)
             internalVisible.value = false
             currentOnDismissFinished?.invoke()
@@ -229,9 +240,8 @@ fun ListPopupLayout(
         popupContentSize = popupContentSize,
     )
 
-    // 由 layout 阶段计算的真实方向和锚点，与 calculatedOffset 使用同一个 measuredSize，
+    // 由 layout 阶段计算的真实锚点，与 calculatedOffset 使用同一个 measuredSize，
     // 避免 composition 阶段的 popupContentSize 与 layout 阶段的 measuredSize 不一致。
-    var realPopupLayoutPosition by remember { mutableStateOf(PopupLayoutPosition(showBelow = true, showAbove = false, isRightAligned = false)) }
     var realLocalTransformOrigin by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
 
     val requestDismiss: () -> Unit = remember {
@@ -242,17 +252,20 @@ fun ListPopupLayout(
         val coroutineScope = rememberCoroutineScope()
         val backState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
 
-        // 预测性返回：手势进度驱动 fraction/alpha/dim 全部收敛到 0（弹窗缩回消失），
+        // 预测性返回：手势进度驱动 fraction/origin/dim 全部收敛到 0（弹窗缩回消失），
         // 取消恢复、完成关闭；低版本 NavigationBackHandler 自动退化为立即关闭
         NavigationBackHandler(
             state = backState,
             isBackEnabled = show,
             onBackCancelled = {
                 coroutineScope.launch {
-                    fractionProgress.animateTo(1f, FractionEnterAnimSpec)
-                    alphaProgress.animateTo(1f, AlphaEnterAnimSpec)
-                    if (enableWindowDim) {
-                        dimProgress.animateTo(1f, DimEnterAnimSpec)
+                    if (backProgress.value > 0f) {
+                        fractionProgress.animateTo(1f, BackCancelAnimSpec)
+                        originProgress.animateTo(1f, BackCancelAnimSpec)
+                        if (enableWindowDim) {
+                            dimProgress.animateTo(1f, DimEnterAnimSpec)
+                        }
+                        backProgress.snapTo(0f)
                     }
                 }
             },
@@ -271,11 +284,12 @@ fun ListPopupLayout(
                     ) {
                     // 预测性返回动画开关：关闭时不驱动跟随动画（返回仍被拦截，直接关闭）
                     if (PredictiveBackSettings.enabled) {
-                        val inv = 1f - transitionState.latestEvent.progress
-                        fractionProgress.snapTo(inv)
-                        alphaProgress.snapTo(inv)
+                        val progress = transitionState.latestEvent.progress
+                        backProgress.snapTo(progress)
+                        fractionProgress.snapTo(1f - progress)
+                        originProgress.snapTo(1f - progress)
                         if (enableWindowDim) {
-                            dimProgress.snapTo(inv)
+                            dimProgress.snapTo(1f - progress)
                         }
                     }
                     }
@@ -322,11 +336,10 @@ fun ListPopupLayout(
                         )
                         val calculatedOffset = positionResult.offset
 
-                        // 从同一个 positionResult 推导方向和锚点，保证一致性
-                        val (layoutPos, transformOrigin) = resolvePopupAnchors(
+                        // 从同一个 positionResult 推导锚点，保证一致性
+                        val (_, transformOrigin) = resolvePopupAnchors(
                             positionResult, calculatedOffset, measuredSize, parentBounds, alignment, layoutDirection,
                         )
-                        realPopupLayoutPosition = layoutPos
                         realLocalTransformOrigin = transformOrigin
 
                         val adjustedOffset = IntOffset(
@@ -343,11 +356,14 @@ fun ListPopupLayout(
                     popupContentSize = popupContentSize,
                     onPopupContentSizeChange = { popupContentSize = it },
                     fractionProgress = { fractionProgress.value },
-                    alphaProgress = { alphaProgress.value },
-                    popupLayoutPosition = realPopupLayoutPosition,
+                    originProgress = { originProgress.value },
                     localTransformOrigin = realLocalTransformOrigin,
                     liquidGlassBackdrop = liquidGlassBackdrop,
-                    revealLimitHeight = revealLimitHeight,
+                    collapseSize = collapseSize,
+                    collapseExtra = collapseExtra,
+                    // show 为 true 即进场；退场动画期间 show 已是 false 但仍在渲染，
+                    // 正好对应「淡出用晚一档」的时机。
+                    isEntering = show,
                     content = {
                         CompositionLocalProvider(LocalDismissState provides requestDismiss) {
                             content()

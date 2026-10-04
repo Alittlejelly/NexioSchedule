@@ -1,28 +1,28 @@
 package com.haooz.chedule.ui.basic
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentColors
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
@@ -41,6 +41,15 @@ private fun resolveSelectedText(entries: List<DropdownEntry>): String? {
     }
     return null
 }
+
+/**
+ * 收起态胶囊的默认额外补偿。
+ *
+ * 收起态尺寸 = 「选中文字 + 箭头图标」的实测宽高 + 这个补偿。
+ * 补偿只加在 lerp 的起点上，展开态终点仍是面板自然尺寸。
+ * 单点下调即可全局生效；个别页面需要不同值时用 `OverlayDropdownMenu(collapseExtra = ...)` 覆盖。
+ */
+private val DefaultCollapseExtra = DpSize(14.dp, 10.dp)
 
 /**
  * A [BasicComponent] wrapper that opens an [OverlayDropdownPopup] for a single [DropdownEntry].
@@ -66,6 +75,7 @@ fun OverlayDropdownMenu(
     collapseOnSelection: Boolean = true,
     onExpandedChange: ((Boolean) -> Unit)? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    collapseExtra: DpSize = DefaultCollapseExtra,
 ) {
     val entries = remember(entry) { listOf(entry) }
     OverlayDropdownMenu(
@@ -85,6 +95,7 @@ fun OverlayDropdownMenu(
         collapseOnSelection = collapseOnSelection,
         onExpandedChange = onExpandedChange,
         liquidGlassBackdrop = liquidGlassBackdrop,
+        collapseExtra = collapseExtra,
     )
 }
 
@@ -109,6 +120,7 @@ fun OverlayDropdownMenu(
     collapseOnSelection: Boolean = entries.size <= 1,
     onExpandedChange: ((Boolean) -> Unit)? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    collapseExtra: DpSize = DefaultCollapseExtra,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isDropdownExpanded = remember { mutableStateOf(false) }
@@ -125,37 +137,21 @@ fun OverlayDropdownMenu(
         }
     }
 
-    // 弹窗动画进度，用于驱动选项文字与箭头的淡入淡出
+    // 弹窗展开进度，用于驱动触发内容（选中文字与箭头）的淡入淡出
     val fractionState = remember { mutableStateOf(0f) }
-    val contentAlpha = remember { Animatable(1f) }
-    LaunchedEffect(Unit) {
-        var prevFraction = 0f
-        var contentVisible = true
-        var animJob: Job? = null
-        snapshotFlow { fractionState.value }
-            .collect { current ->
-                val isEntering = current >= prevFraction
-                prevFraction = current
-                // 出现时到 0.6 消失，关闭时到 0.5 出现
-                val newVisible = if (isEntering) current < 0.15f else current < 0.2f
-                if (newVisible != contentVisible) {
-                    contentVisible = newVisible
-                    animJob?.cancel()
-                    animJob = launch {
-                        contentAlpha.animateTo(
-                            targetValue = if (newVisible) 1f else 0f,
-                            animationSpec = tween(180)
-                        )
-                    }
-                }
-            }
+    // 触发区（选中文字 + 箭头）实测尺寸，作为弹窗收起态的起点尺寸
+    var triggerSize by remember { mutableStateOf(IntSize.Zero) }
+    // 图标淡出：打开时系数 2.5（更快淡完），关闭时 1.7（更早出现）——
+    // 与 LiquidGlassDropdownMenu 的触发图标完全一致
+    val triggerAlpha: () -> Float = remember {
+        {
+            val iconK = if (isDropdownExpanded.value) 2.5f else 1.7f
+            1f - (fractionState.value * iconK).coerceIn(0f, 1f)
+        }
     }
 
     val nonEmptyEntries = entries.filter { it.items.isNotEmpty() }
     val hasEntries = nonEmptyEntries.isNotEmpty()
-    // 总条目数超过 2 时，揭示裁剪到两行高度
-    val totalItemCount = nonEmptyEntries.sumOf { it.items.size }
-    val revealLimitHeight = if (totalItemCount > 2) (56.dp * 2) else 0.dp
     val actualEnabled = enabled && hasEntries
     val selectedText = resolveSelectedText(nonEmptyEntries)
     val actionColor = if (actualEnabled) {
@@ -186,21 +182,28 @@ fun OverlayDropdownMenu(
         summaryColor = summaryColor,
         startAction = startAction,
         endActions = {
-            if (selectedText != null) {
-                Text(
-                    text = selectedText,
-                    fontSize = 14.2.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .graphicsLayer { alpha = contentAlpha.value }
+            // 触发区（选中文字 + 箭头图标）实测尺寸 —— 弹窗收起态的起点尺寸。
+            // 用 Row 包一层并测量，弹窗从这块内容原位长成面板。
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.onSizeChanged { triggerSize = it },
+            ) {
+                if (selectedText != null) {
+                    Text(
+                        text = selectedText,
+                        fontSize = 14.2.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .graphicsLayer { alpha = triggerAlpha() }
+                    )
+                }
+                DropdownArrowEndAction(
+                    actionColor = actionColor,
+                    modifier = Modifier.graphicsLayer { alpha = triggerAlpha() }
                 )
             }
-            DropdownArrowEndAction(
-                actionColor = actionColor,
-                modifier = Modifier.graphicsLayer { alpha = contentAlpha.value }
-            )
             if (hasEntries) {
                 OverlayDropdownPopup(
                     entries = nonEmptyEntries,
@@ -212,8 +215,9 @@ fun OverlayDropdownMenu(
                     renderInRootScaffold = renderInRootScaffold,
                     collapseOnSelection = collapseOnSelection,
                     liquidGlassBackdrop = liquidGlassBackdrop,
-                    onFractionProgress = { fraction -> fractionState.value = fraction },
-                    revealLimitHeight = revealLimitHeight,
+                    onFractionProgress = { fractionState.value = it },
+                    collapseSize = triggerSize,
+                    collapseExtra = collapseExtra,
                 )
             }
         },
