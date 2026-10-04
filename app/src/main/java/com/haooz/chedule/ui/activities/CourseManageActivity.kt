@@ -1,5 +1,6 @@
 /** 课程管理页面 */
 package com.haooz.chedule.ui.activities
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
 import android.os.Bundle
@@ -197,15 +198,7 @@ class CourseManageActivity : ComponentActivity() {
                 if (isInFreeformWindow) {
                     20f * density.density  // 小窗默认圆角 20dp
                 } else {
-                    try {
-                        val windowManager = context.getSystemService(WINDOW_SERVICE) as android.view.WindowManager
-                        val windowMetrics = windowManager.currentWindowMetrics
-                        val insets = windowMetrics.windowInsets
-                        @SuppressLint("WrongConstant")
-                        insets.getRoundedCorner(0)?.radius?.toFloat() ?: 0f
-                    } catch (_: Exception) {
-                        0f
-                    }
+                    ApiCompat.windowCornerRadius(window)
                 }
             }
 

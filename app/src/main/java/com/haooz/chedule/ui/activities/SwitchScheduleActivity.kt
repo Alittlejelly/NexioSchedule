@@ -1,5 +1,6 @@
 /** 切换课程表页面 */
 package com.haooz.chedule.ui.activities
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
 import android.os.Bundle
@@ -614,12 +615,9 @@ fun SwitchScheduleScreen(
                             .fillMaxWidth()
                             .graphicsLayer {
                                 val r = bottombarBlur.value
-                                renderEffect = if (r > 0.01f) {
-                                    val px = r * density.density
-                                    android.graphics.RenderEffect.createBlurEffect(
-                                        px, px, android.graphics.Shader.TileMode.CLAMP
-                                    ).asComposeRenderEffect()
-                                } else null
+                                renderEffect = ApiCompat.blurRenderEffect(
+                                    if (r > 0.01f) r * density.density else 0f
+                                )
                             }
                             .graphicsLayer {
                                 transformOrigin = TransformOrigin(0.5f, 1f)

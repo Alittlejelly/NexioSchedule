@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.utils.ApiCompat
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -363,7 +364,6 @@ fun TodayScreen(
     val afternoonSections by settingsViewModel.afternoonSections.collectAsState()
     val eveningSections by settingsViewModel.eveningSections.collectAsState()
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
-    val todayShowWallpaper by settingsViewModel.todayShowWallpaper.collectAsState()
     val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
 
     val density = LocalDensity.current
@@ -457,7 +457,7 @@ fun TodayScreen(
     val cardBackdrop: Backdrop =
         if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
         else localCardBackdrop
-    val hasWallpaper = todayShowWallpaper && wallpaperBitmap != null
+    val hasWallpaper = wallpaperBitmap != null
     // 默认 15% 锚定当前观感（课程卡 0.45 / 格言卡 0.6），其余按百分比线性映射到 1
     val p = cardSurfaceAlpha.coerceIn(0f, 1f)
     fun anchorOpacity(anchor: Float): Float = if (p <= 0.15f) {
@@ -477,7 +477,7 @@ fun TodayScreen(
     Scaffold(
         topBar = {},
         // 共享壁纸时本页必须透明，否则会盖住主 pager 后面的壁纸层
-        containerColor = if (useSharedWallpaper && todayShowWallpaper && wallpaperBitmap != null) {
+        containerColor = if (useSharedWallpaper && wallpaperBitmap != null) {
             Color.Transparent
         } else {
             MiuixTheme.colorScheme.surface
@@ -488,7 +488,7 @@ fun TodayScreen(
                 .fillMaxSize()
                 .layerBackdrop(backdrop)
         ) {
-            if (todayShowWallpaper && wallpaperBitmap != null) {
+            if (wallpaperBitmap != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -512,14 +512,7 @@ fun TodayScreen(
                         )
                     } else null
                     val todayWallpaperBlurEffect = remember(wallpaperBlur) {
-                        if (wallpaperBlur) {
-                            val blurRadiusPx = 24f * density.density
-                            android.graphics.RenderEffect.createBlurEffect(
-                                blurRadiusPx,
-                                blurRadiusPx,
-                                android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
-                        } else null
+                        ApiCompat.blurRenderEffect(24f * density.density)
                     }
                     androidx.compose.foundation.Image(
                         bitmap = wallpaperBitmap.asImageBitmap(),

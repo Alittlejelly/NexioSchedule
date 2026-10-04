@@ -1,4 +1,5 @@
 package com.haooz.chedule.reminder
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
 import android.app.AlarmManager
@@ -341,7 +342,7 @@ object CourseReminderHelper {
         triggerAt: Long,
         pendingIntent: PendingIntent
     ) {
-        if (alarmManager.canScheduleExactAlarms()) {
+        if (ApiCompat.canScheduleExactAlarms(alarmManager)) {
             try {
                 alarmManager.setAlarmClock(
                     AlarmManager.AlarmClockInfo(triggerAt, null),
@@ -367,7 +368,7 @@ object CourseReminderHelper {
         triggerAt: Long,
         pendingIntent: PendingIntent
     ) {
-        if (alarmManager.canScheduleExactAlarms()) {
+        if (ApiCompat.canScheduleExactAlarms(alarmManager)) {
             try {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,

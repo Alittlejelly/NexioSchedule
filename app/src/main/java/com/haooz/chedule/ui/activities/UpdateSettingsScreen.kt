@@ -70,34 +70,11 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.io.File
 import androidx.compose.ui.graphics.Color as ComposeColor
 
-private data class GiteeRelease(
-    val tagName: String,
-    val name: String,
-    val body: String,
-    val htmlUrl: String,
-    val apkUrl: String,
-    val createdAt: String,
-    /** Release 资产下发的 SHA-256；拿不到时为 null，退化为解析级校验 */
-    val apkSha256: String? = null,
-    val apkSize: Long? = null
-)
-
 private fun checkForUpdate(
     context: Context,
     source: String = "gitee",
     channel: String = "stable"
-): Pair<Boolean, GiteeRelease?> {
-    val (hasUpdate, release) = UpdateChecker.checkForUpdate(context, source, channel)
-    return Pair(
-        hasUpdate,
-        release?.let {
-            GiteeRelease(
-                it.tagName, it.name, it.body, it.htmlUrl, it.apkUrl, it.createdAt,
-                it.apkSha256, it.apkSize
-            )
-        }
-    )
-}
+): Pair<Boolean, UpdateChecker.GiteeRelease?> = UpdateChecker.checkForUpdate(context, source, channel)
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -148,7 +125,7 @@ fun UpdateSettingsScreen(
         val savedBody = prefs.getString("latest_body", null)
         val savedDate = prefs.getString("latest_date", null)
         mutableStateOf(
-            if (savedUrl != null && savedTag != null) GiteeRelease(
+            if (savedUrl != null && savedTag != null) UpdateChecker.GiteeRelease(
                 savedTag,
                 savedName ?: "",
                 savedBody ?: "",
@@ -165,6 +142,8 @@ fun UpdateSettingsScreen(
 
     var showDownloadDialog by remember { mutableStateOf(false) }
     var isDownloading by remember { mutableStateOf(false) }
+    /** 缓存里的下载地址不可用，正在回源重新解析 */
+    var isResolvingApk by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadComplete by remember { mutableStateOf(false) }
     var isInstalling by remember { mutableStateOf(false) }
@@ -188,21 +167,22 @@ fun UpdateSettingsScreen(
                         .putBoolean("has_update", update)
                 }
                 if (update && release != null) {
-                    prefs.edit {
-                        putString("latest_url", release.htmlUrl)
-                            .putString("latest_apk_url", release.apkUrl)
-                            .putString("latest_tag", release.tagName)
-                            .putString("latest_name", release.name)
-                            .putString("latest_body", release.body)
-                            .putString("latest_date", release.createdAt)
-                    }
+                    UpdateChecker.persistRelease(context, release)
+                    UpdateChecker.rememberApkDigest(context, release.tagName, release.apkSha256, release.apkSize)
                 }
             }
         }
     }
 
-    // 切换更新通道时清除缓存，下次自动检查重新拉取
+    // 切换更新通道时清除缓存，下次自动检查重新拉取。
+    // 注意：LaunchedEffect 在**首次组合时也会执行**，原来无差别清缓存，
+    // 导致「每次打开本页」都把 has_update / latest_apk_url 等抹掉——
+    // 弹窗那边读到空的 latest_apk_url 就再也点不出下载，而本页重新检查又能下。
+    // 因此只在通道真的发生变化时才清。
+    var cachedChannel by remember { mutableStateOf(updateChannel) }
     LaunchedEffect(updateChannel) {
+        if (updateChannel == cachedChannel) return@LaunchedEffect
+        cachedChannel = updateChannel
         hasUpdate = false
         latestRelease = null
         prefs.edit {
@@ -333,6 +313,7 @@ fun UpdateSettingsScreen(
                                             downloadComplete = valid
                                             downloadProgress = if (valid) 1f else 0f
                                             showDownloadDialog = true
+                                            isResolvingApk = false
                                             isInstalling = false
                                         }
                                     } else if (!isChecking) {
@@ -355,14 +336,7 @@ fun UpdateSettingsScreen(
                                                     )
                                             }
                                             if (update && release != null) {
-                                                prefs.edit {
-                                                    putString("latest_url", release.htmlUrl)
-                                                        .putString("latest_apk_url", release.apkUrl)
-                                                        .putString("latest_tag", release.tagName)
-                                                        .putString("latest_name", release.name)
-                                                        .putString("latest_body", release.body)
-                                                        .putString("latest_date", release.createdAt)
-                                                }
+                                                UpdateChecker.persistRelease(context, release)
                                                 val tag = release.tagName
                                                 UpdateChecker.rememberApkDigest(context, tag, release.apkSha256, release.apkSize)
                                                 // 校验需解析 APK，放 IO 线程
@@ -373,6 +347,7 @@ fun UpdateSettingsScreen(
                                                 downloadComplete = valid
                                                 downloadProgress = if (valid) 1f else 0f
                                                 showDownloadDialog = true
+                                                isResolvingApk = false
                                                 isInstalling = false
                                             } else if (!update) {
                                                 if (release == null) {
@@ -499,6 +474,7 @@ fun UpdateSettingsScreen(
                 title = when {
                     isInstalling -> "安装中"
                     downloadComplete -> "下载完成"
+                    isResolvingApk -> "正在获取下载地址"
                     isDownloading -> "正在下载"
                     else -> "发现新版本"
                 },
@@ -526,6 +502,14 @@ fun UpdateSettingsScreen(
                     if (isInstalling) {
                         Spacer(modifier = Modifier.height(8.dp))
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else if (isResolvingApk) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "正在获取下载地址...",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        )
                     } else if (isDownloading) {
                         LinearProgressIndicator(
                             progress = downloadProgress,
@@ -554,6 +538,7 @@ fun UpdateSettingsScreen(
                                 downloadComplete = false
                                 downloadProgress = 0f
                                 isDownloading = false
+                                isResolvingApk = false
                                 isInstalling = false
                             }, modifier = Modifier.weight(1f)
                         )
@@ -590,17 +575,38 @@ fun UpdateSettingsScreen(
                                 modifier = Modifier.weight(1f),
                                 onClick = {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    isDownloading = true; downloadProgress = 0f; downloadComplete =
-                                    false
-                                    val tag = latestRelease?.tagName ?: return@Button
-                                    val apkUrl = latestRelease?.apkUrl
-                                    if (apkUrl.isNullOrBlank()) {
-                                        Toast.makeText(context, "未找到下载链接", Toast.LENGTH_SHORT).show()
-                                        isDownloading = false
+                                    val tag = latestRelease?.tagName
+                                    if (tag.isNullOrBlank()) {
+                                        Toast.makeText(context, "未找到版本信息", Toast.LENGTH_SHORT).show()
                                         showDownloadDialog = false
                                         return@Button
                                     }
+                                    isDownloading = true
+                                    isResolvingApk = true
+                                    downloadProgress = 0f
+                                    downloadComplete = false
                                     coroutineScope.launch {
+                                        // 与启动弹窗走同一套解析逻辑：缓存为空时回源重查，
+                                        // 避免本页能下、弹窗却提示「未找到下载链接」
+                                        val apkUrl = withContext(Dispatchers.IO) {
+                                            UpdateChecker.resolveApkUrl(
+                                                context,
+                                                tag,
+                                                effectiveDownloadSource,
+                                                updateChannel
+                                            )
+                                        }
+                                        isResolvingApk = false
+                                        if (apkUrl.isNullOrBlank()) {
+                                            isDownloading = false
+                                            Toast.makeText(
+                                                context,
+                                                "获取下载地址失败，请稍后重试",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            showDownloadDialog = false
+                                            return@launch
+                                        }
                                         try {
                                             val file = UpdateInstaller.downloadApk(context, apkUrl, tag) { p ->
                                                 downloadProgress = p
@@ -634,7 +640,7 @@ fun UpdateSettingsScreen(
                                 enabled = false,
                                 onClick = {}) {
                                 Text(
-                                    text = "正在下载",
+                                    text = if (isResolvingApk) "获取链接" else "正在下载",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = if (isAppDarkTheme()) ComposeColor.White else ComposeColor.Black

@@ -1,5 +1,6 @@
 /** 课程时间设置页面 */
 package com.haooz.chedule.ui.activities
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -113,19 +114,16 @@ class CourseTimeSettingsActivity : ComponentActivity() {
 
             // 屏幕尺寸与圆角
             val density = LocalDensity.current
-            val windowManager = remember { getSystemService(android.view.WindowManager::class.java) }
-            val windowMetrics = remember(isInFreeformWindow) { windowManager.currentWindowMetrics }
-            val screenWidth = remember(isInFreeformWindow) { windowMetrics.bounds.width().toFloat() }
-            val screenHeight = remember(isInFreeformWindow) { windowMetrics.bounds.height().toFloat() }
-            @SuppressLint("WrongConstant")
+            val windowSize = remember(isInFreeformWindow) {
+                ApiCompat.currentWindowSize(this@CourseTimeSettingsActivity)
+            }
+            val screenWidth = windowSize.width.toFloat()
+            val screenHeight = windowSize.height.toFloat()
             val screenCornerRadius = remember(isInFreeformWindow) {
                 if (isInFreeformWindow) {
                     20f * density.density
                 } else {
-                    try {
-                        @SuppressLint("WrongConstant")
-                        windowMetrics.windowInsets.getRoundedCorner(0)?.radius?.toFloat() ?: 0f
-                    } catch (_: Exception) { 0f }
+                    ApiCompat.windowCornerRadius(window)
                 }
             }
 
@@ -143,17 +141,9 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                 Box(modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        // 使用 renderEffect 模糊，避免动画时重组
+                        // 使用 renderEffect 模糊，避免动画时重组（API 31 以下不模糊）
                         val blurRadiusPx = managePageBlurRadius.value * this@graphicsLayer.density
-                        renderEffect = if (blurRadiusPx > 0f) {
-                            android.graphics.RenderEffect.createBlurEffect(
-                                blurRadiusPx,
-                                blurRadiusPx,
-                                android.graphics.Shader.TileMode.CLAMP
-                            ).asComposeRenderEffect()
-                        } else {
-                            null
-                        }
+                        renderEffect = ApiCompat.blurRenderEffect(blurRadiusPx)
                     }
                     .background(MiuixTheme.colorScheme.surface)
                 ) {

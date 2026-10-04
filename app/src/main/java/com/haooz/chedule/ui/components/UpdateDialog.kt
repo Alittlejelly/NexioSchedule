@@ -63,10 +63,20 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
     var hasDownloadedApk by remember { mutableStateOf(false) }
 
     var isDownloading by remember { mutableStateOf(false) }
+    /** 缓存里的下载地址不可用，正在回源重新解析 */
+    var isResolvingUrl by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadComplete by remember { mutableStateOf(false) }
     var isInstalling by remember { mutableStateOf(false) }
     var downloadedFile by remember { mutableStateOf<File?>(null) }
+
+    fun updateChannel(): String = updatePrefs.getString("update_channel", "stable") ?: "stable"
+
+    fun downloadSource(): String {
+        val channel = updateChannel()
+        return if (channel == "beta") "gitee"
+        else (updatePrefs.getString("download_source", "gitee") ?: "gitee")
+    }
 
     LaunchedEffect(Unit) {
         val autoCheck = updatePrefs.getBoolean("auto_check_update", true)
@@ -78,12 +88,11 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
         val lastCheckDate = updatePrefs.getString("last_check_date", "") ?: ""
 
         if (lastCheckDate != today) {
-            val updateChannel = updatePrefs.getString("update_channel", "stable") ?: "stable"
-            val downloadSource = if (updateChannel == "beta") "gitee" else
-                (updatePrefs.getString("download_source", "gitee") ?: "gitee")
+            val channel = updateChannel()
+            val source = downloadSource()
             val (hasUpdate, release) = withContext(Dispatchers.IO) {
                 try {
-                    UpdateChecker.checkForUpdate(context, downloadSource, updateChannel)
+                    UpdateChecker.checkForUpdate(context, source, channel)
                 } catch (e: Exception) {
                     Log.e("UpdateDialog", "检查更新失败", e)
                     Pair(false, null)
@@ -95,14 +104,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             }
 
             if (hasUpdate && release != null) {
-                updatePrefs.edit {
-                    putString("latest_url", release.htmlUrl)
-                        .putString("latest_apk_url", release.apkUrl)
-                        .putString("latest_tag", release.tagName)
-                        .putString("latest_name", release.name)
-                        .putString("latest_body", release.body)
-                        .putString("latest_date", release.createdAt)
-                }
+                UpdateChecker.persistRelease(context, release)
                 UpdateChecker.rememberApkDigest(context, release.tagName, release.apkSha256, release.apkSize)
                 UpdateChecker.cleanOldApks(context, release.tagName)
             }
@@ -145,15 +147,31 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
 
     fun startDownload() {
         val tag = updateTagName
-        val apkUrl = updatePrefs.getString("latest_apk_url", "") ?: ""
-        if (tag.isBlank() || apkUrl.isBlank()) {
-            android.widget.Toast.makeText(context, "未找到下载链接", android.widget.Toast.LENGTH_SHORT).show()
+        if (tag.isBlank()) {
+            android.widget.Toast.makeText(context, "未找到版本信息", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         isDownloading = true
+        isResolvingUrl = true
         downloadProgress = 0f
         downloadComplete = false
         coroutineScope.launch {
+            // 当天缓存里可能没有下载地址（发版时 release 先于 APK 资产创建），
+            // 这里不直接放弃：resolveApkUrl 会在缓存为空时回源重查并回写缓存。
+            // 否则弹窗会一直报「未找到下载链接」，只有进设置页重新检查才能下。
+            val apkUrl = withContext(Dispatchers.IO) {
+                UpdateChecker.resolveApkUrl(context, tag, downloadSource(), updateChannel())
+            }
+            isResolvingUrl = false
+            if (apkUrl.isNullOrBlank()) {
+                isDownloading = false
+                android.widget.Toast.makeText(
+                    context,
+                    "获取下载地址失败，请到「设置 - 应用更新」中重试",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
             try {
                 val file = UpdateInstaller.downloadApk(context, apkUrl, tag) { p ->
                     downloadProgress = p
@@ -189,6 +207,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
 
     val primaryLabel = when {
         isInstalling -> "安装中"
+        isResolvingUrl -> "获取链接"
         isDownloading -> "正在下载"
         downloadComplete || hasDownloadedApk -> "安装"
         else -> "更新"
@@ -197,13 +216,13 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
     OverlayDialog(
         title = when {
             isInstalling -> "安装中"
+            isResolvingUrl -> "正在获取链接"
             isDownloading -> "正在下载"
             downloadComplete -> "下载完成"
             else -> "发现新版本"
         },
         summary = when {
             isInstalling -> "正在安装应用，请稍候..."
-            isDownloading -> "最新版本: $updateTagName"
             else -> "最新版本: $updateTagName"
         },
         show = showUpdateDialog,
@@ -231,16 +250,27 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
                 )
             }
             if (isDownloading) {
-                LinearProgressIndicator(
-                    progress = downloadProgress,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${(downloadProgress * 100).toInt()}%",
-                    fontSize = 14.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
-                )
+                if (isResolvingUrl) {
+                    // 回源解析地址时进度未知，用不确定态进度条
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "正在获取下载地址...",
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        progress = downloadProgress,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "${(downloadProgress * 100).toInt()}%",
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                    )
+                }
             } else if (isInstalling) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

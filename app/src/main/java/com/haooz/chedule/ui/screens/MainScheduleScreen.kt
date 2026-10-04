@@ -1,4 +1,5 @@
 package com.haooz.chedule.ui.screens
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
 import android.widget.Toast
@@ -749,14 +750,7 @@ fun MainScheduleScreen(
                 }
                 val imageBitmap = remember(wallpaperBitmap) { wallpaperBitmap.asImageBitmap() }
                 val wallpaperBlurEffect = remember(wallpaperBlur) {
-                    if (wallpaperBlur) {
-                        val blurRadiusPx = 12f * density.density
-                        android.graphics.RenderEffect.createBlurEffect(
-                            blurRadiusPx,
-                            blurRadiusPx,
-                            android.graphics.Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    } else null
+                    ApiCompat.blurRenderEffect(12f * density.density)
                 }
                 androidx.compose.foundation.Image(
                     bitmap = imageBitmap,

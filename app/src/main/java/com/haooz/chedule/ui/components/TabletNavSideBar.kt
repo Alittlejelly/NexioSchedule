@@ -1,4 +1,5 @@
 package com.haooz.chedule.ui.components
+import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.app.Activity
 import android.content.Context
@@ -373,14 +374,9 @@ private fun rememberTabletNavMaskCorner(): Dp {
     val context = LocalContext.current
     val density = LocalDensity.current
     val screenRadius = remember(context, density) {
-        try {
-            val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val px = wm.currentWindowMetrics.windowInsets
-                .getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius ?: 0
-            with(density) { px.toDp() }
-        } catch (_: Exception) {
-            0.dp
-        }
+        val activity = context as? android.app.Activity
+        val px = activity?.let { ApiCompat.windowCornerRadius(it.window) } ?: 0f
+        with(density) { px.toDp() }
     }
     val resolved = if (screenRadius > 0.dp) screenRadius else 28.dp
     return (resolved - 10.dp).coerceAtLeast(0.dp)

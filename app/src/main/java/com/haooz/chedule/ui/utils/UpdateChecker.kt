@@ -27,6 +27,7 @@ internal object UpdateChecker {
 
     private const val PREF_UPDATE = "update_settings"
     private const val KEY_LATEST_TAG = "latest_tag"
+    private const val KEY_LATEST_APK_URL = "latest_apk_url"
     private const val KEY_SHA_PREFIX = "apk_sha256_"
     private const val KEY_SIZE_PREFIX = "apk_size_"
     private const val APK_PREFIX = "update-"
@@ -176,6 +177,68 @@ internal object UpdateChecker {
         }
     }
 
+    /**
+     * 把一次检查到的 release 落到 update_settings 缓存（弹窗与设置页共用同一份）。
+     *
+     * 这里**原样缓存** apkUrl，即使它为空：release 先创建、APK 资产后上传时，
+     * 当天缓存下来的会是空串。此时不写缓存反而会让弹窗拿到的是别的 tag，
+     * 那比空串更危险（会把别的版本下到当前 tag 的文件名下）。
+     * 空值由 [resolveApkUrl] 在下载时回源补齐。
+     */
+    fun persistRelease(context: Context, release: GiteeRelease) {
+        context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE).edit {
+            putString("latest_url", release.htmlUrl)
+            putString(KEY_LATEST_APK_URL, release.apkUrl)
+            putString(KEY_LATEST_TAG, release.tagName)
+            putString("latest_name", release.name)
+            putString("latest_body", release.body)
+            putString("latest_date", release.createdAt)
+        }
+        if (release.apkUrl.isBlank()) {
+            Log.w(TAG, "release ${release.tagName} 未下发 APK 资产，下载时回源重查")
+        }
+    }
+
+    /**
+     * 解析 [tag] 对应的 APK 下载地址，解析不到返回 null。
+     *
+     * 缓存优先，但**不接受缓存里的空值**。`last_check_date` 会把一次失败的检查
+     * 缓存一整天，若 release 当时还没挂上 APK 资产，缓存里就是空串；
+     * 弹窗直接放弃的话会一直报「未找到下载链接」，而进「设置 - 应用更新」
+     * 重新检查反而能下——两条路径行为不一致。
+     *
+     * 缓存不可用时回源重查（两种通道各试一次，因为 tag 可能来自另一通道），
+     * 命中即回写缓存，让后续进入设置页时也拿到同一个地址。
+     *
+     * 缓存里的 tag 与 [tag] 不一致时**不复用**那条链接，否则会把别的版本
+     * 下到 [tag] 的文件名下。
+     *
+     * 需在 IO 线程调用。
+     */
+    fun resolveApkUrl(
+        context: Context,
+        tag: String,
+        source: String,
+        channel: String,
+    ): String? {
+        if (tag.isBlank()) return null
+        val prefs = context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
+        val cachedTag = prefs.getString(KEY_LATEST_TAG, null)
+        val cachedUrl = prefs.getString(KEY_LATEST_APK_URL, null)?.takeIf { it.isNotBlank() }
+        if (cachedUrl != null && cachedTag == tag) return cachedUrl
+
+        val channels = if (channel == "beta") listOf("beta", "stable") else listOf(channel, "beta")
+        for (ch in channels.distinct()) {
+            val release = checkForUpdate(context, source, ch).second ?: continue
+            if (release.tagName != tag || release.apkUrl.isBlank()) continue
+            persistRelease(context, release)
+            Log.d(TAG, "回源解析到下载地址: ${release.tagName} channel=$ch source=$source")
+            return release.apkUrl
+        }
+        Log.w(TAG, "未解析到 $tag 的下载地址（缓存与回源均失败）source=$source")
+        return null
+    }
+
     /** 当前待安装目标 tag；无则 null */
     fun currentKeepTag(context: Context): String? {
         return context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
@@ -285,9 +348,10 @@ internal object UpdateChecker {
             return ApkCheck(false, "签名与已安装应用不一致")
         }
 
-        val installedCode = installed?.longVersionCode ?: -1L
-        if (installedCode >= 0L && archive.longVersionCode <= installedCode) {
-            return ApkCheck(false, "安装包版本(${archive.longVersionCode})不高于当前($installedCode)")
+        val installedCode = installed?.let { ApiCompat.longVersionCode(it) } ?: -1L
+        val archiveCode = ApiCompat.longVersionCode(archive)
+        if (installedCode >= 0L && archiveCode <= installedCode) {
+            return ApkCheck(false, "安装包版本($archiveCode)不高于当前($installedCode)")
         }
 
         expectedSha256?.takeIf { it.isNotBlank() }?.let { want ->
@@ -318,11 +382,16 @@ internal object UpdateChecker {
     }
 
     private fun signingCerts(info: PackageInfo?): List<String>? {
-        val signingInfo = info?.signingInfo ?: return null
-        val signatures: Array<Signature>? = if (signingInfo.hasMultipleSigners()) {
-            signingInfo.apkContentsSigners
+        val signatures: Array<Signature>? = if (ApiCompat.isSigningInfoAvailable) {
+            val signingInfo = info?.signingInfo ?: return null
+            if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+            } else {
+                signingInfo.signingCertificateHistory
+            }
         } else {
-            signingInfo.signingCertificateHistory
+            @Suppress("DEPRECATION")
+            info?.signatures
         }
         return signatures
             ?.map { sig -> sig.toByteArray().toHexString() }

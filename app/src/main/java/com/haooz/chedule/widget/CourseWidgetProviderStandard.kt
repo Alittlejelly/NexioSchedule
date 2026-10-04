@@ -336,15 +336,15 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
             views.setViewPadding(id, px(start), px(top), px(end), px(bottom))
         }
         fun margin(id: Int, type: Int, dp: Float) {
-            views.setViewLayoutMargin(id, type, dp * scale, unit)
+            views.setLayoutMarginCompat(id, type, dp * scale, unit)
         }
 
         padding(R.id.widget_container, 11f, 9f, 11f, 3f)
         margin(R.id.widget_header, RemoteViews.MARGIN_START, 4f)
         margin(R.id.widget_header, RemoteViews.MARGIN_END, 4f)
         margin(R.id.widget_header, RemoteViews.MARGIN_BOTTOM, 8f)
-        views.setViewLayoutWidth(R.id.widget_header_icon, 16f * scale, unit)
-        views.setViewLayoutHeight(R.id.widget_header_icon, 16f * scale, unit)
+        views.setLayoutWidthCompat(R.id.widget_header_icon, 16f * scale, unit)
+        views.setLayoutHeightCompat(R.id.widget_header_icon, 16f * scale, unit)
         margin(R.id.widget_header_icon, RemoteViews.MARGIN_END, 6f)
 
         cardIds.indices.forEach { index ->
@@ -352,7 +352,7 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
             padding(card, 12f, 4f, 12f, 4f)
             margin(card, RemoteViews.MARGIN_BOTTOM, 8f)
             margin(infoIds[index], RemoteViews.MARGIN_TOP, 2f)
-            views.setViewLayoutWidth(colorIds[index], 4f * scale, unit)
+            views.setLayoutWidthCompat(colorIds[index], 4f * scale, unit)
             margin(colorIds[index], RemoteViews.MARGIN_TOP, 6f)
             margin(colorIds[index], RemoteViews.MARGIN_BOTTOM, 6f)
         }

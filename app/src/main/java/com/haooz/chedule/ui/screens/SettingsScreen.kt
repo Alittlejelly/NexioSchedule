@@ -113,32 +113,7 @@ internal fun getDaysInMonth(year: Int, month: Int): Int {
 }
 
 // 顶栏折叠期间会逐帧重组，提到顶层避免组合期每帧新建 Set
-// 含二级入口 + 从该入口打开的三级页：栈上任一命中即压暗，与三级联动
-private val ScheduleImportActivities = setOf(
-    "ScheduleImportActivity",
-    "BackupAndMigrationActivity",
-    "AiImportActivity",
-    "EducationalImportActivity",
-)
-
-private val ScheduleExportActivities = setOf(
-    "ScheduleExportActivity",
-    "BackupAndMigrationActivity",
-)
-
-private val ScheduleBackupActivities = setOf(
-    "ScheduleBackupActivity",
-    "BackupAndMigrationActivity",
-    "LocalBackupActivity",
-    "WebDavSettingsActivity",
-)
-
-// 同 About 系页面
-private val AboutActivities = setOf(
-    "AboutActivity",
-    "AppreciateAuthorActivity",
-    "ChangelogActivity",
-)
+// 说明：设置项的「二级页打开时压暗」只在平板布局需要，手机端不再追踪二级 Activity 栈。
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -153,8 +128,6 @@ fun SettingsScreen(
     navBarStyle: String = "standard",
     onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
-    /** 当前打开的二级/三级 Activity 类名集合，用于设置项压暗与导航栈联动 */
-    activeSecondaryActivities: Set<String> = emptySet(),
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
@@ -356,7 +329,6 @@ fun SettingsScreen(
                             ArrowPreference(
                                 title = "课表节数与时间",
                                 summary = "管理不同课表的节数与课程时间",
-                                holdDownState = "CourseTimeSettingsActivity" in activeSecondaryActivities,
                                 onClick = {
                                     FeatureLog.timeConfig("open")
                                     val intent =
@@ -383,7 +355,6 @@ fun SettingsScreen(
                                 ArrowPreference(
                                     title = "课程提醒",
                                     summary = "课前提醒、次日课程提醒",
-                                    holdDownState = "CourseReminderActivity" in activeSecondaryActivities,
                                     onClick = {
                                         FeatureLog.reminder("open")
                                         val intent = Intent(context, CourseReminderActivity::class.java)
@@ -392,7 +363,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "节假日与调休",
-                                    holdDownState = "HolidaySettingsActivity" in activeSecondaryActivities,
                                     onClick = {
                                         FeatureLog.holiday("open")
                                         context.startActivity(Intent(context, HolidaySettingsActivity::class.java))
@@ -400,7 +370,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "桌面小部件",
-                                    holdDownState = "WidgetIntroActivity" in activeSecondaryActivities,
                                     onClick = {
                                         FeatureLog.widget("open")
                                         val intent = Intent(context, WidgetIntroActivity::class.java)
@@ -410,6 +379,7 @@ fun SettingsScreen(
                                 ArrowPreference(
                                     title = "排班模式",
                                     summary = "同时对比多个课表的排班情况",
+                                    holdDownState = showShiftModeConfirmDialog,
                                     onClick = { showShiftModeConfirmDialog = true }
                                 )
                             }
@@ -485,7 +455,6 @@ fun SettingsScreen(
                             ) {
                                 ArrowPreference(
                                     title = "课表导入",
-                                    holdDownState = ScheduleImportActivities.any { it in activeSecondaryActivities },
                                     onClick = {
                                         FeatureLog.import("open")
                                         context.startActivity(
@@ -495,7 +464,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "课表导出",
-                                    holdDownState = ScheduleExportActivities.any { it in activeSecondaryActivities },
                                     onClick = {
                                         FeatureLog.backup("open_export")
                                         context.startActivity(
@@ -505,7 +473,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "课表备份",
-                                    holdDownState = ScheduleBackupActivities.any { it in activeSecondaryActivities },
                                     onClick = {
                                         FeatureLog.backup("open_backup")
                                         context.startActivity(
@@ -533,6 +500,7 @@ fun SettingsScreen(
                                 ArrowPreference(
                                     title = "开启新学期",
                                     summary = "复用当前课表设置，创建空课程的新课表",
+                                    holdDownState = showNewSemesterDialog,
                                     onClick = {
                                         FeatureLog.t("设置", "new_semester_dialog")
                                         newSemesterName = ""
@@ -554,7 +522,6 @@ fun SettingsScreen(
                                     title = "应用偏好设置",
                                     // 只在偏好设置页仍在栈上时压暗；
                                     // 单独打开更新设置时不应连带压暗本项
-                                    holdDownState = "PreferenceSettingsActivity" in activeSecondaryActivities,
                                     onClick = {
                                         FeatureLog.preference("open")
                                         val intent = Intent(context, PreferenceSettingsActivity::class.java)
@@ -563,7 +530,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "更新设置",
-                                    holdDownState = "UpdateSettingsActivity" in activeSecondaryActivities,
                                     onClick = {
                                         FeatureLog.update("open")
                                         val intent = Intent(context, UpdateSettingsActivity::class.java)
@@ -572,7 +538,6 @@ fun SettingsScreen(
                                 )
                                 ArrowPreference(
                                     title = "关于应用",
-                                    holdDownState = AboutActivities.any { it in activeSecondaryActivities },
                                     onClick = {
                                         FeatureLog.about("open")
                                         val intent = Intent(context, AboutActivity::class.java)

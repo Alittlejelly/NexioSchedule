@@ -231,7 +231,7 @@ fun NativeMiuixTextField(
                                 setTextColor(textColor.toArgb())
                                 setHintTextColor(hintColor.toArgb())
                                 textSize = textStyle.fontSize.value
-                                typeface = Typeface.create(typeface, weight, false)
+                                applyWeightedTypeface(typeface, weight)
 
                                 inputType = InputType.TYPE_CLASS_TEXT
                                 imeOptions = EditorInfo.IME_ACTION_DONE
@@ -239,14 +239,10 @@ fun NativeMiuixTextField(
                                 background = null
                                 setPadding(0, 0, 0, 0)
 
-                                // 光标颜色
-                                textCursorDrawable?.setTint(themeColor.toArgb())
+                                // 光标与选择手柄颜色（API 29+，低版本保留系统默认样式）
+                                applySelectionHandlesTint(themeColor.toArgb())
                                 // 选中文本的背景高亮颜色
                                 highlightColor = themeColor.copy(alpha = 0.2f).toArgb()
-                                // 选择手柄颜色
-                                textSelectHandle?.setTint(themeColor.toArgb())
-                                textSelectHandleLeft?.setTint(themeColor.toArgb())
-                                textSelectHandleRight?.setTint(themeColor.toArgb())
 
 
 
@@ -455,7 +451,7 @@ fun NativeMiuixTextField(
                                 setTextColor(textColor.toArgb())
                                 setHintTextColor(hintColor.toArgb())
                                 textSize = textStyle.fontSize.value
-                                typeface = Typeface.create(typeface, weight, false)
+                                applyWeightedTypeface(typeface, weight)
 
                                 inputType = InputType.TYPE_CLASS_TEXT
                                 imeOptions = EditorInfo.IME_ACTION_DONE
@@ -463,11 +459,8 @@ fun NativeMiuixTextField(
                                 background = null
                                 setPadding(0, 0, 0, 0)
 
-                                textCursorDrawable?.setTint(themeColor.toArgb())
+                                applySelectionHandlesTint(themeColor.toArgb())
                                 highlightColor = themeColor.copy(alpha = 0.2f).toArgb()
-                                textSelectHandle?.setTint(themeColor.toArgb())
-                                textSelectHandleLeft?.setTint(themeColor.toArgb())
-                                textSelectHandleRight?.setTint(themeColor.toArgb())
 
                                 setOnFocusChangeListener { _, focused ->
                                     isFocused.value = focused

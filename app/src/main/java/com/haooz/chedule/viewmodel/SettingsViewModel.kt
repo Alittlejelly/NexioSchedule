@@ -118,9 +118,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _showNonCurrentWeek = MutableStateFlow(repository.getShowNonCurrentWeek())
     val showNonCurrentWeek: StateFlow<Boolean> = _showNonCurrentWeek.asStateFlow()
 
-    private val _todayShowWallpaper = MutableStateFlow(repository.getTodayShowWallpaper())
-    val todayShowWallpaper: StateFlow<Boolean> = _todayShowWallpaper.asStateFlow()
-
     private val _morningSections = MutableStateFlow(repository.getMorningSections())
     val morningSections: StateFlow<Int> = _morningSections.asStateFlow()
 
@@ -262,9 +259,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val newClassDndMode = repository.getClassDndMode()
         if (_classDndMode.value != newClassDndMode) _classDndMode.value = newClassDndMode
 
-        val newTodayShowWallpaper = repository.getTodayShowWallpaper()
-        if (_todayShowWallpaper.value != newTodayShowWallpaper) _todayShowWallpaper.value = newTodayShowWallpaper
-
         val newDefaultHomepage = repository.getDefaultHomepage()
         if (_defaultHomepage.value != newDefaultHomepage) _defaultHomepage.value = newDefaultHomepage
     }
@@ -277,11 +271,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setShowNonCurrentWeek(show: Boolean) {
         _showNonCurrentWeek.value = show
         repository.setShowNonCurrentWeek(show)
-    }
-
-    fun setTodayShowWallpaper(show: Boolean) {
-        _todayShowWallpaper.value = show
-        repository.setTodayShowWallpaper(show)
     }
 
     fun setDefaultHomepage(homepage: String) {

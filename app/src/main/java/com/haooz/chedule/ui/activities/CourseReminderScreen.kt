@@ -61,6 +61,7 @@ import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
 import com.haooz.chedule.ui.basic.collapsibleTopInset
 import com.haooz.chedule.ui.utils.overScrollVertical
+import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -192,7 +193,7 @@ fun CourseReminderScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-        canScheduleExactAlarms = alarmManager.canScheduleExactAlarms()
+        canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
         rlog("permission_exact_alarm_result", "granted=$canScheduleExactAlarms")
         if (canScheduleExactAlarms && masterEnabled) {
             CourseReminderHelper.startReminderService(context)
@@ -212,7 +213,7 @@ fun CourseReminderScreen(
             isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
             canPostPromoted = CourseReminderHelper.canPostPromotedNotifications(context)
             val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            canScheduleExactAlarms = alarmManager.canScheduleExactAlarms()
+            canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
             shizukuRunning = ShizukuManager.isShizukuRunning()
             shizukuAuthorized = ShizukuManager.checkSelfPermission()
             isIslandSupported = IslandNotificationHelper.isIslandSupported(context)
@@ -233,7 +234,7 @@ fun CourseReminderScreen(
             isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
             canPostPromoted = CourseReminderHelper.canPostPromotedNotifications(context)
             val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            canScheduleExactAlarms = alarmManager.canScheduleExactAlarms()
+            canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
             dndPermissionGranted = ClassDndHelper.isDndPermissionGranted(context)
             notificationGranted = context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS

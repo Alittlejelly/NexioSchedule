@@ -461,7 +461,8 @@ private class DrawBackdropNode(
                     lastSampleH != cardBufferSize.height
 
                 if (needsRecordSample) {
-                    recordLayer(
+                    // 拆除期节点可能已 detach，录不成功就不更新采样指纹，下帧自然重试。
+                    val recorded = recordLayer(
                         this@DrawBackdropNode,
                         layer,
                         size = cardBufferSize,
@@ -479,13 +480,15 @@ private class DrawBackdropNode(
                             canvas.restore()
                         }
                     )
-                    lastSampleSource = sharedBackdrop
-                    lastSampleVersion = sourceVersion
-                    lastSampleOffsetX = offset.x
-                    lastSampleOffsetY = offset.y
-                    lastSampleW = cardBufferSize.width
-                    lastSampleH = cardBufferSize.height
-                    lastSampleLayer = sharedLayerNonNull
+                    if (recorded) {
+                        lastSampleSource = sharedBackdrop
+                        lastSampleVersion = sourceVersion
+                        lastSampleOffsetX = offset.x
+                        lastSampleOffsetY = offset.y
+                        lastSampleW = cardBufferSize.width
+                        lastSampleH = cardBufferSize.height
+                        lastSampleLayer = sharedLayerNonNull
+                    }
                 }
             } else {
                 // ===== 原有模式：独立录制壁纸 =====
@@ -517,19 +520,22 @@ private class DrawBackdropNode(
                     lastSampleLayer !== layer
 
                 if (needsRecordSample) {
-                    recordLayer(
+                    // 拆除期节点可能已 detach，录不成功就不更新采样指纹，下帧自然重试。
+                    val recorded = recordLayer(
                         this@DrawBackdropNode,
                         layer,
                         size = cardBufferSize,
                         block = recordBackdropBlock
                     )
-                    lastSampleSource = backdrop
-                    lastSampleVersion = sourceVersion
-                    lastSampleOffsetX = sampleX
-                    lastSampleOffsetY = sampleY
-                    lastSampleW = cardBufferSize.width
-                    lastSampleH = cardBufferSize.height
-                    lastSampleLayer = layer
+                    if (recorded) {
+                        lastSampleSource = backdrop
+                        lastSampleVersion = sourceVersion
+                        lastSampleOffsetX = sampleX
+                        lastSampleOffsetY = sampleY
+                        lastSampleW = cardBufferSize.width
+                        lastSampleH = cardBufferSize.height
+                        lastSampleLayer = layer
+                    }
                 }
             }
 
@@ -597,6 +603,7 @@ private class DrawBackdropNode(
         onDrawFront?.invoke(this)
 
         exportedBackdrop?.graphicsLayer?.let { layer ->
+            // 导出层供下游 backdrop 采样；拆除期录不成功就跳过，不影响已画好的内容。
             recordLayer(this@DrawBackdropNode, layer) {
                 onDrawBehind?.invoke(this)
                 drawBackdropLayer()

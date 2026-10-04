@@ -97,7 +97,8 @@ fun Activity.applyThemeAwareSystemBars() {
 // 按显式深色值刷新状态栏；导航栏仍跟随应用设置
 fun Activity.applyThemeAwareSystemBars(isDark: Boolean) {
     window.decorView.post {
-        window.insetsController?.setSystemBarsAppearance(
+        ApiCompat.setSystemBarsAppearance(
+            window,
             if (isDark) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
             WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
         )
@@ -107,7 +108,8 @@ fun Activity.applyThemeAwareSystemBars(isDark: Boolean) {
 // 导航栏图标始终跟随 theme_mode，不随壁纸强制主题变化
 fun Activity.applyNavigationBarIsDark(isDark: Boolean) {
     window.decorView.post {
-        window.insetsController?.setSystemBarsAppearance(
+        ApiCompat.setSystemBarsAppearance(
+            window,
             if (isDark) 0 else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
             WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         )

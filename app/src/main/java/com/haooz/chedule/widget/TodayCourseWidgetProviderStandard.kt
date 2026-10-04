@@ -287,7 +287,7 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         // setViewPadding 的带单位重载是 API 37 才有的，这里统一用 px 版（API 1 起即可用）
         fun px(value: Float): Int = WidgetTextSizes.dpToPx(context, value * scale).toInt()
         fun margin(id: Int, type: Int, dp: Float) {
-            views.setViewLayoutMargin(id, type, dp * scale, unit)
+            views.setLayoutMarginCompat(id, type, dp * scale, unit)
         }
 
         views.setViewPadding(R.id.widget_today_container, px(10f), px(12f), px(10f), px(12f))
@@ -297,8 +297,8 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         views.setViewPadding(R.id.widget_course_name, px(4f), 0, 0, px(4f))
         margin(R.id.widget_course_name, RemoteViews.MARGIN_BOTTOM, 4f)
         dotIds.forEach { dot ->
-            views.setViewLayoutWidth(dot, 7f * scale, unit)
-            views.setViewLayoutHeight(dot, 7f * scale, unit)
+            views.setLayoutWidthCompat(dot, 7f * scale, unit)
+            views.setLayoutHeightCompat(dot, 7f * scale, unit)
         }
     }
 

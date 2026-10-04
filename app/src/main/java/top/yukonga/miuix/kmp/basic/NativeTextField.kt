@@ -60,7 +60,7 @@ fun NativeTextField(
 
                 // 设置字体粗细，默认 Medium
                 val weight = textStyle.fontWeight?.weight ?: FontWeight.Medium.weight
-                typeface = Typeface.create(typeface, weight, false)
+                applyWeightedTypeface(typeface, weight)
 
                 // 设置输入类型
                 inputType = InputType.TYPE_CLASS_TEXT
@@ -84,16 +84,11 @@ fun NativeTextField(
                 background = null
                 setPadding(0, 0, 0, 0)
 
-                // 设置光标颜色 (API 29+)
-                textCursorDrawable?.setTint(themeColor.toArgb())
+                // 设置光标/选择手柄颜色 (API 29+，低版本保留系统默认样式)
+                applySelectionHandlesTint(themeColor.toArgb())
 
                 // 设置选中文本的背景高亮颜色
                 highlightColor = themeColor.copy(alpha = 0.2f).toArgb()
-
-                // 设置长按选择手柄（水滴形）颜色 (API 29+)
-                textSelectHandle?.setTint(themeColor.toArgb())
-                textSelectHandleLeft?.setTint(themeColor.toArgb())
-                textSelectHandleRight?.setTint(themeColor.toArgb())
 
                 // 添加 TextWatcher
                 addTextChangedListener(textWatcher)

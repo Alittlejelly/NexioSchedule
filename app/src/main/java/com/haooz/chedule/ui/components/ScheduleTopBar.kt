@@ -82,6 +82,12 @@ internal fun ScheduleTopBar(
     onMoreSlotTop: (Float) -> Unit = {},
     // 上报顶栏滚动材质透明度，供「更多」控件收起态同步渐显渐隐
     onMoreMaterial: (Float) -> Unit = {},
+    /**
+     * 渐变遮罩色。共享顶栏槽里三根顶栏叠在一起平移淡入淡出，外层主题跟的是
+     * **当前 tab**（见 MainActivity 的 `forcedDark`），切页瞬间会变 —— 不显式锁色
+     * 就会在「课程表深色 → 设置页浅色」时遮罩整体跳浅。由调用方传入本页锁定的 surface。
+     */
+    gradientColorOverride: Color? = null,
 ) {
     if (!visible || liquidGlassBackdrop == null) return
 
@@ -113,6 +119,7 @@ internal fun ScheduleTopBar(
                 titleModifier = titleRailPadding,
                 modifier = Modifier.zIndex(1f),
                 gradientMaskHeight = CollapsedHeight + 110.dp,
+                gradientColorOverride = gradientColorOverride,
                 scrollBehavior = scrollBehavior,
                 // 平板左上角不放返回按钮
                 startAction = null,

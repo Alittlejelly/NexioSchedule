@@ -248,20 +248,11 @@ fun PreferenceSettingsScreen(
                     }
                 }
                 item {
-                    val todayShowWallpaper by settingsViewModel.todayShowWallpaper.collectAsState()
-
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-
-                            SwitchPreference(
-                                title = "今日页显示壁纸",
-                                summary = "开启后今日页显示课表页设置的壁纸",
-                                checked = todayShowWallpaper,
-                                onCheckedChange = { settingsViewModel.setTodayShowWallpaper(it) }
-                            )
                             val appMaterialEntry = DropdownEntry(
                                 items = com.haooz.chedule.ui.utils.AppMaterialSettings.entries
                                     .map { (value, label) ->

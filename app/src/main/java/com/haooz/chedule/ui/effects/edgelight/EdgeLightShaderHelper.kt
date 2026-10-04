@@ -6,6 +6,7 @@ package com.haooz.chedule.ui.effects.edgelight
 
 import android.annotation.SuppressLint
 import android.graphics.RuntimeShader
+import android.os.Build
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
@@ -140,10 +141,14 @@ internal fun RuntimeShader.toShaderBrush(): ShaderBrush {
 }
 
 internal fun isRuntimeShaderSupported(): Boolean {
+    // RuntimeShader（AGSL）需要 API 33。先用版本号快速判定，低版本不再走反射。
+    if (Build.VERSION.SDK_INT < 33) return false
     return try {
         Class.forName("android.graphics.RuntimeShader")
         true
     } catch (e: ClassNotFoundException) {
+        false
+    } catch (e: LinkageError) {
         false
     }
 }

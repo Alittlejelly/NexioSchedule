@@ -700,7 +700,7 @@ object CrashLogHelper {
         return buildString {
             appendLine("app=${context.packageName}")
             appendLine("versionName=${packageInfo?.versionName ?: "?"}")
-            appendLine("versionCode=${packageInfo?.longVersionCode ?: "?"}")
+            appendLine("versionCode=${packageInfo?.let { ApiCompat.longVersionCode(it) } ?: "?"}")
             appendLine("manufacturer=${Build.MANUFACTURER}")
             appendLine("brand=${Build.BRAND}")
             appendLine("model=${Build.MODEL}")

@@ -104,13 +104,16 @@ private class LayerBackdropNode(
             recordedH = h
             // 先录进图层。contentOnly 时上屏直接 blit 该图层，内容树只走一遍；
             // 否则 onDraw 可能多画背景，上屏仍 drawContent()（内容会走两遍，但保证像素一致）。
-            recordLayer(this@LayerBackdropNode, backdrop.graphicsLayer) {
+            // 拆除期节点可能已 detach，recordLayer 会返回 false，此时退回直绘内容。
+            val recorded = recordLayer(this@LayerBackdropNode, backdrop.graphicsLayer) {
                 backdrop.onDraw(this@draw)
             }
-            backdrop.contentVersion++
-            if (backdrop.contentOnlyCapture) {
-                drawLayer(backdrop.graphicsLayer)
-                return
+            if (recorded) {
+                backdrop.contentVersion++
+                if (backdrop.contentOnlyCapture) {
+                    drawLayer(backdrop.graphicsLayer)
+                    return
+                }
             }
         }
         drawContent()
