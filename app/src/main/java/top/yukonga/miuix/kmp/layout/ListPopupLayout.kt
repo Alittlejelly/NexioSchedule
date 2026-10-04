@@ -47,6 +47,7 @@ import top.yukonga.miuix.kmp.basic.rememberListPopupLayoutInfo
 import top.yukonga.miuix.kmp.basic.resolvePopupAnchors
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.anim.SinOutEasing
+import kotlin.math.roundToInt
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -65,6 +66,15 @@ private val BackCancelAnimSpec = tween<Float>(150)
 private val DimEnterAnimSpec = tween<Float>(durationMillis = 200, easing = SinOutEasing)
 private val DimExitAnimSpec = tween<Float>(durationMillis = 300, easing = SinOutEasing)
 private val LocalMinPopupHeight = 50.dp
+
+/**
+ * 弹窗玻璃盒为容纳 spring 过冲而额外撑出的余量（与 ListPopupContent 的 overshootRoom 一致）。
+ * placeable 会因此每边比真实面板大一份，定位时需扣掉。
+ */
+private val PopupOvershootRoom = 14.dp
+
+/** 弹窗外层为阴影预留的留白（与 ListPopupContent 的 shadowPadding 一致） */
+private val PopupShadowPadding = 24.dp
 
 private fun PopupPositionProvider.Align.resolve(layoutDirection: LayoutDirection): PopupPositionProvider.Align {
     if (layoutDirection == LayoutDirection.Ltr) return this
@@ -90,8 +100,8 @@ fun liquidDropdownPositionProvider(): PopupPositionProvider = object : PopupPosi
         popupMargin: IntRect,
         alignment: PopupPositionProvider.Align,
     ): PopupPositionResult {
-        val offsetXDelta = 102  //@ 3x density
-        val offsetYDelta = 102  //@ 3x density
+        val offsetXDelta = 24  //@ 3x density
+        val offsetYDelta = 18  //@ 3x density
 
         val offsetX = if (alignment.resolve(layoutDirection) == PopupPositionProvider.Align.End) {
             anchorBounds.right - popupContentSize.width - popupMargin.right + offsetXDelta
@@ -165,6 +175,7 @@ fun ListPopupLayout(
     onFractionProgress: ((Float) -> Unit)? = null,
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
+    collapseContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val fractionProgress = remember { Animatable(0f) }
@@ -296,6 +307,11 @@ fun ListPopupLayout(
                 }
         }
 
+        // 玻璃盒余量 + 外层阴影留白的总 chrome（每边一份）：
+        // maxHeight 和定位尺寸都按它扣减，两者必须一致，否则弹窗会整体偏移。
+        val chromePaddingPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+            (PopupShadowPadding + PopupOvershootRoom).toPx()
+        }
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -314,17 +330,27 @@ fun ListPopupLayout(
                         val windowBounds = layoutInfo.windowBounds
                         val popupMargin = layoutInfo.popupMargin
                         val minHeightPx = LocalMinPopupHeight.roundToPx()
+                        // 内容可用高度要扣掉两层 padding（外层 shadowPadding + 玻璃层 overshootRoom，
+                        // 每边各一份，共 2×），否则 maxHeight 会把面板内容压缩。
+                        val chromePadPx = (2 * chromePaddingPx).roundToInt()
                         val placeable = measurable.measure(
                             constraints.copy(
-                                maxHeight = maxHeight?.roundToPx()?.coerceAtLeast(minHeightPx)
-                                    ?: (windowBounds.height - popupMargin.top - popupMargin.bottom)
-                                        .coerceAtLeast(minHeightPx),
+                                maxHeight = (
+                                    maxHeight?.roundToPx()?.coerceAtLeast(minHeightPx)
+                                        ?: (windowBounds.height - popupMargin.top - popupMargin.bottom)
+                                            .coerceAtLeast(minHeightPx)
+                                    ).minus(chromePadPx).coerceAtLeast(minHeightPx),
                                 minHeight = if (minHeightPx <= constraints.maxHeight) minHeightPx else constraints.maxHeight,
                                 maxWidth = constraints.maxWidth,
                                 minWidth = minWidth.roundToPx().coerceAtMost(constraints.maxWidth),
                             ),
                         )
-                        val measuredSize = IntSize(placeable.width, placeable.height)
+                        // 定位尺寸也要扣掉**全部** chrome（外层 shadowPadding + 玻璃层 overshootRoom，
+                        // 每边各一份）：只扣一项会让弹窗整体偏移（每边差一个 shadowPadding）。
+                        val measuredSize = IntSize(
+                            (placeable.width - chromePadPx).coerceAtLeast(0),
+                            (placeable.height - chromePadPx).coerceAtLeast(0),
+                        )
 
                         val positionResult = popupPositionProvider.calculatePosition(
                             parentBounds,
@@ -342,9 +368,13 @@ fun ListPopupLayout(
                         )
                         realLocalTransformOrigin = transformOrigin
 
+                        // placeable 的左上角是 chrome（shadowPadding + overshootRoom）的**外沿**，
+                        // 比真实面板左上角偏左上 chromePaddingPx。摆位要把它推回去这么多，
+                        // 否则面板整体往右下偏一个 chrome。
+                        val chromeOffPx = chromePaddingPx.roundToInt()
                         val adjustedOffset = IntOffset(
-                            x = calculatedOffset.x - hostPositionInWindow.x.toInt(),
-                            y = calculatedOffset.y - hostPositionInWindow.y.toInt(),
+                            x = calculatedOffset.x - hostPositionInWindow.x.toInt() - chromeOffPx,
+                            y = calculatedOffset.y - hostPositionInWindow.y.toInt() - chromeOffPx,
                         )
 
                         layout(constraints.maxWidth, constraints.maxHeight) {
@@ -361,6 +391,7 @@ fun ListPopupLayout(
                     liquidGlassBackdrop = liquidGlassBackdrop,
                     collapseSize = collapseSize,
                     collapseExtra = collapseExtra,
+                    collapseContent = collapseContent,
                     // show 为 true 即进场；退场动画期间 show 已是 false 但仍在渲染，
                     // 正好对应「淡出用晚一档」的时机。
                     isEntering = show,

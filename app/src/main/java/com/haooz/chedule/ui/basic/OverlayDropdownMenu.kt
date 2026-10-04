@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.basic
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +41,40 @@ private fun resolveSelectedText(entries: List<DropdownEntry>): String? {
         }
     }
     return null
+}
+
+/**
+ * 触发区内容：当前选中的文字 + 右侧下拉箭头。
+ *
+ * 同一份内容渲染在两处，尺寸完全一致：
+ * - `BasicComponent` 的 endActions 里（弹窗外的静态行，同时用于实测收起态尺寸）
+ * - 弹窗内部的收起态（`collapseContent`，随玻璃盒长大淡出）
+ *
+ * 是 [RowScope] 扩展，因为 [DropdownArrowEndAction] 本身是 RowScope 扩展。
+ *
+ * @param alpha 整体透明度。弹窗外那份随 fraction 淡出；弹窗内那份由容器变换驱动。
+ */
+@Composable
+private fun RowScope.DropdownTriggerContent(
+    selectedText: String?,
+    actionColor: androidx.compose.ui.graphics.Color,
+    alpha: () -> Float,
+) {
+    if (selectedText != null) {
+        Text(
+            text = selectedText,
+            fontSize = 14.2.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            maxLines = 1,
+            modifier = Modifier
+                .padding(end = 8.dp)
+                .graphicsLayer { this.alpha = alpha() },
+        )
+    }
+    DropdownArrowEndAction(
+        actionColor = actionColor,
+        modifier = Modifier.graphicsLayer { this.alpha = alpha() },
+    )
 }
 
 /**
@@ -188,20 +223,10 @@ fun OverlayDropdownMenu(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.onSizeChanged { triggerSize = it },
             ) {
-                if (selectedText != null) {
-                    Text(
-                        text = selectedText,
-                        fontSize = 14.2.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .graphicsLayer { alpha = triggerAlpha() }
-                    )
-                }
-                DropdownArrowEndAction(
+                DropdownTriggerContent(
+                    selectedText = selectedText,
                     actionColor = actionColor,
-                    modifier = Modifier.graphicsLayer { alpha = triggerAlpha() }
+                    alpha = { triggerAlpha() },
                 )
             }
             if (hasEntries) {
@@ -218,6 +243,15 @@ fun OverlayDropdownMenu(
                     onFractionProgress = { fractionState.value = it },
                     collapseSize = triggerSize,
                     collapseExtra = collapseExtra,
+                    // 收起态显示的内容：同样是「选中文字 + 箭头」，
+                    // 弹窗从这块内容原位长成菜单。
+                    collapseContent = {
+                        DropdownTriggerContent(
+                            selectedText = selectedText,
+                            actionColor = actionColor,
+                            alpha = { 1f },
+                        )
+                    },
                 )
             }
         },

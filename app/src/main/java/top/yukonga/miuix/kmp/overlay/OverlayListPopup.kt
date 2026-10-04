@@ -53,6 +53,7 @@ fun OverlayListPopup(
     onFractionProgress: ((Float) -> Unit)? = null,
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
+    collapseContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     ListPopupLayout(
@@ -83,6 +84,7 @@ fun OverlayListPopup(
         onFractionProgress = onFractionProgress,
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
+        collapseContent = collapseContent,
         content = content,
     )
 }

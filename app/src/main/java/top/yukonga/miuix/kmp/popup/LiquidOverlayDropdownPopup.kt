@@ -54,6 +54,7 @@ fun OverlayDropdownPopup(
     onFractionProgress: ((Float) -> Unit)? = null,
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
+    collapseContent: (@Composable () -> Unit)? = null,
 ) {
     val entries = remember(entry) { listOf(entry) }
     OverlayDropdownPopup(
@@ -69,6 +70,7 @@ fun OverlayDropdownPopup(
         onFractionProgress = onFractionProgress,
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
+        collapseContent = collapseContent,
     )
 }
 
@@ -99,6 +101,7 @@ fun OverlayDropdownPopup(
     onFractionProgress: ((Float) -> Unit)? = null,
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
+    collapseContent: (@Composable () -> Unit)? = null,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val currentEntries by rememberUpdatedState(entries)
@@ -127,6 +130,7 @@ fun OverlayDropdownPopup(
         onFractionProgress = onFractionProgress,
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
+        collapseContent = collapseContent,
     ) {
         ListPopupColumn {
             DropdownEntriesPopupContent(
