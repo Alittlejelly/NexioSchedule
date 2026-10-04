@@ -397,6 +397,7 @@ fun CourseReminderScreen(
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                     },
+                                    holdDownState = showMinutesDialog,
                                     onClick = {
                                         rlog("preclass_minutes_dialog_open", "cur=${preClassReminderMinutes}min")
                                         tempMinutes = preClassReminderMinutes
@@ -439,6 +440,7 @@ fun CourseReminderScreen(
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                     },
+                                    holdDownState = showTimeDialog,
                                     onClick = {
                                         rlog("nextday_time_dialog_open") {
                                             String.format(
@@ -482,6 +484,7 @@ fun CourseReminderScreen(
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                     },
+                                    holdDownState = showInClassTimingDialog,
                                     onClick = {
                                         rlog(
                                             "inclass_timing_dialog_open",

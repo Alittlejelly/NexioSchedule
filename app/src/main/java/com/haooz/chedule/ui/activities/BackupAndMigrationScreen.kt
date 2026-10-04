@@ -320,6 +320,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "分享口令导入",
                                 summary = "输入好友分享的口令导入课表",
+                                holdDownState = showShareCodeDialog,
                                 onClick = {
                                     shareCodeInput = ""
                                     showShareCodeDialog = true
@@ -328,6 +329,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "WakeUp课程表口令导入",
                                 summary = "输入WakeUp分享口令即可获取",
+                                holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.WakeUp,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.WakeUp
                                     thirdPartyCodeInput = ""
@@ -337,6 +339,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "星链课表分享码导入",
                                 summary = "输入星链课表分享码即可获取",
+                                holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.StarLink,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.StarLink
                                     thirdPartyCodeInput = ""
@@ -390,6 +393,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "分享口令导入",
                                 summary = "输入好友分享的口令导入课表",
+                                holdDownState = showShareCodeDialog,
                                 onClick = {
                                     shareCodeInput = ""
                                     showShareCodeDialog = true
@@ -398,6 +402,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "WakeUp课程表口令导入",
                                 summary = "输入WakeUp分享口令即可获取",
+                                holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.WakeUp,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.WakeUp
                                     thirdPartyCodeInput = ""
@@ -407,6 +412,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "星链课表分享码导入",
                                 summary = "输入星链课表分享码即可获取",
+                                holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.StarLink,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.StarLink
                                     thirdPartyCodeInput = ""
@@ -520,6 +526,7 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "口令分享导出",
                                 summary = "生成趣味口令与分享图片",
+                                holdDownState = showShareExportConfirmDialog,
                                 onClick = {
                                     if (selectedExportSchedule.isBlank()) {
                                         Toast.makeText(context, "请先选择要分享的课表", Toast.LENGTH_SHORT).show()

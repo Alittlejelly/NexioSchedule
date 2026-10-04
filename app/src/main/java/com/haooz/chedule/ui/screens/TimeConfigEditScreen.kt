@@ -290,6 +290,15 @@ fun TimeConfigEditScreen(
     var tempSpecialEndHour by remember { mutableIntStateOf(8) }
     var tempSpecialEndMinute by remember { mutableIntStateOf(40) }
 
+    // 添加入口必须从空白初值开始，不能沿用上一次编辑的内容
+    fun resetSpecialTemp() {
+        tempSpecialName = ""
+        tempSpecialStartHour = 8
+        tempSpecialStartMinute = 0
+        tempSpecialEndHour = 8
+        tempSpecialEndMinute = 40
+    }
+
     var showSpecialDeleteConfirm by remember { mutableStateOf(false) }
 
     var showOverlapDialog by remember { mutableStateOf(false) }
@@ -1183,7 +1192,9 @@ fun TimeConfigEditScreen(
                                                 ArrowPreference(
                                                     title = "暂无特殊课程",
                                                     summary = "点击添加早读、眼保健操等无编号时段",
+                                                    holdDownState = showSpecialDialog,
                                                     onClick = {
+                                                        resetSpecialTemp()
                                                         editingSpecialIndex = -1
                                                         showSpecialDialog = true
                                                     }
@@ -1194,6 +1205,8 @@ fun TimeConfigEditScreen(
                                                     ArrowPreference(
                                                         title = if (block.name.isNotBlank()) block.name else "特殊课程",
                                                         summary = specialBlockSummary(block),
+                                                        // 只压暗被点开弹窗的那一项
+                                                        holdDownState = showSpecialDialog && index == editingSpecialIndex,
                                                         onClick = {
                                                             editingSpecialIndex = index
                                                             tempSpecialName = block.name
@@ -1207,7 +1220,10 @@ fun TimeConfigEditScreen(
                                                 }
                                                 ArrowPreference(
                                                     title = "添加特殊课程",
+                                                    holdDownState = showSpecialDialog && editingSpecialIndex == -1,
                                                     onClick = {
+                                                        // 添加不能带出上一次编辑的名称/时间
+                                                        resetSpecialTemp()
                                                         editingSpecialIndex = -1
                                                         showSpecialDialog = true
                                                     }
