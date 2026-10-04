@@ -86,7 +86,7 @@ fun CourseCard(
     isWorkSwap: Boolean = false,
     hasMultipleCourses: Boolean = false,
     wallpaperBackdrop: Backdrop? = null,
-    cardBlurRadius: Float = 0f,
+    cardBlurRadius: Float = 4f,
     cardAlpha: Float = 0.15f,
     /** 有壁纸时白/黑底不透明度（卡片不透明度） */
     cardSurfaceAlpha: Float = 0.15f,

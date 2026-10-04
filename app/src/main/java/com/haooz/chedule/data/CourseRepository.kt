@@ -1894,10 +1894,11 @@ class CourseRepository private constructor(context: Context) {
             offsetX = prefs.getFloat("${KEY_COMBINATION_OFFSET_X_PREFIX}$id", 0f),
             offsetY = prefs.getFloat("${KEY_COMBINATION_OFFSET_Y_PREFIX}$id", 0f),
             scale = prefs.getFloat("${KEY_COMBINATION_SCALE_PREFIX}$id", 1f),
-            cardBlur = prefs.getFloat("${KEY_COMBINATION_CARD_BLUR_PREFIX}$id", 0f),
+            // 旧分散键缺失时的兜底，与 CombinationStyle 的默认值保持一致
+            cardBlur = prefs.getFloat("${KEY_COMBINATION_CARD_BLUR_PREFIX}$id", 4f),
             cardAlpha = prefs.getFloat("${KEY_COMBINATION_CARD_ALPHA_PREFIX}$id", 0.15f),
             cardHeight = prefs.getFloat("${KEY_COMBINATION_CARD_HEIGHT_PREFIX}$id", 54f),
-            cardCornerRadius = prefs.getFloat("${KEY_COMBINATION_CARD_CORNER_PREFIX}$id", 8f),
+            cardCornerRadius = prefs.getFloat("${KEY_COMBINATION_CARD_CORNER_PREFIX}$id", 10f),
             wallpaperBrightness = prefs.getFloat("${KEY_COMBINATION_WALLPAPER_BRIGHTNESS_PREFIX}$id", 0f),
             wallpaperIsLight = if (prefs.contains(isLightKey)) prefs.getBoolean(isLightKey, false) else null,
             showBreakDividers = prefs.getBoolean("${KEY_COMBINATION_SHOW_BREAK_DIVIDERS_PREFIX}$id", true),

@@ -94,7 +94,7 @@ fun DayColumn(
     pendingSection: Int = -1,
     onPendingChange: (day: Int, section: Int) -> Unit = { _, _ -> },
     wallpaperBackdrop: Backdrop? = null,
-    cardBlurRadius: Float = 0f,
+    cardBlurRadius: Float = 4f,
     cardAlpha: Float = 0.15f,
     cardSurfaceAlpha: Float = 0.15f,
     cardHeightPerSection: Float = 54f,

@@ -44,12 +44,20 @@ data class CombinationStyle(
     /** offset/scale 保存时的屏幕宽高（px）；0=旧数据未记录，加载时不重映射 */
     val offsetRefW: Float = 0f,
     val offsetRefH: Float = 0f,
-    val cardBlur: Float = 0f,
+    /**
+     * 课程卡片模糊半径（dp）。
+     *
+     * ⚠️ 这里的默认值才是**实际生效**的默认值 —— 持久化快照反序列化后直接读它；
+     * [Combination] / [AppearanceConfig] 里同名字段的默认值只在直接构造对象时有效，
+     * 走 `fromCombination` 时一律被覆盖。两处必须保持一致。
+     */
+    val cardBlur: Float = 4f,
     val cardAlpha: Float = 0.15f,
     /** 有壁纸时白/黑底不透明度；null=旧快照未写入，用默认 */
     val cardSurfaceAlpha: Float? = null,
     val cardHeight: Float = 54f,
-    val cardCornerRadius: Float = 8f,
+    // 与 Combination / AppearanceConfig 的 10f 对齐（原为 8f，属声明与落库不一致）
+    val cardCornerRadius: Float = 10f,
     val wallpaperBrightness: Float = 0f,
     val wallpaperIsLight: Boolean? = null, // null=无壁纸/未测光
     val showBreakDividers: Boolean = true,
