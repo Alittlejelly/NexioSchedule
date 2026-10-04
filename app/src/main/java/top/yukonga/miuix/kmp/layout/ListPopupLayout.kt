@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -23,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -31,28 +31,27 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
-import com.kyant.backdrop.Backdrop
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import top.yukonga.miuix.kmp.basic.ListPopupContent
-import top.yukonga.miuix.kmp.basic.ListPopupDefaults
-import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.basic.PopupPositionResult
-import top.yukonga.miuix.kmp.basic.rememberListPopupLayoutInfo
-import top.yukonga.miuix.kmp.basic.resolvePopupAnchors
-import top.yukonga.miuix.kmp.theme.LocalDismissState
-import top.yukonga.miuix.kmp.anim.SinOutEasing
-import kotlin.math.roundToInt
+import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.anim.SinOutEasing
+import top.yukonga.miuix.kmp.basic.ListPopupContent
+import top.yukonga.miuix.kmp.basic.ListPopupDefaults
+import top.yukonga.miuix.kmp.basic.PopupAnchors
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.PopupPositionResult
+import top.yukonga.miuix.kmp.basic.rememberListPopupLayoutInfo
+import top.yukonga.miuix.kmp.basic.resolvePopupAnchors
+import top.yukonga.miuix.kmp.theme.LocalDismissState
+import kotlin.math.roundToInt
 
 // 动画参数：与 LiquidGlassDropdownMenu 完全一致（1:1 复刻）
 // 进场：fraction spring 0.78/240，锚点迁移 spring 0.78/500（比尺寸更快到 1）
@@ -251,9 +250,11 @@ fun ListPopupLayout(
         popupContentSize = popupContentSize,
     )
 
-    // 由 layout 阶段计算的真实锚点，与 calculatedOffset 使用同一个 measuredSize，
+    // layout 阶段算出的真实锚点，与 calculatedOffset 使用同一个 measuredSize，
     // 避免 composition 阶段的 popupContentSize 与 layout 阶段的 measuredSize 不一致。
-    var realLocalTransformOrigin by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
+    //
+    // 用 PopupAnchors 而非 state：state 要下一帧才生效，draw 会先用错一帧。
+    val popupAnchors = remember { PopupAnchors() }
 
     val requestDismiss: () -> Unit = remember {
         { currentOnDismiss?.invoke() }
@@ -330,9 +331,10 @@ fun ListPopupLayout(
                         val windowBounds = layoutInfo.windowBounds
                         val popupMargin = layoutInfo.popupMargin
                         val minHeightPx = LocalMinPopupHeight.roundToPx()
-                        // 内容可用高度要扣掉两层 padding（外层 shadowPadding + 玻璃层 overshootRoom，
-                        // 每边各一份，共 2×），否则 maxHeight 会把面板内容压缩。
+                        // chrome = 弹窗外一圈非面板留白（每边 shadowPadding + overshootRoom）。
+                        // maxHeight、measuredSize、place 三处必须扣同一个量，少扣一处就整体偏移。
                         val chromePadPx = (2 * chromePaddingPx).roundToInt()
+                        val chromeOffPx = chromePaddingPx.roundToInt()
                         val placeable = measurable.measure(
                             constraints.copy(
                                 maxHeight = (
@@ -345,8 +347,6 @@ fun ListPopupLayout(
                                 minWidth = minWidth.roundToPx().coerceAtMost(constraints.maxWidth),
                             ),
                         )
-                        // 定位尺寸也要扣掉**全部** chrome（外层 shadowPadding + 玻璃层 overshootRoom，
-                        // 每边各一份）：只扣一项会让弹窗整体偏移（每边差一个 shadowPadding）。
                         val measuredSize = IntSize(
                             (placeable.width - chromePadPx).coerceAtLeast(0),
                             (placeable.height - chromePadPx).coerceAtLeast(0),
@@ -362,16 +362,14 @@ fun ListPopupLayout(
                         )
                         val calculatedOffset = positionResult.offset
 
-                        // 从同一个 positionResult 推导锚点，保证一致性
                         val (_, transformOrigin) = resolvePopupAnchors(
                             positionResult, calculatedOffset, measuredSize, parentBounds, alignment, layoutDirection,
                         )
-                        realLocalTransformOrigin = transformOrigin
+                        // 写普通 holder 而非 state：state 要下一帧才生效，draw 会先用错一帧，
+                        // 导致 panelRect 的锚点分支选错（位置差一整个面板宽）。
+                        popupAnchors.right = transformOrigin.pivotFractionX >= 0.5f
+                        popupAnchors.bottom = transformOrigin.pivotFractionY >= 0.5f
 
-                        // placeable 的左上角是 chrome（shadowPadding + overshootRoom）的**外沿**，
-                        // 比真实面板左上角偏左上 chromePaddingPx。摆位要把它推回去这么多，
-                        // 否则面板整体往右下偏一个 chrome。
-                        val chromeOffPx = chromePaddingPx.roundToInt()
                         val adjustedOffset = IntOffset(
                             x = calculatedOffset.x - hostPositionInWindow.x.toInt() - chromeOffPx,
                             y = calculatedOffset.y - hostPositionInWindow.y.toInt() - chromeOffPx,
@@ -387,7 +385,8 @@ fun ListPopupLayout(
                     onPopupContentSizeChange = { popupContentSize = it },
                     fractionProgress = { fractionProgress.value },
                     originProgress = { originProgress.value },
-                    localTransformOrigin = realLocalTransformOrigin,
+                    localTransformOrigin = layoutInfo.localTransformOrigin,
+                    anchors = popupAnchors,
                     liquidGlassBackdrop = liquidGlassBackdrop,
                     collapseSize = collapseSize,
                     collapseExtra = collapseExtra,

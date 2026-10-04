@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -163,6 +167,14 @@ fun OverlayDropdownMenu(
     val hapticFeedback = LocalHapticFeedback.current
     val currentHapticFeedback by rememberUpdatedState(hapticFeedback)
     val currentOnExpandedChange = rememberUpdatedState(onExpandedChange)
+    val coroutineScope = rememberCoroutineScope()
+
+    // 触发内容只在「彻底退场」后显示。
+    // 判据不能用 fraction：退场 spring 阻尼 0.85 会过冲到负值并在 0 附近振荡，
+    // 拿阈值判断会在振荡途中误判结束 → 内容提前冒出来。
+    // onDismissFinished 是 ListPopupLayout 在所有退场动画结束、snapTo(0) 之后才发的信号。
+    var popupFullyDismissed by remember { mutableStateOf(true) }
+
     val setExpanded: (Boolean) -> Unit = remember {
         { expanded ->
             if (isDropdownExpanded.value != expanded) {
@@ -172,18 +184,23 @@ fun OverlayDropdownMenu(
         }
     }
 
+    // 展开时延后一帧再藏 —— 否则弹窗的收起态内容还没画出来，中间会空一帧。
+    LaunchedEffect(isDropdownExpanded.value) {
+        if (isDropdownExpanded.value) {
+            withFrameNanos { }        // 让弹窗先把收起态那一帧画出来
+            popupFullyDismissed = false
+        }
+    }
+
     // 弹窗展开进度，用于驱动触发内容（选中文字与箭头）的淡入淡出
     val fractionState = remember { mutableStateOf(0f) }
     // 触发区（选中文字 + 箭头）实测尺寸，作为弹窗收起态的起点尺寸
     var triggerSize by remember { mutableStateOf(IntSize.Zero) }
-    // 图标淡出：打开时系数 2.5（更快淡完），关闭时 1.7（更早出现）——
-    // 与 LiquidGlassDropdownMenu 的触发图标完全一致
-    val triggerAlpha: () -> Float = remember {
-        {
-            val iconK = if (isDropdownExpanded.value) 2.5f else 1.7f
-            1f - (fractionState.value * iconK).coerceIn(0f, 1f)
-        }
-    }
+    // 退场后是否显示触发区内容。**硬切**，不要过渡：
+    //   展开 → 立刻消失；退场动画跑完 → 立刻出现。中间没有半透明状态。
+    // 保持节点渲染只用 alpha=0：那层 Row 挂了 onSizeChanged 上报 collapseSize，
+    // 摘掉节点的话 triggerSize 变 0，弹窗就不知道从哪长出来了。
+    val triggerAlpha: () -> Float = { if (popupFullyDismissed) 1f else 0f }
 
     val nonEmptyEntries = entries.filter { it.items.isNotEmpty() }
     val hasEntries = nonEmptyEntries.isNotEmpty()
@@ -234,7 +251,14 @@ fun OverlayDropdownMenu(
                     entries = nonEmptyEntries,
                     show = isDropdownExpanded.value,
                     onDismiss = { setExpanded(false) },
-                    onDismissFinished = { isHoldDown.value = false },
+                    onDismissFinished = {
+                        isHoldDown.value = false
+                        // 压满3帧再显示：否则弹窗还在屏幕上会重叠
+                        coroutineScope.launch {
+                            repeat(3) { withFrameNanos { } }
+                            popupFullyDismissed = true
+                        }
+                    },
                     maxHeight = maxHeight,
                     dropdownColors = dropdownColors,
                     renderInRootScaffold = renderInRootScaffold,
