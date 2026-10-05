@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,7 +31,6 @@ import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
-import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
@@ -40,6 +38,12 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 
+/**
+ * 顶栏液态玻璃圆形按钮。
+ *
+ * 点按只有触感反馈（[performHapticFeedback]），**没有视觉高光**——
+ * 原本挂了一层 InteractiveHighlight（按压缩放 + 高光跟随），已按要求移除。
+ */
 @Composable
 fun LiquidTopBarButton(
     onClick: () -> Unit,
@@ -54,22 +58,14 @@ fun LiquidTopBarButton(
     shadowAlpha: Float = 1f,
     iconTint: Color = Color.Unspecified,
     containerColor: Color = Color.Unspecified,
-    draggable: Boolean = false,
     performHapticFeedback: Boolean = true,
     enabled: Boolean = true,
 ) {
-    val animationScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
     val isLightTheme = !isAppDarkTheme()
     val resolvedContainerColor = if (containerColor != Color.Unspecified) containerColor
         else if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
         else Color(0xFF242424).copy(0.84f)
-
-    val interactiveHighlight = remember(animationScope) {
-        InteractiveHighlight(
-            animationScope = animationScope
-        )
-    }
 
     val shadowColor = if (isLightTheme) "#12000000".toColorInt() else "#20000000".toColorInt()
     val interactionSource = remember { MutableInteractionSource() }
@@ -87,11 +83,8 @@ fun LiquidTopBarButton(
         }
     }
     val buttonOnDrawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
-        remember(resolvedContainerColor, interactiveHighlight) {
-            {
-                drawRect(resolvedContainerColor)
-                drawRect(Color.Black.copy(alpha = 0.03f * interactiveHighlight.pressProgress))
-            }
+        remember(resolvedContainerColor) {
+            { drawRect(resolvedContainerColor) }
         }
 
     Box(
@@ -151,21 +144,10 @@ fun LiquidTopBarButton(
                     effects = buttonEffects,
                     highlight = null,
                     shadow = null,
-                    layerBlock = {
-                        val progress = interactiveHighlight.pressProgress
-                        val scale = 1f + 2f.dp.toPx() / buttonHeight.toPx() * progress
-                        scaleX = scale
-                        scaleY = scale
-                        val offset = interactiveHighlight.offset
-                        translationX = size.minDimension * 0.05f * offset.x / size.maxDimension
-                        translationY = size.minDimension * 0.05f * offset.y / size.maxDimension
-                        alpha = backdropAlpha
-                    },
+                    layerBlock = { alpha = backdropAlpha },
                     onDrawSurface = buttonOnDrawSurface
                 )
                 .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
-                .then(interactiveHighlight.modifier)
-                .then(if (draggable) interactiveHighlight.gestureModifier else interactiveHighlight.pressOnlyModifier)
                 .zIndex(0f)
         )
         Icon(

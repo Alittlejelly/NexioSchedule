@@ -184,10 +184,11 @@ fun OverlayDropdownMenu(
         }
     }
 
-    // 展开时延后一帧再藏 —— 否则弹窗的收起态内容还没画出来，中间会空一帧。
+    // 展开时延后两帧再藏 —— 第一帧让弹窗画出收起态，第二帧确保它已经上屏，
+    // 否则中间会空一帧（两边都没内容）。
     LaunchedEffect(isDropdownExpanded.value) {
         if (isDropdownExpanded.value) {
-            withFrameNanos { }        // 让弹窗先把收起态那一帧画出来
+            repeat(2) { withFrameNanos { } }
             popupFullyDismissed = false
         }
     }

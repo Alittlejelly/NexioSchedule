@@ -960,8 +960,9 @@ private const val ContentEnterFrom = 0.22f      // 标准 0.30
 private const val ContentEnterTo = 0.62f        // 标准 0.70
 private const val ContentExitFrom = 0.30f
 private const val ContentExitTo = 0.78f         // 标准 0.70：抬高端点 → 更晚开始淡出
-// 收起态内容的淡出系数，与 LiquidGlassDropdownMenu 同源
-private const val CollapseIconKEnter = 2.5f
+// 收起态内容的淡出系数：alpha = 1 - fraction×K，淡完点 = 1/K。
+// 退场与 LiquidGlassDropdownMenu 一致；进场由 2.5 提到 3.2
+private const val CollapseIconKEnter = 3.2f
 private const val CollapseIconKExit = 1.7f
 
 /**
