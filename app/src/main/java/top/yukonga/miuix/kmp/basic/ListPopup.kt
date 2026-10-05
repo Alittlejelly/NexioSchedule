@@ -935,6 +935,17 @@ fun ListPopupContent(
     }
 }
 
+/**
+ * 面板阴影档位。**必须与 LiquidGlassDropdownMenu.kt 里的同名常量保持同值**，
+ * 否则两种弹窗阴影深浅不一样。
+ */
+private const val PopupShadowArgbLight = 0x1A000000
+private const val PopupShadowArgbDark = 0x2E000000
+private const val PopupShadowBlur = 12f
+private const val PopupShadowExtend = 2f
+/** ARGB 的 alpha 会被放大这么多倍 —— 环形路径重复描边会累积浓度 */
+private const val PopupShadowAlphaGain = 3.2f
+
 /** SubcomposeLayout 的槽位标识。Content 必须先于 Glass 测量（后者尺寸依赖前者）。 */
 private enum class PopupSlot { Content, Glass }
 
@@ -1189,10 +1200,10 @@ private fun Modifier.popupPanelShadow(
     val top = r[1]
     val boxW = r[2]
     val boxH = r[3]
-    val blurRadius = 10f * density * s
-    val extend = 2f * density * s
+    val blurRadius = PopupShadowBlur * density * s
+    val extend = PopupShadowExtend * density * s
     val radius = cornerRadius.toPx()
-    val shadowArgb = if (isDark) 0x20000000 else 0x12000000
+    val shadowArgb = if (isDark) PopupShadowArgbDark else PopupShadowArgbLight
 
     val path = android.graphics.Path().apply {
         addRoundRect(
@@ -1205,7 +1216,7 @@ private fun Modifier.popupPanelShadow(
     }
     val paint = android.graphics.Paint().apply {
         color = android.graphics.Color.argb(
-            (android.graphics.Color.alpha(shadowArgb) * 3.2f).coerceAtMost(255f).toInt(),
+            (android.graphics.Color.alpha(shadowArgb) * PopupShadowAlphaGain).coerceAtMost(255f).toInt(),
             android.graphics.Color.red(shadowArgb),
             android.graphics.Color.green(shadowArgb),
             android.graphics.Color.blue(shadowArgb)

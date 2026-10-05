@@ -53,12 +53,11 @@ import top.yukonga.miuix.kmp.basic.resolvePopupAnchors
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import kotlin.math.roundToInt
 
-// 动画参数：与 LiquidGlassDropdownMenu 完全一致（1:1 复刻）
-// 进场：fraction spring 0.78/240，锚点迁移 spring 0.78/500（比尺寸更快到 1）
-private val FractionEnterAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 240f, visibilityThreshold = 0.0001f)
+// 进场：fraction spring 0.77/220，锚点迁移 spring 0.77/420（比尺寸更快到 1）
+private val FractionEnterAnimSpec = spring<Float>(dampingRatio = 0.77f, stiffness = 220f, visibilityThreshold = 0.0001f)
 // 退场：fraction spring 0.85/650，锚点迁移 tween(340, CubicBezierEasing(0,0,0,1))
 private val FractionExitAnimSpec = spring<Float>(dampingRatio = 0.85f, stiffness = 650f, visibilityThreshold = 0.0001f)
-private val OriginEnterAnimSpec = spring<Float>(dampingRatio = 0.78f, stiffness = 500f, visibilityThreshold = 0.0001f)
+private val OriginEnterAnimSpec = spring<Float>(dampingRatio = 0.77f, stiffness = 420f, visibilityThreshold = 0.0001f)
 private val OriginExitAnimSpec = tween<Float>(340, easing = CubicBezierEasing(0.0f, 0.0f, 0.0f, 1.0f))
 // 预测性返回取消后回到展开态
 private val BackCancelAnimSpec = tween<Float>(150)

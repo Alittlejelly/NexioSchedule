@@ -76,6 +76,20 @@ internal val LiquidGlassDropdownShadowPadding = 24.dp
 /** 收起态圆形按钮直径，也是容器变换的起点尺寸 */
 private val ButtonDiameter = 42.dp
 
+/**
+ * 面板外投射阴影档位。
+ *
+ * 加重过一次（原 blur 10 / extend 2 / alpha 0x12·0x20）。
+ * ⚠️ ListPopup.kt 的 popupPanelShadow 有一份**同值副本**（那边是 miuix 通用组件，
+ * 不反向依赖 app 层），调整时两处必须同步，否则两种弹窗阴影深浅不一。
+ */
+private const val ShadowArgbLight = 0x1A000000
+private const val ShadowArgbDark = 0x2E000000
+private const val ShadowBlur = 12f
+private const val ShadowExtend = 2f
+/** ARGB 里的 alpha 会被放大这么多倍 —— 环形路径重复描边会累积浓度 */
+private const val ShadowAlphaGain = 3.2f
+
 /** 面板宽度与圆角 */
 private val PanelWidth = 200.dp
 private val PanelCornerRadius = 25.dp
@@ -165,13 +179,13 @@ fun LiquidGlassDropdownMenu(
             launch {
                 fraction.animateTo(
                     1f,
-                    spring(dampingRatio = 0.78f, stiffness = 240f, visibilityThreshold = 0.0001f)
+                    spring(dampingRatio = 0.77f, stiffness = 220f, visibilityThreshold = 0.0001f)
                 )
             }
             launch {
                 originProgress.animateTo(
                     1f,
-                    spring(dampingRatio = 0.78f, stiffness = 500f, visibilityThreshold = 0.0001f)
+                    spring(dampingRatio = 0.77f, stiffness = 420f, visibilityThreshold = 0.0001f)
                 )
             }
             settleBounce.snapTo(1f)
@@ -254,9 +268,9 @@ fun LiquidGlassDropdownMenu(
                     // 即使顶栏材质透明也要有阴影（材质可见度已按展开进度饱和到 1）
                     val spread = materialVisible
                     if (spread > 0.01f) {
-                        val shadowArgb = if (isLightTheme) 0x12000000 else 0x20000000
-                        val blurRadius = 10f * density * spread
-                        val shadowSpread = 2f * density * spread
+                        val shadowArgb = if (isLightTheme) ShadowArgbLight else ShadowArgbDark
+                        val blurRadius = ShadowBlur * density * spread
+                        val shadowSpread = ShadowExtend * density * spread
                         val r = PanelCornerRadius.toPx()
                         val nativePath = android.graphics.Path().apply {
                             addRoundRect(
@@ -272,7 +286,7 @@ fun LiquidGlassDropdownMenu(
                         }
                         val paint = Paint().apply {
                             color = android.graphics.Color.argb(
-                                (android.graphics.Color.alpha(shadowArgb) * 3.2f).coerceAtMost(255f).toInt(),
+                                (android.graphics.Color.alpha(shadowArgb) * ShadowAlphaGain).coerceAtMost(255f).toInt(),
                                 android.graphics.Color.red(shadowArgb),
                                 android.graphics.Color.green(shadowArgb),
                                 android.graphics.Color.blue(shadowArgb)
