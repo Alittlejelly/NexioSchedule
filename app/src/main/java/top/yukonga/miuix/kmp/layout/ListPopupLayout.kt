@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
@@ -86,60 +87,87 @@ private fun PopupPositionProvider.Align.resolve(layoutDirection: LayoutDirection
     }
 }
 
-// 自定义下拉定位提供者（带偏移量）
-fun liquidDropdownPositionProvider(): PopupPositionProvider = object : PopupPositionProvider {
-    private val margins = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+/**
+ * 下拉弹窗相对锚点的补偿量。
+ *
+ * **必须是 [Dp]，不能写死 px**：px 是设备相关的，同一个数值在 3x 机型上等于 8dp，
+ * 在 4x 机型上只有 6dp（差 2dp），在 2.75x 上是 8.7dp —— 换机就错位。
+ * 下面两个值就是原先 `24`/`18` px 在 3x 机型上的等效 dp，视觉不变。
+ */
+private val LiquidDropdownAnchorOffsetX = 7.dp
+private val LiquidDropdownAnchorOffsetY = 5.dp
 
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowBounds: IntRect,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize,
-        popupMargin: IntRect,
-        alignment: PopupPositionProvider.Align,
-    ): PopupPositionResult {
-        val offsetXDelta = 24  //@ 3x density
-        val offsetYDelta = 18  //@ 3x density
+/**
+ * 自定义下拉定位提供者（带偏移量）。
+ *
+ * 偏移量以 [Dp] 声明、在组合期按当前 [LocalDensity] 换算成 px，
+ * 因此在任何 density / fontScale 下都与设计值一致。
+ *
+ * @param anchorOffsetX 水平补偿（弹窗右缘向右让出的量）
+ * @param anchorOffsetY 竖直补偿（弹窗上缘相对锚点上缘的让出量）
+ */
+@Composable
+fun liquidDropdownPositionProvider(
+    anchorOffsetX: Dp = LiquidDropdownAnchorOffsetX,
+    anchorOffsetY: Dp = LiquidDropdownAnchorOffsetY,
+): PopupPositionProvider {
+    val density = LocalDensity.current
+    val offsetXDelta = with(density) { anchorOffsetX.roundToPx() }
+    val offsetYDelta = with(density) { anchorOffsetY.roundToPx() }
 
-        val offsetX = if (alignment.resolve(layoutDirection) == PopupPositionProvider.Align.End) {
-            anchorBounds.right - popupContentSize.width - popupMargin.right + offsetXDelta
-        } else {
-            anchorBounds.left + popupMargin.left + offsetXDelta
+    return remember(offsetXDelta, offsetYDelta) {
+        object : PopupPositionProvider {
+            private val margins = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowBounds: IntRect,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+                popupMargin: IntRect,
+                alignment: PopupPositionProvider.Align,
+            ): PopupPositionResult {
+                val offsetX = if (alignment.resolve(layoutDirection) == PopupPositionProvider.Align.End) {
+                    anchorBounds.right - popupContentSize.width - popupMargin.right + offsetXDelta
+                } else {
+                    anchorBounds.left + popupMargin.left + offsetXDelta
+                }
+
+                val spaceBelow = windowBounds.bottom - anchorBounds.bottom
+                val spaceAbove = anchorBounds.top - windowBounds.top
+                val offsetY: Int
+                val showBelow: Boolean
+                val showAbove: Boolean
+                if (spaceBelow > popupContentSize.height) {
+                    offsetY = anchorBounds.top - offsetYDelta
+                    showBelow = true
+                    showAbove = false
+                } else if (spaceAbove > popupContentSize.height) {
+                    offsetY = anchorBounds.bottom - popupContentSize.height + offsetYDelta
+                    showBelow = false
+                    showAbove = true
+                } else {
+                    offsetY = anchorBounds.top + anchorBounds.height / 2 - popupContentSize.height / 2
+                    showBelow = false
+                    showAbove = false
+                }
+
+                val clampedOffset = IntOffset(
+                    x = offsetX.coerceIn(
+                        windowBounds.left,
+                        (windowBounds.right - popupContentSize.width - popupMargin.right).coerceAtLeast(windowBounds.left),
+                    ),
+                    y = offsetY.coerceIn(
+                        (windowBounds.top + popupMargin.top).coerceAtMost(windowBounds.bottom - popupContentSize.height - popupMargin.bottom),
+                        windowBounds.bottom - popupContentSize.height - popupMargin.bottom,
+                    ),
+                )
+                return PopupPositionResult(clampedOffset, showBelow, showAbove)
+            }
+
+            override fun getMargins(): PaddingValues = margins
         }
-
-        val spaceBelow = windowBounds.bottom - anchorBounds.bottom
-        val spaceAbove = anchorBounds.top - windowBounds.top
-        val offsetY: Int
-        val showBelow: Boolean
-        val showAbove: Boolean
-        if (spaceBelow > popupContentSize.height) {
-            offsetY = anchorBounds.top - offsetYDelta
-            showBelow = true
-            showAbove = false
-        } else if (spaceAbove > popupContentSize.height) {
-            offsetY = anchorBounds.bottom - popupContentSize.height + offsetYDelta
-            showBelow = false
-            showAbove = true
-        } else {
-            offsetY = anchorBounds.top + anchorBounds.height / 2 - popupContentSize.height / 2
-            showBelow = false
-            showAbove = false
-        }
-
-        val clampedOffset = IntOffset(
-            x = offsetX.coerceIn(
-                windowBounds.left,
-                (windowBounds.right - popupContentSize.width - popupMargin.right).coerceAtLeast(windowBounds.left),
-            ),
-            y = offsetY.coerceIn(
-                (windowBounds.top + popupMargin.top).coerceAtMost(windowBounds.bottom - popupContentSize.height - popupMargin.bottom),
-                windowBounds.bottom - popupContentSize.height - popupMargin.bottom,
-            ),
-        )
-        return PopupPositionResult(clampedOffset, showBelow, showAbove)
     }
-
-    override fun getMargins(): PaddingValues = margins
 }
 
 /**
@@ -309,7 +337,7 @@ fun ListPopupLayout(
 
         // 玻璃盒余量 + 外层阴影留白的总 chrome（每边一份）：
         // maxHeight 和定位尺寸都按它扣减，两者必须一致，否则弹窗会整体偏移。
-        val chromePaddingPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        val chromePaddingPx = with(LocalDensity.current) {
             (PopupShadowPadding + PopupOvershootRoom).toPx()
         }
         Box(

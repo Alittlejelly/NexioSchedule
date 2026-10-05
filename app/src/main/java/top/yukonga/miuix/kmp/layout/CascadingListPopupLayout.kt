@@ -79,7 +79,7 @@ internal fun CascadingListPopupLayout(
     dropdownColors: DropdownColors,
     popupModifier: Modifier = Modifier,
     onDismissFinished: (() -> Unit)? = null,
-    popupPositionProvider: PopupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+    popupPositionProvider: PopupPositionProvider = ListPopupDefaults.dropdownPositionProvider(),
     alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.End,
     enableWindowDim: Boolean = true,
     maxHeight: Dp? = null,

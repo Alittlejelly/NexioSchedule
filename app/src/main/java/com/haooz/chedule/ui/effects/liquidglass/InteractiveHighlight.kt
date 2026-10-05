@@ -27,15 +27,31 @@ class InteractiveHighlight(
     val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset }
 ) {
 
+    /**
+     * 按压进度与拖动位移**共用同一条弹簧曲线**（同 dampingRatio / stiffness）
+     * 位移/拉伸/按压三层叠加后容易看成两段）。改这里即可整体调节回弹手感。
+     */
+    private companion object {
+        const val SPRING_DAMPING_RATIO = 0.5f
+        const val SPRING_STIFFNESS = 300f
+    }
+
+    /**
+     * 结束阈值：按压与位移统一用 0.001。
+     * 注意 Offset 版阈值必须是 `Offset(x, x)`，不能写裸 Float
+     */
+    private val visibilityThreshold = 0.001f
+    private val offsetVisibilityThreshold = Offset(visibilityThreshold, visibilityThreshold)
+
     private val pressProgressAnimationSpec =
-        spring(0.5f, 300f, 0.001f)
+        spring(SPRING_DAMPING_RATIO, SPRING_STIFFNESS, visibilityThreshold)
     private val positionAnimationSpec =
-        spring(0.5f, 300f, Offset.VisibilityThreshold)
+        spring(SPRING_DAMPING_RATIO, SPRING_STIFFNESS, offsetVisibilityThreshold)
 
     private val pressProgressAnimation =
-        Animatable(0f, 0.001f)
+        Animatable(0f, visibilityThreshold)
     private val positionAnimation =
-        Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
+        Animatable(Offset.Zero, Offset.VectorConverter, offsetVisibilityThreshold)
 
     private var startPosition = Offset.Zero
     val pressProgress: Float get() = pressProgressAnimation.value

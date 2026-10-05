@@ -1498,13 +1498,18 @@ private fun TeachingWeekNumberPickerDialog(
 /**
  * 基于默认下拉位置再做微调。
  *
+ * @param base 基础 provider（[liquidDropdownPositionProvider]，已按当前 density 归一）
  * @param offsetYPx 沿展开方向的额外偏移：向下展开时为正、向上展开时为负
  * @param offsetXPx 水平额外偏移：右为正、左为负
  * 两处都会再过一次窗口边界 clamp，不会把弹窗顶出屏幕。
  */
-private fun expandDirectionOffsetProvider(offsetYPx: Int, offsetXPx: Int = 0): PopupPositionProvider {
-    val base = liquidDropdownPositionProvider()
-    return object : PopupPositionProvider {
+@Composable
+private fun expandDirectionOffsetProvider(
+    base: PopupPositionProvider,
+    offsetYPx: Int,
+    offsetXPx: Int = 0,
+): PopupPositionProvider = remember(base, offsetYPx, offsetXPx) {
+    object : PopupPositionProvider {
         override fun calculatePosition(
             anchorBounds: IntRect,
             windowBounds: IntRect,
@@ -1682,12 +1687,11 @@ private fun InfoDropdown(
     val coroutineScope = rememberCoroutineScope()
     val infoColor = MiuixTheme.colorScheme.primary
     val density = LocalDensity.current
-    val positionProvider = remember {
-        expandDirectionOffsetProvider(
-            offsetYPx = with(density) { InfoPopupOffsetY.roundToPx() },
-            offsetXPx = with(density) { InfoPopupOffsetX.roundToPx() },
-        )
-    }
+    val positionProvider = expandDirectionOffsetProvider(
+        base = liquidDropdownPositionProvider(),
+        offsetYPx = with(density) { InfoPopupOffsetY.roundToPx() },
+        offsetXPx = with(density) { InfoPopupOffsetX.roundToPx() },
+    )
 
     // 展开后等两帧再藏：第一帧让弹窗画出收起态，第二帧确保已上屏，否则中间会空一帧。
     LaunchedEffect(expanded) {

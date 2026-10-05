@@ -37,7 +37,7 @@ import top.yukonga.miuix.kmp.utils.platformDialogProperties
 fun WindowListPopup(
     show: Boolean,
     popupModifier: Modifier = Modifier,
-    popupPositionProvider: PopupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
+    popupPositionProvider: PopupPositionProvider = ListPopupDefaults.dropdownPositionProvider(),
     alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.Start,
     enableWindowDim: Boolean = true,
     onDismissRequest: (() -> Unit)? = null,

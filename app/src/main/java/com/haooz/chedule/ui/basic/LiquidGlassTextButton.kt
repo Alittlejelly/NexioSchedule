@@ -40,6 +40,11 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.tanh
 
 /**
@@ -114,13 +119,35 @@ fun LiquidGlassTextButton(
             .graphicsLayer {
                 clip = false
                 transformOrigin = TransformOrigin.Center
-                val progress = interactiveHighlight.pressProgress
-                val pressScale = lerp(1f, 1f + 2f.dp.toPx() / size.height.coerceAtLeast(1f), progress)
+
+                val width = size.width.coerceAtLeast(1f)
+                val height = size.height.coerceAtLeast(1f)
+                val progress = interactiveHighlight.pressProgress.coerceAtLeast(0f)
+                val pressScale = lerp(1f, 1f + 2f.dp.toPx() / height, progress)
                 scaleX = pressScale
                 scaleY = pressScale
+                // 沿拖动方向拉伸。
+                // 本按钮是 fillMaxWidth 的整宽按钮，不能用 maxDimension 归一化 ——
+                // 最长边是宽度（约 1080px），手指拖 100px 只占 0.093，形变被稀释到 0.33%，
+                // 竖拉再乘 (height/width)≈0.156 更是掉到 0.05%，完全看不见。
+                // 改用**短边**归一化并去掉宽高比衰减。
+                //
+                // tanh 软限位（与下面的位移同一手法）：形变上限锁死在 maxDragScale。
+                // 不加的话是线性无上限放大 —— 整宽按钮横滑到底能到 22.9%（多出 82dp 宽度），
+                // 加上后最多 3.57%（多出 12.9dp），短距离拖拽依然有约 2% 的形变。
                 val offset = interactiveHighlight.offset
+                val offsetAngle = atan2(offset.y, offset.x)
+                val minDim = min(width, height)
+                // 横向形变上限：饱和时横向约多出 13dp（3.57% × 360dp）
+                val maxDragScaleX = 2f.dp.toPx() / height
+                // 纵向单独放大 3 倍：本按钮只有 56dp 高，同样的百分比换算成绝对像素
+                // 只有横向的 1/6.4（2dp vs 12.9dp），肉眼几乎看不出来。
+                // 放大后纵向饱和形变约 6dp，与横向观感接近。
+                val maxDragScaleY = maxDragScaleX * 3f
+                scaleX = pressScale + maxDragScaleX * tanh(abs(cos(offsetAngle) * offset.x / minDim))
+                scaleY = pressScale + maxDragScaleY * tanh(abs(sin(offsetAngle) * offset.y / minDim))
                 val contentMin = size.minDimension.coerceAtLeast(1f)
-                val initialDerivative = 0.05f
+                val initialDerivative = 0.08f
                 translationX = contentMin * tanh(initialDerivative * offset.x / contentMin)
                 translationY = contentMin * tanh(initialDerivative * offset.y / contentMin)
             }
@@ -175,7 +202,7 @@ fun LiquidGlassTextButton(
             )
             .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
             .then(interactiveHighlight.modifier)
-            .then(interactiveHighlight.gestureModifier)
+            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
             .defaultMinSize(minHeight = minHeight)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
