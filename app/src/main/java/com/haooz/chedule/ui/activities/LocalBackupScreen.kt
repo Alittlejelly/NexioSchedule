@@ -101,7 +101,7 @@ internal sealed interface BackupPayload {
     data class Single(
         val scheduleName: String,
         val courses: List<Map<String, Any>>,
-        val timeConfig: Map<String, Any>?,
+        val timeConfig: Any?,
         val semesterSettings: SemesterSettings?,
         val teachingWeekReorganizations: List<TeachingWeekReorganizationRule>?,
     ) : BackupPayload
@@ -268,8 +268,8 @@ internal fun parseBackupPayload(json: String): BackupPayload {
             @Suppress("UNCHECKED_CAST")
             fields as Map<String, Any>
         }
-        @Suppress("UNCHECKED_CAST")
-        val timeConfig = data["time_config"] as? Map<String, Any>
+        // 整份 JSON 字符串（现行格式）或早期备份的扁平 Map，两种都要能读
+        val timeConfig = data["time_config"]
         val semesterSettings = if (!data.containsKey("semester_settings")) {
             null
         } else {
@@ -640,7 +640,9 @@ fun LocalBackupScreen(
                                                 val courses = repository.getCoursesForSchedule(selectedSchedule)
                                                 // 获取该课表绑定的时间配置
                                                 val configId = repository.getScheduleTimeConfigId(selectedSchedule)
-                                                val timeConfig = repository.getTimeConfig(configId)
+                                                // effective()：顶层记「当天生效那套」的时间，routines 里仍带全部作息，
+                                                // 旧版本 App 只读顶层也能拿到正确时间
+                                                val timeConfig = repository.getTimeConfig(configId).effective()
                                                 // 课程字段与导出/分享共用 courseToShareMap：颜色、周次模型保持一致
                                                 mapOf(
                                                     "schedule_name" to selectedSchedule,
@@ -656,31 +658,11 @@ fun LocalBackupScreen(
                                                         repository.getTeachingWeekReorganizations(selectedSchedule),
                                                     ),
                                                     "courses" to courses.map(::courseToShareMap),
-                                                    "time_config" to mapOf(
-                                                        "morningSections" to timeConfig.morningSections,
-                                                        "afternoonSections" to timeConfig.afternoonSections,
-                                                        "eveningSections" to timeConfig.eveningSections,
-                                                        "sectionTimes" to timeConfig.sectionTimes,
-                                                        "sectionNames" to timeConfig.sectionNames,
-                                                        // 特殊时段块：必须经 safeSpecialBlocks，避免 null 字段/Map 形态写进备份
-                                                        "specialBlocks" to timeConfig.safeSpecialBlocks,
-                                                        // 快速时间与长课间等：否则开启快速时间的配置恢复后会算错节次时间
-                                                        "quickTimeEnabled" to timeConfig.quickTimeEnabled,
-                                                        "classDuration" to timeConfig.classDuration,
-                                                        "shortBreak" to timeConfig.shortBreak,
-                                                        "longBreakEnabled" to timeConfig.longBreakEnabled,
-                                                        "longBreakMorning" to timeConfig.longBreakMorning,
-                                                        "longBreakAfternoon" to timeConfig.longBreakAfternoon,
-                                                        "longBreakEvening" to timeConfig.longBreakEvening,
-                                                        "longBreakMorningSection" to timeConfig.longBreakMorningSection,
-                                                        "longBreakAfternoonSection" to timeConfig.longBreakAfternoonSection,
-                                                        "longBreakEveningSection" to timeConfig.longBreakEveningSection,
-                                                        "morningStartHour" to timeConfig.morningStartHour,
-                                                        "morningStartMinute" to timeConfig.morningStartMinute,
-                                                        "afternoonStartHour" to timeConfig.afternoonStartHour,
-                                                        "afternoonStartMinute" to timeConfig.afternoonStartMinute,
-                                                        "eveningStartHour" to timeConfig.eveningStartHour,
-                                                        "eveningStartMinute" to timeConfig.eveningStartMinute
+                                                    // 字段由 gson 自动展开成扁平 Map（含 routines）：
+                                                    // 以后 TimeConfig 加字段不用改这里，也保持旧版本 App 认识的形状
+                                                    "time_config" to Gson().fromJson(
+                                                        Gson().toJson(timeConfig),
+                                                        Map::class.java
                                                     )
                                                 )
                                             }

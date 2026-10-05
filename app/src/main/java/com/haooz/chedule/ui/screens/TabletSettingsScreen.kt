@@ -399,7 +399,7 @@ fun TabletSettingsScreen(
     // 课表节数与时间：右栏叠编辑屏
     val courseRepository = remember { com.haooz.chedule.data.CourseRepository(context) }
     var editingTimeConfig by remember { mutableStateOf<com.haooz.chedule.data.TimeConfig?>(null) }
-    var creatingTimeConfig by remember { mutableStateOf(false) }
+    var editingTimeRoutineId by remember { mutableStateOf<Long?>(null) }
     var timeConfigRefreshTrigger by remember { mutableIntStateOf(0) }
     val uiScope = rememberCoroutineScope()
     // 1 = 完全在右侧屏外，0 = 完全滑入；退出时先滑到 1 再清空配置，保证退场有内容
@@ -407,7 +407,7 @@ fun TabletSettingsScreen(
     // 切页时收起编辑屏，并恢复叠加层标题
     LaunchedEffect(selected) {
         editingTimeConfig = null
-        creatingTimeConfig = false
+        editingTimeRoutineId = null
         TabletSettingsUiState.timeEditorOpen = false
     }
     val islandNotification by settingsViewModel.islandNotification.collectAsState()
@@ -639,11 +639,10 @@ fun TabletSettingsScreen(
                                 )
 
                                 TabletSettingsDest.CourseTime -> CourseTimeSettingsScreen(
-                                    onEditConfig = { config, _ ->
-                                        // 从 repository 重读最新配置，避免使用缓存旧数据
-                                        editingTimeConfig =
-                                            courseRepository.getTimeConfig(config.id)
-                                        creatingTimeConfig = false
+                                    onEditRoutine = { routine, baseConfig, _ ->
+                                        // 二级页面只编辑这一个作息：把该作息的时间叠加上去
+                                        editingTimeConfig = baseConfig.effectiveFor(routine.id)
+                                        editingTimeRoutineId = routine.id
                                         TabletSettingsUiState.timeEditorOpen = true
                                         uiScope.launch {
                                             timeEditorSlide.snapTo(1f)
@@ -661,31 +660,9 @@ fun TabletSettingsScreen(
                                             )
                                         }
                                     },
-                                    onCreateConfig = {
-                                        editingTimeConfig =
-                                            com.haooz.chedule.data.TimeConfig(name = "")
-                                        creatingTimeConfig = true
-                                        TabletSettingsUiState.timeEditorOpen = true
-                                        uiScope.launch {
-                                            timeEditorSlide.snapTo(1f)
-                                            timeEditorSlide.animateTo(
-                                                0f,
-                                                animationSpec = tween(
-                                                    480,
-                                                    easing = CubicBezierEasing(
-                                                        0.34f,
-                                                        1.12f,
-                                                        0.3f,
-                                                        1f
-                                                    )
-                                                )
-                                            )
-                                        }
-                                    },
                                     refreshTrigger = timeConfigRefreshTrigger,
                                     scrollBehavior = null,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
-                                    hideFab = true,
                                 )
 
                                 TabletSettingsDest.Reminder -> CourseReminderScreen(
@@ -1028,7 +1005,7 @@ fun TabletSettingsScreen(
                                                     )
                                                 )
                                                 editingTimeConfig = null
-                                                creatingTimeConfig = false
+                                                editingTimeRoutineId = null
                                             }
                                             uiScope.launch {
                                                 delay(40.milliseconds) // 标题延迟 40ms 恢复
@@ -1036,17 +1013,12 @@ fun TabletSettingsScreen(
                                             }
                                         },
                                         onSave = { savedConfig ->
-                                            if (creatingTimeConfig) {
-                                                val newId =
-                                                    courseRepository.addTimeConfig(savedConfig)
-                                                courseRepository.switchToTimeConfig(newId)
-                                            } else {
-                                                courseRepository.saveTimeConfig(savedConfig)
-                                                if (savedConfig.id ==
-                                                    courseRepository.getCurrentTimeConfigId()
-                                                ) {
-                                                    courseRepository.switchToTimeConfig(savedConfig.id)
-                                                }
+                                            // 只替换这一个作息；节次骨架由一级页面管理，这里不碰。
+                                            // 顶层 name 是用户在这一页改的作息名，要带回去。
+                                            editingTimeRoutineId?.let { routineId ->
+                                                courseRepository.saveRoutine(
+                                                    routineId, savedConfig, savedConfig.name
+                                                )
                                             }
                                             timeConfigRefreshTrigger++
                                             uiScope.launch {
@@ -1063,7 +1035,6 @@ fun TabletSettingsScreen(
                                                     )
                                                 )
                                                 editingTimeConfig = null
-                                                creatingTimeConfig = false
                                             }
                                             uiScope.launch {
                                                 delay(40.milliseconds) // 标题延迟 40ms 恢复
@@ -1073,6 +1044,12 @@ fun TabletSettingsScreen(
                                         screenWidth = with(editDensity) { maxWidth.toPx() },
                                         screenHeight = with(editDensity) { maxHeight.toPx() },
                                         liquidGlassBackdrop = rightPaneBackdrop,
+                                        routineId = editingTimeRoutineId ?: 0L,
+                                        onDeleteRoutine = { routineId ->
+                                            // 删除会换掉生效作息，重排提醒等都在 repository 里一并做完
+                                            courseRepository.deleteRoutine(routineId)
+                                            timeConfigRefreshTrigger++
+                                        },
                                     )
                                 }
                             }

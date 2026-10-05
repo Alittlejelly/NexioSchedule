@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
@@ -71,7 +72,6 @@ import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.SpecialBlock
 import com.haooz.chedule.data.TimeConfig
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBar
@@ -90,9 +90,11 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -215,6 +217,7 @@ private fun sortSpecialBlocksByTime(blocks: List<SpecialBlock>): List<SpecialBlo
 @Composable
 fun TimeConfigEditScreen(
     timeConfig: TimeConfig,
+    routineId: Long,
     onBackStart: () -> Unit = {},
     onBack: () -> Unit,
     onSave: (TimeConfig) -> Unit,
@@ -228,39 +231,40 @@ fun TimeConfigEditScreen(
     cardStartCornerRadius: Float = 0f,
     cardSnapshot: Bitmap? = null,
     isFabCreation: Boolean = false,
+    /** 删除当前作息并回到一级列表（宿主负责落库与刷新列表） */
+    onDeleteRoutine: (Long) -> Unit = {},
     liquidGlassBackdrop: LayerBackdrop? = null
 ) {
     val context = LocalContext.current
-    val repository = remember { CourseRepository(context) }
     val hapticFeedback = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollBehavior = rememberSharedScrollBehavior()
     var listScrollY by remember { mutableIntStateOf(0) }
 
-    val screenTitle = if (isFabCreation) "添加时间配置" else "编辑时间配置"
-    var configName by remember { mutableStateOf(timeConfig.name) }
+    val screenTitle = "编辑作息"
+    var routineName by remember(timeConfig) { mutableStateOf(timeConfig.safeRoutines.firstOrNull { it.id == routineId }?.name ?: "") }
 
-    var morningSections by remember { mutableIntStateOf(timeConfig.morningSections) }
-    var afternoonSections by remember { mutableIntStateOf(timeConfig.afternoonSections) }
-    var eveningSections by remember { mutableIntStateOf(timeConfig.eveningSections) }
+    var morningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.morningSections) }
+    var afternoonSections by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonSections) }
+    var eveningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.eveningSections) }
 
-    var quickTimeEnabled by remember { mutableStateOf(timeConfig.quickTimeEnabled) }
-    var classDuration by remember { mutableIntStateOf(timeConfig.classDuration) }
-    var shortBreak by remember { mutableIntStateOf(timeConfig.shortBreak) }
-    var longBreakEnabled by remember { mutableStateOf(timeConfig.longBreakEnabled) }
-    var longBreakMorning by remember { mutableIntStateOf(timeConfig.longBreakMorning) }
-    var longBreakAfternoon by remember { mutableIntStateOf(timeConfig.longBreakAfternoon) }
-    var longBreakEvening by remember { mutableIntStateOf(timeConfig.longBreakEvening) }
-    var longBreakMorningSection by remember { mutableIntStateOf(timeConfig.longBreakMorningSection) }
-    var longBreakAfternoonSection by remember { mutableIntStateOf(timeConfig.longBreakAfternoonSection) }
-    var longBreakEveningSection by remember { mutableIntStateOf(timeConfig.longBreakEveningSection) }
-    var morningStartHour by remember { mutableIntStateOf(timeConfig.morningStartHour) }
-    var morningStartMinute by remember { mutableIntStateOf(timeConfig.morningStartMinute) }
-    var afternoonStartHour by remember { mutableIntStateOf(timeConfig.afternoonStartHour) }
-    var afternoonStartMinute by remember { mutableIntStateOf(timeConfig.afternoonStartMinute) }
-    var eveningStartHour by remember { mutableIntStateOf(timeConfig.eveningStartHour) }
-    var eveningStartMinute by remember { mutableIntStateOf(timeConfig.eveningStartMinute) }
+    var quickTimeEnabled by remember(timeConfig) { mutableStateOf(timeConfig.quickTimeEnabled) }
+    var classDuration by remember(timeConfig) { mutableIntStateOf(timeConfig.classDuration) }
+    var shortBreak by remember(timeConfig) { mutableIntStateOf(timeConfig.shortBreak) }
+    var longBreakEnabled by remember(timeConfig) { mutableStateOf(timeConfig.longBreakEnabled) }
+    var longBreakMorning by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakMorning) }
+    var longBreakAfternoon by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakAfternoon) }
+    var longBreakEvening by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakEvening) }
+    var longBreakMorningSection by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakMorningSection) }
+    var longBreakAfternoonSection by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakAfternoonSection) }
+    var longBreakEveningSection by remember(timeConfig) { mutableIntStateOf(timeConfig.longBreakEveningSection) }
+    var morningStartHour by remember(timeConfig) { mutableIntStateOf(timeConfig.morningStartHour) }
+    var morningStartMinute by remember(timeConfig) { mutableIntStateOf(timeConfig.morningStartMinute) }
+    var afternoonStartHour by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonStartHour) }
+    var afternoonStartMinute by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonStartMinute) }
+    var eveningStartHour by remember(timeConfig) { mutableIntStateOf(timeConfig.eveningStartHour) }
+    var eveningStartMinute by remember(timeConfig) { mutableIntStateOf(timeConfig.eveningStartMinute) }
 
     // 节次时间
 
@@ -279,9 +283,7 @@ fun TimeConfigEditScreen(
     var tempEndHour by remember { mutableIntStateOf(8) }
     var tempEndMinute by remember { mutableIntStateOf(45) }
 
-    var showSectionCountDialog by remember { mutableStateOf(false) }
-
-    var specialBlocks by remember { mutableStateOf(sortSpecialBlocksByTime(timeConfig.specialBlocks)) }
+    var specialBlocks by remember(timeConfig) { mutableStateOf(sortSpecialBlocksByTime(timeConfig.specialBlocks)) }
     var showSpecialDialog by remember { mutableStateOf(false) }
     var editingSpecialIndex by remember { mutableIntStateOf(-1) }
     var tempSpecialName by remember { mutableStateOf("") }
@@ -298,6 +300,22 @@ fun TimeConfigEditScreen(
         tempSpecialEndHour = 8
         tempSpecialEndMinute = 40
     }
+
+    // ---- 作息自身的元信息：生效日期（一级列表 summary 显示的就是它）与删除 ----
+    val editingRoutine = timeConfig.safeRoutines.firstOrNull { it.id == routineId }
+    val canDeleteRoutine = timeConfig.safeRoutines.size > 1
+    var routineEffectiveMonth by remember(timeConfig) {
+        mutableIntStateOf(editingRoutine?.effectiveMonth ?: 1)
+    }
+    var routineEffectiveDay by remember(timeConfig) {
+        mutableIntStateOf(editingRoutine?.effectiveDay ?: 1)
+    }
+    var showRoutineDateDialog by remember { mutableStateOf(false) }
+    var tempRoutineMonth by remember { mutableIntStateOf(1) }
+    var tempRoutineDay by remember { mutableIntStateOf(1) }
+    var showDeleteRoutineDialog by remember { mutableStateOf(false) }
+    /** 危险操作红，与 AddCourseDialog 保持一致 */
+    val destructiveColor = Color(0xFFF44336)
 
     var showSpecialDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -348,7 +366,7 @@ fun TimeConfigEditScreen(
         onBackCompleted = {
             when {
                 animating -> Unit
-                showSectionCountDialog || showTimeDialog || showQuickItemDialog -> {
+                showTimeDialog || showQuickItemDialog -> {
                     // 对话框打开时：手势回弹恢复页面，不关闭
                     isGestureActive = false
                     scope.launch {
@@ -532,12 +550,12 @@ fun TimeConfigEditScreen(
     val minuteValues = listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
 
     // 节次时间（从已保存配置读取，只有点"应用"时才重新计算）
-    var morningTimes by remember { mutableStateOf(timeConfig.getPeriodTimes("morning")) }
-    var afternoonTimes by remember { mutableStateOf(timeConfig.getPeriodTimes("afternoon")) }
-    var eveningTimes by remember { mutableStateOf(timeConfig.getPeriodTimes("evening")) }
+    var morningTimes by remember(timeConfig) { mutableStateOf(timeConfig.getPeriodTimes("morning")) }
+    var afternoonTimes by remember(timeConfig) { mutableStateOf(timeConfig.getPeriodTimes("afternoon")) }
+    var eveningTimes by remember(timeConfig) { mutableStateOf(timeConfig.getPeriodTimes("evening")) }
 
     // key 同 sectionTimes，如 "morning_1" -> "早自习"
-    var sectionNames by remember { mutableStateOf(timeConfig.sectionNames) }
+    var sectionNames by remember(timeConfig) { mutableStateOf(timeConfig.sectionNames) }
     var tempSectionName by remember { mutableStateOf("") }
 
     fun getSectionTitle(period: String, relSection: Int): String {
@@ -556,54 +574,36 @@ fun TimeConfigEditScreen(
     fun checkTimeOverlap(): String? {
         data class TimeRange(val start: Int, val end: Int, val label: String)
 
+        // 解析 "HH:MM-HH:MM" → 分钟区间；空串或格式非法返回 null（显式跳过）
+        fun parseRange(text: String): IntRange? {
+            if (text.isBlank()) return null
+            val parts = text.split("-")
+            if (parts.size != 2) return null
+            val startParts = parts[0].split(":")
+            val endParts = parts[1].split(":")
+            if (startParts.size != 2 || endParts.size != 2) return null
+            val start = startParts[0].toIntOrNull()?.times(60)
+                ?.plus(startParts[1].toIntOrNull() ?: 0) ?: return null
+            val end = endParts[0].toIntOrNull()?.times(60)?.plus(endParts[1].toIntOrNull() ?: 0)
+                ?: return null
+            return start..end
+        }
+
         val allTimes = mutableListOf<TimeRange>()
         for ((section, timeStr) in morningTimes) {
             if (section > morningSections) continue
-            val parts = timeStr.split("-")
-            if (parts.size == 2) {
-                val startParts = parts[0].split(":")
-                val endParts = parts[1].split(":")
-                if (startParts.size == 2 && endParts.size == 2) {
-                    val start = startParts[0].toIntOrNull()?.times(60)
-                        ?.plus(startParts[1].toIntOrNull() ?: 0) ?: continue
-                    val end =
-                        endParts[0].toIntOrNull()?.times(60)?.plus(endParts[1].toIntOrNull() ?: 0)
-                            ?: continue
-                    allTimes.add(TimeRange(start, end, "上午第${section}节"))
-                }
-            }
+            val range = parseRange(timeStr) ?: continue
+            allTimes.add(TimeRange(range.first, range.last, "上午第${section}节"))
         }
         for ((section, timeStr) in afternoonTimes) {
             if (section > afternoonSections) continue
-            val parts = timeStr.split("-")
-            if (parts.size == 2) {
-                val startParts = parts[0].split(":")
-                val endParts = parts[1].split(":")
-                if (startParts.size == 2 && endParts.size == 2) {
-                    val start = startParts[0].toIntOrNull()?.times(60)
-                        ?.plus(startParts[1].toIntOrNull() ?: 0) ?: continue
-                    val end =
-                        endParts[0].toIntOrNull()?.times(60)?.plus(endParts[1].toIntOrNull() ?: 0)
-                            ?: continue
-                    allTimes.add(TimeRange(start, end, "下午第${section}节"))
-                }
-            }
+            val range = parseRange(timeStr) ?: continue
+            allTimes.add(TimeRange(range.first, range.last, "下午第${section}节"))
         }
         for ((section, timeStr) in eveningTimes) {
             if (section > eveningSections) continue
-            val parts = timeStr.split("-")
-            if (parts.size == 2) {
-                val startParts = parts[0].split(":")
-                val endParts = parts[1].split(":")
-                if (startParts.size == 2 && endParts.size == 2) {
-                    val start = startParts[0].toIntOrNull()?.times(60)
-                        ?.plus(startParts[1].toIntOrNull() ?: 0) ?: continue
-                    val end =
-                        endParts[0].toIntOrNull()?.times(60)?.plus(endParts[1].toIntOrNull() ?: 0)
-                            ?: continue
-                    allTimes.add(TimeRange(start, end, "晚上第${section}节"))
-                }
-            }
+            val range = parseRange(timeStr) ?: continue
+            allTimes.add(TimeRange(range.first, range.last, "晚上第${section}节"))
         }
         for (i in allTimes.indices) {
             for (j in i + 1 until allTimes.size) {
@@ -710,25 +710,6 @@ fun TimeConfigEditScreen(
                                     LiquidTopBarButton(
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                            if (configName.isBlank()) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "请输入配置名称",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                return@LiquidTopBarButton
-                                            }
-                                            val existingNames = repository.getTimeConfigIds()
-                                                .filter { id -> id != timeConfig.id }
-                                                .map { id -> repository.getTimeConfig(id).name }
-                                            if (existingNames.contains(configName)) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "已存在同名配置",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                return@LiquidTopBarButton
-                                            }
                                             val overlapMsg = checkTimeOverlap()
                                             if (overlapMsg != null) {
                                                 overlapMessage = overlapMsg
@@ -756,7 +737,7 @@ fun TimeConfigEditScreen(
                                             }
 
                                             val newConfig = timeConfig.copy(
-                                                name = configName,
+                                                name = routineName,
                                                 morningSections = morningSections,
                                                 afternoonSections = afternoonSections,
                                                 eveningSections = eveningSections,
@@ -779,6 +760,10 @@ fun TimeConfigEditScreen(
                                                 sectionTimes = finalSectionTimes,
                                                 sectionNames = finalSectionNames,
                                                 specialBlocks = specialBlocks
+                                            ).withRoutineMeta(
+                                                routineId,
+                                                month = routineEffectiveMonth,
+                                                day = routineEffectiveDay
                                             )
                                             triggerExitAndBack(onSavePending = { onSave(newConfig) })
                                         },
@@ -842,38 +827,40 @@ fun TimeConfigEditScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 item(key = "config_name") {
-                                    SmallTitle(
-                                        text = "配置名称",
-                                    )
+                                    SmallTitle(text = "作息名称")
                                     NativeMiuixTextField(
-                                        value = configName,
-                                        onValueChange = { configName = it },
-                                        label = "请输入配置名称",
+                                        value = routineName,
+                                        onValueChange = { routineName = it },
+                                        label = "请输入作息名称",
                                         useLabelAsPlaceholder = true,
                                         requestFocus = isFabCreation
                                     )
+
                                 }
 
-                                item(key = "section_count") {
-                                    SmallTitle(
-                                        text = "节次与时间",
-                                    )
+                                // 生效安排：属于作息本身，跟名字一样在这一层改
+                                item(key = "routine_meta") {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             ArrowPreference(
-                                                title = "课表节数",
-                                                endActions = {
-                                                    Text(
-                                                        text = "$morningSections·$afternoonSections·$eveningSections",
-                                                        fontSize = 14.5.sp,
-                                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                title = "生效日期",
+                                                // 只有一套作息时没有可切换的对象，日期无意义
+                                                summary = if (canDeleteRoutine) {
+                                                    "每年 ${routineEffectiveMonth}月${routineEffectiveDay}日起自动切换"
+                                                } else "始终生效",
+                                                enabled = canDeleteRoutine,
+                                                onClick = {
+                                                    hapticFeedback.performHapticFeedback(
+                                                        HapticFeedbackType.Confirm
                                                     )
+                                                    tempRoutineMonth = routineEffectiveMonth
+                                                    tempRoutineDay = routineEffectiveDay
+                                                    showRoutineDateDialog = true
                                                 },
-                                                onClick = { showSectionCountDialog = true },
-                                                holdDownState = showSectionCountDialog
+                                                holdDownState = showRoutineDateDialog
                                             )
                                         }
                                     }
@@ -1179,59 +1166,6 @@ fun TimeConfigEditScreen(
                                 }
 
                                 // 特殊课程（无编号时段块）
-                                item(key = "special_courses") {
-                                    SmallTitle(
-                                        text = "特殊课程"
-                                    )
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        insideMargin = PaddingValues(0.dp)
-                                    ) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            if (specialBlocks.isEmpty()) {
-                                                ArrowPreference(
-                                                    title = "暂无特殊课程",
-                                                    summary = "点击添加早读、眼保健操等无编号时段",
-                                                    holdDownState = showSpecialDialog,
-                                                    onClick = {
-                                                        resetSpecialTemp()
-                                                        editingSpecialIndex = -1
-                                                        showSpecialDialog = true
-                                                    }
-                                                )
-                                            } else {
-                                                // 始终按开始时间排序展示
-                                                sortSpecialBlocksByTime(specialBlocks).forEachIndexed { index, block ->
-                                                    ArrowPreference(
-                                                        title = if (block.name.isNotBlank()) block.name else "特殊课程",
-                                                        summary = specialBlockSummary(block),
-                                                        // 只压暗被点开弹窗的那一项
-                                                        holdDownState = showSpecialDialog && index == editingSpecialIndex,
-                                                        onClick = {
-                                                            editingSpecialIndex = index
-                                                            tempSpecialName = block.name
-                                                            val (sh, sm) = parseTimeHm(block.startTime)
-                                                            tempSpecialStartHour = sh; tempSpecialStartMinute = sm
-                                                            val (eh, em) = parseTimeHm(block.endTime)
-                                                            tempSpecialEndHour = eh; tempSpecialEndMinute = em
-                                                            showSpecialDialog = true
-                                                        }
-                                                    )
-                                                }
-                                                ArrowPreference(
-                                                    title = "添加特殊课程",
-                                                    holdDownState = showSpecialDialog && editingSpecialIndex == -1,
-                                                    onClick = {
-                                                        // 添加不能带出上一次编辑的名称/时间
-                                                        resetSpecialTemp()
-                                                        editingSpecialIndex = -1
-                                                        showSpecialDialog = true
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
                                 item(key = "morning") {
                                     SmallTitle(
                                         text = "上午",
@@ -1345,6 +1279,94 @@ fun TimeConfigEditScreen(
                                                     holdDownState = showTimeDialog && editingPeriod == "evening" && editingSection == relSection
                                                 )
                                             }
+                                        }
+                                    }
+                                }
+
+                                item(key = "special_courses") {
+                                    SmallTitle(
+                                        text = "特殊课程"
+                                    )
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        insideMargin = PaddingValues(0.dp)
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            if (specialBlocks.isEmpty()) {
+                                                ArrowPreference(
+                                                    title = "暂无特殊课程",
+                                                    summary = "点击添加早读、眼保健操等无编号时段",
+                                                    holdDownState = showSpecialDialog,
+                                                    onClick = {
+                                                        resetSpecialTemp()
+                                                        editingSpecialIndex = -1
+                                                        showSpecialDialog = true
+                                                    }
+                                                )
+                                            } else {
+                                                // 始终按开始时间排序展示
+                                                sortSpecialBlocksByTime(specialBlocks).forEachIndexed { index, block ->
+                                                    ArrowPreference(
+                                                        title = if (block.name.isNotBlank()) block.name else "特殊课程",
+                                                        summary = specialBlockSummary(block),
+                                                        // 只压暗被点开弹窗的那一项
+                                                        holdDownState = showSpecialDialog && index == editingSpecialIndex,
+                                                        onClick = {
+                                                            editingSpecialIndex = index
+                                                            tempSpecialName = block.name
+                                                            val (sh, sm) = parseTimeHm(block.startTime)
+                                                            tempSpecialStartHour = sh; tempSpecialStartMinute = sm
+                                                            val (eh, em) = parseTimeHm(block.endTime)
+                                                            tempSpecialEndHour = eh; tempSpecialEndMinute = em
+                                                            showSpecialDialog = true
+                                                        }
+                                                    )
+                                                }
+                                                ArrowPreference(
+                                                    title = "添加特殊课程",
+                                                    holdDownState = showSpecialDialog && editingSpecialIndex == -1,
+                                                    onClick = {
+                                                        // 添加不能带出上一次编辑的名称/时间
+                                                        resetSpecialTemp()
+                                                        editingSpecialIndex = -1
+                                                        showSpecialDialog = true
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                // 页面最后的危险操作：整宽红字按钮，样式同 AddCourseDialog 的删除按钮
+                                if (canDeleteRoutine) {
+                                    item(key = "routine_delete") {
+                                        Button(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(50.dp),
+                                            onClick = {
+                                                hapticFeedback.performHapticFeedback(
+                                                    HapticFeedbackType.Confirm
+                                                )
+                                                showDeleteRoutineDialog = true
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                color = if (isDark) Color.White.copy(alpha = 0.04f)
+                                                else Color.Black.copy(alpha = 0.04f)
+                                            ),
+                                        ) {
+                                            Icon(
+                                                imageVector = MiuixIcons.Delete,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = destructiveColor
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "删除作息",
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = destructiveColor
+                                            )
                                         }
                                     }
                                 }
@@ -1539,102 +1561,6 @@ fun TimeConfigEditScreen(
                             }
                         }
 
-                        OverlayDialog(
-                            title = "课表节数设置",
-                            show = showSectionCountDialog,
-                            onDismissRequest = { showSectionCountDialog = false },
-                            liquidGlassBackdrop = liquidGlassBackdrop
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = "上午",
-                                            style = MiuixTheme.textStyles.footnote1,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                                        )
-                                        NumberPicker(
-                                            value = morningSections,
-                                            onValueChange = { morningSections = it },
-                                            range = 0..6,
-                                            visibleItemCount = 3,
-                                            itemHeight = 50.dp
-                                        )
-                                    }
-
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = "下午",
-                                            style = MiuixTheme.textStyles.footnote1,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                                        )
-                                        NumberPicker(
-                                            value = afternoonSections,
-                                            onValueChange = { afternoonSections = it },
-                                            range = 0..6,
-                                            visibleItemCount = 3,
-                                            itemHeight = 50.dp
-                                        )
-                                    }
-
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = "晚上",
-                                            style = MiuixTheme.textStyles.footnote1,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                                        )
-                                        NumberPicker(
-                                            value = eveningSections,
-                                            onValueChange = { eveningSections = it },
-                                            range = 0..6,
-                                            visibleItemCount = 3,
-                                            itemHeight = 50.dp
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    TextButton(
-                                        text = "取消",
-                                        onClick = {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                            showSectionCountDialog = false
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    TextButton(
-                                        text = "确定",
-                                        onClick = {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                            showSectionCountDialog = false
-                                        },
-                                        colors = ButtonDefaults.textButtonColorsPrimary(),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
-                        }
 
                         OverlayDialog(
                             title = if (editingSpecialIndex == -1) "添加特殊课程" else "编辑特殊课程",
@@ -2049,6 +1975,126 @@ fun TimeConfigEditScreen(
                                         showOverlapDialog = false
                                     },
                                     modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // ---- 修改生效日期 ----
+                        OverlayDialog(
+                            title = "生效日期",
+                            summary = "到这一天自动切换到该作息",
+                            show = showRoutineDateDialog,
+                            liquidGlassBackdrop = liquidGlassBackdrop,
+                            onDismissRequest = { showRoutineDateDialog = false }
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    NumberPicker(
+                                        value = tempRoutineMonth,
+                                        // 切月时把日一起夹住：1/31 切到 2 月会变成 2/28
+                                        onValueChange = {
+                                            tempRoutineMonth = it
+                                            tempRoutineDay = com.haooz.chedule.data.TimeRoutine
+                                                .clampDayOfMonth(it, tempRoutineDay)
+                                        },
+                                        range = 1..12,
+                                        visibleItemCount = 3,
+                                        itemHeight = 60.dp,
+                                        label = { "${it}月" },
+                                        wrapAround = true,
+                                        textStyle = MiuixTheme.textStyles.title2,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    NumberPicker(
+                                        value = tempRoutineDay,
+                                        onValueChange = { tempRoutineDay = it },
+                                        // 上限跟随月份，否则能选出「2 月 31 日」—— 这样的作息永远不会生效
+                                        range = 1..com.haooz.chedule.data.TimeRoutine
+                                            .daysInMonth(tempRoutineMonth),
+                                        visibleItemCount = 3,
+                                        itemHeight = 60.dp,
+                                        label = { "${it}日" },
+                                        textStyle = MiuixTheme.textStyles.title2,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    TextButton(
+                                        text = "取消",
+                                        onClick = { showRoutineDateDialog = false },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(
+                                        text = "确定",
+                                        onClick = {
+                                            // 同一天只能有一套作息，否则到点切换的结果取决于列表顺序
+                                            if (timeConfig.isRoutineDateTaken(
+                                                    tempRoutineMonth, tempRoutineDay,
+                                                    excludeId = routineId
+                                                )
+                                            ) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "该日期已有作息，请换一个生效日期",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                return@TextButton
+                                            }
+                                            routineEffectiveMonth = tempRoutineMonth
+                                            routineEffectiveDay = tempRoutineDay
+                                            showRoutineDateDialog = false
+                                        },
+                                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // ---- 删除作息 ----
+                        OverlayDialog(
+                            title = "删除作息",
+                            summary = "确定要删除作息「${editingRoutine?.name ?: routineName}」吗？\n此操作不可撤销。",
+                            show = showDeleteRoutineDialog,
+                            liquidGlassBackdrop = liquidGlassBackdrop,
+                            onDismissRequest = { showDeleteRoutineDialog = false }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                TextButton(
+                                    text = "取消",
+                                    onClick = {
+                                        hapticFeedback.performHapticFeedback(
+                                            HapticFeedbackType.Confirm
+                                        )
+                                        showDeleteRoutineDialog = false
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    text = "删除",
+                                    onClick = {
+                                        hapticFeedback.performHapticFeedback(
+                                            HapticFeedbackType.Confirm
+                                        )
+                                        showDeleteRoutineDialog = false
+                                        onDeleteRoutine(routineId)
+                                        triggerExitAndBack()
+                                    },
+                                    textColor = destructiveColor,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }

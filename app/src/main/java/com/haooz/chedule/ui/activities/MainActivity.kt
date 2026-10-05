@@ -64,7 +64,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -1217,6 +1216,11 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val holidayDataRevision by com.haooz.chedule.data.HolidayManager.dataRevision.collectAsState()
     // 只在「返回」时刷新；冷启动首次 onResume 时 ViewModel 刚加载完，再全量刷会拖慢首屏
     LaunchedEffect(resumeCount) {
+        // 作息按日期自动切换：跨过生效日期后补一次提醒重排。
+        // 只是比对 prefs 里记的 key，几乎零开销，所以冷启动这一次也跑
+        withContext(Dispatchers.IO) {
+            com.haooz.chedule.data.CourseRepository(context).syncRoutineAfterDateChange()
+        }
         if (resumeCount > 1) {
             withContext(Dispatchers.IO) {
                 settingsViewModel.refreshSettings()

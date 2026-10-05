@@ -10,6 +10,7 @@ import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.ShareCodeApi
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.TimeRoutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -25,9 +26,10 @@ fun buildShareScheduleMap(
     if (courses.isEmpty()) return null
 
     // 必须绑定被分享课表的 TimeConfig：getCurrentTimeConfig 可能指向另一张表
+    // effective()：导出当天生效的那套作息时间（夏令时/冬令时）
     val timeConfig = repository.getTimeConfig(
         repository.getScheduleTimeConfigId(scheduleName)
-    )
+    ).effective()
     val morning = repository.getPeriodTimes("morning", scheduleName)
         .mapKeys { it.key.toString() }
     val afternoon = repository.getPeriodTimes("afternoon", scheduleName)
@@ -54,7 +56,14 @@ fun buildShareScheduleMap(
         "evening" to evening,
         "section_names" to timeConfig.sectionNames,
     )
-    return buildShareSchedulePayload(scheduleName, settings, times, courses)
+    // times 只带当天生效那套（旧版本靠它渲染）；routines 带全部作息，导入后按日期自动切换
+    return buildShareSchedulePayload(
+        scheduleName = scheduleName,
+        settings = settings,
+        times = times,
+        courses = courses,
+        routines = timeConfig.safeRoutines,
+    )
 }
 
 /** 单课表/分享共用的课程字段序列化；导出与单课表备份必须走同一份字段清单 */
@@ -76,11 +85,14 @@ internal fun buildShareSchedulePayload(
     settings: Map<String, Any>,
     times: Map<String, Any>,
     courses: List<Course>,
+    routines: List<TimeRoutine> = emptyList(),
 ): Map<String, Any> = mapOf(
     "schedule_name" to scheduleName,
     "settings" to settings,
     "times" to times,
     "courses" to courses.map(::courseToShareMap),
+    // 全套作息（夏令时/冬令时）。旧版本忽略这个字段，仍按 times 建单作息，向后兼容
+    "routines" to routines,
 )
 
 internal fun shareScheduleSettings(

@@ -1,11 +1,11 @@
 /** 课程时间设置页面 */
 package com.haooz.chedule.ui.activities
-import com.haooz.chedule.ui.utils.ApiCompat
 
-import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -41,6 +40,8 @@ import com.haooz.chedule.ui.basic.rememberSharedScrollBehavior
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
+import com.haooz.chedule.ui.theme.CourseScheduleTheme
+import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,12 +52,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
 
 class CourseTimeSettingsActivity : ComponentActivity() {
     // 小窗状态
@@ -105,12 +102,9 @@ class CourseTimeSettingsActivity : ComponentActivity() {
             // 页面状态管理
             var currentPage by remember { mutableStateOf("select") }
             var editingConfig by remember { mutableStateOf<TimeConfig?>(null) }
+            var editingRoutineId by remember { mutableStateOf<Long?>(null) }
             var editingCardBounds by remember { mutableStateOf<TimeConfigCardBounds?>(null) }
             var listRefreshTrigger by remember { mutableIntStateOf(0) }
-            var hideConfigId by remember { mutableStateOf<Long?>(null) }
-            var hideFab by remember { mutableStateOf(false) }
-            var newlyAddedConfigId by remember { mutableStateOf<Long?>(null) }
-            var isNewConfigCreation by remember { mutableStateOf(false) }
 
             // 屏幕尺寸与圆角
             val density = LocalDensity.current
@@ -216,48 +210,11 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                                     )
                                 ) {
                                     CourseTimeSettingsScreen(
-                                        onEditConfig = { config, bounds ->
-                                            // 从 repository 重新读取最新的 TimeConfig，避免使用缓存的旧数据
-                                            val latestConfig = repository.getTimeConfig(config.id)
-                                            editingConfig = latestConfig
+                                        onEditRoutine = { routine, baseConfig, bounds ->
+                                            // 二级页面只编辑这一个作息：把该作息的时间叠加上去
+                                            editingConfig = baseConfig.effectiveFor(routine.id)
+                                            editingRoutineId = routine.id
                                             editingCardBounds = bounds
-                                            hideConfigId = config.id
-                                            isNewConfigCreation = false
-                                            // 先捕获快照（原始状态）
-                                            coroutineScope.launch {
-                                                val lx = bounds.left.toInt().coerceIn(0, screenWidth.toInt() - 1)
-                                                val ly = bounds.top.toInt().coerceIn(0, screenHeight.toInt() - 1)
-                                                val lw = bounds.width.toInt().coerceIn(1, screenWidth.toInt() - lx)
-                                                val lh = bounds.height.toInt().coerceIn(1, screenHeight.toInt() - ly)
-                                                cardSnapshot = try {
-                                                    val fullBitmap = screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
-                                                    Bitmap.createBitmap(fullBitmap, lx, ly, lw, lh)
-                                                } catch (_: Exception) { null } catch (_: OutOfMemoryError) { null }
-                                            }
-                                            // 等待一帧后启动背景动画
-                                            coroutineScope.launch {
-                                                delay(12.milliseconds)
-                                                launch {
-                                                    backgroundScale.animateTo(
-                                                        targetValue = 0.92f,
-                                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                                    )
-                                                }
-                                                launch {
-                                                    managePageBlurRadius.animateTo(
-                                                        targetValue = 5f,
-                                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                                    )
-                                                }
-                                            }
-                                            // 最后触发组合（背景已在动画中）
-                                            currentPage = "edit"
-                                        },
-                                        onCreateConfig = { bounds ->
-                                            editingConfig = TimeConfig(name = "")
-                                            editingCardBounds = bounds
-                                            hideFab = true
-                                            isNewConfigCreation = true
                                             // 先捕获快照（原始状态）
                                             coroutineScope.launch {
                                                 val lx = bounds.left.toInt().coerceIn(0, screenWidth.toInt() - 1)
@@ -289,10 +246,6 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                                             currentPage = "edit"
                                         },
                                         refreshTrigger = listRefreshTrigger,
-                            hideConfigId = hideConfigId,
-                            hideFab = hideFab,
-                            newlyAddedConfigId = newlyAddedConfigId,
-                            onNewConfigAnimDone = { newlyAddedConfigId = null },
                             scrollBehavior = scrollBehavior,
                             liquidGlassBackdrop = liquidGlassBackdrop,
                                     )
@@ -306,10 +259,10 @@ class CourseTimeSettingsActivity : ComponentActivity() {
             // 编辑页面渲染在 Scaffold 外面（与 CourseManageActivity 结构一致）
             if (currentPage == "edit") {
                 editingConfig?.let { config ->
-                    val isNewConfig = isNewConfigCreation
                     val bounds = editingCardBounds
                     TimeConfigEditScreen(
                         timeConfig = config,
+                        routineId = editingRoutineId ?: 0L,
                         onBackStart = {
                             coroutineScope.launch {
                                 launch {
@@ -329,21 +282,15 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                         onBack = {
                             currentPage = "select"
                             editingConfig = null
+                            editingRoutineId = null
                             editingCardBounds = null
                             cardSnapshot = null
-                            hideConfigId = null
-                            hideFab = false
                         },
                         onSave = { savedConfig ->
-                            if (isNewConfig) {
-                                val newId = repository.addTimeConfig(savedConfig)
-                                repository.switchToTimeConfig(newId)
-                                newlyAddedConfigId = newId
-                            } else {
-                                repository.saveTimeConfig(savedConfig)
-                                if (savedConfig.id == repository.getCurrentTimeConfigId()) {
-                                    repository.switchToTimeConfig(savedConfig.id)
-                                }
+                            // 只替换这一个作息；节次骨架由一级页面管理，这里不碰。
+                            // 顶层 name 是用户在这一页改的作息名，要带回去。
+                            editingRoutineId?.let { routineId ->
+                                repository.saveRoutine(routineId, savedConfig, savedConfig.name)
                             }
                             listRefreshTrigger++
                         },
@@ -354,10 +301,15 @@ class CourseTimeSettingsActivity : ComponentActivity() {
                         screenWidth = screenWidth,
                         screenHeight = screenHeight,
                         screenCornerRadius = screenCornerRadius,
-                        cardStartCornerRadius = if (isNewConfig) 92f else 20f,
+                        cardStartCornerRadius = 20f,
                         cardSnapshot = cardSnapshot,
-                        isFabCreation = isNewConfig && bounds != null && bounds.width > 0f && bounds.height > 0f
-                                && abs(bounds.width - bounds.height) / bounds.width < 0.2f,
+                        // 新建配置的 FAB 形态已随「快捷切换」一起移除，二级页永远从列表卡片展开
+                        isFabCreation = false,
+                        onDeleteRoutine = { routineId ->
+                            // 删除会换掉生效作息，重排提醒等都在 repository 里一并做完
+                            repository.deleteRoutine(routineId)
+                            listRefreshTrigger++
+                        },
                         liquidGlassBackdrop = editLiquidGlassBackdrop,
                     )
                 }

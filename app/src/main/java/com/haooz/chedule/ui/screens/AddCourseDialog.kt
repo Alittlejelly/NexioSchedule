@@ -822,8 +822,8 @@ private fun AddCourseDialogContent(
                         stableOnDeleteClick()
                     },
                     colors = ButtonDefaults.buttonColors(
-                        color = if (isDark) Color.White.copy(alpha = 0.1f)
-                        else Color.Black.copy(alpha = 0.06f)
+                        color = if (isDark) Color.White.copy(alpha = 0.04f)
+                        else Color.Black.copy(alpha = 0.04f)
                     ),
                 ) {
                     Icon(

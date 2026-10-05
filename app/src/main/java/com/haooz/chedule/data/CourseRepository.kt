@@ -49,6 +49,7 @@ class CourseRepository private constructor(context: Context) {
     init {
         migrateToTimeConfigsIfNeeded()
         migrateScheduleTimeConfigBindingsIfNeeded()
+        pruneOrphanTimeConfigsIfNeeded()
         migrateSchedulesIntoDefaultFolder()
     }
 
@@ -165,6 +166,8 @@ class CourseRepository private constructor(context: Context) {
     }
 
     companion object {
+        private const val TAG = "CourseRepository"
+
         @Volatile
         private var INSTANCE: CourseRepository? = null
 
@@ -1033,8 +1036,8 @@ class CourseRepository private constructor(context: Context) {
 
     fun getPeriodTimes(period: String, scheduleId: String): Map<Int, String> {
         val configId = getScheduleTimeConfigId(scheduleId)
-        val config = getTimeConfig(configId)
-        return config.getPeriodTimes(period)
+        // 走生效作息：同一套节次骨架下，按当天日期自动取夏令时/冬令时那套时间
+        return getTimeConfig(configId).effective().getPeriodTimes(period)
     }
 
     /** All configured section times, with afternoon and evening keys using global section numbers. */
@@ -1061,12 +1064,19 @@ class CourseRepository private constructor(context: Context) {
     fun savePeriodTimes(period: String, times: Map<Int, String>, scheduleId: String) {
         val configId = getScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
-        val existing = config.sectionTimes.toMutableMap()
+        // 编辑的是「当天生效的那套作息」，改完只写回它，不影响其它作息方案
+        val activeRoutineId = config.effectiveRoutineId()
+        val base = config.effective()
+        val existing = base.sectionTimes.toMutableMap()
         existing.keys.filter { it.startsWith("${period}_") }.forEach { existing.remove(it) }
         for ((idx, v) in times) {
             existing["${period}_$idx"] = v
         }
-        saveTimeConfig(config.copy(sectionTimes = existing, quickTimeEnabled = false))
+        val updated = base.copy(sectionTimes = existing, quickTimeEnabled = false)
+        saveTimeConfig(
+            if (activeRoutineId == null) updated
+            else config.withRoutineTimesApplied(activeRoutineId, updated)
+        )
         if (scheduleId == getCurrentScheduleId()) notifyCourseChanged("settings")
     }
 
@@ -1436,6 +1446,10 @@ class CourseRepository private constructor(context: Context) {
         }
         val currentPrefix = "$SCHEDULE_KEY_PREFIX${currentId}_"
         val newPrefix = "$SCHEDULE_KEY_PREFIX${name}_"
+        // 必须先复制再进 edit 块：addTimeConfig 自身会提交 prefs，嵌套 edit 会打乱写入顺序
+        val duplicatedTimeConfigId = addTimeConfig(
+            getTimeConfig(getScheduleTimeConfigId(currentId)).copy(id = 0L, name = name)
+        )
         prefs.edit(commit = true) {
             for ((key, value) in prefs.all) {
                 if (key.startsWith(currentPrefix)) {
@@ -1457,10 +1471,8 @@ class CourseRepository private constructor(context: Context) {
                     }
                 }
             }
-            val currentTimeConfigId = prefs.getLong("$SCHEDULE_TIME_CONFIG_PREFIX$currentId", 0L)
-            if (currentTimeConfigId != 0L) {
-                putLong("$SCHEDULE_TIME_CONFIG_PREFIX$name", currentTimeConfigId)
-            }
+            // 新学期要的是独立副本（含全部作息方案），沿用旧绑定会让两个课表互相影响
+            putLong("$SCHEDULE_TIME_CONFIG_PREFIX$name", duplicatedTimeConfigId)
             val today = LocalDate.now()
             val todayStr =
                 String.format(java.util.Locale.ROOT, "%04d/%02d/%02d", today.year, today.monthValue, today.dayOfMonth)
@@ -2213,11 +2225,49 @@ class CourseRepository private constructor(context: Context) {
     fun addTimeConfig(config: TimeConfig): Long {
         val ids = getTimeConfigIds().toMutableList()
         val newId = (ids.maxOrNull() ?: -1L) + 1L
-        val newConfig = config.copy(id = newId)
+        val newConfig = config.ensureRoutine().copy(id = newId)
         ids.add(newId)
         saveTimeConfigIds(ids)
         saveTimeConfig(newConfig)
         return newId
+    }
+
+    /**
+     * 直接改写 TimeConfig 后广播一次「设置变更」。
+     *
+     * [saveTimeConfig] 只落盘、不发通知（它被很多内部批量写调用，发了会重复重排），
+     * 所以「在 UI 层拿到 config 改一改再存回去」的路径必须自己补这一下，
+     * 否则课程提醒 / 小部件 / 手表推送仍按改动前的时间工作。
+     */
+    fun notifyTimeConfigChanged() {
+        notifyCourseChanged("settings")
+    }
+
+    /**
+     * 删除当前课表的一个作息方案；至少保留一个，删不动时返回 false。
+     *
+     * 删除后「生效的那套」可能换人（也可能还是它，时间却变了），所以必须广播 ——
+     * 否则课程提醒 / 小部件仍按被删掉的作息排时间。
+     */
+    fun deleteRoutine(routineId: Long): Boolean {
+        val configId = getScheduleTimeConfigId(getCurrentScheduleId())
+        val original = getTimeConfig(configId)
+        val remaining = original.withRoutineRemoved(routineId)
+        if (remaining.safeRoutines.size == original.safeRoutines.size) return false
+        saveTimeConfig(remaining)
+        notifyCourseChanged("settings")
+        return true
+    }
+
+    /**
+     * 保存某个作息方案的时间数据，并广播变更让课表页重算。
+     * 节次骨架不在这里改——它属于课表，由时间配置页统一管理。
+     */
+    fun saveRoutine(routineId: Long, edited: TimeConfig, nameOverride: String? = null) {
+        val scheduleId = getCurrentScheduleId()
+        val base = getTimeConfig(getScheduleTimeConfigId(scheduleId))
+        saveTimeConfig(base.withRoutineReplaced(routineId, edited.routineOf(routineId, nameOverride)))
+        notifyCourseChanged("settings")
     }
 
     fun deleteTimeConfig(id: Long) {
@@ -2234,13 +2284,82 @@ class CourseRepository private constructor(context: Context) {
         }
     }
 
+    /**
+     * 清理没有任何课表绑定的孤儿时间配置。
+     *
+     * 「多配置可切换」时代会攒下一堆配置；改成「一课表一配置」后它们再也不会被用到，
+     * 却仍留在 time_config_ids 里 —— 不仅占空间，还会让同名检查误判。
+     * 必须在确定至少还有一个配置存活时才删，避免把最后一个也清掉导致课表无配置可用。
+     *
+     * 删除不可逆且没有第二份副本，所以把删了哪些留下来记一条 log：一旦出现
+     * 「课表名与绑定键不同步导致误删」，这是唯一能查的线索。
+     */
+    fun pruneOrphanTimeConfigsIfNeeded() {
+        val ids = getTimeConfigIds()
+        if (ids.size <= 1) return
+        // 同时并入「原始绑定值」和「回退解析值」：未绑定的课表会回退到第一个配置，
+        // 那个配置虽没被显式绑定却正在被使用，只看原始值会把它误删。
+        val bound = getScheduleNames()
+            .flatMap { name ->
+                listOf(
+                    prefs.getLong("$SCHEDULE_TIME_CONFIG_PREFIX$name", 0L),
+                    getScheduleTimeConfigId(name)
+                )
+            }
+            .toSet()
+        val orphans = ids.filter { it !in bound }
+        if (orphans.isEmpty() || orphans.size >= ids.size) return
+        val kept = ids.filter { it in bound }
+        saveTimeConfigIds(kept)
+        orphans.forEach { orphan ->
+            prefs.edit { remove("${TIME_CONFIG_PREFIX}$orphan") }
+            timeConfigCache.remove(orphan)
+        }
+        android.util.Log.w(
+            TAG,
+            "pruneOrphanTimeConfigs: 课表=${getScheduleNames()} 保留=$kept 删除=$orphans"
+        )
+    }
+
     fun getCurrentTimeConfig(): TimeConfig {
         return getTimeConfig(getCurrentTimeConfigId())
     }
 
-    /** 相对 key "morning_1" 转全局绝对节次号 -> 名称 */
+    /**
+     * 跨过作息生效日期后，补一次「设置变更」广播，让课程提醒 / 小部件按新作息重排。
+     *
+     * 作息是到日期自动切换的，切换那一刻没有任何写操作；而提醒闹钟只在设置变更时重排，
+     * 不补这一下的话，App 没被打开过时提醒会一直停在上一个作息的时间上。
+     *
+     * 只在「生效的作息真的换了」时才广播；同一天反复调用只是两次 prefs 读，无副作用。
+     * prefs 里没值时只登记不重排——首次（新装 / 首次升级）的排程由既有冷启动链路负责。
+     * 按课表分键存放，切换课表不会互相干扰。
+     */
+    fun syncRoutineAfterDateChange(): Boolean {
+        val scheduleId = getCurrentScheduleId()
+        val config = getTimeConfig(getScheduleTimeConfigId(scheduleId))
+        val key = "${config.id}:${config.effectiveRoutineId() ?: -1L}"
+        val prefKey = "${SCHEDULE_KEY_PREFIX}${scheduleId}_active_routine"
+        val last = prefs.getString(prefKey, null)
+
+        // 顺带把顶层镜像刷成当天生效的那套。跨日期切换本身没有任何写操作，
+        // 镜像不刷新就会一直停在上一个作息上 —— 只读顶层的旧版本 App、
+        // 以及直接导出 prefs 原始 JSON 的全量备份都会拿到过期时间。
+        // （App 内部所有读取都已走 effective()，这里只是把镜像 invariant 补回来）
+        val effective = config.effective()
+        if (effective != config) saveTimeConfig(effective)
+
+        if (last == key) return false
+        prefs.edit(commit = true) { putString(prefKey, key) }
+        // 首次登记不重排，避免新装 / 首次升级时白跑一次全量闹钟排程
+        if (last == null) return false
+        notifyCourseChanged("settings")
+        return true
+    }
+
+    /** 相对 key "morning_1" 转全局绝对节次号 -> 名称；取当天生效作息的名称 */
     fun getSectionNames(): Map<Int, String> {
-        val config = getCurrentTimeConfig()
+        val config = getCurrentTimeConfig().effective()
         val names = mutableMapOf<Int, String>()
         for ((k, v) in config.sectionNames) {
             val parts = k.split("_")
@@ -2258,16 +2377,32 @@ class CourseRepository private constructor(context: Context) {
         return names
     }
 
-    fun switchToTimeConfig(id: Long) {
-        val config = getTimeConfig(id)
-        // 保持课程时段相对位置，避免随绝对节次平移
+    /** 当前课表 + 当天生效作息合成后的配置；读时间统一走它 */
+    fun getEffectiveTimeConfig(): TimeConfig = getCurrentTimeConfig().effective()
+
+    fun getEffectiveTimeConfig(scheduleId: String): TimeConfig =
+        getTimeConfig(getScheduleTimeConfigId(scheduleId)).effective()
+
+    /**
+     * 把另一个课表的时间配置（含全部作息方案）完整复制过来，直接作为本课表的时间配置使用。
+     * 一个课表只绑定一个时间配置，所以这里是「覆盖」而不是「新增/切换」。
+     */
+    fun copyTimeConfigFromSchedule(
+        sourceScheduleId: String,
+        targetScheduleId: String = getCurrentScheduleId()
+    ): Boolean {
+        if (sourceScheduleId == targetScheduleId) return false
+        val targetId = getScheduleTimeConfigId(targetScheduleId)
+        val source = getTimeConfig(getScheduleTimeConfigId(sourceScheduleId))
+        val target = getTimeConfig(targetId)
+        // 节次骨架变了就按相对位置平移课程，避免课被挤到网格外
         remapCoursesForNewSectionCounts(
-            config.morningSections, config.afternoonSections, config.eveningSections
+            source.morningSections, source.afternoonSections, source.eveningSections, targetScheduleId
         )
-        setCurrentTimeConfigId(id)
-        setScheduleTimeConfigId(getCurrentScheduleId(), id)
-        applyTimeConfigToSchedule(config)
+        saveTimeConfig(source.copy(id = targetId, name = target.name))
+        setScheduleTimeConfigId(targetScheduleId, targetId)
         notifyCourseChanged("settings")
+        return true
     }
 
     /** 软导入：覆盖绑定配置以免之后被旧配置盖回；共享 id0 时新建专属配置 */
@@ -2295,15 +2430,18 @@ class CourseRepository private constructor(context: Context) {
 
         if (configId != 0L) {
             val base = getTimeConfig(configId)
+            val updated = base.copy(
+                name = base.name.ifBlank { scheduleId },
+                morningSections = morningSections,
+                afternoonSections = afternoonSections,
+                eveningSections = eveningSections,
+                quickTimeEnabled = false,
+                sectionTimes = sectionTimes
+            )
+            val routineId = base.effectiveRoutineId()
             saveTimeConfig(
-                base.copy(
-                    name = base.name.ifBlank { scheduleId },
-                    morningSections = morningSections,
-                    afternoonSections = afternoonSections,
-                    eveningSections = eveningSections,
-                    quickTimeEnabled = false,
-                    sectionTimes = sectionTimes
-                )
+                if (routineId == null) updated
+                else base.withRoutineTimesApplied(routineId, updated)
             )
         } else {
             val newId = addTimeConfig(
@@ -2324,14 +2462,14 @@ class CourseRepository private constructor(context: Context) {
      * 节数变化时保持课程时段相对位置；不向上钳制，缩节数后课暂落网格外。
      */
     private fun remapCoursesForNewSectionCounts(
-        newMorning: Int, newAfternoon: Int, newEvening: Int
+        newMorning: Int, newAfternoon: Int, newEvening: Int,
+        scheduleId: String = getCurrentScheduleId()
     ) {
-        val oldMorning = getMorningSections()
-        val oldAfternoon = getAfternoonSections()
-        val oldEvening = getEveningSections()
+        val oldMorning = getMorningSections(scheduleId)
+        val oldAfternoon = getAfternoonSections(scheduleId)
+        val oldEvening = getEveningSections(scheduleId)
         if (oldMorning == newMorning && oldAfternoon == newAfternoon && oldEvening == newEvening) return
 
-        val scheduleId = getCurrentScheduleId()
         var changed = false
         val remapped = getCoursesForSchedule(scheduleId).map { course ->
             val newStart = remapSection(
@@ -2420,9 +2558,8 @@ class CourseRepository private constructor(context: Context) {
 
         batchingSettings = true
         try {
-            saveTimeConfig(
-                base.copy(
-                    morningSections = config.morningSections,
+            val updated = base.copy(
+                morningSections = config.morningSections,
                     afternoonSections = config.afternoonSections,
                     eveningSections = config.eveningSections,
                     // 与旧 savePeriodTimes 一致：应用配置时快速时间保持关闭
@@ -2444,6 +2581,10 @@ class CourseRepository private constructor(context: Context) {
                     eveningStartMinute = config.eveningStartMinute,
                     sectionTimes = sectionTimes
                 )
+            val routineId = base.effectiveRoutineId()
+            saveTimeConfig(
+                if (routineId == null) updated
+                else base.withRoutineTimesApplied(routineId, updated)
             )
             writeLegacyTimeShadowPrefs(scheduleId, config)
         } finally {
@@ -2633,11 +2774,29 @@ class CourseRepository private constructor(context: Context) {
         return Triple(config.morningSections, config.afternoonSections, config.eveningSections)
     }
 
-    /** @param timeConfigData 可选；有则强制新建绑定，否则无绑定时复制当前配置 */
+    /**
+     * 从单课表备份还原时间配置；认不出格式时返回 null（调用方退回复制当前课表）。
+     *
+     * 两种形态都收：整份 JSON 字符串，或扁平 Map（旧版本 App 写的、也认识的那种）。
+     * 二者都转回 JSON 交给 gson + sanitize —— 字段清单不用手写，也不用跟着 TimeConfig
+     * 加字段改两处；sanitize 顺带完成钳制与默认作息播种。
+     */
+    private fun buildImportedTimeConfig(scheduleName: String, raw: Any): TimeConfig? = when (raw) {
+        is String, is Map<*, *> -> parseTimeConfigSnapshot(raw)?.copy(name = scheduleName, id = 0L)
+
+        else -> null
+    }
+
+    private fun parseTimeConfigSnapshot(raw: Any): TimeConfig? {
+        val json = runCatching { gson.toJson(raw) }.getOrNull() ?: return null
+        val parsed = TimeConfig.parseSnapshotOrNull(gson, json) ?: return null
+        return TimeConfig.sanitize(0L, parsed)
+    }
+
     fun importSingleSchedule(
         scheduleName: String,
         coursesData: List<Map<String, Any>>,
-        timeConfigData: Map<String, Any>? = null,
+        timeConfigData: Any? = null,
         classStartTime: String? = null,
         currentWeek: Int? = null,
         totalWeeks: Int? = null,
@@ -2725,49 +2884,9 @@ class CourseRepository private constructor(context: Context) {
         // 有 time_config 则强制新建覆盖；没有且确实无绑定时才复制当前配置。
         val boundKey = "$SCHEDULE_TIME_CONFIG_PREFIX$scheduleName"
         if (timeConfigData != null || !prefs.contains(boundKey)) {
-            val newConfig = if (timeConfigData != null) {
-                // 旧备份可能只含部分字段，其余走默认值
-                val sectionTimesMap = mutableMapOf<String, String>()
-                (timeConfigData["sectionTimes"] as? Map<*, *>)?.forEach { (k, v) ->
-                    if (k is String && v is String) sectionTimesMap[k] = v
-                }
-                val importedSectionNames = mutableMapOf<String, String>()
-                (timeConfigData["sectionNames"] as? Map<*, *>)?.forEach { (k, v) ->
-                    if (k is String && v is String) importedSectionNames[k] = v
-                }
-                val importedSpecialBlocks = (timeConfigData["specialBlocks"] as? List<*>)
-                    ?.mapNotNull { SpecialBlock.fromRaw(it) }
-                    ?: emptyList()
-                TimeConfig(
-                    name = scheduleName,
-                    morningSections = (timeConfigData["morningSections"] as? Number)?.toInt() ?: 4,
-                    afternoonSections = (timeConfigData["afternoonSections"] as? Number)?.toInt() ?: 4,
-                    eveningSections = (timeConfigData["eveningSections"] as? Number)?.toInt() ?: 4,
-                    quickTimeEnabled = (timeConfigData["quickTimeEnabled"] as? Boolean) ?: false,
-                    classDuration = (timeConfigData["classDuration"] as? Number)?.toInt() ?: 45,
-                    shortBreak = (timeConfigData["shortBreak"] as? Number)?.toInt() ?: 10,
-                    longBreakEnabled = (timeConfigData["longBreakEnabled"] as? Boolean) ?: false,
-                    longBreakMorning = (timeConfigData["longBreakMorning"] as? Number)?.toInt() ?: 20,
-                    longBreakAfternoon = (timeConfigData["longBreakAfternoon"] as? Number)?.toInt() ?: 20,
-                    longBreakEvening = (timeConfigData["longBreakEvening"] as? Number)?.toInt() ?: 20,
-                    longBreakMorningSection = (timeConfigData["longBreakMorningSection"] as? Number)?.toInt() ?: 2,
-                    longBreakAfternoonSection = (timeConfigData["longBreakAfternoonSection"] as? Number)?.toInt() ?: 2,
-                    longBreakEveningSection = (timeConfigData["longBreakEveningSection"] as? Number)?.toInt() ?: 2,
-                    morningStartHour = (timeConfigData["morningStartHour"] as? Number)?.toInt() ?: 8,
-                    morningStartMinute = (timeConfigData["morningStartMinute"] as? Number)?.toInt() ?: 0,
-                    afternoonStartHour = (timeConfigData["afternoonStartHour"] as? Number)?.toInt() ?: 14,
-                    afternoonStartMinute = (timeConfigData["afternoonStartMinute"] as? Number)?.toInt() ?: 0,
-                    eveningStartHour = (timeConfigData["eveningStartHour"] as? Number)?.toInt() ?: 18,
-                    eveningStartMinute = (timeConfigData["eveningStartMinute"] as? Number)?.toInt() ?: 30,
-                    sectionTimes = sectionTimesMap,
-                    sectionNames = importedSectionNames,
-                    specialBlocks = importedSpecialBlocks
-                )
-            } else {
-                // 没有导入时间配置，复制当前课表的
-                val defaultConfig = getCurrentTimeConfig()
-                defaultConfig.copy(name = scheduleName, id = 0L)
-            }
+            // 解析不出来（备份损坏 / 格式不认识）时退回「复制当前课表」，课表不至于没有时间配置
+            val newConfig = timeConfigData?.let { buildImportedTimeConfig(scheduleName, it) }
+                ?: getCurrentTimeConfig().copy(name = scheduleName, id = 0L)
             val newConfigId = addTimeConfig(newConfig)
             setScheduleTimeConfigId(scheduleName, newConfigId)
         }

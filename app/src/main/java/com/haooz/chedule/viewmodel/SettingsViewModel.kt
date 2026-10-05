@@ -140,7 +140,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val sectionNames: StateFlow<Map<Int, String>> = _sectionNames.asStateFlow()
 
     // 无编号特殊块（早读/大课间等），来自当前时间配置
-    private val _specialBlocks = MutableStateFlow(repository.getCurrentTimeConfig().specialBlocks)
+    private val _specialBlocks = MutableStateFlow(repository.getEffectiveTimeConfig().safeSpecialBlocks)
     val specialBlocks: StateFlow<List<com.haooz.chedule.data.SpecialBlock>> = _specialBlocks.asStateFlow()
 
     private val _preClassReminder = MutableStateFlow(repository.getPreClassReminder())
@@ -232,7 +232,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val newSectionNames = repository.getSectionNames()
         if (_sectionNames.value != newSectionNames) _sectionNames.value = newSectionNames
 
-        val newSpecialBlocks = repository.getCurrentTimeConfig().specialBlocks
+        // 必须走 getEffectiveTimeConfig()（与上面 _specialBlocks 的初值保持一致）：
+        // 顶层字段只是「当前生效作息」的镜像，跨日期自动切换和新增作息都不会刷新它，
+        // 直读顶层会出现「节次时间用当天生效那套、特殊时段块用上一套」的错位
+        val newSpecialBlocks = repository.getEffectiveTimeConfig().safeSpecialBlocks
         if (_specialBlocks.value != newSpecialBlocks) _specialBlocks.value = newSpecialBlocks
 
         val newPreClassReminder = repository.getPreClassReminder()
@@ -298,8 +301,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun getEveningTimes(): Map<Int, String> = _eveningTimes.value
 
     fun updateSpecialBlocks(blocks: List<com.haooz.chedule.data.SpecialBlock>) {
-        val config = repository.getCurrentTimeConfig()
-        repository.saveTimeConfig(config.copy(specialBlocks = blocks))
+        val config = repository.getEffectiveTimeConfig()
+        val routineId = repository.getCurrentTimeConfig().effectiveRoutineId()
+        val base = repository.getCurrentTimeConfig()
+        val updated = config.copy(specialBlocks = blocks)
+        repository.saveTimeConfig(
+            if (routineId == null) updated
+            else base.withRoutineTimesApplied(routineId, updated)
+        )
         _specialBlocks.value = blocks
     }
 

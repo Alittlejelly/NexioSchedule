@@ -328,7 +328,7 @@ fun SettingsScreen(
 
                             ArrowPreference(
                                 title = "课表节数与时间",
-                                summary = "管理不同课表的节数与课程时间",
+                                summary = "管理课表的节数与课程时间",
                                 onClick = {
                                     FeatureLog.timeConfig("open")
                                     val intent =
@@ -1339,6 +1339,17 @@ internal fun applyScheduleData(
 
         @Suppress("UNCHECKED_CAST")
         val times = data["times"] as? Map<String, Any>
+        // 全套作息（夏令时/冬令时）。旧版本分享的没有这个字段 —— 留空，
+        // 由 addTimeConfig 播种单作息，并走下面那段「按 times 写时间」的兼容路径
+        val importedRoutines = (data["routines"] as? List<*>)
+            ?.mapIndexedNotNull { index, raw ->
+                com.haooz.chedule.data.TimeRoutine.fromRaw(raw, fallbackId = index + 1L)
+            }
+            // 一律按顺序重排 id：payload 自带的 id 可能和 fallback 撞上（A 的 id=2、B 缺 id 落在
+            // index=1 就都是 2），重复 id 会让按 id 查找/删除的逻辑行为不确定。这里是全新配置、
+            // 没有任何外部引用指向这些 id，重排是安全的。
+            ?.mapIndexed { index, routine -> routine.copy(id = (index + 1).toLong()) }
+            ?: emptyList()
         val importedMorningSections = (settings?.get("morning_sections") as? Number)?.toInt()
         val importedAfternoonSections = (settings?.get("afternoon_sections") as? Number)?.toInt()
         val importedEveningSections = (settings?.get("evening_sections") as? Number)?.toInt()
@@ -1362,7 +1373,8 @@ internal fun applyScheduleData(
                 afternoonSections = importedAfternoonSections ?: 4,
                 eveningSections = importedEveningSections ?: 4,
                 sectionTimes = sectionTimesMap,
-                sectionNames = importedSectionNames
+                sectionNames = importedSectionNames,
+                routines = importedRoutines
             )
             val newConfigId = scheduleViewModel.addTimeConfig(newConfig)
             scheduleViewModel.setScheduleTimeConfigId(scheduleName, newConfigId)
@@ -1404,7 +1416,9 @@ internal fun applyScheduleData(
 
             @Suppress("UNCHECKED_CAST")
             val times = data["times"] as? Map<String, Any>
-            if (times != null) {
+            // 带了全套作息时不再按 times 回写：times 是「分享方导出当天生效那套」，
+            // 接收方此刻生效的可能是另一套（跨季节导入），回写会把那套覆盖掉
+            if (times != null && importedRoutines.isEmpty()) {
                 val morningTimes = mutableMapOf<Int, String>()
                 val afternoonTimes = mutableMapOf<Int, String>()
                 val eveningTimes = mutableMapOf<Int, String>()
