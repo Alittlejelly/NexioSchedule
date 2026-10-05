@@ -115,7 +115,9 @@ fun BackToNowFloatingButton(
                 clip = false
                 val offset = interactiveHighlight.offset
                 val contentMin = (size.minDimension - shadowPadding.toPx() * 2).coerceAtLeast(1f)
-                val initialDerivative = 0.05f
+                // 起始跟手斜率：0.05 时位移只有手指的 5%（拖 100px 仅走 5px），肉眼看不见。
+                // 与 LiquidTopBarButton 保持一致用 0.5 —— 起始跟手约 50%，越拖阻尼越强。
+                val initialDerivative = 0.08f
                 translationX = contentMin * tanh(initialDerivative * offset.x / contentMin)
                 translationY = contentMin * tanh(initialDerivative * offset.y / contentMin)
             }
@@ -183,14 +185,16 @@ fun BackToNowFloatingButton(
                         val width = size.width
                         val height = size.height
 
-                        val progress = interactiveHighlight.pressProgress
+                        val progress = interactiveHighlight.pressProgress.coerceAtLeast(0f)
                         val scale = lerp(1f, 1f + 4f.dp.toPx() / size.height, progress)
                         scaleX = scale
                         scaleY = scale
 
                         // 位移已由外层 graphicsLayer 承担，这里只做沿拖动方向拉伸
                         val offset = interactiveHighlight.offset
-                        val maxDragScale = 4f.dp.toPx() / size.height
+                        // 沿拖动方向的最大拉伸比例：2dp/高度，与 LiquidTopBarButton 保持一致（从 4dp 减半）。
+                        // 注意上面 pressProgress 那个 4f.dp 是按压缩放，不要一起改。
+                        val maxDragScale = 2f.dp.toPx() / size.height
                         val offsetAngle = atan2(offset.y, offset.x)
                         scaleX =
                             scale +

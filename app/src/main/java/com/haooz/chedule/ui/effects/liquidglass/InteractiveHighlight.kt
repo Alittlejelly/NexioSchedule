@@ -116,7 +116,9 @@ half4 main(float2 coord) {
                         launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
                         launch { positionAnimation.animateTo(startPosition, positionAnimationSpec) }
                     }
-                }
+                },
+                // 纯视觉观察者：翻页手势吃掉横/竖拉后仍继续跟手，保证各方向都有位移
+                observeConsumed = true,
             ) { change, _ ->
                 animationScope.launch { positionAnimation.snapTo(change.position) }
             }

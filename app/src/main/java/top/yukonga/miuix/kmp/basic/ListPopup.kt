@@ -843,7 +843,8 @@ fun ListPopupContent(
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
 
     val localDensity = LocalDensity.current
-    val fallbackCollapsePx = with(localDensity) { 42.dp.toPx() }
+    // 未传 collapseSize 时的兜底
+    val fallbackCollapsePx = with(localDensity) { 28.dp.toPx() }
     val extraW = with(localDensity) { collapseExtra.width.toPx() }
     val extraH = with(localDensity) { collapseExtra.height.toPx() }
     val collapseW = (collapseSize?.width?.takeIf { it > 0 }?.toFloat() ?: fallbackCollapsePx) + extraW

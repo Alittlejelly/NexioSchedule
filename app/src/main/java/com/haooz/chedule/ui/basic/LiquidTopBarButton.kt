@@ -13,12 +13,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -27,22 +28,33 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastCoerceAtMost
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.toColorInt
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.tanh
 
 /**
  * 顶栏液态玻璃圆形按钮。
  *
- * 点按只有触感反馈（[performHapticFeedback]），**没有视觉高光**——
- * 原本挂了一层 InteractiveHighlight（按压缩放 + 高光跟随），已按要求移除。
+ * 拖拽时沿拖动方向拉伸、抬手回弹，机制与 BackToNowFloatingButton 一致：
+ * 按压反馈（[InteractiveHighlight] 的高光 + 高光跟随）、图标随动、阴影同步变形。
+ *
+ * 拉伸/缩放统一放在**外层** graphicsLayer（而非 drawBackdrop 的 layerBlock），
+ * 这样图标和阴影才会跟着一起变形；layerBlock 只保留 alpha。
  */
 @Composable
 fun LiquidTopBarButton(
@@ -61,6 +73,10 @@ fun LiquidTopBarButton(
     performHapticFeedback: Boolean = true,
     enabled: Boolean = true,
 ) {
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        InteractiveHighlight(animationScope = animationScope)
+    }
     val hapticFeedback = LocalHapticFeedback.current
     val isLightTheme = !isAppDarkTheme()
     val resolvedContainerColor = if (containerColor != Color.Unspecified) containerColor
@@ -91,6 +107,32 @@ fun LiquidTopBarButton(
         modifier = modifier
             .wrapContentSize()
             .size(buttonHeight)
+            .graphicsLayer {
+                clip = false
+                val width = size.width
+                val height = size.height
+                val progress = interactiveHighlight.pressProgress.coerceAtLeast(0f)
+                val scale = lerp(1f, 1f + 4f.dp.toPx() / height, progress)
+                val offset = interactiveHighlight.offset
+                // 沿拖动方向的最大拉伸比例：2dp/高度（42dp 按钮约 4.8%）。
+                // 与 BackToNowFloatingButton 保持一致，从 4dp 减半。
+                val maxDragScale = 2f.dp.toPx() / height
+                val offsetAngle = atan2(offset.y, offset.x)
+                scaleX =
+                    scale +
+                        maxDragScale * abs(cos(offsetAngle) * offset.x / size.maxDimension) *
+                        (width / height).fastCoerceAtMost(1f)
+                scaleY =
+                    scale +
+                        maxDragScale * abs(sin(offsetAngle) * offset.y / size.maxDimension) *
+                        (height / width).fastCoerceAtMost(1f)
+                val contentMin = size.minDimension.coerceAtLeast(1f)
+                // 起始跟手斜率：0.05 时位移只有手指的 5%（拖 100px 仅走 5px），肉眼看不见。
+                // 与 BackToNowFloatingButton 保持一致用 0.5 —— 起始跟手约 50%，越拖阻尼越强。
+                val initialDerivative = 0.08f
+                translationX = contentMin * tanh(initialDerivative * offset.x / contentMin)
+                translationY = contentMin * tanh(initialDerivative * offset.y / contentMin)
+            }
             .drawBehind {
                 val spread = shadowAlpha
                 if (spread > 0.01f) {
@@ -125,11 +167,13 @@ fun LiquidTopBarButton(
     ) {
         Box(
             modifier = Modifier
+                // 不用 clip：layerBlock 的拖动/拉伸会超出原 layout bounds（同 BackToNowFloatingButton）
                 .size(buttonHeight)
-                .clip(CircleShape)
                 .clickable(
                     enabled = enabled,
                     interactionSource = interactionSource,
+                    // 按压视觉已由 interactiveHighlight.modifier 的高光提供，不要默认涟漪
+                    indication = null,
                     role = Role.Button,
                     onClick = {
                         if (performHapticFeedback) {
@@ -148,6 +192,9 @@ fun LiquidTopBarButton(
                     onDrawSurface = buttonOnDrawSurface
                 )
                 .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
+                // 按压高光 + 高光跟随（InteractiveHighlight 的 modifier）
+                .then(interactiveHighlight.modifier)
+                .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
                 .zIndex(0f)
         )
         Icon(

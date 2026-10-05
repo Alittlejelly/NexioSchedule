@@ -28,26 +28,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -72,6 +76,7 @@ import com.haooz.chedule.ui.basic.collapsibleTopInset
 import com.haooz.chedule.ui.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -1190,7 +1195,7 @@ private fun TeachingWeekRulePreviewCard(
                 Text(
                     text = outcomeLabels.summaryLabel,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(ContinuousRoundedRectangle(14.dp))
                         .background(primaryColor.copy(alpha = 0.12f))
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     fontSize = 12.sp,
@@ -1231,7 +1236,7 @@ private fun TeachingWeekRulePreviewCard(
                     text = "无法保存：$error",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(ContinuousRoundedRectangle(12.dp))
                         .background(Color(0xFFF44336).copy(alpha = 0.1f))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     fontSize = 13.sp,
@@ -1491,9 +1496,13 @@ private fun TeachingWeekNumberPickerDialog(
 // ---------- 区块标题（含功能说明） ----------
 
 /**
- * 基于默认下拉位置，再沿展开方向外推 offsetPx（向下展开往下、向上展开往上）。
+ * 基于默认下拉位置再做微调。
+ *
+ * @param offsetYPx 沿展开方向的额外偏移：向下展开时为正、向上展开时为负
+ * @param offsetXPx 水平额外偏移：右为正、左为负
+ * 两处都会再过一次窗口边界 clamp，不会把弹窗顶出屏幕。
  */
-private fun expandDirectionOffsetProvider(offsetPx: Int): PopupPositionProvider {
+private fun expandDirectionOffsetProvider(offsetYPx: Int, offsetXPx: Int = 0): PopupPositionProvider {
     val base = liquidDropdownPositionProvider()
     return object : PopupPositionProvider {
         override fun calculatePosition(
@@ -1513,16 +1522,19 @@ private fun expandDirectionOffsetProvider(offsetPx: Int): PopupPositionProvider 
                 alignment,
             )
             val deltaY = when {
-                result.showBelow -> offsetPx
-                result.showAbove -> -offsetPx
+                result.showBelow -> offsetYPx
+                result.showAbove -> -offsetYPx
                 else -> 0
             }
+            val minX = windowBounds.left + popupMargin.left
+            val maxX = (windowBounds.right - popupContentSize.width - popupMargin.right).coerceAtLeast(minX)
+            val clampedX = (result.offset.x + offsetXPx).coerceIn(minX, maxX)
             val clampedY = (result.offset.y + deltaY).coerceIn(
                 windowBounds.top + popupMargin.top,
                 windowBounds.bottom - popupContentSize.height - popupMargin.bottom,
             )
             return PopupPositionResult(
-                IntOffset(result.offset.x, clampedY),
+                IntOffset(clampedX, clampedY),
                 result.showBelow,
                 result.showAbove,
             )
@@ -1650,17 +1662,51 @@ private fun SectionRangeDialog(
     }
 }
 
+// ── 叹号说明弹窗的位置微调 ──────────────────────────────
+// 直接改这两行即可，不用碰 provider。
+//   Y：沿展开方向的偏移，向下展开为正、向上展开自动取反
+//   X：水平偏移，右为正、左为负
+// 两者都会过一遍窗口边界 clamp，挪太远顶到屏幕边缘就停住，不会跑出去。
+private val InfoPopupOffsetY = 13.dp
+private val InfoPopupOffsetX = (-15).dp
+
 @Composable
 private fun InfoDropdown(
     description: String,
     liquidGlassBackdrop: Backdrop?,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // 弹窗展开/退场期间硬切隐藏图标（不做过渡），与课表页「更多」菜单同一套语言。
+    var triggerVisible by remember { mutableStateOf(true) }
+    var triggerSize by remember { mutableStateOf(IntSize.Zero) }
+    val coroutineScope = rememberCoroutineScope()
     val infoColor = MiuixTheme.colorScheme.primary
     val density = LocalDensity.current
     val positionProvider = remember {
-        expandDirectionOffsetProvider(with(density) { 16.dp.roundToPx() })
+        expandDirectionOffsetProvider(
+            offsetYPx = with(density) { InfoPopupOffsetY.roundToPx() },
+            offsetXPx = with(density) { InfoPopupOffsetX.roundToPx() },
+        )
     }
+
+    // 展开后等两帧再藏：第一帧让弹窗画出收起态，第二帧确保已上屏，否则中间会空一帧。
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            repeat(2) { withFrameNanos { } }
+            triggerVisible = false
+        }
+    }
+
+    // 弹窗里那份图标：没有那 8dp 尾部内边距（那是给列表对齐用的，与弹窗无关）
+    val collapseIcon: @Composable () -> Unit = {
+        Image(
+            imageVector = MiuixIcons.Info,
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(infoColor),
+            modifier = Modifier.size(20.dp),
+        )
+    }
+
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -1682,14 +1728,26 @@ private fun InfoDropdown(
                 // 看着是顶在边上。让出 8dp（其余行的内容都有内边距，视觉上才齐平）；
                 // padding 套在 size 外层，36dp 的可点区域保持不变。
                 .padding(end = 8.dp)
-                .size(20.dp),
+                .size(20.dp)
+                .onSizeChanged { triggerSize = it }
+                .graphicsLayer { alpha = if (triggerVisible) 1f else 0f },
         )
         OverlayListPopup(
             show = expanded,
             alignment = PopupPositionProvider.Align.End,
             onDismissRequest = { expanded = false },
+            onDismissFinished = {
+                // 压满三帧再显示：弹窗节点撤下后渲染还要一帧才真正不画
+                coroutineScope.launch {
+                    repeat(3) { withFrameNanos { } }
+                    triggerVisible = true
+                }
+            },
             popupPositionProvider = positionProvider,
             liquidGlassBackdrop = liquidGlassBackdrop,
+            // 弹窗从叹号原位长成面板，而不是从一个大圆里长出来
+            collapseSize = triggerSize,
+            collapseContent = collapseIcon,
         ) {
             ListPopupColumn {
                 Text(
@@ -1875,7 +1933,7 @@ private fun EntryEditDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
             LabeledDatePickerRow(
-                text = "开始日期",
+                text = if (isHoliday) "开始日期" else "调休日期",
                 year = startYear,
                 month = startMonth,
                 day = startDay,
