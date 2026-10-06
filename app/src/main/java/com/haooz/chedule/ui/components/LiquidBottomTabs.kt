@@ -192,14 +192,15 @@ fun LiquidBottomTabs(
                 }
         }
 
+        // 按压高光：跟手光晕
         val interactiveHighlight = remember(animationScope) {
             InteractiveHighlight(
                 animationScope = animationScope,
-                position = { size, _ ->
+                position = { size, finger ->
+                    val s = 1f + with(density) { 16f.dp.toPx() } / size.width
                     Offset(
-                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset,
-                        size.height / 2f
+                        (finger.x - panelOffset - size.width / 2f) / s + size.width / 2f,
+                        (finger.y - size.height / 2f) / s + size.height / 2f
                     )
                 }
             )
@@ -234,7 +235,6 @@ fun LiquidBottomTabs(
                     onDrawSurface = panelSurface
                 )
                 .edgeLight(shape = ContinuousCapsule(), edgeLight = defaultEdgeLight)
-                .then(interactiveHighlight.modifier)
                 .height(containerHeight)
                 .fillMaxWidth()
                 .padding(4f.dp),
@@ -272,7 +272,6 @@ fun LiquidBottomTabs(
                         },
                         onDrawSurface = { drawRect(containerColor) }
                     )
-                    .then(interactiveHighlight.modifier)
                     .height(highlightHeight)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
@@ -335,15 +334,32 @@ fun LiquidBottomTabs(
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }
                 )
-                .then(interactiveHighlight.gestureModifier)
                 .height(selectorHeight)
                 .fillMaxWidth(1f / tabsCount)
+        )
+
+        // 按压高光独立层
+        Box(
+            Modifier
+                .fillMaxSize()
+                // 与可见层背景同一套变换（缺一不可）
+                .graphicsLayer {
+                    translationX = panelOffset
+                    val progress = dampedDragAnimation.pressProgress
+                    val s = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
+                    scaleX = s
+                    scaleY = s
+                }
+                .clip(ContinuousCapsule())
+                .then(interactiveHighlight.modifier)
         )
 
         // 统一手势层：按下 tab / 拖胶囊 / 松手选中 都在这里
         Box(
             Modifier
                 .fillMaxSize()
+                // 按压高光的触发挂这层（覆盖整条栏），不挂滑块
+                .then(interactiveHighlight.gestureModifier)
                 .pointerInput(tabsCount, tabWidth, isLtr, padPx) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {

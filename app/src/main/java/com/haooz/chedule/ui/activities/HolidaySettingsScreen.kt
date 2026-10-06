@@ -347,17 +347,25 @@ fun HolidaySettingsScreen(
         endYear = end.year
         endMonth = end.monthValue
         endDay = end.dayOfMonth
+        // 调休日还没配映射时，按「补班日倒序、从假期最后一个工作日往前拿」预填一个建议值。
+        // 只填进弹窗不落库：用户点保存才生效，没配过的条目库里保持 -1（不会擅自改课表）。
+        val suggestion = if (entry.type == HolidayManager.TYPE_WORKSWAP && entry.followWeekday !in 1..7) {
+            HolidayManager.suggestWorkSwapFollowTargets(context, entries)
+                .firstOrNull { it.date == entry.date && it.type == HolidayManager.TYPE_WORKSWAP }
+                ?.takeIf { it.followWeekday in 1..7 }
+        } else null
         followWeek = if (entry.type == HolidayManager.TYPE_WORKSWAP && entry.followWeek > 0) {
             entry.followWeek.toString()
         } else if (entry.type == HolidayManager.TYPE_WORKSWAP) {
-            weekOfDate(startYear, startMonth, startDay)
+            suggestion?.followWeek?.takeIf { it > 0 }?.toString()
+                ?: weekOfDate(startYear, startMonth, startDay)
         } else {
             "1"
         }
         followWeekday = if (entry.followWeekday > 0) {
             entry.followWeekday.toString()
         } else {
-            "1"
+            suggestion?.followWeekday?.toString() ?: "1"
         }
         followWeekManuallySelected = entry.followWeek > 0
         showDialog = true
@@ -2005,6 +2013,18 @@ private fun EntryEditDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
+                // 国家级数据只说「哪天补班」，不说「补哪天的课」，上面是推算出来的预填值，
+                // 各校安排未必一致 —— 明确告诉用户：以学校通知为准，保存后才生效。
+                Text(
+                    "已按假期末尾推算预填，请以学校通知为准，保存后生效",
+                    style = MiuixTheme.textStyles.body1.copy(
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+                )
             }
             Row(
                 Modifier.fillMaxWidth(),

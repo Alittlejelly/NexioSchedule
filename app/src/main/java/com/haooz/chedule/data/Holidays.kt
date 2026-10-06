@@ -589,11 +589,14 @@ object HolidayManager {
 
     fun mergeApiEntries(context: Context, year: Int, apiEntries: List<Entry>): Boolean {
         if (apiEntries.isEmpty()) return true
+        // 调休日的「上哪天的课」 —— 那是推算值不是权威数据，
+        // 只在用户打开编辑弹窗时预填
+        val incoming = apiEntries
         return updateEntries(context, setOf(year)) { current ->
             val existing = current[year].orEmpty()
-            val apiKeys = apiEntries.map { "${it.date}|${it.type}" }.toSet()
+            val apiKeys = incoming.map { "${it.date}|${it.type}" }.toSet()
             val preserved = existing.filter { it.custom || "${it.date}|${it.type}" !in apiKeys }
-            current + (year to (preserved + apiEntries))
+            current + (year to (preserved + incoming))
         }
     }
 
@@ -648,6 +651,159 @@ object HolidayManager {
             } else result += entry
         }
         return result
+    }
+
+    // ── 1b. 数据源 ──────────────────────────────
+    // 默认 holiday-calendar：unpkg 上的静态 JSON，无限流、最稳，字段是「放假 / 补班」两态 + 节日名。
+    // 备选 APIHubs：字段更全，能给出「补班日归属哪个节日」（如「国庆节调休」），
+
+    const val SOURCE_APIHUBS = "apihubs"
+    const val SOURCE_HOLIDAY_CALENDAR = "holiday_calendar"
+    /** 默认数据源：稳定优先 */
+    const val DEFAULT_SOURCE = SOURCE_HOLIDAY_CALENDAR
+    private const val KEY_HOLIDAY_SOURCE = "holiday_data_source"
+    /** APIHubs 里 holiday_overtime 为 10 表示「非节假日调休」 */
+    private const val NO_OVERTIME = 10
+
+    fun holidaySource(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_HOLIDAY_SOURCE, DEFAULT_SOURCE) ?: DEFAULT_SOURCE
+
+    fun setHolidaySource(context: Context, source: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+            putString(KEY_HOLIDAY_SOURCE, source)
+        }
+    }
+
+    /** 当前数据源下取某一年数据的地址 */
+    fun sourceUrlFor(context: Context, year: Int): String = when (holidaySource(context)) {
+        // 用 semver 范围 @1（= 最新 1.x）而不是写死版本：作者补了新年份数据 App 不用改代码。
+        // 不写 @latest —— 2.0 若改了 JSON 结构会把所有用户的导入一次性打挂。
+        // 该包 1.x 结构稳定（dates[] 里 date/name_cn/type），已实测 1.3.0 与 1.3.3 一致。
+        SOURCE_HOLIDAY_CALENDAR -> "https://unpkg.com/holiday-calendar@1/data/CN/$year.json"
+        else -> "https://api.apihubs.cn/holiday/get" +
+            "?field=date,holiday_recess,holiday_overtime,holiday_cn,holiday_overtime_cn" +
+            "&year=$year&size=366"
+    }
+
+    /** 按当前数据源解析响应；与 [sourceUrlFor] 同源，避免 URL 与解析器错配 */
+    fun parseSourceResponse(context: Context, json: String): List<Entry> =
+        if (holidaySource(context) == SOURCE_HOLIDAY_CALENDAR) parseApiResponse(json)
+        else parseApiHubsResponse(json)
+
+    /**
+     * APIHubs 全年响应 → 条目列表（一次请求即全年，无需分页）。
+     *
+     * 判定只能用 holiday_recess / holiday_overtime 两个字段：
+     * 这个源会把圣诞、感恩节、记者节、下元节、七夕……一堆**不放假**的日子也标成
+     * 「节日当天」，按名字或 holiday_today 导入会多出一堆假假期。
+     */
+    fun parseApiHubsResponse(json: String): List<Entry> = runCatching {
+        val rows = JSONObject(json).getJSONObject("data").getJSONArray("list")
+        val result = mutableListOf<Entry>()
+        for (i in 0 until rows.length()) {
+            val item = rows.getJSONObject(i)
+            val date = formatCompactDate(item.optString("date")) ?: continue
+            when {
+                item.optInt("holiday_recess", 2) == 1 -> result += Entry(
+                    date = date,
+                    name = item.optString("holiday_cn").ifBlank { "节假日" },
+                    type = TYPE_HOLIDAY,
+                )
+                item.optInt("holiday_overtime", NO_OVERTIME) != NO_OVERTIME -> result += Entry(
+                    date = date,
+                    name = item.optString("holiday_overtime_cn").ifBlank { "调休工作日" },
+                    type = TYPE_WORKSWAP,
+                )
+            }
+        }
+        mergeConsecutive(result)
+    }.getOrDefault(emptyList())
+
+    /** 20261010 → 2026-10-10；只认 8 位纯数字 */
+    internal fun formatCompactDate(value: String): String? {
+        if (value.length != 8 || value.any { !it.isDigit() }) return null
+        return "${value.substring(0, 4)}-${value.substring(4, 6)}-${value.substring(6, 8)}"
+            .takeIf { parseApiDate(it) != null }
+    }
+
+    /**
+     * 给还没配映射的调休日算一套「上第 X 周星期 Y 的课」的**建议值
+     * 只用于 UI 预填，**不落库*
+     * 只动还没配过映射的条目；用户手工保存过的条目（custom=true）由
+     * [mergeApiEntries] 原样保留，不会被覆盖。
+     */
+    fun suggestWorkSwapFollowTargets(context: Context, entries: List<Entry>): List<Entry> {
+        val swaps = entries.filter { it.type == TYPE_WORKSWAP && it.followWeekday !in 1..7 }
+        if (swaps.isEmpty()) return entries
+
+        // 节日名 → 该段假期的全部日期（展开 date ~ endDate）
+        val blocks = LinkedHashMap<String, MutableList<LocalDate>>()
+        for (entry in entries) {
+            if (entry.type != TYPE_HOLIDAY) continue
+            val start = runCatching { LocalDate.parse(entry.date) }.getOrNull() ?: continue
+            val end = runCatching { LocalDate.parse(entry.endDate.ifBlank { entry.date }) }
+                .getOrNull() ?: start
+            val days = blocks.getOrPut(entry.name) { mutableListOf() }
+            var cursor = start
+            while (!cursor.isAfter(end)) {
+                days += cursor
+                cursor = cursor.plusDays(1)
+            }
+        }
+        if (blocks.isEmpty()) return entries
+
+        val swapDates = swaps.mapNotNull { swap ->
+            runCatching { LocalDate.parse(swap.date) }.getOrNull()?.let { swap to it }
+        }
+        fun distanceTo(date: LocalDate, days: List<LocalDate>): Long {
+            val first = days.first()
+            val last = days.last()
+            return when {
+                date.isBefore(first) -> ChronoUnit.DAYS.between(date, first)
+                date.isAfter(last) -> ChronoUnit.DAYS.between(last, date)
+                else -> 0L
+            }
+        }
+        // 补班日归属哪段假期：先按名字（去掉「补班/调休」后缀）匹配，匹配不到退化为最近的一段，
+        // 这样 2026 的 09-20 才不会被误挂到更近的中秋（官方把它归在国庆）。
+        val swapsByBlock = LinkedHashMap<String, MutableList<Pair<Entry, LocalDate>>>()
+        for ((swap, date) in swapDates) {
+            val baseName = swap.name.removeSuffix("补班").removeSuffix("调休")
+            val blockName = blocks.keys.firstOrNull {
+                it == baseName || it.startsWith(baseName) || baseName.startsWith(it)
+            } ?: blocks.entries.minByOrNull { distanceTo(date, it.value) }?.key ?: continue
+            swapsByBlock.getOrPut(blockName) { mutableListOf() } += swap to date
+        }
+
+        val assigned = HashMap<Entry, LocalDate>()
+        for ((blockName, items) in swapsByBlock) {
+            val days = blocks.getValue(blockName).sorted()
+            // 假期吃掉的工作日（周一~周五），按日期先后
+            val lost = days.filter { it.dayOfWeek.value <= 5 }
+            if (lost.isEmpty()) continue
+            // 假期两侧都算：节前、节后的补班日都从「最后一个工作日」往前拿，
+            // 且按补班日**倒序**分配（越靠近假期结束的补班，补的课越靠后）。
+            val ordered = items
+                .filter { it.second.isBefore(days.first()) || it.second.isAfter(days.last()) }
+                .sortedByDescending { it.second }
+            ordered.forEachIndexed { index, pair ->
+                lost.getOrNull(lost.lastIndex - index)?.let { assigned[pair.first] = it }
+            }
+        }
+        if (assigned.isEmpty()) return entries
+
+        val repository = CourseRepository(context)
+        // 超出学期总周数的周次不该写进去（UI 会校验 1..总周数，越界值用户保存不了）
+        val maxWeek = runCatching { repository.getTotalWeeks() }.getOrDefault(52).coerceIn(1, 52)
+        return entries.map { entry ->
+            val target = assigned[entry] ?: return@map entry
+            val week = runCatching { repository.getLiveTeachingWeek(target) }.getOrDefault(0)
+            entry.copy(
+                followWeek = week.takeIf { it in 1..maxWeek } ?: -1,
+                followWeekday = target.dayOfWeek.value,
+            )
+        }
     }
 }
 
@@ -1451,6 +1607,32 @@ object HolidayCountdown {
         },
         onFailure = { null },
     )
+
+    /** 一段连续假期的概览：[startDate, endDate] 闭区间，[name] 取该段首日的假期名 */
+    data class HolidayBlock(
+        val name: String,
+        val startDate: LocalDate,
+        val endDate: LocalDate,
+    )
+
+    /**
+     * 目标日所在的那一段连续假期；目标日不是假期时返回 null。
+     *
+     * 区间口径与今日页假期倒计时共用同一份 [mergeHolidayPeriods]：相邻两段记录
+     * （如中秋 + 国庆）算同一段假期，中间只隔一个非假日也算同一段。
+     * 提醒文案必须跟随这里，否则会出现「今日页显示放假 8 天、明日提醒却说 1 天」的分裂。
+     */
+    fun holidayBlockAt(
+        entriesByYear: Map<Int, List<HolidayManager.Entry>>,
+        date: LocalDate,
+    ): HolidayBlock? {
+        val period = mergeHolidayPeriods(holidayPeriodsFromStoredEntries(entriesByYear))
+            .firstOrNull { !date.isBefore(it.startDate) && !date.isAfter(it.endDate) }
+            ?: return null
+        val name = HolidayManager.entriesForDate(entriesByYear, period.startDate)
+            .firstOrNull { it.type == HolidayManager.TYPE_HOLIDAY }?.name.orEmpty()
+        return HolidayBlock(name = name, startDate = period.startDate, endDate = period.endDate)
+    }
 
     private fun mergeHolidayPeriods(holidays: List<HolidayPeriod>): List<HolidayPeriod> {
         val merged = mutableListOf<HolidayPeriod>()

@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
@@ -457,6 +459,19 @@ fun TabletNavSideBar(
     val selectedBg =
         if (isLightTheme) Color.Black.copy(0.06f) else Color.White.copy(0.1f)
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+    // 按压高光：跟手光晕，按哪亮哪
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        InteractiveHighlight(
+            animationScope = animationScope,
+            // 展开 ×0.4 / 收起 ×0.8
+            // 读的是 draw 阶段的进度，不会因此触发重组
+            radiusScale = {
+                0.7f - 0.3f * TabletNavSideState.expandProgress.floatValue.coerceIn(0f, 1f)
+            },
+            radiusBaseDp = 150.dp,
+        )
+    }
     // 玻璃遮罩圆角：屏幕圆角 − 左缘间距，不写死
     val sideCorner = rememberTabletNavMaskCorner()
     val density = LocalDensity.current
@@ -538,9 +553,18 @@ fun TabletNavSideBar(
                             )
                             .edgeLight(shape = ContinuousRoundedRectangle(sideCorner), edgeLight = defaultEdgeLight)
                     } else {
-                        Modifier.background(solidContainer, ContinuousRoundedRectangle(sideCorner))
+                        // 无玻璃分支没有 drawBackdrop 的 clipPath 兜底，
+                        // 高光是矩形 drawRect，不自己裁会溢出圆角画成方光块
+                        Modifier
+                            .background(solidContainer, ContinuousRoundedRectangle(sideCorner))
+                            .clip(ContinuousRoundedRectangle(sideCorner))
                     }
                 )
+                // 高光画在材质之上、条目内容之下（内容在 drawContent 里更靠内，后画）
+                .then(interactiveHighlight.modifier)
+                // 触发挂整条面板：手指落在任意条目上都有光晕；
+                // observeConsumed=true，条目的 clickable 消费事件不影响它跟手
+                .then(interactiveHighlight.gestureModifier)
                 .padding(TabletNavMaskPadding),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.Start,
