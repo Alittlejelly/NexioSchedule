@@ -3741,19 +3741,27 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                         }
                                     }
                                     3 -> {
-                                        TabletCourseManagePane(
-                                            viewModel = viewModel,
-                                            settingsViewModel = settingsViewModel,
-                                            liquidGlassBackdrop = liquidGlassBackdrop,
-                                        )
+                                        // 课程管理不预加载：beyond 撑满整窗后这一格任何时候
+                                        // 都在窗口里，不加 if 就等于常驻。只有它自己是当前页
+                                        // 才真正组合，其余时刻渲染空 —— 见 VerticalPager 处注释。
+                                        if (mainPagerState.currentPage == 3) {
+                                            TabletCourseManagePane(
+                                                viewModel = viewModel,
+                                                settingsViewModel = settingsViewModel,
+                                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                            )
+                                        }
                                     }
                                     4 -> {
-                                        TabletSwitchSchedulePane(
-                                            viewModel = viewModel,
-                                            scheduleViewModel = scheduleViewModel,
-                                            settingsViewModel = settingsViewModel,
-                                            liquidGlassBackdrop = liquidGlassBackdrop,
-                                        )
+                                        // 切换课表同上，不预加载
+                                        if (mainPagerState.currentPage == 4) {
+                                            TabletSwitchSchedulePane(
+                                                viewModel = viewModel,
+                                                scheduleViewModel = scheduleViewModel,
+                                                settingsViewModel = settingsViewModel,
+                                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                            )
+                                        }
                                     }
                                 }
                             } else {
@@ -3792,14 +3800,21 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             }
                             }
                             if (navBarStyle == "rail") {
-                                // 平板是 scrollToPage 瞬间跳转，没有滚动过程，预取相邻页毫无意义，
-                                // 只会让 5 页常驻一起重组。
+                                // 平板与手机对齐：今日/课程表/我的（0~2）三页常驻组合树，
+                                // 切页零组合成本。
+                                // beyond 撑到覆盖全部页 —— 它是**以当前页为中心的对称窗口**
+                                // （PagerBeyondBoundsState：first = firstVisible - beyond、
+                                // last = lastVisible + beyond），只有窗口大到能罩住全部页，
+                                // 0~2 才能在停在 3/4 页时也不被挤出组合树。
+                                // 单靠它表达不了「0~2 常驻 + 3/4 仅当前」，所以
+                                // 「不预加载另外两页」由内容侧兜底：mainPagerPageContent
+                                // 的 3/4 分支只在自己是当前页时才组合。
                                 VerticalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
                                     key = mainPagerPageKey,
                                     userScrollEnabled = false,
-                                    beyondViewportPageCount = 0,
+                                    beyondViewportPageCount = mainPagerPageCount,
                                 ) { page -> mainPagerPageContent(page) }
                             } else {
                                 // 手机切 tab 是 spring 平移动画。beyond=1 时目标页隔壁那页会在动画

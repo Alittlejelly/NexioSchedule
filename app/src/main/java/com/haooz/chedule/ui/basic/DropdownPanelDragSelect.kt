@@ -1,7 +1,10 @@
 package com.haooz.chedule.ui.basic
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -16,7 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -34,12 +45,11 @@ import kotlin.math.sin
 import kotlin.math.tanh
 
 // ── 跟手滑选 ────────────────────────────────────────────────────────
-// 两处弹窗共用：右上角「更多」下拉（LiquidGlassDropdownMenu）与 miuix 弹窗面板
+// 两处弹窗共用：（LiquidGlassDropdownMenu）与 miuix 弹窗面板
 // （DropdownImpl + ListPopup）。区别只在状态由谁创建——前者自持，后者在 Popup
 // 独立窗口里，必须由调用方创建后下发。
 //
 // 坐标系统一为**面板局部坐标**：面板整体缩放走 graphicsLayer，不进 layout 坐标，
-// 挂在面板上的手势与菜单项天然同一套。
 
 /**
  * ⚠️ 形变参数必须**尺寸无关**。面板宽度随内容自适应（200~288dp）、高度随项数变化，
@@ -61,6 +71,12 @@ private const val AspectPenaltyFloor = 0.97f
 
 /** 跟手滑选生效的最小展开进度：面板接近满尺寸后菜单项位置不再变动 */
 private const val DragSelectReadyFraction = 0.98f
+
+/**
+ * 可滚动时判定「这是滚动、不是点选」的位移门槛。
+ * 与系统 touchSlop 同量级，略微放宽 —— 手指轻抖不该把点选判没。
+ */
+private val ScrollTapSlop = 12.dp
 
 internal data class DragTransform(
     val scaleX: Float,
@@ -125,8 +141,8 @@ class DropdownPanelDragSelectState internal constructor() {
     /**
      * 列表是否一屏装得下。
      *
-     * 装不下时纵向手势归 `verticalScroll`，跟手选择整体禁用 —— 两种手势同时生效
-     * 会互相抢，表现为「滑动时菜单乱滚一截才停」。
+     * 装不下时**跟手滑选禁用**，纵向手势归 `verticalScroll`
+     * [dropdownPanelDragSelect] 的滚动分支，只认「位移没超过 slop 的点按」
      */
     var fitsOnScreen by mutableStateOf(true)
         internal set
@@ -178,10 +194,35 @@ fun Modifier.dropdownPanelDragSelect(
     fraction: () -> Float,
     hapticFeedback: HapticFeedback,
 ): Modifier = pointerInput(Unit) {
+    val scrollSlop = ScrollTapSlop.toPx()
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        // 面板没长开 / 一屏装不下时完全不参与：前者让收起态照常点按，后者归滚动
-        if (!state.fitsOnScreen || fraction() < DragSelectReadyFraction) return@awaitEachGesture
+        // 面板没长开时不参与：收起态照常点按展开
+        if (fraction() < DragSelectReadyFraction) return@awaitEachGesture
+        if (!state.fitsOnScreen) {
+            // 一屏装不下：纵向手势归 verticalScroll，这里只补「点选」
+            // 位移超过 slop 判为滚动：放弃本次点选，不消费事件，滚动不受影响
+            val startY = down.position.y
+            val startX = down.position.x
+            state.hitTest(startY)
+            var scrolled = false
+            while (true) {
+                val change = awaitPointerEvent()
+                    .changes.fastFirstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                if (abs(change.position.y - startY) > scrollSlop ||
+                    abs(change.position.x - startX) > scrollSlop
+                ) {
+                    scrolled = true
+                    break
+                }
+            }
+            val tapped = state.selected
+            state.clear()
+            if (!scrolled) tapped?.action?.invoke()
+            return@awaitEachGesture
+        }
+        // 一屏装得下：跟手滑选，独占纵向手势
         down.consume()
         var lastHit = state.hitTest(down.position.y)
         while (true) {
@@ -229,9 +270,12 @@ fun Modifier.dropdownPanelDragTransform(
     }
 }
 
-/** 命中项的高亮底色（与 LiquidGlassDropdownMenu 一致） */
+/**
+ * 命中项的遮罩底色（全项目统一：浅色压黑、深色提白）。
+ * 与侧栏原来的静态选中遮罩同值 —— 两者合并成一层后沿用了这组。
+ */
 private fun dropdownPanelEntryHighlightColor(isDark: Boolean): Color =
-    if (isDark) Color.White.copy(0.11f) else Color.Black.copy(0.075f)
+    if (isDark) Color.White.copy(0.1f) else Color.Black.copy(0.06f)
 
 /**
  * 菜单项侧：登记纵向区间 + 绘制命中高亮。供 `DropdownImpl` 等菜单项组件调用。
@@ -244,33 +288,88 @@ private fun dropdownPanelEntryHighlightColor(isDark: Boolean): Color =
  * remember 出不同实例，选中态永远匹配不上。
  *
  * @param enabled false 的项不参与命中测试（滑过去不高亮、松手也不执行）
+ * @param state 显式指定状态；null = 取 [LocalDropdownPanelDragSelect]。
+ *   与 `dropdownPanelDragSelect(state, ...)` 的入参形式对齐 ——
+ *   侧栏这类调用方自持状态、不想为了下发再包一层 CompositionLocalProvider 的场景直接传。
+ *   **必须排在 action 之前**：`Dropdown.kt` 用尾随 lambda 传 action，
+ *   挤到后面会把尾随 lambda 绑到 state 上（编译报 No value passed for parameter 'action'）。
+ * @param action 命中并松手时执行。每次重组都会更新，可直接传 lambda
+ * @param highlightPadding 命中高光的四周内缩。默认 0 = 满幅，两处弹窗行为不变；
+ *   侧栏传与条目选中遮罩相同的值，两个遮罩才对得齐。
+ * @param highlightShape 命中高光的裁剪形状。默认 [RectangleShape] = 不裁
+ * @param selected **静止态**（手指没命中任何项）是否显示本项遮罩。
+ *   用来替代调用方原先那份静态选中遮罩 —— 遮罩只画这一层，不然同一项叠两层。
+ *   手指一旦命中某项，就只亮命中项，这里传什么都被盖掉。
+ *   必须排在 action 之前，理由同 state。
  * @param action 命中并松手时执行。每次重组都会更新，可直接传 lambda
  */
 @Composable
 fun Modifier.dropdownPanelEntry(
     enabled: Boolean,
+    state: DropdownPanelDragSelectState? = null,
+    highlightPadding: PaddingValues = PaddingValues(0.dp),
+    highlightShape: Shape = RectangleShape,
+    selected: Boolean = false,
     action: () -> Unit,
 ): Modifier = composed {
-    val state = LocalDropdownPanelDragSelect.current
-    val entry = remember(state) { DropdownPanelEntry() }
-    DisposableEffect(state, entry) {
-        state?.register(entry)
-        onDispose { state?.unregister(entry) }
+    val dragSelect = state ?: LocalDropdownPanelDragSelect.current
+    val entry = remember(dragSelect) { DropdownPanelEntry() }
+    DisposableEffect(dragSelect, entry) {
+        dragSelect?.register(entry)
+        onDispose { dragSelect?.unregister(entry) }
     }
     SideEffect {
         entry.action = action
         entry.enabled = enabled
     }
-    val selected = state != null && state.selected === entry
+    // 遮罩只有一层：手指命中某项时只亮命中项；手指没命中时亮「静止选中」的那项。
+    // 松手后 dragSelected 归 null，遮罩在 150ms 内淡变到 selected 那项 —— 滑到新项后
+    // 由调用方的选中态接手，所以视觉上是「移过去就不再消失」，而不是跳回旧项。
+    val dragSelected = dragSelect?.selected
+    val visible = if (dragSelected != null) dragSelected === entry else selected
+    // 进/退各 150ms 淡变：切 tab 不再硬切。代价是快速滑过时前后两项会短暂
+    // 半透明并存（交叉淡变的固有现象），已确认可接受。
+    val maskAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(150),
+        label = "dropdownPanelEntryAlpha",
+    )
     // drawBehind 的 lambda 不是 @Composable，主题色必须在这里取好再传进去
     val highlightColor = dropdownPanelEntryHighlightColor(isAppDarkTheme())
     this
         .onGloballyPositioned {
             // boundsInRoot 不含 graphicsLayer 变换，面板与项都取 root 坐标再作差
-            val top = it.boundsInRoot().top - (state?.panelTopInRoot ?: 0f)
-            state?.updateBounds(entry, top, top + it.size.height)
+            val top = it.boundsInRoot().top - (dragSelect?.panelTopInRoot ?: 0f)
+            dragSelect?.updateBounds(entry, top, top + it.size.height)
         }
         .drawBehind {
-            if (selected) drawRect(highlightColor)
+            if (maskAlpha <= 0f) return@drawBehind
+            val maskColor = highlightColor.copy(
+                alpha = highlightColor.alpha * maskAlpha
+            )
+            // 命中高光按调用方给的内缩 + 形状画，而不是满幅方块
+            val padLeft = highlightPadding.calculateLeftPadding(layoutDirection).toPx()
+            val padTop = highlightPadding.calculateTopPadding().toPx()
+            val padRight = highlightPadding.calculateRightPadding(layoutDirection).toPx()
+            val padBottom = highlightPadding.calculateBottomPadding().toPx()
+            val boxW = (size.width - padLeft - padRight).coerceAtLeast(0f)
+            val boxH = (size.height - padTop - padBottom).coerceAtLeast(0f)
+            // 形状按**内缩后**的尺寸在原点造，再整体平移到内缩左上角 ——
+            // 这样不必依赖 Path 的位移 API，clip 与绘制也天然落在同一坐标系
+            val outline = highlightShape.createOutline(Size(boxW, boxH), layoutDirection, this)
+            withTransform({ translate(padLeft, padTop) }) {
+                when (outline) {
+                    is Outline.Rectangle ->
+                        clipRect(0f, 0f, boxW, boxH) { drawRect(maskColor) }
+                    is Outline.Rounded ->
+                        clipPath(Path().apply { addRoundRect(outline.roundRect) }) {
+                            drawRect(maskColor)
+                        }
+                    is Outline.Generic ->
+                        clipPath(Path().apply { addPath(outline.path) }) {
+                            drawRect(maskColor)
+                        }
+                }
+            }
         }
 }
