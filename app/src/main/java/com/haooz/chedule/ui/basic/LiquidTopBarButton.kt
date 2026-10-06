@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -167,21 +168,8 @@ fun LiquidTopBarButton(
     ) {
         Box(
             modifier = Modifier
-                // 不用 clip：layerBlock 的拖动/拉伸会超出原 layout bounds（同 BackToNowFloatingButton）
+                // 不用 clip：拉伸/位移会超出原 layout bounds（同 BackToNowFloatingButton）
                 .size(buttonHeight)
-                .clickable(
-                    enabled = enabled,
-                    interactionSource = interactionSource,
-                    // 按压视觉已由 interactiveHighlight.modifier 的高光提供，不要默认涟漪
-                    indication = null,
-                    role = Role.Button,
-                    onClick = {
-                        if (performHapticFeedback) {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        }
-                        onClick()
-                    }
-                )
                 .drawBackdrop(
                     backdrop = backdrop,
                     shape = buttonShapeBlock,
@@ -192,10 +180,34 @@ fun LiquidTopBarButton(
                     onDrawSurface = buttonOnDrawSurface
                 )
                 .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
-                // 按压高光 + 高光跟随（InteractiveHighlight 的 modifier）
+                .zIndex(0f)
+        )
+        // 按压高光单独一层，与材质层平级。
+        // 不能挂在上面那个 Box 上：drawBackdrop 的 layerBlock 会把整个节点的
+        // alpha 乘上 backdropAlpha，顶栏滚动时材质淡出、**按压高光也跟着消失**。
+        // 高光跟随手势（gestureModifier）与 clickable 同层，两者都是 pointerInput，可叠加。
+        Box(
+            modifier = Modifier
+                .size(buttonHeight)
+                // 必须 clip：光晕半径是 minDimension * 1.5，本就溢出圆形，
+                // 不裁会画成一个亮方块。放在 interactiveHighlight 之前（外层）。
+                .clip(CircleShape)
                 .then(interactiveHighlight.modifier)
                 .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
-                .zIndex(0f)
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = interactionSource,
+                    // 按压视觉由上面的高光层提供，不要默认涟漪
+                    indication = null,
+                    role = Role.Button,
+                    onClick = {
+                        if (performHapticFeedback) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        }
+                        onClick()
+                    }
+                )
+                .zIndex(1f)
         )
         Icon(
             imageVector = icon,
@@ -203,7 +215,8 @@ fun LiquidTopBarButton(
             modifier = Modifier
                 .size(iconSize)
                 .offset(iconOffset.x, iconOffset.y)
-                .zIndex(1f),
+                // 高光层 zIndex=1，图标再高一级，别依赖"同zIndex 靠后绘制"
+                .zIndex(2f),
             tint = if (iconTint != Color.Unspecified) iconTint else if (isLightTheme) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
         )
     }
