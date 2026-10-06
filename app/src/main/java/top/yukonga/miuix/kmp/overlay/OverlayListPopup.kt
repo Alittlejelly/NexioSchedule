@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
 import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.layout.ListPopupLayout
@@ -54,6 +55,8 @@ fun OverlayListPopup(
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
     collapseContent: (@Composable () -> Unit)? = null,
+    /** 跟手滑选状态。透传给 [ListPopupLayout]；为 null 时不启用。 */
+    dragSelectState: DropdownPanelDragSelectState? = null,
     content: @Composable () -> Unit,
 ) {
     ListPopupLayout(
@@ -85,6 +88,7 @@ fun OverlayListPopup(
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
         collapseContent = collapseContent,
+        dragSelectState = dragSelectState,
         content = content,
     )
 }

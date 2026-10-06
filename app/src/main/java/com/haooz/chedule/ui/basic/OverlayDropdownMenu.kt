@@ -203,6 +203,10 @@ fun OverlayDropdownMenu(
     // 摘掉节点的话 triggerSize 变 0，弹窗就不知道从哪长出来了。
     val triggerAlpha: () -> Float = { if (popupFullyDismissed) 1f else 0f }
 
+    // 跟手滑选状态。必须在本组件创建（不能由弹窗内容层自建）：弹窗在 Popup 独立
+    // 窗口里，要跨窗口回传选中项，只能靠调用方持有的同一个实例
+    val dragSelectState = remember { DropdownPanelDragSelectState() }
+
     val nonEmptyEntries = entries.filter { it.items.isNotEmpty() }
     val hasEntries = nonEmptyEntries.isNotEmpty()
     val actualEnabled = enabled && hasEntries
@@ -268,6 +272,7 @@ fun OverlayDropdownMenu(
                     onFractionProgress = { fractionState.value = it },
                     collapseSize = triggerSize,
                     collapseExtra = collapseExtra,
+                    dragSelectState = dragSelectState,
                     // 收起态显示的内容：同样是「选中文字 + 箭头」，
                     // 弹窗从这块内容原位长成菜单。
                     collapseContent = {

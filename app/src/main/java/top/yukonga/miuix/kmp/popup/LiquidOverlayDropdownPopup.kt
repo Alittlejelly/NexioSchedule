@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
+import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.DropdownColors
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
@@ -25,7 +27,6 @@ import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
-import com.kyant.backdrop.Backdrop
 
 /**
  * 单个 [DropdownEntry] 的弹窗。
@@ -55,6 +56,8 @@ fun OverlayDropdownPopup(
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
     collapseContent: (@Composable () -> Unit)? = null,
+    /** 跟手滑选状态。为 null 时该弹窗不启用跟手选择。 */
+    dragSelectState: DropdownPanelDragSelectState? = null,
 ) {
     val entries = remember(entry) { listOf(entry) }
     OverlayDropdownPopup(
@@ -71,6 +74,7 @@ fun OverlayDropdownPopup(
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
         collapseContent = collapseContent,
+        dragSelectState = dragSelectState,
     )
 }
 
@@ -102,6 +106,8 @@ fun OverlayDropdownPopup(
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
     collapseContent: (@Composable () -> Unit)? = null,
+    /** 跟手滑选状态。为 null 时该弹窗不启用跟手选择。 */
+    dragSelectState: DropdownPanelDragSelectState? = null,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val currentEntries by rememberUpdatedState(entries)
@@ -131,8 +137,12 @@ fun OverlayDropdownPopup(
         collapseSize = collapseSize,
         collapseExtra = collapseExtra,
         collapseContent = collapseContent,
+        dragSelectState = dragSelectState,
     ) {
-        ListPopupColumn {
+        // onFitsOnScreen 必须写在前面：content 是尾随 lambda，放后面就绑不上了
+        ListPopupColumn(
+            onFitsOnScreen = { dragSelectState?.fitsOnScreen = it },
+        ) {
             DropdownEntriesPopupContent(
                 entries = entries,
                 dropdownColors = dropdownColors,

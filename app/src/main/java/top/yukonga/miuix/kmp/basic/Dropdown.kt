@@ -31,11 +31,16 @@ import androidx.compose.ui.graphics.BlendModeColorFilter
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.ui.basic.LocalDropdownPanelDragSelect
+import com.haooz.chedule.ui.basic.dropdownPanelEntry
 import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
@@ -120,6 +125,8 @@ fun DropdownImpl(
     }
 
     val currentOnSelectedIndexChange by rememberUpdatedState(onSelectedIndexChange)
+    // 跟手滑选状态。仅弹窗面板会提供（对话框场景为 null，行为不变）
+    val dragSelectState = LocalDropdownPanelDragSelect.current
     val role = if (hasSubmenu) Role.Button else Role.RadioButton
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -133,10 +140,34 @@ fun DropdownImpl(
             )
             .clip(ContinuousRoundedRectangle(17.dp))
             .drawBehind { drawRect(backgroundColorState.value) }
-            .clickable(
-                enabled = enabled,
-                role = role,
-                onClick = { currentOnSelectedIndexChange(index) },
+            .then(
+                if (dragSelectState != null) {
+                    // 弹窗面板：登记纵向区间供命中测试 + 绘制命中高亮 + 只留无障碍点击动作。
+                    // 面板手势层统一负责点按与滑动，项上不能再挂 clickable。
+                    // ⚠️ dropdownPanelEntry 必须放在上面那行项底色之后（原因见其 KDoc）。
+                    Modifier
+                        .dropdownPanelEntry(enabled = enabled) {
+                            currentOnSelectedIndexChange(index)
+                        }
+                        .semantics {
+                            // this.：局部 val role 会遮蔽接收器的 role 属性
+                            this.role = role
+                            // 禁用项与手势层一致：不参与命中，语义上也不能激活
+                            if (enabled) {
+                                onClick {
+                                    currentOnSelectedIndexChange(index)
+                                    true
+                                }
+                            }
+                        }
+                } else {
+                    // 对话框模式没有面板手势层，点击只能靠 clickable
+                    Modifier.clickable(
+                        enabled = enabled,
+                        role = role,
+                        onClick = { currentOnSelectedIndexChange(index) },
+                    )
+                }
             )
             .then(containerModifier)
             .padding(horizontal = 14.dp, vertical = 10.5.dp),

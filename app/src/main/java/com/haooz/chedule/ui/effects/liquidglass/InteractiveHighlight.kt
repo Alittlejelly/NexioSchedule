@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import com.kyant.backdrop.RuntimeShader
 import com.kyant.backdrop.asComposeShader
@@ -24,7 +26,19 @@ import kotlinx.coroutines.launch
 
 class InteractiveHighlight(
     val animationScope: CoroutineScope,
-    val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset }
+    val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset },
+    /**
+     * 光晕半径倍率，默认 1（实际半径 = 半径基准 * 1.5 * 本值）。
+     * 在 draw 阶段读取，可传会变的值（如展开进度）让光晕随状态收放。
+     */
+    val radiusScale: () -> Float = { 1f },
+    /**
+     * 光晕半径的**上限**（dp）。默认 null = 不限，直接用节点自身 minDimension
+     *
+     * 取 min(自身尺寸, 本值) 而非直接固定：收起态是个 42dp 的小圆按钮，
+     * 固定大基准会让光晕漫出圆外，此时自动退回minDimension。
+     */
+    val radiusBaseDp: Dp? = null
 ) {
 
     /**
@@ -53,9 +67,18 @@ class InteractiveHighlight(
     private val positionAnimation =
         Animatable(Offset.Zero, Offset.VectorConverter, offsetVisibilityThreshold)
 
+    /**
+     * 形变位移，独立于高光位置。
+     *
+     * 高光松手时**原地淡出**（positionAnimation 停在松手处），若形变仍从它派生就会
+     * 永远保持拖动距离而不回弹。所以这里单独跟一根动画，松手回弹到 0。
+     */
+    private val dragOffsetAnimation =
+        Animatable(Offset.Zero, Offset.VectorConverter, offsetVisibilityThreshold)
+
     private var startPosition = Offset.Zero
     val pressProgress: Float get() = pressProgressAnimation.value
-    val offset: Offset get() = positionAnimation.value - startPosition
+    val offset: Offset get() = dragOffsetAnimation.value
 
     private val shader =
         if (isRuntimeShaderSupported()) {
@@ -89,7 +112,10 @@ half4 main(float2 coord) {
                         val position = position(size, positionAnimation.value)
                         setFloatUniform("size", size.width, size.height)
                         setColorUniform("color", Color.White.copy(0.15f * progress))
-                        setFloatUniform("radius", size.minDimension * 1.5f)
+                        // 取 min：面板大时用上限封顶，收起态（小圆按钮）自动退回自身尺寸
+                        val base = radiusBaseDp?.let { minOf(size.minDimension, it.toPx()) }
+                            ?: size.minDimension
+                        setFloatUniform("radius", base * 1.5f * radiusScale())
                         setFloatUniform(
                             "position",
                             position.x.fastCoerceIn(0f, size.width),
@@ -119,24 +145,30 @@ half4 main(float2 coord) {
                     animationScope.launch {
                         launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
                         launch { positionAnimation.snapTo(startPosition) }
+                        launch { dragOffsetAnimation.snapTo(Offset.Zero) }
                     }
                 },
+                // 松手：形变回弹到起点，高光**原地淡出**（positionAnimation 不动）。
+                // 高光若也回弹到按下点，就会出现「拖过去再滑回来」的位移感。
                 onDragEnd = {
                     animationScope.launch {
                         launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
-                        launch { positionAnimation.animateTo(startPosition, positionAnimationSpec) }
+                        launch { dragOffsetAnimation.animateTo(Offset.Zero, positionAnimationSpec) }
                     }
                 },
                 onDragCancel = {
                     animationScope.launch {
                         launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
-                        launch { positionAnimation.animateTo(startPosition, positionAnimationSpec) }
+                        launch { dragOffsetAnimation.animateTo(Offset.Zero, positionAnimationSpec) }
                     }
                 },
                 // 纯视觉观察者：翻页手势吃掉横/竖拉后仍继续跟手，保证各方向都有位移
                 observeConsumed = true,
             ) { change, _ ->
-                animationScope.launch { positionAnimation.snapTo(change.position) }
+                animationScope.launch {
+                    positionAnimation.snapTo(change.position)
+                    dragOffsetAnimation.snapTo(change.position - startPosition)
+                }
             }
         }
 

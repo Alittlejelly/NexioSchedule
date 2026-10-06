@@ -25,7 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -55,7 +59,10 @@ import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Constraints
@@ -67,8 +74,13 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
+import com.haooz.chedule.ui.basic.LocalDropdownPanelDragSelect
+import com.haooz.chedule.ui.basic.dropdownPanelDragSelect
+import com.haooz.chedule.ui.basic.dropdownPanelDragTransform
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -166,10 +178,13 @@ private const val MAX_ITEMS_FOR_HEIGHT = 8
  * - 支持垂直滚动
  * - 使用自定义MeasurePolicy进行精确的宽度控制
  *
+ * @param onFitsOnScreen 内容是否一屏装得下（不需要滚动）。跟手滑选据此决定是否启用：
+ *   装不下时纵向手势归滚动，否则两种手势互相抢。不关心就别传（默认空实现）。
  * @param content 弹窗内容子项
  */
 @Composable
 fun ListPopupColumn(
+    onFitsOnScreen: (Boolean) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -248,6 +263,13 @@ fun ListPopupColumn(
             .verticalScroll(state = scrollState),
         measurePolicy = measurePolicy,
     )
+
+    // 上报是否需要滚动。用 snapshotFlow 而非 onSizeChanged：maxValue 还会在
+    // 「内容没变、只是被 maxHeight 压缩」时变化，那次 onSizeChanged 不触发。
+    LaunchedEffect(scrollState) {
+        snapshotFlow { scrollState.maxValue <= 1 }
+            .collect { onFitsOnScreen(it) }
+    }
 }
 
 // =====================================================================
@@ -853,6 +875,8 @@ fun ListPopupContent(
     collapseExtra: DpSize = DpSize.Zero,
     isEntering: Boolean = true,
     collapseContent: (@Composable () -> Unit)? = null,
+    /** 跟手滑选状态。为 null 时本弹窗不启用跟手选择（内容层直接透传，不挂手势/形变）。 */
+    dragSelectState: DropdownPanelDragSelectState? = null,
     content: @Composable () -> Unit,
 ) {
     val cornerRadius = 25.dp
@@ -902,23 +926,73 @@ fun ListPopupContent(
         fallbackPivot = localTransformOrigin,
     )
 
-    // SubcomposeLayout：把测量提前到布局期，同一 pass 内先量内容、再用真实尺寸铺玻璃，
-    // 不必先画一帧再靠 onGloballyPositioned 回填尺寸重画。
-    // 两层都由 place 决定位置、各自不撑尺寸，所以总测量尺寸恒为 canvas + 2×shadowPadding
-    // —— ListPopupLayout 靠它反推面板真实尺寸才成立。
+    // SubcomposeLayout：把测量提前到布局期，同一 pass 内先量内容、再用真实尺寸铺玻璃
+    // 跟手拖动的形变挂在两个槽位的共同父层，玻璃壳才会一起变形；
+    // 按压高光夹在材质层与内容层之间（见 [PopupGlassCanvas]）。
+    val dragScope = rememberCoroutineScope()
+    val dragHighlight = remember(dragScope) {
+        InteractiveHighlight(
+            animationScope = dragScope,
+            // 面板越大光晕要越小，否则收起态的光会漫出小圆
+            radiusScale = { 1f - 0.6f * fractionProgress().coerceIn(0f, 1f) },
+            // 半径上限 150dp：不随选项数变化的 minDimension —— 否则选项越多
+            // 面板越高、光晕越大（2 项 71dp → 6 项 173dp）。
+            // 收起态面板小，min 会自动退回自身尺寸。
+            radiusBaseDp = HighlightRadiusBase,
+        )
+    }
     SubcomposeLayout(
-        modifier = modifier.padding(shadowPadding),
+        modifier = modifier
+            .padding(shadowPadding)
+            // 命中测试需要 state，只在下拉菜单场景挂；其余弹窗只有形变与高光
+            .then(
+                if (dragSelectState != null) {
+                    // 覆盖整个面板，手指按下后能滑到任意一项。
+                    // fraction 必须现读：pointerInput(Unit) 的 lambda 只跑一次
+                    Modifier.dropdownPanelDragSelect(
+                        state = dragSelectState,
+                        fraction = { fractionProgress() },
+                        hapticFeedback = LocalHapticFeedback.current,
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .then(dragHighlight.gestureModifier)
+            // 面板在 root 里的 y，供菜单项把 boundsInRoot 换算成手势所用的局部坐标。
+            // boundsInRoot 不含 graphicsLayer 变换，所以形变不影响这个换算。
+            .onGloballyPositioned {
+                dragSelectState?.panelTopInRoot = it.boundsInRoot().top
+            }
+            .dropdownPanelDragTransform(
+                fraction = { fractionProgress() },
+                pressProgress = { dragHighlight.pressProgress },
+                dragOffset = { dragHighlight.offset },
+            ),
     ) { constraints ->
         val roomPx = overshootRoomPx.roundToInt()
 
         // 1. 先量内容，拿到真实自然尺寸
         val contentPlaceable = subcompose(PopupSlot.Content) {
-            PopupMenuLayer(
-                style = style,
-                reportedSize = popupContentSize,
-                onSizeChange = onPopupContentSizeChange,
-                content = content,
-            )
+            // 下发给菜单项（登记位置 + 命中高亮）。必须在槽位内下发：
+            // 菜单项是 content 的后代，在槽位外下发它们读不到。
+            if (dragSelectState != null) {
+                CompositionLocalProvider(LocalDropdownPanelDragSelect provides dragSelectState) {
+                    PopupMenuLayer(
+                        style = style,
+                        reportedSize = popupContentSize,
+                        onSizeChange = onPopupContentSizeChange,
+                        content = content,
+                    )
+                }
+            } else {
+                PopupMenuLayer(
+                    style = style,
+                    reportedSize = popupContentSize,
+                    onSizeChange = onPopupContentSizeChange,
+                    content = content,
+                )
+            }
         }.first().measure(
             constraints.copy(
                 maxWidth = (constraints.maxWidth - 2 * roomPx).coerceAtLeast(0),
@@ -941,6 +1015,7 @@ fun ListPopupContent(
                 canvasH = canvasH,
                 rect = rect,
                 collapseContent = collapseContent,
+                highlight = dragHighlight,
             )
         }.first().measure(
             Constraints.fixed(canvasW.roundToInt(), canvasH.roundToInt())
@@ -960,6 +1035,9 @@ fun ListPopupContent(
 private const val PopupShadowArgbLight = 0x1A000000
 private const val PopupShadowArgbDark = 0x2E000000
 private const val PopupShadowBlur = 12f
+
+/** 按压高光的半径上限，固定不随面板高度变化 */
+private val HighlightRadiusBase = 150.dp
 private const val PopupShadowExtend = 2f
 /** ARGB 的 alpha 会被放大这么多倍 —— 环形路径重复描边会累积浓度 */
 private const val PopupShadowAlphaGain = 3.2f
@@ -1061,7 +1139,6 @@ private fun PopupMenuLayer(
     onSizeChange: (IntSize) -> Unit,
     content: @Composable () -> Unit,
 ) {
-
     // 内容按**宽度**等比缩放（contentScale = rect宽 / 内容宽），但面板早期近乎方形、
     // 内容是长条，两者宽高比不一致 → 缩放后的高度会顶穿面板上下边。
     val clipShape: Shape = AnimatedPanelRectShape(
@@ -1086,11 +1163,12 @@ private fun PopupMenuLayer(
                 val size = coordinates.size
                 if (reportedSize != size) onSizeChange(size)
             }
+            // 这里只保留 fraction 驱动的缩放/位移；拖动形变在外层 SubcomposeLayout。
             // clip 排在 graphicsLayer 之前（外层）→ 作用于变换之后的坐标系，见 clipShape
             .clip(clipShape)
             .graphicsLayer {
                 val fr = style.fractionProgress()
-                // 本层节点实测尺寸就是内容自然尺寸，据此自算画布 ——
+                // 本层节点实测尺寸就是内容自然尺寸，据此自算画布——
                 // 不能引用外层 canvasW/H（那些要等这次 measure 完才有，会形成依赖环）。
                 val rect = style.rectOf(size.width, size.height)(
                     size.width + 2 * style.overshootRoomPx,
@@ -1110,7 +1188,7 @@ private fun PopupMenuLayer(
     }
 }
 
-/** 玻璃画布层：外投射阴影 + 材质 + 收起态内容。尺寸由外层 Constraints.fixed 定死。 */
+/** 玻璃画布层：外投射阴影 + 材质 + 按压高光 + 收起态内容。尺寸由外层 Constraints.fixed 定死。 */
 @Composable
 private fun PopupGlassCanvas(
     style: PopupPanelStyle,
@@ -1118,6 +1196,7 @@ private fun PopupGlassCanvas(
     canvasH: Float,
     rect: (Float, Float) -> FloatArray,
     collapseContent: (@Composable () -> Unit)?,
+    highlight: InteractiveHighlight,
 ) {
     // 每次重组换新实例：edgeLight 的 outline 缓存按**引用**比较 shape，
     // 若被记住在第一帧的小圆上，outline 会冻结 —— 描边消失、背景框像被钉死。
@@ -1136,6 +1215,17 @@ private fun PopupGlassCanvas(
         )
     ) {
         PopupMaterialLayer(style = style, shape = panelShape)
+
+        // 按压高光：必须夹在材质层之上（否则被玻璃壳盖住）、内容层之下
+        // （否则 Plus 加色会把菜单项的白底冲白）。
+        Box(
+            modifier = Modifier
+                // matchParentSize：不撑尺寸的子节点会量成 0×0，高光就画不出来。
+                // 与玻璃壳同一个 rect，高光逐像素贴合面板、不溢出到阴影留白
+                .matchParentSize()
+                .clip(panelShape)
+                .then(highlight.modifier),
+        )
 
         // 收起态内容（选项文本 + 箭头）：锁在面板矩形正中心，随容器长大淡出。
         // 自带 alpha —— 材质的 alpha 在材质层，两者互不影响。

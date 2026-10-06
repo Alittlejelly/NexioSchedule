@@ -110,69 +110,73 @@ internal fun ScheduleTopBar(
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
             val titleRailPadding =
                 if (isTablet) tabletNavRailStartPadding().padding(start = 12.dp) else Modifier
-            CollapsibleTopAppBar(
-                title = titleText,
-                showLargeTitle = false,
-                showGradientOverlay = true,
-                gradientOverlayScrollTriggered = true,
-                titleStartAligned = isTablet,
-                titleModifier = titleRailPadding,
-                modifier = Modifier.zIndex(1f),
-                gradientMaskHeight = CollapsedHeight + 110.dp,
-                gradientColorOverride = gradientColorOverride,
-                scrollBehavior = scrollBehavior,
-                // 平板左上角不放返回按钮
-                startAction = null,
-                onAlphaChanged = { backdrop, _ -> onMoreMaterial(backdrop) },
-                endAction = { backdropAlpha, shadowAlpha ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (isTablet) {
-                            // pad：切换课表/课程管理已在侧栏，右上角直接放跳转周数 + 课表外观
-                            LiquidTopBarButton(
-                                onClick = onJumpWeek,
-                                backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.Basic.FastForward,
-                                contentDescription = "跳转周数",
-                                iconSize = 23.dp,
-                                backdropAlpha = backdropAlpha,
-                                shadowAlpha = shadowAlpha,
-                            )
-                            LiquidTopBarButton(
-                                onClick = onEnterCustomize,
-                                backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.Background,
-                                contentDescription = "课表外观",
-                                iconSize = 23.dp,
-                                backdropAlpha = backdropAlpha,
-                                shadowAlpha = shadowAlpha,
-                            )
-                        } else {
-                            if (!isShiftMode) {
+            // zIndex 必须挂在这层 Box 上，不能直接传给 CollapsibleTopAppBar：
+            // 它的 modifier 参数只应用在内部那层 Layout 上（见 CollapsibleTopAppBar 末尾），
+            // 挂到孙节点对它与 DayOfWeekRow 的排序无效 —— zIndex 只在同一父节点的兄弟间比较。
+            Box(modifier = Modifier.zIndex(1f)) {
+                CollapsibleTopAppBar(
+                    title = titleText,
+                    showLargeTitle = false,
+                    showGradientOverlay = true,
+                    gradientOverlayScrollTriggered = true,
+                    titleStartAligned = isTablet,
+                    titleModifier = titleRailPadding,
+                    gradientMaskHeight = CollapsedHeight + 110.dp,
+                    gradientColorOverride = gradientColorOverride,
+                    scrollBehavior = scrollBehavior,
+                    // 平板左上角不放返回按钮
+                    startAction = null,
+                    onAlphaChanged = { backdrop, _ -> onMoreMaterial(backdrop) },
+                    endAction = { backdropAlpha, shadowAlpha ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isTablet) {
+                                // pad：切换课表/课程管理已在侧栏，右上角直接放跳转周数 + 课表外观
                                 LiquidTopBarButton(
-                                    onClick = {
-                                        onOpenSwitchSchedule()
-                                    },
+                                    onClick = onJumpWeek,
                                     backdrop = liquidGlassBackdrop,
-                                    icon = MiuixIcons.Normal.ConvertFile,
-                                    contentDescription = "课表切换",
-                                    iconSize = 27.dp,
+                                    icon = MiuixIcons.Basic.FastForward,
+                                    contentDescription = "跳转周数",
+                                    iconSize = 23.dp,
                                     backdropAlpha = backdropAlpha,
-                                    shadowAlpha = shadowAlpha
+                                    shadowAlpha = shadowAlpha,
+                                )
+                                LiquidTopBarButton(
+                                    onClick = onEnterCustomize,
+                                    backdrop = liquidGlassBackdrop,
+                                    icon = MiuixIcons.Background,
+                                    contentDescription = "课表外观",
+                                    iconSize = 23.dp,
+                                    backdropAlpha = backdropAlpha,
+                                    shadowAlpha = shadowAlpha,
+                                )
+                            } else {
+                                if (!isShiftMode) {
+                                    LiquidTopBarButton(
+                                        onClick = {
+                                            onOpenSwitchSchedule()
+                                        },
+                                        backdrop = liquidGlassBackdrop,
+                                        icon = MiuixIcons.Normal.ConvertFile,
+                                        contentDescription = "课表切换",
+                                        iconSize = 27.dp,
+                                        backdropAlpha = backdropAlpha,
+                                        shadowAlpha = shadowAlpha
+                                    )
+                                }
+                                // 「更多」按钮由下拉菜单组件自带（收起态即那颗按钮，唯一一份），这里只占位对齐
+                                Spacer(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
                                 )
                             }
-                            // 「更多」按钮由下拉菜单组件自带（收起态即那颗按钮，唯一一份），这里只占位对齐
-                            Spacer(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
-                            )
                         }
                     }
-                }
-            )
+                )
+            }
             DayOfWeekRow(
                 dayRange = dayRange,
                 currentDayOfWeek = currentDayOfWeek,

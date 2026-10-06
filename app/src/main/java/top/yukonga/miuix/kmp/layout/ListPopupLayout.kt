@@ -40,6 +40,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.launch
@@ -202,6 +203,8 @@ fun ListPopupLayout(
     collapseSize: IntSize? = null,
     collapseExtra: DpSize = DpSize.Zero,
     collapseContent: (@Composable () -> Unit)? = null,
+    /** 跟手滑选状态。透传给 [ListPopupContent]；为 null 时不启用。 */
+    dragSelectState: DropdownPanelDragSelectState? = null,
     content: @Composable () -> Unit,
 ) {
     val fractionProgress = remember { Animatable(0f) }
@@ -421,6 +424,7 @@ fun ListPopupLayout(
                     // show 为 true 即进场；退场动画期间 show 已是 false 但仍在渲染，
                     // 正好对应「淡出用晚一档」的时机。
                     isEntering = show,
+                    dragSelectState = dragSelectState,
                     content = {
                         CompositionLocalProvider(LocalDismissState provides requestDismiss) {
                             content()

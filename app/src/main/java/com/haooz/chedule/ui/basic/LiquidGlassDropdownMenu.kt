@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -42,9 +43,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick as onSemanticsClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -56,6 +63,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.ui.effects.edgelight.edgeLight
 import com.haooz.chedule.ui.effects.edgelight.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -76,10 +84,13 @@ internal val LiquidGlassDropdownShadowPadding = 24.dp
 /** 收起态圆形按钮直径，也是容器变换的起点尺寸 */
 private val ButtonDiameter = 42.dp
 
+/** 面板宽度与圆角 */
+private val PanelWidth = 200.dp
+private val PanelCornerRadius = 25.dp
+
 /**
  * 面板外投射阴影档位。
  *
- * 加重过一次（原 blur 10 / extend 2 / alpha 0x12·0x20）。
  * ⚠️ ListPopup.kt 的 popupPanelShadow 有一份**同值副本**（那边是 miuix 通用组件，
  * 不反向依赖 app 层），调整时两处必须同步，否则两种弹窗阴影深浅不一。
  */
@@ -90,14 +101,12 @@ private const val ShadowExtend = 2f
 /** ARGB 里的 alpha 会被放大这么多倍 —— 环形路径重复描边会累积浓度 */
 private const val ShadowAlphaGain = 3.2f
 
-/** 面板宽度与圆角 */
-private val PanelWidth = 200.dp
-private val PanelCornerRadius = 25.dp
-
 /**
  * 右上角「更多」按钮与下拉菜单是**同一个控件**（容器变换）：
  * fraction=0 时是 42dp 玻璃盒（圆角 25dp 被钳成 21dp = 正圆），
  * fraction=1 时同一块玻璃长成 [PanelWidth] × 面板高的圆角矩形；图标与菜单项都在盒内随之裁剪。
+ *
+ * 已展开时还支持跟手滑动选菜单项（见 [dropdownPanelDragSelect]），无长按门槛。
  */
 @Composable
 fun LiquidGlassDropdownMenu(
@@ -131,11 +140,23 @@ fun LiquidGlassDropdownMenu(
     val settleBounce = remember { Animatable(1f) }
     // 展开过才播退出动画，首帧不播（否则启动时按钮会被带偏）
     var hasOpened by remember { mutableStateOf(false) }
+    // 跟手滑选：菜单项各自登记位置，手势逐帧命中测试
+    val dragSelectState = remember { DropdownPanelDragSelectState() }
 
     // 预测性返回：始终注册（否则动画未播完时立即返回会抓不到手势）
     val navigationEventState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
     val backProgress = remember { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
+    // 按压高光 + 跟手拉伸 + 回弹
+    val interactiveHighlight = remember(coroutineScope) {
+        InteractiveHighlight(
+            animationScope = coroutineScope,
+            radiusScale = { 1f - 0.6f * fraction.value.coerceIn(0f, 1f) },
+            // 半径上限 150dp：不用 minDimension，否则菜单项越多面板越高、光晕越大。
+            // 收起态是 42dp 小圆，min 会自动退回自身尺寸，光晕不会漫出圆外。
+            radiusBaseDp = 150.dp,
+        )
+    }
 
     NavigationBackHandler(
         state = navigationEventState,
@@ -258,10 +279,32 @@ fun LiquidGlassDropdownMenu(
                     // 退出位移回弹：沿收回方向（右上）越过终点再弹回，进入为 0
                     val pulse = (-settleBounce.value).coerceAtLeast(0f)
                     val bouncePx = pulse * 12f * density
-                    translationX = o.x - PanelWidth.toPx() * k + bouncePx
-                    translationY = o.y + targetHeight.toPx() * k - bouncePx
+
+                    // 按压/拖拽形变：按压缩放 4dp、沿拖动方向拉伸、位移 tanh 阻尼跟手
+                    val drag = computeDragTransform(
+                        width = size.width,
+                        height = size.height,
+                        fraction = f,
+                        pressProgress = interactiveHighlight.pressProgress,
+                        offset = interactiveHighlight.offset,
+                        density = this,
+                    )
+                    scaleX = drag.scaleX
+                    scaleY = drag.scaleY
+                    translationX = o.x - PanelWidth.toPx() * k + bouncePx + drag.translationX
+                    translationY = o.y + targetHeight.toPx() * k - bouncePx + drag.translationY
                 }
                 .size(width = width, height = height)
+                // 面板自身的 root 位置：菜单项靠它把 boundsInRoot 换算成面板局部坐标
+                .onGloballyPositioned { dragSelectState.panelTopInRoot = it.boundsInRoot().top }
+                // 跟手滑选：挂在面板上而非 42dp 触发图标，手指按下后要能一路滑到任意一项
+                .dropdownPanelDragSelect(
+                    state = dragSelectState,
+                    fraction = { fraction.value },
+                    hapticFeedback = hapticFeedback
+                )
+                // 拖动手势：放在 clip 之前，不受圆角裁剪影响
+                .then(interactiveHighlight.gestureModifier)
                 .drawBehind {
                     // 与顶栏液态玻璃按钮同一套阴影：环形（外圈减内圈）+ 模糊/外扩随材质衰减
                     // 用 materialVisible 而非 materialAlpha：收起态仍跟顶栏材质，展开后
@@ -332,6 +375,15 @@ fun LiquidGlassDropdownMenu(
                         edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
                     )
             )
+
+            // 按压高光：必须在玻璃壳之上、菜单内容之下 —— 前者否则被材质盖住，
+            // 后者否则会盖掉菜单项的跟手高亮底色（Plus 加色会把底色冲白）。
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(interactiveHighlight.modifier)
+            )
+
             // 菜单内容：全尺寸居中、按中心缩放，随容器长大被裁出
             Column(
                 modifier = Modifier
@@ -350,7 +402,10 @@ fun LiquidGlassDropdownMenu(
                     .blur(contentBlur)
                     .padding(vertical = 8.dp)
             ) {
-                content()
+                // 菜单项从这里读跟手选中态（局部坐标换算要用面板在 root 里的位置）
+                CompositionLocalProvider(LocalDropdownPanelDragSelect provides dragSelectState) {
+                    content()
+                }
             }
 
             // 收起态的图标：就在同一个玻璃盒里，随盒子长大淡出
@@ -402,7 +457,17 @@ fun LiquidGlassDropdownMenuItem(
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
             .clip(ContinuousRoundedRectangle(17.dp))
-            .clickable(onClick = onClick)
+            // 登记纵向区间供面板命中测试 + 绘制跟手高亮
+            .dropdownPanelEntry(enabled = true, action = onClick)
+            // 无障碍点击动作：菜单项不再挂 clickable（会与面板手势抢事件），
+            // 但读屏/键盘仍要能触发
+            .semantics {
+                role = Role.Button
+                onSemanticsClick {
+                    onClick()
+                    true
+                }
+            }
             .padding(horizontal = 14.dp, vertical = 10.5.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
