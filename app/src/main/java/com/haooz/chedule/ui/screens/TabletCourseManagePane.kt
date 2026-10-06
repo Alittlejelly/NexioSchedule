@@ -46,6 +46,7 @@ import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
+import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -68,7 +69,10 @@ fun TabletCourseManagePane(
     val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
 
     // 选中课程名：默认第一门；被删掉后回落到第一门
-    val names = remember(courses) { courses.map { it.name }.distinct().sorted() }
+    // 用中文拼音排序，与左栏卡片顺序保持一致（否则左栏看到的顺序和右栏切换顺序对不上）
+    val names = remember(courses) {
+        courses.map { it.name }.distinct().sortedWith { a, b -> CourseSorting.compareNames(a, b) }
+    }
     var selectedName by remember { mutableStateOf<String?>(null) }
     if (selectedName == null || (names.isNotEmpty() && selectedName !in names)) {
         selectedName = names.firstOrNull()
@@ -150,6 +154,7 @@ fun TabletCourseManagePane(
                         liquidGlassBackdrop = liquidGlassBackdrop,
                         contentTopPadding = chromeTop,
                         columnsOverride = 2,
+                        sectionTimes = sectionTimes,
                         // 选中卡加课程色描边
                         selectedCourseName = selectedName,
                     )

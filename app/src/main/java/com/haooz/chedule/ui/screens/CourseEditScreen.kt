@@ -74,6 +74,7 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeFifthpowerOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuadraticOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
+import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.blockTouchPassThrough
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -666,24 +667,36 @@ fun CourseEditScreen(
                                 contentColor = MiuixTheme.colorScheme.onSurface
                             )
                         ) {
-                        val courseGroups = remember(courses) {
-                                courses.groupBy { course ->
-                                    CourseGroupKey(
-                                        dayOfWeek = course.dayOfWeek,
-                                        startSection = course.startSection,
-                                        endSection = course.endSection,
-                                        weekType = course.weekType,
-                                        startWeek = course.startWeek,
-                                        endWeek = course.endWeek,
-                                        selectedWeeks = course.selectedWeeks,
-                                        isCustomTime = course.isCustomTime,
-                                        customStartTime = course.customStartTime,
-                                        customEndTime = course.customEndTime
-                                    )
-                                }.map { (key, groupCourses) ->
-                                    CourseGroup(key = key, courses = groupCourses)
-                                }
-                            }
+                        //同一门课的多个时段：未排时间的沉底 → 周一→周日 → 实际上课时刻 → 节次 → 周次。
+                        // 不排的话直接沿用 groupBy 的插入序（= 数据库添加顺序），视觉上完全是乱的。
+                        val courseGroups = remember(courses, sectionTimes) {
+                            courses.groupBy { course ->
+                                CourseGroupKey(
+                                    dayOfWeek = course.dayOfWeek,
+                                    startSection = course.startSection,
+                                    endSection = course.endSection,
+                                    weekType = course.weekType,
+                                    startWeek = course.startWeek,
+                                    endWeek = course.endWeek,
+                                    selectedWeeks = course.selectedWeeks,
+                                    isCustomTime = course.isCustomTime,
+                                    customStartTime = course.customStartTime,
+                                    customEndTime = course.customEndTime
+                                )
+                            }.map { (key, groupCourses) ->
+                                CourseGroup(key = key, courses = groupCourses)
+                            }.sortedWith(
+                                compareBy(
+                                    { if (CourseSorting.hasScheduledTime(it.courses.first())) 0 else 1 },
+                                    { it.key.dayOfWeek },
+                                    { CourseSorting.startMinutesOf(it.courses.first(), sectionTimes) },
+                                    { it.key.startSection },
+                                    { it.key.endSection },
+                                    { it.key.startWeek },
+                                    { it.key.endWeek }
+                                )
+                            )
+                        }
 
                             val gridState = rememberLazyStaggeredGridState()
                             LaunchedEffect(gridState) {
@@ -1104,8 +1117,14 @@ private fun CourseGroupCard(
     val sectionText = course.getTimeDisplayText().ifEmpty { "未设置" }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 分组标题用「周几 + 时间」而不是周次：列表已按时段排序，
+        // 周次作标题会出现连续多个同名标题，看不出这一组是周几的课
         SmallTitle(
-            text = weekText
+            text = if (course.dayOfWeek in 1..7) {
+                "${dayLabels[course.dayOfWeek]} $sectionText"
+            } else {
+                "未设置时间"
+            }
         )
 
         Card(

@@ -61,6 +61,7 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.SharedScrollBehavior
 import com.haooz.chedule.ui.basic.collapsibleTopInset
+import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -123,6 +124,8 @@ fun CourseManageScreen(
     onScrollYChanged: (Int) -> Unit = {},
     /** 选中课程名：内嵌分栏时给对应卡片加一圈课程色描边 */
     selectedCourseName: String? = null,
+    /** 全局绝对节次号 -> "HH:mm-HH:mm"，用于把同一天内的时段按真实时刻排序 */
+    sectionTimes: Map<Int, String> = emptyMap(),
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val context = LocalContext.current
@@ -192,9 +195,25 @@ fun CourseManageScreen(
                         }
                 }
 
-                val groupedCourses = courses
-                    .groupBy { it.name }
-                    .toSortedMap(compareBy { it })
+                // 课程按名称聚合，名称用中文拼音排（原来是 Unicode 码点排，中文完全没有顺序感）；
+                // 组内按时段排，保证「代表性课程」（取 first）与卡片上的时段摘要稳定
+                val groupedCourses = remember(courses, sectionTimes) {
+                    courses.groupBy { it.name }
+                        .map { (name, list) ->
+                            name to list.sortedWith(
+                                compareBy(
+                                    { if (CourseSorting.hasScheduledTime(it)) 0 else 1 },
+                                    { it.dayOfWeek },
+                                    { CourseSorting.startMinutesOf(it, sectionTimes) },
+                                    { it.startSection },
+                                    { it.endSection },
+                                    { it.startWeek },
+                                    { it.endWeek }
+                                )
+                            )
+                        }
+                        .sortedWith { a, b -> CourseSorting.compareNames(a.first, b.first) }
+                }
 
                 val resolvedTopPadding = contentTopPadding
                     ?: (paddingValues.calculateTopPadding() +
@@ -244,7 +263,7 @@ fun CourseManageScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalItemSpacing = 12.dp
                     ) {
-                        items(groupedCourses.entries.toList(), key = { it.key }) { (courseName, courseList) ->
+                        items(groupedCourses, key = { it.first }) { (courseName, courseList) ->
                             val isNew = courseName in newlyAddedCourseNames
                             val isShrinking = courseList.any { it.id in shrinkingCourseIds }
                             val scale = remember { Animatable(0.8f) }
@@ -264,12 +283,12 @@ fun CourseManageScreen(
                             }
 
                             val representative = courseList.first()
+                            // 卡片摘要里的时段：courseList 已排好序，去重后直接拼即可。
+                            //判定「已排时间」用 hasScheduledTime 而不是 startSection > 0，
+                            // 否则自定义时间的课（节次号为 0）会被整条滤掉、摘要变空
                             val daySectionInfo = courseList
-                                .groupBy { "${it.dayOfWeek}_${it.startSection}_${it.endSection}" }
-                                .values
-                                .map { it.first() }
-                                .sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }))
-                                .filter { it.dayOfWeek > 0 && it.startSection > 0 }
+                                .filter { CourseSorting.hasScheduledTime(it) }
+                                .distinctBy { "${it.dayOfWeek}_${it.startSection}_${it.endSection}_${it.customStartTime}_${it.customEndTime}" }
                                 .joinToString("、") {
                                     val day = dayNames.getOrElse(it.dayOfWeek) { "?" }
                                     "${day}${it.getTimeDisplayText()}"

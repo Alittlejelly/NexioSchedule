@@ -287,6 +287,7 @@ class CourseManageActivity : ComponentActivity() {
                                         scrollBehavior = scrollBehavior,
                                         hiddenCourseIds = hiddenCourseIds,
                                         shrinkingCourseIds = shrinkingCourseIds,
+                                        sectionTimes = sectionTimes,
                                         onNewCourseCreated = { course ->
                                             courseViewModel.addCourse(course)
                                             createdCourseIds = createdCourseIds + course.id
