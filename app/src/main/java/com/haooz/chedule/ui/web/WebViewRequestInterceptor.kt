@@ -110,15 +110,12 @@ class WebViewRequestInterceptor {
         try {
             val builder = Request.Builder().url(url)
 
-            if (registeredData != null) {
-                val mediaType = registeredData.contentType
-                    .ifBlank { "application/x-www-form-urlencoded" }
-                    .toMediaTypeOrNull()
-                val body = registeredData.body.toRequestBody(mediaType)
-                builder.method(request.method, body)
-            } else {
-                builder.method(request.method, null)
-            }
+            val mediaType = registeredData.contentType
+                .ifBlank { "application/x-www-form-urlencoded" }
+                .toMediaTypeOrNull()
+            // 叫 requestBody 而非 body：同一个 try 块下方还有一次响应体的 val body
+            val requestBody = registeredData.body.toRequestBody(mediaType)
+            builder.method(request.method, requestBody)
 
             // 复制头部，剔除特殊头部
             request.requestHeaders.forEach { (key, value) ->

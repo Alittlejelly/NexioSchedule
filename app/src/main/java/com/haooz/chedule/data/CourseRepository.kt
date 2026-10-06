@@ -181,15 +181,15 @@ class CourseRepository private constructor(context: Context) {
         operator fun invoke(context: Context): CourseRepository = getInstance(context)
 
         /** 开学日规范格式 yyyy/MM/dd */
-        fun formatClassStartDate(date: java.time.LocalDate): String =
-            String.format(java.util.Locale.ROOT, "%04d/%02d/%02d", date.year, date.monthValue, date.dayOfMonth)
+        fun formatClassStartDate(date: LocalDate): String =
+            String.format(Locale.ROOT, "%04d/%02d/%02d", date.year, date.monthValue, date.dayOfMonth)
 
         /**
          * 解析教务/设置/备份里各种开学日写法。
          * 支持：yyyy/MM/dd、yyyy-MM-dd、yyyy/M/d、yyyyMMdd、带时间的 ISO 前缀。
          * 年份限 1970..2100，避免「26/9/1」被当成公元 26 年。
          */
-        fun parseFlexibleDate(raw: String?): java.time.LocalDate? {
+        fun parseFlexibleDate(raw: String?): LocalDate? {
             if (raw.isNullOrBlank()) return null
             fun validYear(y: Int) = y in 1970..2100
             val trimmed = raw.trim().substringBefore(' ').substringBefore('T')
@@ -205,7 +205,7 @@ class CourseRepository private constructor(context: Context) {
                     val m = parts[1].toIntOrNull()
                     val d = parts[2].toIntOrNull()
                     if (y != null && m != null && d != null && validYear(y)) {
-                        return runCatching { java.time.LocalDate.of(y, m, d) }.getOrNull()
+                        return runCatching { LocalDate.of(y, m, d) }.getOrNull()
                     }
                 }
             }
@@ -214,7 +214,7 @@ class CourseRepository private constructor(context: Context) {
                 val y = digits.substring(0, 4).toInt()
                 if (!validYear(y)) return null
                 return runCatching {
-                    java.time.LocalDate.of(
+                    LocalDate.of(
                         y,
                         digits.substring(4, 6).toInt(),
                         digits.substring(6, 8).toInt()
@@ -380,6 +380,9 @@ class CourseRepository private constructor(context: Context) {
     }
 
     /** UnsafeAllocator 使旧 JSON 缺失字段为 null，无条件重建以拿到默认值 */
+    // USELESS_ELVIS / ELVIS_ALWAYS_NULL：字段声明为非空 String，但 UnsafeAllocator 真的会给 null，
+    // 这里的 ?: 是自愈数据的关键，不能删。与 TimeConfig.sanitize / TimeRoutine.fromRaw 同一处理。
+    @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS", "ELVIS_ALWAYS_NULL")
     private fun sanitizeCourses(courses: List<Course>): List<Course> {
         return courses.map { course ->
             Course(
@@ -880,7 +883,8 @@ class CourseRepository private constructor(context: Context) {
     fun getClassStartTime(scheduleId: String): String {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME"
         val cal = java.util.Calendar.getInstance()
-        val default = String.format(java.util.Locale.ROOT, "%04d/%02d/%02d",
+        val default = String.format(
+            Locale.ROOT, "%04d/%02d/%02d",
             cal.get(java.util.Calendar.YEAR),
             cal.get(java.util.Calendar.MONTH) + 1,
             cal.get(java.util.Calendar.DAY_OF_MONTH)
@@ -1475,7 +1479,7 @@ class CourseRepository private constructor(context: Context) {
             putLong("$SCHEDULE_TIME_CONFIG_PREFIX$name", duplicatedTimeConfigId)
             val today = LocalDate.now()
             val todayStr =
-                String.format(java.util.Locale.ROOT, "%04d/%02d/%02d", today.year, today.monthValue, today.dayOfMonth)
+                String.format(Locale.ROOT, "%04d/%02d/%02d", today.year, today.monthValue, today.dayOfMonth)
             putString("$newPrefix$KEY_CLASS_START_TIME", todayStr)
             putInt("$newPrefix$KEY_CURRENT_WEEK", 1)
             remove("$newPrefix$KEY_TEACHING_WEEK_REORGANIZATIONS")
@@ -1970,8 +1974,16 @@ class CourseRepository private constructor(context: Context) {
                 )
             } else bitmap
             val file = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.webp")
+            // 旧的 CompressFormat.WEBP 在 API 30 起被 WEBP_LOSSY / WEBP_LOSSLESS 取代，
+            // 语义等价（都是有损），按版本取用
+            val webpFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                @Suppress("DEPRECATION")
+                android.graphics.Bitmap.CompressFormat.WEBP
+            }
             java.io.FileOutputStream(file).use { out ->
-                scaled.compress(android.graphics.Bitmap.CompressFormat.WEBP, 80, out)
+                scaled.compress(webpFormat, 80, out)
             }
             wallpaperCache.put(id, scaled)
             true

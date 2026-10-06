@@ -415,15 +415,15 @@ private class DrawBackdropNode(
 
             if (useSharedMode) {
                 // ===== 共享模式：从共享预渲染层采样 =====
-                val cardPos = cardCoords!!
-                val sourcePos = sourceCoords!!
+                val cardPos = cardCoords
+                val sourcePos = sourceCoords
                 val offset = try {
                     sourcePos.localPositionOf(cardPos)
                 } catch (_: Exception) {
                     cardPos.positionInWindow() - sourcePos.positionInWindow()
                 }
 
-                val sharedLayerNonNull = sharedLayer!!
+                val sharedLayerNonNull = sharedLayer
                 val sourceVersion = backdrop.contentVersion
                 // 无 RenderEffect 时直采共享层，跳过每卡 recordLayer + 离屏缓冲放大
                 val canDirectBlit = padding == 0f && graphicsLayer?.renderEffect == null
@@ -503,9 +503,9 @@ private class DrawBackdropNode(
                 val canFingerprintOffset = sourceCoordsForPlain != null && cardCoords != null
                 if (canFingerprintOffset) {
                     val off = try {
-                        sourceCoordsForPlain!!.localPositionOf(cardCoords!!)
+                        sourceCoordsForPlain.localPositionOf(cardCoords)
                     } catch (_: Exception) {
-                        cardCoords!!.positionInWindow() - sourceCoordsForPlain!!.positionInWindow()
+                        cardCoords.positionInWindow() - sourceCoordsForPlain.positionInWindow()
                     }
                     sampleX = off.x
                     sampleY = off.y

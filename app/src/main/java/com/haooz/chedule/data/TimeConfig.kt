@@ -621,9 +621,8 @@ data class TimeConfig(
 
         val result = mutableMapOf<Int, String>()
         for ((k, v) in sectionTimes) {
-            val strKey = k.toString()
-            if (strKey.startsWith("${period}_")) {
-                val idx = strKey.removePrefix("${period}_").toIntOrNull()
+            if (k.startsWith("${period}_")) {
+                val idx = k.removePrefix("${period}_").toIntOrNull()
                 if (idx != null) result[idx] = v
             }
         }

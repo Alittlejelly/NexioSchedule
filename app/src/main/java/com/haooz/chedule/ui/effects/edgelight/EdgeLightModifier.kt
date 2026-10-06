@@ -224,6 +224,9 @@ internal class EdgeLightNode(
         needsRecord = true
     }
 
+    // asFrameworkPaint() 在 Compose 1.11 被废弃，官方建议的平台专属扩展本版本尚未提供，
+    // 等 Compose 给出正式替代再改（详见 EdgeLightShaderHelper 同名函数的说明）
+    @Suppress("DEPRECATION")
     private fun DrawScope.configurePaint(edgeLight: EdgeLight) {
         paint.color = edgeLight.style.color
 

@@ -511,9 +511,27 @@ object CourseReminderHelper {
     /** 次日提醒触发后只注册下一个次日闹钟，避免全量重调度 */
     fun scheduleNextDayOnly(context: Context) {
         val repository = CourseRepository(context)
-        if (!repository.getNextDayReminder() || !isSemesterStarted(repository)) return
+        if (!repository.getNextDayReminder()) return
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         scheduleNextDayAlarm(context, repository, alarmManager)
+    }
+
+    /**
+     * 次日提醒的排期闸门。
+     *
+     * 学期已开始：沿用原口径（周次须落在 1..totalWeeks 且不超过最后有课周，学期结束后不再排）。
+     * 学期未开始（放长假）：整个假期每天弹「明日无课」纯属噪音，只有**明天确有课**才排 ——
+     * 这正是「返校前一天 / 假期最后一天明天要上课」的场景，不能被学期闸门一起吞掉。
+     * 「明天有课」直接问 resolveDaySchedule，调休映射、节假日末日例外一并生效。
+     */
+    fun shouldScheduleNextDayReminder(context: Context, repository: CourseRepository): Boolean {
+        if (isSemesterStarted(repository)) {
+            val currentWeek = repository.getLiveTeachingWeek()
+            return currentWeek >= 1 &&
+                currentWeek <= repository.getTotalWeeks() &&
+                currentWeek <= repository.getLastWeekWithCourses()
+        }
+        return resolveDaySchedule(context, LocalDate.now().plusDays(1), repository).courses.isNotEmpty()
     }
 
     // 开学日期所在周的周一之后才算已开始；解析失败时保守放行，避免误屏蔽
@@ -749,12 +767,7 @@ object CourseReminderHelper {
         repository: CourseRepository,
         alarmManager: AlarmManager
     ) {
-        if (!isSemesterStarted(repository)) return
-
-        val currentWeek = repository.getLiveTeachingWeek()
-        val totalWeeks = repository.getTotalWeeks()
-        val lastWeekWithCourses = repository.getLastWeekWithCourses()
-        if (currentWeek < 1 || currentWeek > totalWeeks || currentWeek > lastWeekWithCourses) return
+        if (!shouldScheduleNextDayReminder(context, repository)) return
 
         val hour = repository.getNextDayReminderHour()
         val minute = repository.getNextDayReminderMinute()

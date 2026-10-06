@@ -2,6 +2,7 @@ package com.haooz.chedule.ui.components
 import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.app.Activity
+import android.os.Build
 import android.content.Context
 import android.content.Intent
 import android.view.RoundedCorner
@@ -385,7 +386,12 @@ private fun rememberTabletNavMaskCorner(): Dp {
 fun Context.startActivityNoNavAnim(intent: Intent) {
     startActivity(intent)
     if (this is Activity) {
-        overridePendingTransition(0, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
     }
 }
 
@@ -406,7 +412,12 @@ fun navigateMainTabFromSecondary(context: Context, tab: Int) {
     context.startActivityNoNavAnim(intent)
     if (context is Activity && context !is MainActivity) {
         context.finish()
-        context.overridePendingTransition(0, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            context.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            context.overridePendingTransition(0, 0)
+        }
     }
 }
 

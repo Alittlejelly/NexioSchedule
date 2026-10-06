@@ -264,7 +264,7 @@ internal object UpdateChecker {
     fun rememberedApkSize(context: Context, tag: String): Long? =
         context.getSharedPreferences(PREF_UPDATE, Context.MODE_PRIVATE)
             .getLong(KEY_SIZE_PREFIX + tag, -1L)
-            ?.takeIf { it > 0L }
+            .takeIf { it > 0L }
 
     /** 流式计算文件 SHA-256（大文件避免一次性读入内存） */
     fun sha256(file: File): String? = try {

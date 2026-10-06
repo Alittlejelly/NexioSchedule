@@ -296,7 +296,8 @@ fun WebViewScreen(
     } else 0.dp
     var currentUrl by remember { mutableStateOf(importUrl ?: "about:blank") }
     var loadingProgress by remember { mutableFloatStateOf(0f) }
-    var pageTitle by remember { mutableStateOf("加载中...") }
+var pageTitle by remember { mutableStateOf("加载中...") }
+    // 平板默认桌面版，手机默认手机版（UA 与视口策略都跟着走，见 WebCompatDelegate）
     var isDesktopMode by remember { mutableStateOf(isTablet) }
     val hapticFeedback = LocalHapticFeedback.current
 
@@ -695,7 +696,7 @@ fun WebViewScreen(
             val currentHost = webView.url?.toUri()?.host?.lowercase()?.removePrefix("www.")
             val importHost = importUrl?.toUri()?.host?.lowercase()?.removePrefix("www.")
             if (!currentHost.isNullOrBlank() && !importHost.isNullOrBlank() && currentHost != importHost) {
-                webView.loadUrl(importUrl!!)
+                webView.loadUrl(importUrl)
             } else {
                 webView.reload()
             }

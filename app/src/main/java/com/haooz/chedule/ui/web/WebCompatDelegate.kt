@@ -2,8 +2,17 @@
 package com.haooz.chedule.ui.web
 
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
-import android.webkit.*
+import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -154,6 +163,14 @@ class WebCompatDelegate(private val webView: WebView) {
         private set
 
     /**
+     * 桌面版视口自愈是否已重载过。
+     *
+     * 首次加载 Chrome 只落实布局宽度、不重算缩放（vvScale 仍 1.0），重载一次才生效 ——
+     * 这也是「切一次手机再切回电脑就好了」的真实原因。只重载一次，避免和页面跳转打架。
+     */
+    private var viewportRetried = false
+
+    /**
      * 启用/关闭桌面模式视口覆盖。
      *
      * 返回是否成功走 document-start 注入；返回 false 时页面脚本已经跑过，
@@ -163,23 +180,15 @@ class WebCompatDelegate(private val webView: WebView) {
         viewportScriptHandler?.remove()
         viewportScriptHandler = null
         desktopViewportOverrideActive = false
+        // 模式切换 = 新一轮协商，允许再自愈一次
+        viewportRetried = false
         if (!enabled) return false
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            Log.w(TAG, "WebView 不支持 document-start 脚本，回退到 onPageFinished 注入")
-            return false
-        }
-        return try {
-            viewportScriptHandler = WebViewCompat.addDocumentStartJavaScript(
-                webView,
-                buildDesktopViewportScript(desktopViewportContent()),
-                setOf("*")
-            )
-            desktopViewportOverrideActive = true
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "document-start 视口注入失败，回退到 onPageFinished 注入", e)
-            false
-        }
+        // 桌面版不用 document-start 提前注入，只保留 onPageFinished 兜底注入。
+        // 提前注入会让 Chrome 只认width、不认initial-scale（inner=1283 但缩放 100%），
+        // 页面放大到只看得见 28%；晚注入则两者一起生效（缩放 0.28，正好一屏）。
+        // 这里 return false 同时让 onPageFinished 的兜底注入保持开启 —— 别改回去。
+        Log.d(TAG, "applyDesktopViewportOverride: 桌面版仅用onPageFinished 兜底注入")
+        return false
     }
 
     /**
@@ -217,13 +226,24 @@ class WebCompatDelegate(private val webView: WebView) {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true
-            allowUniversalAccessFromFileURLs = true
-            allowFileAccessFromFileURLs = true
             allowFileAccess = true
             allowContentAccess = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
+            // 下面三项在 API 33 起被废弃且不再生效（本地文件访问已被安全策略收紧），
+            // 仅在旧版本上还有意义，所以按版本设置而不是无条件打开
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                @Suppress("DEPRECATION")
+                databaseEnabled = true
+                @Suppress("DEPRECATION")
+                allowUniversalAccessFromFileURLs = true
+                @Suppress("DEPRECATION")
+                allowFileAccessFromFileURLs = true
+            }
+
+            // 两项都保持 true（Chromium「like a browser」配置）：useWideViewPort 让注入的
+            // width=1280 生效，loadWithOverviewMode 负责「内容宽于屏幕就缩到一屏」。
+            // 别改成 false —— 实测关掉后页面按 100% 渲染 1283 宽布局，手机屏只看得到28%。
             useWideViewPort = true
             loadWithOverviewMode = true
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
@@ -271,6 +291,32 @@ class WebCompatDelegate(private val webView: WebView) {
                     // 正常情况下视口已由 document-start 脚本注入；只有老 WebView 走到这里兜底
                     if (isDesktopMode && !desktopViewportOverrideActive) {
                         injectDesktopViewport(wv)
+                    }
+                    // 视口自愈：首次加载Chrome 只落实布局宽度、不重算缩放，
+                    // 重载一次才生效。inner（布局宽）与 vvScale（视觉缩放）必须都看 ——
+                    // 只看 inner 会把「排版对了但没缩放」误判成已修好。
+                    if (isDesktopMode) {
+                        wv.evaluateJavascript(
+                            "(function(){var v=window.visualViewport?window.visualViewport.scale:-1;" +
+                                "return window.innerWidth+'|'+v})()"
+                        ) { r ->
+                            // 回调收到的是 JSON 编码结果，JS 返回字符串时带引号，
+                            // 所以用正则抠数字，别直接 split+toInt（会全部解析失败）。
+                            val raw = r ?: return@evaluateJavascript
+                            val nums = Regex("-?\\d+(?:\\.\\d+)?")
+                                .findAll(raw)
+                                .map { it.value }
+                                .toList()
+                            val actual = nums.getOrNull(0)?.toIntOrNull() ?: return@evaluateJavascript
+                            val vvScale = nums.getOrNull(1)?.toDoubleOrNull() ?: -1.0
+                            Log.d(TAG, "viewport: inner=$actual vvScale=$vvScale retried=$viewportRetried")
+                            val contentWider = actual > viewportWidthInCssPx() + 1
+                            val zoomOk = vvScale > 0.05 && vvScale < 0.95
+                            if (contentWider && !zoomOk && !viewportRetried) {
+                                viewportRetried = true
+                                wv.post { wv.reload() }
+                            }
+                        }
                     }
                 }
             }

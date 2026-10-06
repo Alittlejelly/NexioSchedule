@@ -29,6 +29,9 @@ object WatchPayload {
     private const val VERSION = 4
 
     /** 整表推送 JSON。课程取 Course 原始值，周次过滤与星期坐标系都交给手表端。 */
+    // USELESS_ELVIS / ELVIS_ALWAYS_NULL：Course 字段声明为非空 String，但 Gson UnsafeAllocator
+    // 会给旧数据塞 null，这里的 ?: 是推送兜底，不能删。与 CourseRepository.sanitizeCourses 同一处理。
+    @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS", "ELVIS_ALWAYS_NULL")
     fun buildFullJson(
         repository: CourseRepository,
         context: Context,
@@ -108,6 +111,8 @@ object WatchPayload {
     }
 
     /** 节次时间 → 手表格式 {相对节次号: 'HH:mm-HH:mm'}（getPeriodTimes 本身即此格式） */
+    // 同 buildFullJson：Map 声明为 Map<Int,String>，Gson 泛型丢失后 value 仍可能是 null
+    @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS", "ELVIS_ALWAYS_NULL")
     private fun periodTimesJson(
         repository: CourseRepository,
         period: String,

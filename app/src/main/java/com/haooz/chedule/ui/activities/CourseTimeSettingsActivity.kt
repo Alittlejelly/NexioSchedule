@@ -60,6 +60,8 @@ class CourseTimeSettingsActivity : ComponentActivity() {
     private var _isInFreeformWindow = mutableStateOf(false)
     val isInFreeformWindow: Boolean get() = _isInFreeformWindow.value
 
+    // 同 CourseManageActivity：API 35 起废弃且无等价替代回调，保留并压制警告
+    @Suppress("DEPRECATION")
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
         _isInFreeformWindow.value = isInMultiWindowMode

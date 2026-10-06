@@ -77,6 +77,9 @@ class CourseManageActivity : ComponentActivity() {
     private var _isInFreeformWindow = mutableStateOf(false)
     val isInFreeformWindow: Boolean get() = _isInFreeformWindow.value
 
+    // Activity.onMultiWindowModeChanged 在 API 35 起废弃，但目前没有等价替代回调
+    // （onConfigurationChanged 拿不到「进入/退出多窗口」这个语义），所以保留并压制警告
+    @Suppress("DEPRECATION")
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
         _isInFreeformWindow.value = isInMultiWindowMode

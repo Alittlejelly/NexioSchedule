@@ -45,6 +45,10 @@ internal fun Canvas.clipOutline(outline: Outline, path: Path?) {
     }
 }
 
+// asFrameworkPaint() 在 Compose 1.11 被废弃，官方建议的平台专属扩展本版本尚未提供
+// （AndroidPaint.internalPaint 为库内部可见），改持 android.graphics.Paint 需要重写渲染管线，
+// 风险大于收益。等 Compose 给出正式替代再改。
+@Suppress("DEPRECATION")
 internal fun androidx.compose.ui.graphics.Paint.blur(radius: Float) {
     if (radius > 0f) {
         asFrameworkPaint().apply {
@@ -56,6 +60,7 @@ internal fun androidx.compose.ui.graphics.Paint.blur(radius: Float) {
     }
 }
 
+@Suppress("DEPRECATION")
 internal fun androidx.compose.ui.graphics.Paint.setRuntimeShader(runtimeShader: RuntimeShader?) {
     asFrameworkPaint().shader = runtimeShader
 }

@@ -116,13 +116,15 @@ class AlarmReceiver : BroadcastReceiver() {
             }
 
             CourseReminderHelper.TYPE_NEXT_DAY -> {
-                // 学期未开始（未到开学日期所在周的周一）：不发送次日提醒
-                if (!CourseReminderHelper.isSemesterStarted(repository)) {
+                val tomorrowCourses = CourseReminderHelper.getTomorrowCourses(context)
+
+                // 学期未开始（未到开学日期所在周的周一）：默认静默，整个假期不打扰；
+                // 但明天确有课时照常发送 —— 返校/开学前一天正是这一条，别被学期闸门误伤。
+                if (!CourseReminderHelper.isSemesterStarted(repository) && tomorrowCourses.isEmpty()) {
+                    Log.d("AlarmReceiver", "Semester not started and no courses tomorrow, skipping next-day reminder")
                     CourseReminderHelper.onAlarmProcessed(context)
                     return
                 }
-
-                val tomorrowCourses = CourseReminderHelper.getTomorrowCourses(context)
 
                 if (tomorrowCourses.isEmpty()) {
                     CourseReminderHelper.showReminderNotification(context, type, "明日无课", "明天没有课程安排")

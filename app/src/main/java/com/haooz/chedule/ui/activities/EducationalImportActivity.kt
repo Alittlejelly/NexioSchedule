@@ -567,7 +567,7 @@ class EducationalImportActivity : ComponentActivity() {
                 afternoonSections = settingsViewModel.afternoonSections.value
                 eveningSections = settingsViewModel.eveningSections.value
             } else {
-                val sid = targetScheduleId!!
+                val sid = targetScheduleId
                 morningSections = repository!!.getMorningSections(sid)
                 afternoonSections = repository.getAfternoonSections(sid)
                 eveningSections = repository.getEveningSections(sid)
@@ -600,7 +600,7 @@ class EducationalImportActivity : ComponentActivity() {
                     morningTimes, afternoonTimes, eveningTimes
                 )
             } else {
-                val sid = targetScheduleId!!
+                val sid = targetScheduleId
                 repository!!.applyTimeImportToSchedule(
                     sid, morningSections, afternoonSections, eveningSections,
                     morningTimes, afternoonTimes, eveningTimes
