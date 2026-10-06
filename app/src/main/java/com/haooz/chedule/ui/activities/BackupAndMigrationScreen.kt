@@ -40,12 +40,12 @@ import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayBeforeCourseExclusion
 import com.haooz.chedule.data.HolidayEndCourseExclusion
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.data.ShareCodeApi
+import com.haooz.chedule.ui.utils.ShareCodeApi
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.data.ThirdPartyShareImporter
-import com.haooz.chedule.data.ThirdPartySharePayload
-import com.haooz.chedule.data.ThirdPartyShareSource
+import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
+import com.haooz.chedule.ui.utils.ThirdPartySharePayload
+import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.data.WebDavManager
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.ui.basic.CollapsibleTopAppBarDefaults

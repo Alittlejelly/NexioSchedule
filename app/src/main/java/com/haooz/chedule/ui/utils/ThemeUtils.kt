@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.ThemeMode
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定
@@ -53,19 +54,13 @@ fun rememberAppSettingDark(): Boolean {
 @Composable
 fun rememberScheduleThemeMode(): ThemeMode {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE) }
-    val themeMode = remember {
-        mutableStateOf(
-            ThemeMode.fromPrefsValue(prefs.getString(ThemeMode.SCHEDULE_THEME_MODE_KEY, "follow_wallpaper"))
-        )
-    }
+    val prefs = remember { context.getSharedPreferences(ScheduleAppearance.FILE_THEME, Context.MODE_PRIVATE) }
+    val themeMode = remember { mutableStateOf(ScheduleAppearance.getThemeMode()) }
 
     DisposableEffect(prefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _: SharedPreferences, key: String? ->
             if (key == ThemeMode.SCHEDULE_THEME_MODE_KEY) {
-                themeMode.value = ThemeMode.fromPrefsValue(
-                    prefs.getString(ThemeMode.SCHEDULE_THEME_MODE_KEY, "follow_wallpaper")
-                )
+                themeMode.value = ScheduleAppearance.getThemeMode()
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)

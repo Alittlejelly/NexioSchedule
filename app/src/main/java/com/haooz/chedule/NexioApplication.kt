@@ -22,6 +22,8 @@ class NexioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 课表外观单例：尽早初始化，主界面首帧即可读壁纸与卡片参数
+        com.haooz.chedule.data.ScheduleAppearance.init(this)
         // 预测性返回动画开关：应用启动即同步到全局单例（应用设置中可切换）
         PredictiveBackSettings.enabled = getSharedPreferences("app_preferences", MODE_PRIVATE)
             .getBoolean(PredictiveBackSettings.KEY_PREDICTIVE_BACK_ANIMATION, true)

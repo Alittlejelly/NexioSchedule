@@ -30,28 +30,7 @@ class CourseRepository private constructor(context: Context) {
     private var scheduleNamesCache: List<String>? = null
     private var scheduleFoldersCache: List<ScheduleFolder>? = null
     private var globalSectionTimesCache: Map<Int, String>? = null
-    private val combinationStyleCache = mutableMapOf<Long, CombinationStyle>()
 
-    // 壁纸解码是主要瓶颈，按可用内存 1/8 做 Lru 缓存，绝对上限 32MB 防大堆机型占压过大
-    private val wallpaperCache: android.util.LruCache<Long, android.graphics.Bitmap> =
-        run {
-            val maxBytes = minOf(
-                Runtime.getRuntime().maxMemory() / 8,
-                32L * 1024 * 1024,
-            ).coerceAtLeast(4L * 1024 * 1024)
-            object : android.util.LruCache<Long, android.graphics.Bitmap>(maxBytes.toInt()) {
-                override fun sizeOf(key: Long, value: android.graphics.Bitmap): Int {
-                    return value.byteCount
-                }
-            }
-        }
-
-    init {
-        migrateToTimeConfigsIfNeeded()
-        migrateScheduleTimeConfigBindingsIfNeeded()
-        pruneOrphanTimeConfigsIfNeeded()
-        migrateSchedulesIntoDefaultFolder()
-    }
 
     /**
      * 首次装这个版本（或第一次使用）时，把现有课表全部收进「默认文件夹」。
@@ -121,7 +100,6 @@ class CourseRepository private constructor(context: Context) {
         scheduleNamesCache = null
         scheduleFoldersCache = null
         globalSectionTimesCache = null
-        combinationStyleCache.clear()
     }
 
     /** 节数/节次时间变化会同时影响全局节次映射与分钟级占用判断 */
@@ -266,34 +244,7 @@ class CourseRepository private constructor(context: Context) {
         private const val KEY_SHIFT_SELECTED_SCHEDULES = "shift_selected_schedules"
         private const val KEY_DEFAULT_HOMEPAGE = "default_homepage"
         private const val KEY_WIDGET_PADDING_MODE = "widget_padding_mode"
-        @Suppress("UNUSED") private const val KEY_WALLPAPER_OFFSET_X = "wallpaper_offset_x"
-        @Suppress("UNUSED") private const val KEY_WALLPAPER_OFFSET_Y = "wallpaper_offset_y"
-        @Suppress("UNUSED") private const val KEY_WALLPAPER_SCALE = "wallpaper_scale"
-        @Suppress("UNUSED") private const val WALLPAPER_FILE_NAME = "schedule_wallpaper.png"
         private const val SCHEDULE_KEY_PREFIX = "schedule_"
-        // 当前只有单搭配（id 恒为 0），保留 id 维度以免将来恢复多搭配再改存储
-        private const val KEY_COMBINATION_IDS = "combination_ids"
-        private const val KEY_CURRENT_COMBINATION_ID = "current_combination_id"
-        private const val COMBINATION_WALLPAPER_PREFIX = "combination_wallpaper_"
-        // 合并存储键（取代下面 17 个 comb_xxx_{id} 分散键）
-        private const val COMBINATION_STYLE_PREFIX = "combination_style_"
-        private const val KEY_COMBINATION_OFFSET_X_PREFIX = "comb_offset_x_"
-        private const val KEY_COMBINATION_OFFSET_Y_PREFIX = "comb_offset_y_"
-        private const val KEY_COMBINATION_SCALE_PREFIX = "comb_scale_"
-        private const val KEY_COMBINATION_CARD_BLUR_PREFIX = "comb_card_blur_"
-        private const val KEY_COMBINATION_CARD_ALPHA_PREFIX = "comb_card_alpha_"
-        private const val KEY_COMBINATION_CARD_HEIGHT_PREFIX = "comb_card_height_"
-        private const val KEY_COMBINATION_CARD_CORNER_PREFIX = "comb_card_corner_"
-        private const val KEY_COMBINATION_WALLPAPER_BRIGHTNESS_PREFIX = "comb_wp_brightness_"
-        private const val KEY_COMBINATION_WALLPAPER_IS_LIGHT_PREFIX = "comb_wp_is_light_"
-        private const val KEY_COMBINATION_SHOW_BREAK_DIVIDERS_PREFIX = "comb_break_div_"
-        private const val KEY_COMBINATION_CARD_CONTENT_ALIGNMENT_PREFIX = "comb_card_align_"
-        private const val KEY_COMBINATION_CARD_TEXT_COLOR_PREFIX = "comb_card_text_color_"
-        private const val KEY_COMBINATION_CARD_TEXT_SCALE_PREFIX = "comb_card_text_scale_"
-        private const val KEY_COMBINATION_SHOW_CLASSROOM_PREFIX = "comb_show_classroom_"
-        private const val KEY_COMBINATION_SHOW_TEACHER_PREFIX = "comb_show_teacher_"
-        private const val KEY_COMBINATION_CARD_REFRACTION_PREFIX = "comb_card_refraction_"
-        private const val KEY_COMBINATION_WALLPAPER_BLUR_PREFIX = "comb_wp_blur_"
         private const val KEY_TIME_CONFIG_IDS = "time_config_ids"
         private const val KEY_CURRENT_TIME_CONFIG_ID = "current_time_config_id"
         private const val TIME_CONFIG_PREFIX = "time_config_"
@@ -1804,343 +1755,6 @@ class CourseRepository private constructor(context: Context) {
         prefs.edit {putString(KEY_DEFAULT_HOMEPAGE, homepage) }
     }
 
-    fun getCombinationIds(): List<Long> {
-        val idsStr = prefs.getString(KEY_COMBINATION_IDS, null) ?: return listOf(0L)
-        return idsStr.split(",").mapNotNull { it.toLongOrNull() }
-    }
-
-    fun getCurrentCombinationId(): Long {
-        return prefs.getLong(KEY_CURRENT_COMBINATION_ID, 0L)
-    }
-
-    fun setCurrentCombinationId(id: Long) {
-        prefs.edit { putLong(KEY_CURRENT_COMBINATION_ID, id) }
-    }
-
-    /** 批量模式复用的 Editor；保存一次搭配约 16 个 save*，合并为一次磁盘提交 */
-    private var pendingEditor: SharedPreferences.Editor? = null
-
-    /** 所有写入统一入口：批量复用 Editor，否则独立提交 */
-    private fun edit(commit: Boolean = false, block: SharedPreferences.Editor.() -> Unit) {
-        val pending = pendingEditor
-        if (pending != null) {
-            block(pending)
-        } else {
-            prefs.edit(commit = commit) { block(this) }
-        }
-    }
-
-    /** 块内 prefs 写入合并为一次提交；可嵌套 */
-    fun batchEdit(block: () -> Unit) {
-        val outer = pendingEditor
-        if (outer != null) {
-            block()
-            return
-        }
-        val editor = prefs.edit()
-        pendingEditor = editor
-        try {
-            block()
-        } finally {
-            pendingEditor = null
-        }
-        editor.apply()
-    }
-
-    /**
-     * 无 JSON 时从旧分散键迁移；有 JSON 但不可识别则丢弃并恢复默认（自愈一次），
-     * 否则 cardHeight=0 会课表页静默空白。
-     */
-    private fun getCombinationStyle(id: Long): CombinationStyle {
-        combinationStyleCache[id]?.let { return it }
-        val json = prefs.getString("$COMBINATION_STYLE_PREFIX$id", null)
-        val style = if (json == null) {
-            readLegacyCombinationStyle(id).also { saveCombinationStyle(id, it) }
-        } else {
-            CombinationStyle.parseSnapshotOrNull(gson, json)
-                ?: restoreStyleAfterBadSnapshot(id)
-        }
-        combinationStyleCache[id] = style
-        return style
-    }
-
-    /** 坏快照重置后用现有壁纸重测光，否则主题开关因 isLight=null 整条失效 */
-    private fun restoreStyleAfterBadSnapshot(id: Long): CombinationStyle {
-        val isLight = computeWallpaperIsLight(loadCombinationWallpaper(id))
-        val style = CombinationStyle(wallpaperIsLight = isLight)
-        saveCombinationStyle(id, style)
-        return style
-    }
-
-    /** 16×16 网格感知加权平均亮度；无壁纸返回 null */
-    private fun computeWallpaperIsLight(bitmap: android.graphics.Bitmap?): Boolean? {
-        if (bitmap == null || bitmap.width <= 0 || bitmap.height <= 0) return null
-        val gridW = 16
-        val gridH = 16
-        val small = bitmap.scale(gridW, gridH)
-        var sum = 0L
-        for (x in 0 until gridW) {
-            for (y in 0 until gridH) {
-                val c = small.getPixel(x, y)
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                sum += (299 * r + 587 * g + 114 * b) / 1000
-            }
-        }
-        val avg = sum / (gridW * gridH)
-        small.recycle()
-        return avg >= 128
-    }
-
-    private fun saveCombinationStyle(id: Long, style: CombinationStyle) {
-        edit { putString("$COMBINATION_STYLE_PREFIX$id", gson.toJson(style)) }
-        combinationStyleCache[id] = style
-    }
-
-    /** 在现有快照基础上做一次变更并落盘 */
-    private fun updateCombinationStyle(id: Long, transform: (CombinationStyle) -> CombinationStyle) {
-        saveCombinationStyle(id, transform(getCombinationStyle(id)))
-    }
-
-    /** 旧分散键迁移专用；默认值须与迁移前 getter 一致 */
-    private fun readLegacyCombinationStyle(id: Long): CombinationStyle {
-        val isLightKey = "${KEY_COMBINATION_WALLPAPER_IS_LIGHT_PREFIX}$id"
-        return CombinationStyle(
-            offsetX = prefs.getFloat("${KEY_COMBINATION_OFFSET_X_PREFIX}$id", 0f),
-            offsetY = prefs.getFloat("${KEY_COMBINATION_OFFSET_Y_PREFIX}$id", 0f),
-            scale = prefs.getFloat("${KEY_COMBINATION_SCALE_PREFIX}$id", 1f),
-            // 旧分散键缺失时的兜底，与 CombinationStyle 的默认值保持一致
-            cardBlur = prefs.getFloat("${KEY_COMBINATION_CARD_BLUR_PREFIX}$id", 4f),
-            cardAlpha = prefs.getFloat("${KEY_COMBINATION_CARD_ALPHA_PREFIX}$id", 0.15f),
-            cardHeight = prefs.getFloat("${KEY_COMBINATION_CARD_HEIGHT_PREFIX}$id", 54f),
-            cardCornerRadius = prefs.getFloat("${KEY_COMBINATION_CARD_CORNER_PREFIX}$id", 10f),
-            wallpaperBrightness = prefs.getFloat("${KEY_COMBINATION_WALLPAPER_BRIGHTNESS_PREFIX}$id", 0f),
-            wallpaperIsLight = if (prefs.contains(isLightKey)) prefs.getBoolean(isLightKey, false) else null,
-            showBreakDividers = prefs.getBoolean("${KEY_COMBINATION_SHOW_BREAK_DIVIDERS_PREFIX}$id", true),
-            cardContentAlignment = CardContentAlignment.fromOrdinal(
-                prefs.getInt(
-                    "${KEY_COMBINATION_CARD_CONTENT_ALIGNMENT_PREFIX}$id",
-                    CardContentAlignment.CENTER_CENTER.ordinal
-                )
-            ),
-            cardTextColor = CardTextColor.fromOrdinal(
-                prefs.getInt("${KEY_COMBINATION_CARD_TEXT_COLOR_PREFIX}$id", CardTextColor.COLORFUL.ordinal)
-            ),
-            cardTextScale = prefs.getFloat("${KEY_COMBINATION_CARD_TEXT_SCALE_PREFIX}$id", 1f),
-            showClassroom = prefs.getBoolean("${KEY_COMBINATION_SHOW_CLASSROOM_PREFIX}$id", true),
-            showTeacher = prefs.getBoolean("${KEY_COMBINATION_SHOW_TEACHER_PREFIX}$id", true),
-            cardRefraction = CardRefractionLevel.fromOrdinal(
-                prefs.getInt(
-                    "${KEY_COMBINATION_CARD_REFRACTION_PREFIX}$id",
-                    CardRefractionLevel.DEFAULT.ordinal
-                )
-            ),
-            wallpaperBlur = prefs.getBoolean("${KEY_COMBINATION_WALLPAPER_BLUR_PREFIX}$id", false)
-        )
-    }
-
-    /** 壁纸的目标存储/解码分辨率：用长短边而非当前横竖屏，避免进应用方向不同导致采样/尺寸漂移 */
-    private fun wallpaperTargetBounds(): Pair<Int, Int> {
-        val metrics = appContext.resources.displayMetrics
-        val w = metrics.widthPixels
-        val h = metrics.heightPixels
-        return maxOf(w, h) to minOf(w, h)
-    }
-
-    /** 计算满足目标尺寸的 2 的幂次降采样倍数（inSampleSize） */
-    private fun calculateInSampleSize(bounds: android.graphics.BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        var inSampleSize = 1
-        if (bounds.outHeight > reqHeight || bounds.outWidth > reqWidth) {
-            val halfHeight = bounds.outHeight / 2
-            val halfWidth = bounds.outWidth / 2
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
-
-    /** 缩放到屏幕分辨率后以 WebP 有损 80 存储 */
-    fun saveCombinationWallpaper(id: Long, bitmap: android.graphics.Bitmap): Boolean {
-        return try {
-            val (targetW, targetH) = wallpaperTargetBounds()
-            val scaled = if (bitmap.width > targetW || bitmap.height > targetH) {
-                val scale = minOf(targetW / bitmap.width.toFloat(), targetH / bitmap.height.toFloat())
-                bitmap.scale(
-                    (bitmap.width * scale).toInt().coerceAtLeast(1),
-                    (bitmap.height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else bitmap
-            val file = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.webp")
-            // 旧的 CompressFormat.WEBP 在 API 30 起被 WEBP_LOSSY / WEBP_LOSSLESS 取代，
-            // 语义等价（都是有损），按版本取用
-            val webpFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
-            } else {
-                @Suppress("DEPRECATION")
-                android.graphics.Bitmap.CompressFormat.WEBP
-            }
-            java.io.FileOutputStream(file).use { out ->
-                scaled.compress(webpFormat, 80, out)
-            }
-            wallpaperCache.put(id, scaled)
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    /** 删磁盘文件并清缓存，配合内存 bitmap=null 实现持久化清除 */
-    fun clearCombinationWallpaper(id: Long) {
-        wallpaperCache.remove(id)
-        val webpFile = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.webp")
-        if (webpFile.exists()) webpFile.delete()
-        val pngFile = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.png")
-        if (pngFile.exists()) pngFile.delete()
-    }
-
-    /** 带 Lru 缓存；解码按屏幕分辨率降采样，优先 webp 兼容旧 png */
-    fun loadCombinationWallpaper(id: Long): android.graphics.Bitmap? {
-        wallpaperCache.get(id)?.let { return it }
-        val webpFile = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.webp")
-        val file = if (webpFile.exists()) webpFile
-        else java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}$id.png")
-        if (!file.exists()) return null
-        return try {
-            val (targetW, targetH) = wallpaperTargetBounds()
-            // 先读尺寸再降采样，避免超大图一次性解码耗尽内存
-            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
-            opts.inSampleSize = calculateInSampleSize(opts, targetW, targetH)
-            opts.inJustDecodeBounds = false
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)?.also { bmp ->
-                wallpaperCache.put(id, bmp)
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun saveCombinationState(
-        id: Long,
-        offsetX: Float,
-        offsetY: Float,
-        scale: Float,
-        refW: Float = 0f,
-        refH: Float = 0f,
-    ) = updateCombinationStyle(id) {
-        it.copy(offsetX = offsetX, offsetY = offsetY, scale = scale, offsetRefW = refW, offsetRefH = refH)
-    }
-
-    fun getCombinationOffsetX(id: Long): Float = getCombinationStyle(id).offsetX
-    fun getCombinationOffsetY(id: Long): Float = getCombinationStyle(id).offsetY
-    fun getCombinationScale(id: Long): Float = getCombinationStyle(id).scale
-    fun getCombinationOffsetRefW(id: Long): Float = getCombinationStyle(id).offsetRefW
-    fun getCombinationOffsetRefH(id: Long): Float = getCombinationStyle(id).offsetRefH
-
-    fun saveCombinationCardBlur(id: Long, blurRadius: Float) =
-        updateCombinationStyle(id) { it.copy(cardBlur = blurRadius) }
-
-    fun getCombinationCardBlur(id: Long): Float = getCombinationStyle(id).cardBlur
-
-    fun saveCombinationCardAlpha(id: Long, alpha: Float) =
-        updateCombinationStyle(id) { it.copy(cardAlpha = alpha) }
-
-    fun getCombinationCardAlpha(id: Long): Float = getCombinationStyle(id).cardAlpha
-
-    fun saveCombinationCardSurfaceAlpha(id: Long, alpha: Float) =
-        updateCombinationStyle(id) { it.copy(cardSurfaceAlpha = alpha) }
-
-    fun getCombinationCardSurfaceAlpha(id: Long): Float = getCombinationStyle(id).safeCardSurfaceAlpha
-
-    fun saveCombinationCardHeight(id: Long, height: Float) =
-        updateCombinationStyle(id) { it.copy(cardHeight = height) }
-
-    fun getCombinationCardHeight(id: Long): Float = getCombinationStyle(id).safeCardHeight
-
-    fun saveCombinationCardCornerRadius(id: Long, cornerRadius: Float) =
-        updateCombinationStyle(id) { it.copy(cardCornerRadius = cornerRadius) }
-
-    fun getCombinationCardCornerRadius(id: Long): Float = getCombinationStyle(id).cardCornerRadius
-
-    fun saveCombinationWallpaperBrightness(id: Long, brightness: Float) =
-        updateCombinationStyle(id) { it.copy(wallpaperBrightness = brightness) }
-
-    fun getCombinationWallpaperBrightness(id: Long): Float = getCombinationStyle(id).wallpaperBrightness
-
-    fun saveCombinationWallpaperIsLight(id: Long, isLight: Boolean?) =
-        updateCombinationStyle(id) { it.copy(wallpaperIsLight = isLight) }
-
-    fun getCombinationWallpaperIsLight(id: Long): Boolean? {
-        getCombinationStyle(id).wallpaperIsLight?.let { return it }
-        // 有壁纸但测光结果丢失时兜底重算（坏快照重置/升级后主题开关依赖此值）
-        val isLight = computeWallpaperIsLight(loadCombinationWallpaper(id)) ?: return null
-        updateCombinationStyle(id) { it.copy(wallpaperIsLight = isLight) }
-        return isLight
-    }
-
-    fun saveCombinationShowBreakDividers(id: Long, show: Boolean) =
-        updateCombinationStyle(id) { it.copy(showBreakDividers = show) }
-
-    fun getCombinationShowBreakDividers(id: Long): Boolean = getCombinationStyle(id).showBreakDividers
-
-    fun saveCombinationCardContentAlignment(id: Long, alignment: CardContentAlignment) =
-        updateCombinationStyle(id) { it.copy(cardContentAlignment = alignment) }
-
-    fun getCombinationCardContentAlignment(id: Long): CardContentAlignment = getCombinationStyle(id).safeAlignment
-
-    fun saveCombinationCardTextColor(id: Long, color: CardTextColor) =
-        updateCombinationStyle(id) { it.copy(cardTextColor = color) }
-
-    fun getCombinationCardTextColor(id: Long): CardTextColor = getCombinationStyle(id).safeTextColor
-
-    fun saveCombinationCardTextScale(id: Long, scale: Float) =
-        updateCombinationStyle(id) { it.copy(cardTextScale = scale) }
-
-    // 必须走 safeCardTextScale：旧快照缺该字段时 Gson 会留 0，文字会整体消失
-    fun getCombinationCardTextScale(id: Long): Float = getCombinationStyle(id).safeCardTextScale
-
-    fun saveCombinationShowClassroom(id: Long, show: Boolean) =
-        updateCombinationStyle(id) { it.copy(showClassroom = show) }
-
-    fun getCombinationShowClassroom(id: Long): Boolean = getCombinationStyle(id).showClassroom
-
-    fun saveCombinationShowTeacher(id: Long, show: Boolean) =
-        updateCombinationStyle(id) { it.copy(showTeacher = show) }
-
-    fun getCombinationShowTeacher(id: Long): Boolean = getCombinationStyle(id).showTeacher
-
-    fun saveCombinationCardRefraction(id: Long, level: CardRefractionLevel) =
-        updateCombinationStyle(id) { it.copy(cardRefraction = level) }
-
-    fun getCombinationCardRefraction(id: Long): CardRefractionLevel = getCombinationStyle(id).safeRefraction
-
-    fun saveCombinationWallpaperBlur(id: Long, blur: Boolean) =
-        updateCombinationStyle(id) { it.copy(wallpaperBlur = blur) }
-
-    fun getCombinationWallpaperBlur(id: Long): Boolean = getCombinationStyle(id).wallpaperBlur
-
-    /** 迁移：如果只有旧的单搭配数据（无 combination_ids），将其作为 id=0 的搭配 */
-    fun migrateToCombinationsIfNeeded() {
-        if (prefs.contains(KEY_COMBINATION_IDS)) return
-        // 首次迁移：将现有单搭配数据作为 id=0
-        prefs.edit {
-                putString(KEY_COMBINATION_IDS, "0")
-                    .putLong(KEY_CURRENT_COMBINATION_ID, 0L)
-                    .putFloat("${KEY_COMBINATION_OFFSET_X_PREFIX}0", prefs.getFloat(KEY_WALLPAPER_OFFSET_X, 0f))
-                    .putFloat("${KEY_COMBINATION_OFFSET_Y_PREFIX}0", prefs.getFloat(KEY_WALLPAPER_OFFSET_Y, 0f))
-                    .putFloat("${KEY_COMBINATION_SCALE_PREFIX}0", prefs.getFloat(KEY_WALLPAPER_SCALE, 1f))
-        }
-        // 复制壁纸文件
-        val oldFile = java.io.File(appContext.filesDir, WALLPAPER_FILE_NAME)
-        if (oldFile.exists()) {
-            val newFile = java.io.File(appContext.filesDir, "${COMBINATION_WALLPAPER_PREFIX}0.png")
-            try { oldFile.copyTo(newFile, overwrite = true) } catch (_: Exception) {}
-        }
-    }
-
     // --- 多时间配置支持 ---
 
     /** 获取所有时间配置 ID 列表（按创建顺序） */
@@ -2653,12 +2267,18 @@ class CourseRepository private constructor(context: Context) {
         }
     }
 
-    /** 搭配（combination/comb）相关键不进全量备份 */
+    /**
+ * 外观键不进全量备份。
+ *
+ * 外观已整体迁到 [ScheduleAppearance] 的独立 prefs 文件，本文件里理论上不该再有外观键。
+ * 这里保留判定是为了兜住两类残留：迁移未完成的旧版本数据、以及历史备份里混入的键
+ * （旧版外观键叫 `combination_*` / `comb_*`，迁移到新文件后键名也变了，但老备份仍带旧名）。
+ */
     private fun isCombinationBackupKey(key: String): Boolean {
-        return key == KEY_COMBINATION_IDS ||
-            key == KEY_CURRENT_COMBINATION_ID ||
+        return key == ScheduleAppearance.FILE_STYLE_KEY ||
             key.startsWith("combination_") ||
-            key.startsWith("comb_")
+            key.startsWith("comb_") ||
+            key.startsWith("wallpaper_")
     }
 
     /** 提醒、勿扰、小组件等应用功能设置不进全量备份 */

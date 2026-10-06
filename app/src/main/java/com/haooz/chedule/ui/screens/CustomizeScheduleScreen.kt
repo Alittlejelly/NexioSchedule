@@ -89,6 +89,7 @@ import com.haooz.chedule.data.CardContentAlignment
 import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Combination
+import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
@@ -328,17 +329,16 @@ fun CustomizeScheduleScreen(
     ) { mutableStateOf(appearance.wallpaperBlur) }
 
     val context = LocalContext.current
-    val themePrefs = remember { context.getSharedPreferences("app_theme_prefs", android.content.Context.MODE_PRIVATE) }
     var themeModeValue by remember(currentCombinationIndex, sheetResetKey) {
         // 独立偏好 key，仅影响今日/课表页，不污染全局 theme_mode
-        mutableStateOf(ThemeMode.fromPrefsValue(themePrefs.getString(ThemeMode.SCHEDULE_THEME_MODE_KEY, "follow_wallpaper")))
+        mutableStateOf(ScheduleAppearance.getThemeMode())
     }
 
     // 无壁纸时档位无意义，清壁纸即复位为跟随壁纸
     LaunchedEffect(hasWallpaper) {
         if (!hasWallpaper && themeModeValue != ThemeMode.FOLLOW_WALLPAPER) {
             themeModeValue = ThemeMode.FOLLOW_WALLPAPER
-            themePrefs.edit().putString(ThemeMode.SCHEDULE_THEME_MODE_KEY, ThemeMode.FOLLOW_WALLPAPER.prefsValue).apply()
+            ScheduleAppearance.setThemeMode(ThemeMode.FOLLOW_WALLPAPER)
         }
     }
 

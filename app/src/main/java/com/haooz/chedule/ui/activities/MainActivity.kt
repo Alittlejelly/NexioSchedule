@@ -107,6 +107,7 @@ import androidx.core.graphics.scale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.PrivacyConsent
+import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.StatsReporter
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.reminder.CourseReminderHelper
@@ -268,12 +269,6 @@ class MainActivity : ComponentActivity() {
         var cachedWallpaperBitmap: android.graphics.Bitmap? = null
 
         @Volatile
-        var cachedCombinationIds: List<Long> = emptyList()
-
-        @Volatile
-        var cachedCurrentCombinationIndex: Int = 0
-
-        @Volatile
         var cachedWallpaperOffset: Offset = Offset.Zero
 
         @Volatile
@@ -376,59 +371,42 @@ class MainActivity : ComponentActivity() {
         if (cachedWallpaperBitmap == null) {
             kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val repo = com.haooz.chedule.data.CourseRepository(this@MainActivity)
-                    repo.migrateToCombinationsIfNeeded()
-                    val ids = repo.getCombinationIds()
-                    val currentId = repo.getCurrentCombinationId()
-                    val idx = ids.indexOf(currentId).coerceAtLeast(0)
-                    // 单搭配：只缓存当前搭配
-                    cachedCombinationIds = if (ids.isEmpty()) emptyList() else listOf(currentId)
-                    cachedCurrentCombinationIndex = 0
-                    if (ids.isNotEmpty()) {
-                        val currentIdValue = ids[idx]
-                        cachedWallpaperBitmap = repo.loadCombinationWallpaper(currentIdValue)
-                        val storedOffset = Offset(
-                            repo.getCombinationOffsetX(currentIdValue),
-                            repo.getCombinationOffsetY(currentIdValue)
+                    // 单搭配：无 id 维度，直接读外观文件
+                    cachedWallpaperBitmap = ScheduleAppearance.loadWallpaper()
+                    cachedWallpaperOffset = Offset(
+                        ScheduleAppearance.getOffsetX(),
+                        ScheduleAppearance.getOffsetY()
+                    )
+                    cachedWallpaperScale = ScheduleAppearance.getScale()
+                    val refW = ScheduleAppearance.getOffsetRefW()
+                    val refH = ScheduleAppearance.getOffsetRefH()
+                    val metrics = this@MainActivity.resources.displayMetrics
+                    val curW = metrics.widthPixels.toFloat()
+                    val curH = metrics.heightPixels.toFloat()
+                    if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
+                        val mapped = remapWallpaperForScreen(
+                            cachedWallpaperOffset, cachedWallpaperScale, cachedWallpaperBitmap,
+                            refW, refH, curW, curH
                         )
-                        val storedScale = repo.getCombinationScale(currentIdValue)
-                        val refW = repo.getCombinationOffsetRefW(currentIdValue)
-                        val refH = repo.getCombinationOffsetRefH(currentIdValue)
-                        val metrics = this@MainActivity.resources.displayMetrics
-                        val curW = metrics.widthPixels.toFloat()
-                        val curH = metrics.heightPixels.toFloat()
-                        if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
-                            val mapped = remapWallpaperForScreen(
-                                storedOffset, storedScale, cachedWallpaperBitmap,
-                                refW, refH, curW, curH
-                            )
-                            cachedWallpaperOffset = mapped.first
-                            cachedWallpaperScale = mapped.second
-                        } else {
-                            cachedWallpaperOffset = storedOffset
-                            cachedWallpaperScale = storedScale
-                        }
-                        cachedAppearance = com.haooz.chedule.data.AppearanceConfig(
-                            cardBlurRadius = repo.getCombinationCardBlur(currentIdValue),
-                            cardAlpha = repo.getCombinationCardAlpha(currentIdValue),
-                            cardSurfaceAlpha = repo.getCombinationCardSurfaceAlpha(currentIdValue),
-                            cardHeight = repo.getCombinationCardHeight(currentIdValue),
-                            cardCornerRadius = repo.getCombinationCardCornerRadius(currentIdValue),
-                            wallpaperBrightness = repo.getCombinationWallpaperBrightness(
-                                currentIdValue
-                            ),
-                            showBreakDividers = repo.getCombinationShowBreakDividers(currentIdValue),
-                            cardContentAlignment = repo.getCombinationCardContentAlignment(
-                                currentIdValue
-                            ),
-                            cardTextColor = repo.getCombinationCardTextColor(currentIdValue),
-                            cardTextScale = repo.getCombinationCardTextScale(currentIdValue),
-                            showClassroom = repo.getCombinationShowClassroom(currentIdValue),
-                            showTeacher = repo.getCombinationShowTeacher(currentIdValue),
-                            cardRefraction = repo.getCombinationCardRefraction(currentIdValue),
-                            wallpaperBlur = repo.getCombinationWallpaperBlur(currentIdValue)
-                        )
+                        cachedWallpaperOffset = mapped.first
+                        cachedWallpaperScale = mapped.second
                     }
+                    cachedAppearance = com.haooz.chedule.data.AppearanceConfig(
+                        cardBlurRadius = ScheduleAppearance.getCardBlur(),
+                        cardAlpha = ScheduleAppearance.getCardAlpha(),
+                        cardSurfaceAlpha = ScheduleAppearance.getCardSurfaceAlpha(),
+                        cardHeight = ScheduleAppearance.getCardHeight(),
+                        cardCornerRadius = ScheduleAppearance.getCardCornerRadius(),
+                        wallpaperBrightness = ScheduleAppearance.getWallpaperBrightness(),
+                        showBreakDividers = ScheduleAppearance.getShowBreakDividers(),
+                        cardContentAlignment = ScheduleAppearance.getCardContentAlignment(),
+                        cardTextColor = ScheduleAppearance.getCardTextColor(),
+                        cardTextScale = ScheduleAppearance.getCardTextScale(),
+                        showClassroom = ScheduleAppearance.getShowClassroom(),
+                        showTeacher = ScheduleAppearance.getShowTeacher(),
+                        cardRefraction = ScheduleAppearance.getCardRefraction(),
+                        wallpaperBlur = ScheduleAppearance.getWallpaperBlur()
+                    )
                 } catch (_: Exception) {
                 }
             }
@@ -1408,7 +1386,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val currentCombIsLight = currentComb?.wallpaperIsLight
     // 壁纸异步加载，首帧同步读持久化结果，避免主题跳变
     val initialCombWallpaperIsLight = remember {
-        wallpaperRepository.getCombinationWallpaperIsLight(wallpaperRepository.getCurrentCombinationId())
+        ScheduleAppearance.getWallpaperIsLight()
     }
     // 搭配未加载（首帧）才退回 initial，避免无壁纸搭配误用初始测光
     val combIsLight = if (currentComb == null) initialCombWallpaperIsLight else currentCombIsLight
@@ -1505,79 +1483,51 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
      * 两份逐字段复制的构造曾是 bug 温床——cardRefraction 只加进了 IO 路径，
      * 导致伴生缓存命中时折射强度被静默重置为 DEFAULT。新增外观字段只需改此处。
      */
-    fun buildCombination(id: Long, bitmap: android.graphics.Bitmap?) =
+    fun buildCombination(bitmap: android.graphics.Bitmap?) =
         com.haooz.chedule.data.Combination(
-            id = id,
             bitmap = bitmap,
             offset = Offset(
-                wallpaperRepository.getCombinationOffsetX(id),
-                wallpaperRepository.getCombinationOffsetY(id)
+                ScheduleAppearance.getOffsetX(),
+                ScheduleAppearance.getOffsetY()
             ),
-            scale = wallpaperRepository.getCombinationScale(id),
+            scale = ScheduleAppearance.getScale(),
             snapshot = null,
-            cardBlurRadius = wallpaperRepository.getCombinationCardBlur(id),
-            cardAlpha = wallpaperRepository.getCombinationCardAlpha(id),
-            cardSurfaceAlpha = wallpaperRepository.getCombinationCardSurfaceAlpha(id),
-            cardHeight = wallpaperRepository.getCombinationCardHeight(id),
-            cardCornerRadius = wallpaperRepository.getCombinationCardCornerRadius(id),
-            wallpaperBrightness = wallpaperRepository.getCombinationWallpaperBrightness(id),
-            showBreakDividers = wallpaperRepository.getCombinationShowBreakDividers(id),
-            cardContentAlignment = wallpaperRepository.getCombinationCardContentAlignment(id),
-            cardTextColor = wallpaperRepository.getCombinationCardTextColor(id),
-            cardTextScale = wallpaperRepository.getCombinationCardTextScale(id),
-            showClassroom = wallpaperRepository.getCombinationShowClassroom(id),
-            showTeacher = wallpaperRepository.getCombinationShowTeacher(id),
-            cardRefraction = wallpaperRepository.getCombinationCardRefraction(id),
-            wallpaperIsLight = wallpaperRepository.getCombinationWallpaperIsLight(id),
-            wallpaperBlur = wallpaperRepository.getCombinationWallpaperBlur(id)
+            cardBlurRadius = ScheduleAppearance.getCardBlur(),
+            cardAlpha = ScheduleAppearance.getCardAlpha(),
+            cardSurfaceAlpha = ScheduleAppearance.getCardSurfaceAlpha(),
+            cardHeight = ScheduleAppearance.getCardHeight(),
+            cardCornerRadius = ScheduleAppearance.getCardCornerRadius(),
+            wallpaperBrightness = ScheduleAppearance.getWallpaperBrightness(),
+            showBreakDividers = ScheduleAppearance.getShowBreakDividers(),
+            cardContentAlignment = ScheduleAppearance.getCardContentAlignment(),
+            cardTextColor = ScheduleAppearance.getCardTextColor(),
+            cardTextScale = ScheduleAppearance.getCardTextScale(),
+            showClassroom = ScheduleAppearance.getShowClassroom(),
+            showTeacher = ScheduleAppearance.getShowTeacher(),
+            cardRefraction = ScheduleAppearance.getCardRefraction(),
+            wallpaperIsLight = ScheduleAppearance.getWallpaperIsLight(),
+            wallpaperBlur = ScheduleAppearance.getWallpaperBlur()
         )
 
-    // 迁移旧数据并加载搭配；有伴生缓存则跳过 IO
+    // 加载单搭配；有伴生缓存则跳过 IO
     LaunchedEffect(Unit) {
         val cached = MainActivity.cachedWallpaperBitmap
-        val cachedIds = MainActivity.cachedCombinationIds
-        val cachedIdx = MainActivity.cachedCurrentCombinationIndex
 
-        val currentIndex: Int
-
-        if (cached != null && cachedIds.isNotEmpty()) {
-            currentIndex = cachedIdx
-            val list = cachedIds.mapIndexed { index, id ->
-                buildCombination(id, if (index == currentIndex) cached else null)
-            }
-            // 单搭配：裁剪须在赋值前完成，先赋全量再裁会多触发一轮全量重组
-            val cachedCombOnly = list.getOrNull(currentIndex)
-            combinations = if (cachedCombOnly != null) listOf(cachedCombOnly) else emptyList()
-            currentCombinationIndex = 0
+        val comb = if (cached != null) {
+            buildCombination(cached)
         } else {
-            val phase1 = withContext(Dispatchers.IO) {
-                wallpaperRepository.migrateToCombinationsIfNeeded()
-                val loadedIds = wallpaperRepository.getCombinationIds()
-                val currentId = wallpaperRepository.getCurrentCombinationId()
-                val loadedIndex = loadedIds.indexOf(currentId).coerceAtLeast(0)
-                val list = loadedIds.mapIndexed { index, id ->
-                    buildCombination(
-                        id,
-                        if (index == loadedIndex) wallpaperRepository.loadCombinationWallpaper(id) else null
-                    )
-                }
-                Pair(list, loadedIndex)
-            }
-            currentIndex = phase1.second
-            val currentCombOnly = phase1.first.getOrNull(currentIndex)
-            combinations = if (currentCombOnly != null) listOf(currentCombOnly) else emptyList()
-            currentCombinationIndex = 0
-            MainActivity.cachedCombinationIds =
-                if (currentCombOnly != null) listOf(currentCombOnly.id) else emptyList()
-            MainActivity.cachedCurrentCombinationIndex = 0
+            withContext(Dispatchers.IO) { buildCombination(ScheduleAppearance.loadWallpaper()) }
         }
+        // 单搭配恒为下标 0
+        combinations = if (comb != null) listOf(comb) else emptyList()
+        currentCombinationIndex = 0
 
         val curr = combinations.getOrNull(0)
         if (curr != null) {
             val curW = latestScreenWPx
             val curH = latestScreenHPx
-            val refW = wallpaperRepository.getCombinationOffsetRefW(curr.id)
-            val refH = wallpaperRepository.getCombinationOffsetRefH(curr.id)
+            val refW = ScheduleAppearance.getOffsetRefW()
+            val refH = ScheduleAppearance.getOffsetRefH()
             // 有参考尺寸且与当前屏不一致时重映射；旧数据 ref=0 时原样加载
             val (mappedOffset, mappedScale) = if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
                 remapWallpaperForScreen(curr.offset, curr.scale, curr.bitmap, refW, refH, curW, curH)
@@ -4686,21 +4636,19 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             val applyCustomize: () -> Unit = {
                 coroutineScope.launch {
                     val bitmap = wallpaperBitmap
-                    val combId = combinations.getOrNull(currentCombinationIndex)?.id ?: 0L
                     val isLight = combinations.getOrNull(currentCombinationIndex)?.wallpaperIsLight
                     // 仅内存预览用
                     val capturedSnapshot = captureMainContentBitmap()
                     val saveJob = launch(Dispatchers.IO) {
                         // 合并为一次磁盘提交
-                        wallpaperRepository.batchEdit {
+                        ScheduleAppearance.batchSave {
                             if (bitmap != null) {
-                                wallpaperRepository.saveCombinationWallpaper(combId, bitmap)
+                                ScheduleAppearance.saveWallpaper(bitmap)
                             } else {
                                 // 删文件，否则旧壁纸会在重启后恢复
-                                wallpaperRepository.clearCombinationWallpaper(combId)
+                                ScheduleAppearance.clearWallpaper()
                             }
-                            wallpaperRepository.saveCombinationState(
-                                combId,
+                            ScheduleAppearance.saveState(
                                 wallpaperOffset.x,
                                 wallpaperOffset.y,
                                 wallpaperScale,
@@ -4709,71 +4657,53 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 latestScreenHPx
                             )
                             val appearanceToSave = currentAppearance()
-                            wallpaperRepository.saveCombinationCardBlur(
-                                combId,
+                            ScheduleAppearance.saveCardBlur(
                                 appearanceToSave.cardBlurRadius
                             )
-                            wallpaperRepository.saveCombinationCardAlpha(
-                                combId,
+                            ScheduleAppearance.saveCardAlpha(
                                 appearanceToSave.cardAlpha
                             )
-                            wallpaperRepository.saveCombinationCardSurfaceAlpha(
-                                combId,
+                            ScheduleAppearance.saveCardSurfaceAlpha(
                                 appearanceToSave.cardSurfaceAlpha
                             )
-                            wallpaperRepository.saveCombinationCardHeight(
-                                combId,
+                            ScheduleAppearance.saveCardHeight(
                                 appearanceToSave.cardHeight
                             )
-                            wallpaperRepository.saveCombinationCardCornerRadius(
-                                combId,
+                            ScheduleAppearance.saveCardCornerRadius(
                                 appearanceToSave.cardCornerRadius
                             )
-                            wallpaperRepository.saveCombinationWallpaperBrightness(
-                                combId,
+                            ScheduleAppearance.saveWallpaperBrightness(
                                 appearanceToSave.wallpaperBrightness
                             )
-                            wallpaperRepository.saveCombinationWallpaperIsLight(combId, isLight)
-                            wallpaperRepository.saveCombinationShowBreakDividers(
-                                combId,
+                            ScheduleAppearance.saveWallpaperIsLight( isLight)
+                            ScheduleAppearance.saveShowBreakDividers(
                                 appearanceToSave.showBreakDividers
                             )
-                            wallpaperRepository.saveCombinationCardContentAlignment(
-                                combId,
+                            ScheduleAppearance.saveCardContentAlignment(
                                 appearanceToSave.cardContentAlignment
                             )
-                            wallpaperRepository.saveCombinationCardTextColor(
-                                combId,
+                            ScheduleAppearance.saveCardTextColor(
                                 appearanceToSave.cardTextColor
                             )
-                            wallpaperRepository.saveCombinationCardTextScale(
-                                combId,
+                            ScheduleAppearance.saveCardTextScale(
                                 appearanceToSave.cardTextScale
                             )
-                            wallpaperRepository.saveCombinationShowClassroom(
-                                combId,
+                            ScheduleAppearance.saveShowClassroom(
                                 appearanceToSave.showClassroom
                             )
-                            wallpaperRepository.saveCombinationShowTeacher(
-                                combId,
+                            ScheduleAppearance.saveShowTeacher(
                                 appearanceToSave.showTeacher
                             )
-                            wallpaperRepository.saveCombinationCardRefraction(
-                                combId,
+                            ScheduleAppearance.saveCardRefraction(
                                 appearanceToSave.cardRefraction
                             )
-                            wallpaperRepository.saveCombinationWallpaperBlur(
-                                combId,
+                            ScheduleAppearance.saveWallpaperBlur(
                                 appearanceToSave.wallpaperBlur
                             )
-                            wallpaperRepository.setCurrentCombinationId(combId)
                         }
                         // 「应用」才写入偏好
                         pendingScheduleThemeMode?.let { mode ->
-                            context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE)
-                                .edit {
-                                    putString(ThemeMode.SCHEDULE_THEME_MODE_KEY, mode.prefsValue)
-                                }
+                            ScheduleAppearance.setThemeMode(mode)
                             pendingScheduleThemeMode = null
                         }
                     }
