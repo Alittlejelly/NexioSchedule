@@ -45,16 +45,16 @@ import kotlin.math.sin
 import kotlin.math.tanh
 
 // ── 跟手滑选 ────────────────────────────────────────────────────────
-// 两处弹窗共用：（LiquidGlassDropdownMenu）与 miuix 弹窗面板
-// （DropdownImpl + ListPopup）。区别只在状态由谁创建——前者自持，后者在 Popup
-// 独立窗口里，必须由调用方创建后下发。
+// 两处弹窗共用（LiquidGlassDropdownMenu 与 miuix 的 DropdownImpl + ListPopup），
+// 区别只在状态由谁创建：前者自持，后者在 Popup 独立窗口里，需调用方创建后下发。
 //
-// 坐标系统一为**面板局部坐标**：面板整体缩放走 graphicsLayer，不进 layout 坐标，
+// 坐标系统一为**面板局部坐标**：面板整体缩放走 graphicsLayer，不进 layout 坐标。
 
 /**
  * ⚠️ 形变参数必须**尺寸无关**。面板宽度随内容自适应（200~288dp）、高度随项数变化，
- * 「绝对 dp / 当前尺寸」的归一化会让效果在大面板上趋近于 0（LiquidTopBarButton 的
- * `2dp / 高度` 就是反例：42dp 上竖拖 40dp 有 4.8% 拉伸，搬到面板上只剩 0.2%）。
+ * 「绝对 dp / 当前尺寸」的归一化会让效果在大面板上趋近于 0 ——
+ * LiquidTopBarButton 的 `2dp / 高度` 就是现存的反例（42dp 上竖拖 40dp 约 4.8%，
+ * 搬到几百 dp 高的面板上只剩零点几个百分点）。新增调用方别再抄那个写法。
  */
 
 /** 沿拖动方向的最大拉伸比例（拖过行程基准时吃满） */
@@ -66,7 +66,7 @@ private const val DragStretchRatio = 0.045f
  */
 private const val VerticalDragRefScale = 0.6f
 
-/** 长宽比惩罚下限：以 1:1 为界、偏离时才罚。直接 coerceAtMost(1f) 在扁长面板上会砍掉三成 */
+/** 长宽比惩罚下限：以 1:1 为界、偏离时才罚。coerceAtMost(1f) 在扁长面板上会砍掉三成 */
 private const val AspectPenaltyFloor = 0.97f
 
 /** 跟手滑选生效的最小展开进度：面板接近满尺寸后菜单项位置不再变动 */
@@ -88,10 +88,13 @@ internal data class DragTransform(
 /**
  * 按压缩放 + 沿拖动方向拉伸 + tanh 阻尼跟手位移。菜单面板与整宽按钮共用这一套。
  *
+ * 注意 penalty 只乘在**拉伸**项上（[DragTransform] 的 scaleX/scaleY），
+ * 位移项走 tanh 且以 minDimension 归一化，不受宽高比惩罚影响。
+ *
  * @param shapeAspectRatio 长宽比惩罚的基准，null = 用实测宽高比。
  *   接近方形的面板传 null 即可（实测就是它的正常形状）。
- *   **天生长条**的控件（整宽按钮 360x40）必须传 1f：否则 penaltyY = 40/360 = 0.11，
- *   纵向形变只剩面板的 1/6，等于把这条轴的跟手感关掉。
+ *   **天生长条**的控件（整宽按钮 360x40）必须传 1f：否则 penaltyY = 40/360 ≈ 0.11，
+ *   纵向拉伸被砍到九分之一，等于把这条轴的跟手感关掉。
  *   惩罚是为防「意外扁长」，不该 punish 设计上就长条的形状。
  */
 internal fun computeDragTransform(
@@ -128,9 +131,7 @@ class DropdownPanelEntry internal constructor() {
     internal var enabled = true
 }
 
-/**
- * 跟手滑选状态。由面板内容层创建，通过 [LocalDropdownPanelDragSelect] 下发给菜单项。
- */
+/** 跟手滑选状态。由面板内容层创建，经 [LocalDropdownPanelDragSelect] 下发给菜单项 */
 class DropdownPanelDragSelectState internal constructor() {
     private val entries = mutableStateListOf<DropdownPanelEntry>()
 
@@ -141,8 +142,8 @@ class DropdownPanelDragSelectState internal constructor() {
     /**
      * 列表是否一屏装得下。
      *
-     * 装不下时**跟手滑选禁用**，纵向手势归 `verticalScroll`
-     * [dropdownPanelDragSelect] 的滚动分支，只认「位移没超过 slop 的点按」
+     * 装不下时**跟手滑选禁用**，纵向手势归 verticalScroll；
+     * [dropdownPanelDragSelect] 只认「位移没超过 slop 的点按」。
      */
     var fitsOnScreen by mutableStateOf(true)
         internal set
@@ -183,8 +184,8 @@ internal val LocalDropdownPanelDragSelect =
  * 面板上**唯一**的手势状态：按下 → 命中 → 逐帧改命中 → 松手执行。
  * 菜单项上不能再挂 clickable —— 两个手势状态互相抢事件正是「先按住再滑动会跳状态」的根因。
  *
- * 收起态不接管（面板太小、没有项可选），也不消费 down 事件，所以收起态的点按展开
- * 仍走触发区原有的 clickable。
+ * 收起态不接管（面板太小、没有项可选），也不消费 down 事件，收起态点按展开仍走触发区
+ * 原有的 clickable。
  *
  * @param fraction 现读展开进度。**不能捕获** —— `pointerInput(Unit)` 的 lambda
  *   只在首次组合跑一次，捕获会得到陈旧值（曾因此导致「直接滑动毫无反应」）。
@@ -200,8 +201,8 @@ fun Modifier.dropdownPanelDragSelect(
         // 面板没长开时不参与：收起态照常点按展开
         if (fraction() < DragSelectReadyFraction) return@awaitEachGesture
         if (!state.fitsOnScreen) {
-            // 一屏装不下：纵向手势归 verticalScroll，这里只补「点选」
-            // 位移超过 slop 判为滚动：放弃本次点选，不消费事件，滚动不受影响
+            // 一屏装不下：纵向手势归 verticalScroll，这里只补「点选」。
+            // 位移超过 slop 判为滚动：放弃本次点选且不消费事件，滚动不受影响。
             val startY = down.position.y
             val startX = down.position.x
             state.hitTest(startY)
@@ -270,10 +271,7 @@ fun Modifier.dropdownPanelDragTransform(
     }
 }
 
-/**
- * 命中项的遮罩底色（全项目统一：浅色压黑、深色提白）。
- * 与侧栏原来的静态选中遮罩同值 —— 两者合并成一层后沿用了这组。
- */
+/** 命中项的遮罩底色（浅色压黑、深色提白），全项目统一取这里 */
 private fun dropdownPanelEntryHighlightColor(isDark: Boolean): Color =
     if (isDark) Color.White.copy(0.1f) else Color.Black.copy(0.06f)
 
@@ -282,25 +280,23 @@ private fun dropdownPanelEntryHighlightColor(isDark: Boolean): Color =
  *
  * 用 drawBehind 而非 background：`DropdownImpl` 的项自带一层 alpha=1 的不透明白底
  * （`.drawBehind { drawRect(surfaceContainer) }`）。Modifier 链越靠后越晚绘制，调用方
- * 必须把本修饰符放在那行 drawBehind **之后**，否则高亮被白底吞掉。
+ * 必须把本修饰符放在那行 drawBehind 之后，否则高亮被白底吞掉。
  *
  * 登记与绘制合在一个修饰符里：两者共用同一个 [DropdownPanelEntry]，拆开会各自
  * remember 出不同实例，选中态永远匹配不上。
  *
  * @param enabled false 的项不参与命中测试（滑过去不高亮、松手也不执行）
- * @param state 显式指定状态；null = 取 [LocalDropdownPanelDragSelect]。
- *   与 `dropdownPanelDragSelect(state, ...)` 的入参形式对齐 ——
- *   侧栏这类调用方自持状态、不想为了下发再包一层 CompositionLocalProvider 的场景直接传。
- *   **必须排在 action 之前**：`Dropdown.kt` 用尾随 lambda 传 action，
- *   挤到后面会把尾随 lambda 绑到 state 上（编译报 No value passed for parameter 'action'）。
- * @param action 命中并松手时执行。每次重组都会更新，可直接传 lambda
+ * @param state 显式指定状态；null = 取 [LocalDropdownPanelDragSelect]。与
+ *   `dropdownPanelDragSelect(state, ...)` 的入参形式对齐，侧栏这类自持状态、
+ *   不想为下发再包一层 CompositionLocalProvider 的调用方直接传。**必须排在 action 之前**：
+ *   `Dropdown.kt` 用尾随 lambda 传 action，挤到后面会把尾随 lambda 绑到 state 上
+ *   （编译报 No value passed for parameter 'action'）。
  * @param highlightPadding 命中高光的四周内缩。默认 0 = 满幅，两处弹窗行为不变；
  *   侧栏传与条目选中遮罩相同的值，两个遮罩才对得齐。
  * @param highlightShape 命中高光的裁剪形状。默认 [RectangleShape] = 不裁
  * @param selected **静止态**（手指没命中任何项）是否显示本项遮罩。
  *   用来替代调用方原先那份静态选中遮罩 —— 遮罩只画这一层，不然同一项叠两层。
- *   手指一旦命中某项，就只亮命中项，这里传什么都被盖掉。
- *   必须排在 action 之前，理由同 state。
+ *   手指一旦命中某项，就只亮命中项，这里传什么都会被盖掉。必须排在 action 之前，理由同 state。
  * @param action 命中并松手时执行。每次重组都会更新，可直接传 lambda
  */
 @Composable
@@ -322,13 +318,13 @@ fun Modifier.dropdownPanelEntry(
         entry.action = action
         entry.enabled = enabled
     }
-    // 遮罩只有一层：手指命中某项时只亮命中项；手指没命中时亮「静止选中」的那项。
+    // 遮罩只有一层：手指命中某项时只亮命中项，没命中时亮 selected 那项。
     // 松手后 dragSelected 归 null，遮罩在 150ms 内淡变到 selected 那项 —— 滑到新项后
     // 由调用方的选中态接手，所以视觉上是「移过去就不再消失」，而不是跳回旧项。
     val dragSelected = dragSelect?.selected
     val visible = if (dragSelected != null) dragSelected === entry else selected
-    // 进/退各 150ms 淡变：切 tab 不再硬切。代价是快速滑过时前后两项会短暂
-    // 半透明并存（交叉淡变的固有现象），已确认可接受。
+    // 进/退各 150ms 淡变，切 tab 不再硬切。代价是快速滑过时前后两项会短暂半透明并存
+    // （交叉淡变的固有现象），已确认可接受。
     val maskAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = tween(150),
@@ -354,8 +350,8 @@ fun Modifier.dropdownPanelEntry(
             val padBottom = highlightPadding.calculateBottomPadding().toPx()
             val boxW = (size.width - padLeft - padRight).coerceAtLeast(0f)
             val boxH = (size.height - padTop - padBottom).coerceAtLeast(0f)
-            // 形状按**内缩后**的尺寸在原点造，再整体平移到内缩左上角 ——
-            // 这样不必依赖 Path 的位移 API，clip 与绘制也天然落在同一坐标系
+            // 形状按**内缩后**的尺寸在原点造，再整体平移到内缩左上角，
+            // 不必依赖 Path 的位移 API，clip 与绘制也落在同一坐标系
             val outline = highlightShape.createOutline(Size(boxW, boxH), layoutDirection, this)
             withTransform({ translate(padLeft, padTop) }) {
                 when (outline) {

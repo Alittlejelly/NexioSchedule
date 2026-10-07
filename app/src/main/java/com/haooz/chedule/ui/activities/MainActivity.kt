@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -75,13 +76,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -133,6 +136,7 @@ import com.haooz.chedule.ui.components.ScheduleBottomBar
 import com.haooz.chedule.ui.components.ScheduleTopBar
 import com.haooz.chedule.ui.components.ShareImportDialog
 import com.haooz.chedule.ui.components.UpdateDialog
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.AddCourseDialog
@@ -152,8 +156,9 @@ import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.applyNavigationBarIsDark
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.consumeAllTouches
+import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
+import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -162,6 +167,7 @@ import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.ShiftViewModel
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.Dispatchers
@@ -1319,6 +1325,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val floatingOffsetX = remember { mutableFloatStateOf(0f) }
     val floatingOffsetY = remember { mutableFloatStateOf(0f) }
 
+    // 高光开关 / 淡变值：声明在 Scaffold 之前 —— Scaffold 内容里的提饱和节点要用它。
+    // 开关 = 正在拖 && 浮层还活着：长按没拖不亮；一松手 onCourseDragEnd 立刻置 false，
+    // 立刻开始淡出，不用等 floatingCardVisible 那 360ms 退场动画跑完。
+    val glowShowing = isFloatingCardDragging && floatingCardVisible
+    val glowAlpha by animateFloatAsState(
+        targetValue = if (glowShowing) 1f else 0f,
+        animationSpec = tween(150),
+        label = "dragCardGlowAlpha",
+    )
+
     suspend fun animateFloatState(
         state: androidx.compose.runtime.MutableFloatState,
         target: Float,
@@ -1727,6 +1743,15 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     )
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
+
+    // 当前可见页背后是不是壁纸 —— 决定高光亮度：近白底只能压到 0.05，壁纸背景有余量 → 0.1
+    // （见 InteractiveHighlight 的 peak）。
+    // 必须在组合期算出来再交给 SideEffect：只在 SideEffect 里读 currentPage 不会订阅，
+    // 切页时就不更新了。0 今日 / 1 课程表（只有这两页有壁纸）；排班模式页数不同，排除。
+    val pageBehindHasWallpaper = wallpaperBitmap != null &&
+        !isShiftMode &&
+        mainPagerState.currentPage in 0..1
+    SideEffect { PageBackdropSnapshot.hasWallpaper.value = pageBehindHasWallpaper }
 
     // 二级页侧栏点选主 tab（无转场回来后处理）
     LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab) {
@@ -4227,6 +4252,47 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             }
                         }
                     }
+                    // 提饱和：与玻璃面板同源，采样主内容 export。
+                    // 光晕半径取 min(短边, 250dp) × 0.5。
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                if (glowAlpha > 0f) {
+                                    drawContext.canvas.saveLayer(
+                                        Rect(0f, 0f, size.width, size.height),
+                                        Paint()
+                                    )
+                                    drawContent()
+                                    // 半径与 InteractiveHighlight 同式：min(短边, 250dp) × 0.5
+                                    val radius = minOf(size.minDimension, 250.dp.toPx()) * 0.5f
+                                    drawRect(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                Color.White,
+                                                Color.White,
+                                                Color.Transparent,
+                                            ),
+                                            center = Offset(
+                                                draggedCardPosition.x + floatingOffsetX.floatValue,
+                                                draggedCardPosition.y + floatingOffsetY.floatValue,
+                                            ),
+                                            radius = radius,
+                                        ),
+                                        blendMode = BlendMode.DstIn,
+                                    )
+                                    drawContext.canvas.restore()
+                                }
+                            }
+                            .drawBackdrop(
+                                backdrop = liquidGlassBackdrop,
+                                shape = { RectangleShape },
+                                effects = { colorControls(saturation = 1.5f) },
+                                highlight = null,
+                                shadow = null,
+                                downsampleScale = 1f,
+                            )
+                    )
                 }
             }
             // 始终用 MiuixTheme 包裹保持结构恒定；ThemeController 原地切 mode，重建实例会卡一帧
@@ -4353,63 +4419,38 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         // 组合期同步 mode：SideEffect 会晚一帧
         overlayPageController.colorSchemeMode =
             if (overlayEffectiveDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
-        // 无壁纸：浮层底部垫课程表页底色 0.92f
-        val floatSolidBacking = if (wallpaperBitmap == null) {
-            schedulePageBackgroundColor(isAppDarkTheme()).copy(alpha = 0.92f)
-        } else null
+        // 无壁纸时浮层垫课程表页底色（与网格课程卡同一份，取值见 courseCardSolidBacking）
+        val floatSolidBacking = courseCardSolidBacking(
+            isDark = isAppDarkTheme(),
+            hasWallpaper = wallpaperBitmap != null
+        )
         // 拖浮层跟手高光的中心（px，非 state：只在 draw 里写，不触发额外失效）
         val glowCenterPx = remember { FloatArray(2) }
+        val dragCardHighlight = remember {
+            InteractiveHighlight(
+                animationScope = coroutineScope,
+                position = { _, _ ->
+                    if (isFloatingCardDragging && floatingCardVisible) {
+                        glowCenterPx[0] = draggedCardPosition.x + floatingOffsetX.floatValue
+                        glowCenterPx[1] = draggedCardPosition.y + floatingOffsetY.floatValue
+                    }
+                    Offset(glowCenterPx[0], glowCenterPx[1])
+                },
+                radiusScale = { 1f / 3f },
+                radiusBaseDp = 250.dp,
+                // 按压进度由 glowAlpha 驱动（150ms 淡变），不走组件自带手势
+                pressProgressOverride = { glowAlpha },
+                // 只要圆形光晕，不要整幅提亮
+                drawFlatOverlay = false,
+            )
+        }
         MiuixTheme(controller = overlayPageController) {
             CompositionLocalProvider(LocalForcedDarkTheme provides overlayEffectiveForcedDark) {
-                // 拖浮层的跟手高光：画在浮层**之前**（同一父级里先声明先画），于是它压在
-                // 整页内容之上、浮层之下 —— 正是「照亮浮层后方所有内容」。
-                //
-                // ⚠️ 这里**不能挂 pointerInput**：全屏手势层压在最上面会挡住下层兄弟节点
-                // （见 PointerUtils.blockTouchPassThrough 的说明），整页点不动、底栏也点不动。
-                // 位置改取浮层中心 = 锚点 + 拖动位移，它本来就是跟手的，不需要再监听手势。
-                // 高光开关 = 正在拖 && 浮层还活着：
-                // · 长按弹菜单但没拖动 → 前者为 false → 不亮
-                // · 一松手 onCourseDragEnd 立刻置 false → 马上开始淡出，
-                //   不用等 floatingCardVisible 那 360ms 退场动画跑完
-                val glowShowing = isFloatingCardDragging && floatingCardVisible
-                val glowAlpha by animateFloatAsState(
-                    targetValue = if (glowShowing) 1f else 0f,
-                    animationSpec = tween(150),
-                    label = "dragCardGlowAlpha",
-                )
+                // 跟手高光：画在浮层之前（同一父级里先声明先画），压在整页之上、浮层之下
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .drawBehind {
-                            if (glowAlpha <= 0f) return@drawBehind
-                            // 中心只在拖动中跟踪：松手那一帧 floatingOffset 会被清零而锚点
-                            // 停在原位，继续实时读会让光晕在 150ms 淡出期间跳回长按处 ——
-                            // 看着就是「闪一下才变暗」。冻结在最后一帧即可。
-                            if (glowShowing) {
-                                glowCenterPx[0] =
-                                    draggedCardPosition.x + floatingOffsetX.floatValue
-                                glowCenterPx[1] =
-                                    draggedCardPosition.y + floatingOffsetY.floatValue
-                            }
-                            val center = Offset(glowCenterPx[0], glowCenterPx[1])
-                            // 半径基数 = min(屏幕短边, 下面那个 dp 上限)，×0.5 是内圈满强度的平台半径；
-                            // 三色均分即 0 / 0.5 / 1 三档，0~0.5r 保持、0.5r~r 衰减到 0
-                            val glowRadius = minOf(size.minDimension, 250.dp.toPx()) * 0.5f
-                            // 拖动中（glowAlpha 满档）的峰值亮度
-                            val peak = 0.15f * glowAlpha
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = peak),
-                                        Color.White.copy(alpha = peak),
-                                        Color.Transparent,
-                                    ),
-                                    center = center,
-                                    radius = glowRadius,
-                                ),
-                                blendMode = BlendMode.Plus
-                            )
-                        }
+                        .then(dragCardHighlight.modifier)
                 )
                 if (floatingCardVisible) {
                     val course = draggedCardCourse
@@ -5548,14 +5589,13 @@ private fun SwitchMorphOverlay(
 /**
  * 共享顶栏槽里单页顶栏的主题锁。
  *
- * `Scaffold.topBar` 里今日/课程表/我的三根顶栏是叠在一起靠 graphicsLayer 平移淡入淡出的，
- * 它们外层统一套的是**跟随当前 tab** 的 chrome 主题（[forcedDark]，含 `selectedTab == 2 -> null`
+ * `Scaffold.topBar` 里今日/课程表/我的三根顶栏叠在一起靠 graphicsLayer 平移淡入淡出，
+ * 外层统一套的是**跟随当前 tab** 的 chrome 主题（[forcedDark]，含 `selectedTab == 2 -> null`
  * 回落应用主题）。课程表/今日页跟随壁纸锁深浅，于是「课程表深色 → 切到设置页浅色」时
- * `forcedDark` 立刻变 null，尚未移出屏幕的课程表顶栏读到的
- * `MiuixTheme.colorScheme.surface` / `isAppDarkTheme()` 就整体变浅 —— 表现为顶栏遮罩瞬间变色。
+ * `forcedDark` 立刻变 null，尚未移出屏幕的课程表顶栏整体变浅，表现为遮罩瞬间变色。
  *
- * 这里按**本页自己**的主题再锁一层，与页面内容层的写法（见 pager 内各页的 `MiuixTheme`）一致，
- * 也与 [SettingsTopBar] 的处理对齐。稳态下两者取值相同，不改变静止时的观感。
+ * 这里按**本页自己**的主题再锁一层，与 pager 内各页的写法一致。稳态下两者取值相同，
+ * 不改变静止时的观感。
  */
 @Composable
 private fun PageLockedTopBarTheme(

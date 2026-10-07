@@ -106,9 +106,7 @@ fun RowScope.LiquidBottomTab(
 }
 
 /**
- * 液态玻璃底部导航。
- *
- * 统一手势层：
+ * 液态玻璃底部导航。手势全部由 [LiquidBottomTabs] 的统一层处理：
  * - 按下 tab：胶囊飞过去并保持按压
  * - 按下胶囊 / 随后拖动：1:1 跟手
  * - 松手：吸附最近 tab，提交选中
@@ -135,6 +133,10 @@ fun LiquidBottomTabs(
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()
+    // 高光自己的 export 层：胶囊采样它，玻璃里才会同时看到「底栏 + 光晕」，
+    // 两者被同一套 lens 一起折射 → 轮廓天然一致。
+    // 注意：捕获层带 ColorFilter.tint(accentColor)，高光不能塞进去（浅色会被染黑）。
+    val glowBackdrop = rememberLayerBackdrop()
 
     BoxWithConstraints(
         modifier,
@@ -159,7 +161,8 @@ fun LiquidBottomTabs(
         val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
         val ltrSign = if (isLtr) 1f else -1f
         val animationScope = rememberCoroutineScope()
-        // 不能用 selectedTabIndex lambda 做 remember key：每次重组都是新实例，currentIndex 会被冲掉导致点 tab 无效
+        // 不能用 selectedTabIndex lambda 做 remember key：每次重组都是新实例，
+        // currentIndex 会被冲掉导致点 tab 无效
         var currentIndex by remember { mutableIntStateOf(selectedTabIndex()) }
         val dampedDragAnimation = remember(animationScope) {
             DampedDragAnimation(
@@ -234,6 +237,7 @@ fun LiquidBottomTabs(
                     },
                     onDrawSurface = panelSurface
                 )
+                .then(interactiveHighlight.modifier)
                 .edgeLight(shape = ContinuousCapsule(), edgeLight = defaultEdgeLight)
                 .height(containerHeight)
                 .fillMaxWidth()
@@ -272,6 +276,8 @@ fun LiquidBottomTabs(
                         },
                         onDrawSurface = { drawRect(containerColor) }
                     )
+                    .then(interactiveHighlight.modifier)
+
                     .height(highlightHeight)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
@@ -280,6 +286,20 @@ fun LiquidBottomTabs(
                 content = content
             )
         }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdrop(glowBackdrop)
+                .graphicsLayer {
+                    translationX = panelOffset
+                    val progress = dampedDragAnimation.pressProgress
+                    val s = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
+                    scaleX = s
+                    scaleY = s
+                }
+                .clip(ContinuousCapsule())
+        )
 
         // 胶囊（纯视觉）
         Box(
@@ -291,7 +311,9 @@ fun LiquidBottomTabs(
                         else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
                 }
                 .drawBackdrop(
-                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
+                    // 页面 + 捕获层（底栏图标）+ 高光：高光排最后 → 叠在最上面，
+                    // 且它自身除光晕外全透明，不会遮掉前两层
+                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop, glowBackdrop),
                     shape = { ContinuousCapsule() },
                     downsampleScale = 1f,
                     effects = {
@@ -336,22 +358,6 @@ fun LiquidBottomTabs(
                 )
                 .height(selectorHeight)
                 .fillMaxWidth(1f / tabsCount)
-        )
-
-        // 按压高光独立层
-        Box(
-            Modifier
-                .fillMaxSize()
-                // 与可见层背景同一套变换（缺一不可）
-                .graphicsLayer {
-                    translationX = panelOffset
-                    val progress = dampedDragAnimation.pressProgress
-                    val s = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
-                    scaleX = s
-                    scaleY = s
-                }
-                .clip(ContinuousCapsule())
-                .then(interactiveHighlight.modifier)
         )
 
         // 统一手势层：按下 tab / 拖胶囊 / 松手选中 都在这里
@@ -441,8 +447,8 @@ fun LiquidBottomTabs(
 }
 
 /**
- * pad 主导航：只保留侧边态（展开=图标+文字，折叠=仅图标）。
- * 不再使用顶部胶囊；折叠按钮为 Miuix Sidebar 图标。
+ * pad 主导航：只保留侧边态（展开=图标+文字，折叠=仅图标），直接转调 [TabletNavSideBar]。
+ * 折叠按钮为 Miuix Sidebar 图标。
  */
 @Composable
 fun LiquidNavigationRail(
