@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -963,9 +964,13 @@ private fun MorePopupMenus(
     todayMorePopupFraction: Animatable<Float, *>,
     scheduleMenuOffset: () -> Offset = { Offset.Zero },
     todayMenuOffset: () -> Offset = { Offset.Zero },
-    moreSlotTopPx: Float = 0f,
-    scheduleMaterialAlpha: Float = 1f,
-    todayMaterialAlpha: Float = 1f,
+    /**
+     * 「更多」占位槽实测顶部（root 坐标 px）。传 state 而非 Float：
+     * 定位要在**绘制期**读（graphicsLayer 的 block 内），首帧才不会先画在兜底位置上再跳。
+     */
+    moreSlotTopPx: MutableFloatState = mutableFloatStateOf(0f),
+    scheduleMaterialAlpha: Float = 0f,
+    todayMaterialAlpha: Float = 0f,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop,
     isShiftMode: Boolean = false,
     onJumpWeek: () -> Unit,
@@ -1007,22 +1012,25 @@ private fun MorePopupMenus(
                 ) { onTodayMorePopupDismiss() }
         )
     }
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val anchorTop = (
-        if (moreSlotTopPx > 0f) {
-            with(LocalDensity.current) { moreSlotTopPx.toDp() } -
-                com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
-        } else if (statusBarHeight > 0.dp) {
-            statusBarHeight - 20.dp
-        } else {
-            17.dp
-        }
-        ).coerceAtLeast(0.dp)
+    // 「更多」锚点纵坐标：**绘制期**定位
+    val fallbackAnchorTopPx = with(LocalDensity.current) {
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        (if (statusBarTop > 0.dp) statusBarTop - 20.dp else 17.dp)
+            .coerceAtLeast(0.dp)
+            .toPx()
+    }
+    val shadowPaddingPx = with(LocalDensity.current) {
+        com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding.toPx()
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { clip = false }
-            .padding(top = anchorTop)
+            .graphicsLayer {
+                clip = false
+                // moreSlotTopPx 是占位槽顶边，减掉阴影外扩才是内容顶边
+                val measured = moreSlotTopPx.floatValue - shadowPaddingPx
+                translationY = if (measured > 0f) measured else fallbackAnchorTopPx
+            }
             .offset(x = 9.dp),
         contentAlignment = Alignment.TopEnd
     ) {
@@ -2516,8 +2524,11 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val moreSlotTopPx = remember { mutableFloatStateOf(0f) }
     val canSampleMoreSlot = !isWindowCutoutActive && !showCustomizePage && !showSwitchSchedule
     // 顶栏滚动材质透明度（收起态「更多」玻璃渐显渐隐）；两个顶栏各自一份，避免切页时互相覆盖
-    val scheduleMaterialAlpha = remember { mutableStateOf(1f) }
-    val todayMaterialAlpha = remember { mutableFloatStateOf(1f) }
+    // 初值 0 而非 1f：真实材质值由 SideEffect 在首帧组合后写入，
+    // 用 1f 会让「更多」先亮一帧材质再变透明。收起态 f=0 时
+    // materialVisible = max(materialAlpha, 0) = materialAlpha，故 0 安全。
+    val scheduleMaterialAlpha = remember { mutableStateOf(0f) }
+    val todayMaterialAlpha = remember { mutableFloatStateOf(0f) }
     var todayJumpToDateTrigger by remember { mutableIntStateOf(0) }
 
     val isViewingCurrentWeek = currentViewingWeek == currentWeek
@@ -3071,7 +3082,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                     todayMorePopupFraction = todayMorePopupFraction,
                                     scheduleMenuOffset = scheduleMoreMenuOffset,
                                     todayMenuOffset = todayMoreMenuOffset,
-                                    moreSlotTopPx = moreSlotTopPx.value,
+                                    moreSlotTopPx = moreSlotTopPx,
                                     scheduleMaterialAlpha = scheduleMaterialAlpha.value,
                                     todayMaterialAlpha = todayMaterialAlpha.value,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
