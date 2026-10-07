@@ -22,6 +22,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -74,8 +75,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
@@ -149,6 +153,7 @@ import com.haooz.chedule.ui.utils.applyNavigationBarIsDark
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -1302,6 +1307,10 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     var pendingConflictCourse by remember { mutableStateOf<Course?>(null) }
     // 退出动画期间保持 true，结束后原卡片 alpha 恢复 1
     var floatingCardVisible by remember { mutableStateOf(false) }
+    // 手指**正拖着**浮层：onCourseDragStart 置真、onCourseDragEnd 置假。
+    // 不能拿 floatingCardVisible 当高光开关 —— 它从长按那一刻就为 true，且要等退场动画
+    // （约 360ms）跑完才回 false，于是「长按没拖也亮」+「松手后等动画结束才开始灭」。
+    var isFloatingCardDragging by remember { mutableStateOf(false) }
     // 入场 0.94→1.04，退场 1.04→1.0
     val floatingScale = remember { Animatable(0.94f) }
     // 吸附期间用 floatingOffsetAnim 替代 draggedCardOffset
@@ -3388,6 +3397,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                 )
                                                 isDraggingCard = true
                                                 floatingCardVisible = true
+                                                // 新一轮长按：还没开始拖，高光先关
+                                                isFloatingCardDragging = false
                                                 draggingCourseIds = setOf(course.id)
                                                 draggedCardCourse = course
                                                 draggedWeek = currentWeek
@@ -3439,6 +3450,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                             onCourseDragStart = { _ ->
                                                 // 不关菜单；超过移动阈值后由 onCourseMenuDismiss 关闭
                                                 pendingDropTarget = null
+                                                isFloatingCardDragging = true
                                             },
                                             onCourseMenuDismiss = {
                                                 shortcutMenuVisible = false
@@ -3485,6 +3497,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                 }
                                             },
                                             onCourseDragEnd = { _ ->
+                                                // 手指已离开：高光立刻开始淡出，不等下面的退场动画
+                                                isFloatingCardDragging = false
                                                 // 只结束拖拽浮层；菜单关闭交给 onCourseMenuDismiss
                                                 val source = draggedCardCourse
                                                 val target = pendingDropTarget
@@ -4339,8 +4353,64 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         // 组合期同步 mode：SideEffect 会晚一帧
         overlayPageController.colorSchemeMode =
             if (overlayEffectiveDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
+        // 无壁纸：浮层底部垫课程表页底色 0.92f
+        val floatSolidBacking = if (wallpaperBitmap == null) {
+            schedulePageBackgroundColor(isAppDarkTheme()).copy(alpha = 0.92f)
+        } else null
+        // 拖浮层跟手高光的中心（px，非 state：只在 draw 里写，不触发额外失效）
+        val glowCenterPx = remember { FloatArray(2) }
         MiuixTheme(controller = overlayPageController) {
             CompositionLocalProvider(LocalForcedDarkTheme provides overlayEffectiveForcedDark) {
+                // 拖浮层的跟手高光：画在浮层**之前**（同一父级里先声明先画），于是它压在
+                // 整页内容之上、浮层之下 —— 正是「照亮浮层后方所有内容」。
+                //
+                // ⚠️ 这里**不能挂 pointerInput**：全屏手势层压在最上面会挡住下层兄弟节点
+                // （见 PointerUtils.blockTouchPassThrough 的说明），整页点不动、底栏也点不动。
+                // 位置改取浮层中心 = 锚点 + 拖动位移，它本来就是跟手的，不需要再监听手势。
+                // 高光开关 = 正在拖 && 浮层还活着：
+                // · 长按弹菜单但没拖动 → 前者为 false → 不亮
+                // · 一松手 onCourseDragEnd 立刻置 false → 马上开始淡出，
+                //   不用等 floatingCardVisible 那 360ms 退场动画跑完
+                val glowShowing = isFloatingCardDragging && floatingCardVisible
+                val glowAlpha by animateFloatAsState(
+                    targetValue = if (glowShowing) 1f else 0f,
+                    animationSpec = tween(150),
+                    label = "dragCardGlowAlpha",
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .drawBehind {
+                            if (glowAlpha <= 0f) return@drawBehind
+                            // 中心只在拖动中跟踪：松手那一帧 floatingOffset 会被清零而锚点
+                            // 停在原位，继续实时读会让光晕在 150ms 淡出期间跳回长按处 ——
+                            // 看着就是「闪一下才变暗」。冻结在最后一帧即可。
+                            if (glowShowing) {
+                                glowCenterPx[0] =
+                                    draggedCardPosition.x + floatingOffsetX.floatValue
+                                glowCenterPx[1] =
+                                    draggedCardPosition.y + floatingOffsetY.floatValue
+                            }
+                            val center = Offset(glowCenterPx[0], glowCenterPx[1])
+                            // 半径基数 = min(屏幕短边, 下面那个 dp 上限)，×0.5 是内圈满强度的平台半径；
+                            // 三色均分即 0 / 0.5 / 1 三档，0~0.5r 保持、0.5r~r 衰减到 0
+                            val glowRadius = minOf(size.minDimension, 250.dp.toPx()) * 0.5f
+                            // 拖动中（glowAlpha 满档）的峰值亮度
+                            val peak = 0.15f * glowAlpha
+                            drawRect(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = peak),
+                                        Color.White.copy(alpha = peak),
+                                        Color.Transparent,
+                                    ),
+                                    center = center,
+                                    radius = glowRadius,
+                                ),
+                                blendMode = BlendMode.Plus
+                            )
+                        }
+                )
                 if (floatingCardVisible) {
                     val course = draggedCardCourse
                     if (course != null) {
@@ -4397,6 +4467,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 cardRefraction = displayAppearance.cardRefraction,
                                 cardAlpha = displayAppearance.cardAlpha,
                                 cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
+                                // 无壁纸时垫页底色，取值见 floatSolidBacking
+                                solidBackingColor = floatSolidBacking,
                                 cardHeightPerSection = displayAppearance.cardHeight,
                                 cardCornerRadius = displayAppearance.cardCornerRadius,
                                 isTablet = isTablet,
@@ -4443,6 +4515,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 cardRefraction = displayAppearance.cardRefraction,
                                 cardAlpha = displayAppearance.cardAlpha,
                                 cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
+                                // 无壁纸时垫页底色，取值见 floatSolidBacking
+                                solidBackingColor = floatSolidBacking,
                                 cardHeightPerSection = displayAppearance.cardHeight,
                                 cardCornerRadius = displayAppearance.cardCornerRadius,
                                 isTablet = isTablet,

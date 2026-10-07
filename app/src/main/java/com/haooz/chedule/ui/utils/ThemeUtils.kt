@@ -11,12 +11,21 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.ThemeMode
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定
 val LocalForcedDarkTheme = staticCompositionLocalOf<Boolean?> { null }
+
+/**
+ * 课程表 / 排班页底色（无壁纸时铺满页面的那一层）。
+ * 需要与页面底色对齐的元素（如课程卡片浮层的垫底色）统一取这里，
+ * 不要再各处抄 #F7F7F7 / #000000 字面量。
+ */
+fun schedulePageBackgroundColor(isDark: Boolean): Color =
+    if (isDark) Color(0xFF000000) else Color(0xFFF7F7F7)
 
 @Composable
 fun isAppDarkTheme(): Boolean {

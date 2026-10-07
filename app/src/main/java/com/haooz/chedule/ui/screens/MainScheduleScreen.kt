@@ -102,6 +102,7 @@ import com.haooz.chedule.ui.effects.edgelight.rememberCourseCardEdgeLight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.pagerAxisTakeoverGesture
+import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.kyant.backdrop.backdrops.SharedBlurBackdrop
@@ -668,7 +669,7 @@ fun MainScheduleScreen(
 
     // 顶层读一次主题，避免每列/分界带各自挂 prefs 监听
     val scheduleIsDark = isAppDarkTheme()
-    val wallpaperBackdropColor = if (scheduleIsDark) Color(0xFF000000) else Color(0xFFF7F7F7)
+    val wallpaperBackdropColor = schedulePageBackgroundColor(scheduleIsDark)
 
     // onDraw 必须稳定：每次新建会换掉 LayerBackdrop 实例，SharedBlur 与全部课卡采样跟着重建
     val wallpaperBackColorState = rememberUpdatedState(wallpaperBackdropColor)
