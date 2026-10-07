@@ -218,6 +218,19 @@ private data class EmptyCellMenuTarget(
     val addWeek: Int,
 )
 
+/**
+ * 粘贴落点：动画/高亮走列星期（几何坐标），写库走调课映射后的数据坐标。
+ * 调课日列显示的是 followWeekday/followWeek 的课，只传列星期会让粘出来的课落到错误星期/周次，
+ * 在本页任何列都不渲染——与空白格「添加」必须保持同一套映射。
+ */
+private data class PasteTarget(
+    val columnDay: Int,
+    val dataDay: Int,
+    val section: Int,
+    /** 数据周次；调课日 = followWeek，否则 = 正在浏览的周 */
+    val dataWeek: Int,
+)
+
 /** 主 tab 翻页动画（点底栏 tab 时平移切换）；相邻页略偏软 */
 private val MainTabPagerAnimSpec = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
@@ -815,7 +828,10 @@ private fun RescheduleConflictDialog(
     show: Boolean,
     source: Course?,
     target: Course?,
+    /** 目标位数据坐标（星期, 起始节次）：调课日列要映射后的星期，几何/动画不走这里 */
     dropTarget: Pair<Int, Int>?,
+    /** 目标位数据周次：调课日 = followWeek；交换/覆盖写库按它拆周 */
+    dropTargetWeek: Int,
     draggedWeek: Int,
     viewModel: CourseViewModel,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
@@ -862,8 +878,12 @@ private fun RescheduleConflictDialog(
                     if (source != null && dropTarget != null && target != null) {
                         val sectionSpan = source.endSection - source.startSection
                         val targetEnd = dropTarget.second + sectionSpan
+                        // 源课在 draggedWeek，目标位在 dropTargetWeek（调课日两者可能不同 → 跨周移动）
+                        // 注意 targetWeek 是最后一个参数，别插到中间（全是 Int，错位不报错）
                         viewModel.overwriteCourseForWeek(
-                            source.id, draggedWeek, dropTarget.first, dropTarget.second, targetEnd
+                            source.id, draggedWeek,
+                            dropTarget.first, dropTarget.second, targetEnd,
+                            dropTargetWeek
                         )
                         val sourceCourses = viewModel.getCoursesAtSlot(
                             draggedWeek, source.dayOfWeek, source.startSection, source.endSection
@@ -882,7 +902,8 @@ private fun RescheduleConflictDialog(
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                     if (source != null && target != null) {
-                        viewModel.swapCoursesForWeek(source.id, target.id, draggedWeek)
+                        // 源课在 draggedWeek、冲突课在 dropTargetWeek，两侧各拆一周互换
+                        viewModel.swapCoursesForWeek(source.id, target.id, draggedWeek, dropTargetWeek)
                         val sourceCourses = viewModel.getCoursesAtSlot(
                             draggedWeek, source.dayOfWeek, source.startSection, source.endSection
                         ).filter {
@@ -891,10 +912,10 @@ private fun RescheduleConflictDialog(
                             )
                         }
                         val conflictCourses = viewModel.getCoursesAtSlot(
-                            draggedWeek, target.dayOfWeek, target.startSection, target.endSection
+                            dropTargetWeek, target.dayOfWeek, target.startSection, target.endSection
                         ).filter {
                             it.id != target.id && it.id != source.id && !it.isActiveInWeek(
-                                draggedWeek
+                                dropTargetWeek
                             )
                         }
                         val allAnimated = (sourceCourses + conflictCourses).map { it.id }.toSet()
@@ -1308,6 +1329,9 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     val dragMotion = remember { DragMotionHolder() }
     var draggedCardBackdrop by remember { mutableStateOf<com.kyant.backdrop.Backdrop?>(null) }
     var draggedWeek by remember { mutableIntStateOf(1) }
+    // 源卡片所在的**列**星期（几何坐标）。调课日列的数据星期 ≠ 列星期，
+    // 落点原格高亮、几何吸附都要用列，写库才用数据星期
+    var draggedColumnDay by remember { mutableIntStateOf(1) }
     // 拖拽落点检测用网格几何
     var gridGeometry by remember {
         mutableStateOf<ScheduleGridGeometry?>(
@@ -1386,7 +1410,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
     // 页面会话级剪贴板，再次复制覆盖，粘贴后保留
     var copiedCourseForPaste by remember { mutableStateOf<Course?>(null) }
     var showPasteRangeDialog by remember { mutableStateOf(false) }
-    var pasteRangeTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var pasteRangeTarget by remember { mutableStateOf<PasteTarget?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var deleteConfirmCourse by remember { mutableStateOf<Course?>(null) }
 
@@ -1965,6 +1989,19 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         return Offset(centerX, cardCenterY)
     }
 
+    /**
+     * 列星期 → 数据（星期, 周次）。
+     * 调课日列渲染的是 followWeekday/followWeek 的课，落点写库、冲突检测都要走这个映射；
+     * 几何（吸附动画、落点高亮）仍然用列星期。映射缺失时退回 列星期 + 正在浏览的周。
+     */
+    fun dataPositionForColumn(columnDay: Int): Pair<Int, Int> =
+        gridGeometry?.columnDataPosition?.get(columnDay) ?: (columnDay to currentViewingWeek)
+
+    /** 数据（星期, 周次）→ 列星期：几何反查（粘贴飞行起点、交换飞行原点），找不到退回数据星期 */
+    fun columnForDataPosition(day: Int, week: Int): Int =
+        gridGeometry?.columnDataPosition?.entries
+            ?.firstOrNull { it.value.first == day && it.value.second == week }?.key ?: day
+
     // spring 带回弹吸进目标格，中段开涟漪
     val snapFloatingCardToTarget: (dayOfWeek: Int, startSection: Int, sectionSpan: Int) -> Unit =
         { day, section, span ->
@@ -2021,9 +2058,11 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         onFinished: () -> Unit
     ) -> Unit = { source, targetDay, targetSection, onFinished ->
         val span = (source.endSection - source.startSection).coerceAtLeast(0)
-        val sourceCenter = computeTargetCenter(source.dayOfWeek, source.startSection, span)
+        // 起点按**列**取几何：源课若是从调课日列复制来的，数据星期对不上列
+        val sourceColumn = columnForDataPosition(source.dayOfWeek, currentViewingWeek)
+        val sourceCenter = computeTargetCenter(sourceColumn, source.startSection, span)
         val targetCenter = computeTargetCenter(targetDay, targetSection, span)
-        val sourceBounds = gridGeometry?.dayBounds?.get(source.dayOfWeek)
+        val sourceBounds = gridGeometry?.dayBounds?.get(sourceColumn)
         val sectionH = gridGeometry?.sectionHeightPx
         if (sourceCenter != null && targetCenter != null && sourceBounds != null && sectionH != null && sectionH > 0f) {
             coroutineScope.launch {
@@ -2085,8 +2124,14 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
 
     // 原地长按松手，spring 吸回原位
     val snapFloatingCardToOrigin: () -> Unit = {
+        // 吸回原位也算「落地」：锚点即长按瞬间的原格中心，落地节奏与吸到新格一致
+        val originCenter = draggedCardPosition
         coroutineScope.launch {
             isSnapping = true
+            launch {
+                delay(120.milliseconds)
+                triggerLandRipple(originCenter)
+            }
             val snapSpec = spring<Float>(
                 dampingRatio = 0.58f,
                 stiffness = Spring.StiffnessMediumLow
@@ -2199,8 +2244,13 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             val sourceSpan = source.endSection - source.startSection
             val targetCenter = computeTargetCenter(dropTarget.first, dropTarget.second, sourceSpan)
             val occupiedSpan = conflictCourse.endSection - conflictCourse.startSection
-            val occupiedCenter = computeTargetCenter(
+            // 冲突课所在**列**：调课日列的数据星期 ≠ 列星期，几何必须按列取
+            val conflictColumn = columnForDataPosition(
                 conflictCourse.dayOfWeek,
+                dataPositionForColumn(dropTarget.first).second
+            )
+            val occupiedCenter = computeTargetCenter(
+                conflictColumn,
                 conflictCourse.startSection,
                 occupiedSpan
             )
@@ -2209,7 +2259,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                 dismissFloatingCard()
             } else {
                 coroutineScope.launch {
-                    val bounds = gridGeometry?.dayBounds?.get(conflictCourse.dayOfWeek)
+                    val bounds = gridGeometry?.dayBounds?.get(conflictColumn)
                     val cardPadPx = with(density) { 2.dp.toPx() }
                     swapFlightCourse = conflictCourse
                     swapFlightOriginCenter = occupiedCenter
@@ -2280,8 +2330,10 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         val geom = gridGeometry ?: return null
         if (geom.sectionHeightPx <= 0f) return null
         if (geom.dayBounds.isEmpty()) return null
-        val day = geom.dayBounds.entries.firstOrNull { (_, bounds) ->
-            bounds.size >= 2 && centerX >= bounds[0] && centerX <= bounds[1]
+        val day = geom.dayBounds.entries.firstOrNull { (columnDay, bounds) ->
+            // 教学周重组的休课日列永远渲染为空，落进去的课在本页与今日页都不可见，直接拦掉
+            columnDay !in geom.blockedColumns &&
+                bounds.size >= 2 && centerX >= bounds[0] && centerX <= bounds[1]
         }?.key ?: return null
         val topY = geom.dayBounds[day]?.getOrNull(2) ?: return null
         val relY = firstSectionCenterY - topY
@@ -3451,22 +3503,35 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                         div
                                                     )
                                                     val bounds = geom.dayBounds[course.dayOfWeek]
+                                                        ?: geom.dayBounds.values.firstOrNull()
                                                     // 宽度沿用卡片回调（含 Day 列内 2dp padding 后的实际宽），不要用整列 dayBounds
                                                     val topRel = sectionTopPx(geom, course.startSection, div)
-                                                    anchorCenter = if (bounds != null && bounds.size >= 3) {
-                                                        Offset(
-                                                            (bounds[0] + bounds[1]) / 2f,
-                                                            bounds[2] + topRel + fullH / 2f
-                                                        )
-                                                    } else {
-                                                        Offset(left, top)
+                                                    // X 必须用卡片实测中心 left：
+                                                    // ① 调课日列的数据星期 ≠ 列星期，dayBounds[course.dayOfWeek] 会取到隔壁列，
+                                                    //    浮层/菜单整块错到别的列；② 自定义时间课按时间轴定位，不按节次几何。
+                                                    anchorCenter = when {
+                                                        course.hasValidCustomTime() ->
+                                                            Offset(left, top)
+                                                        bounds != null && bounds.size >= 3 ->
+                                                            Offset(left, bounds[2] + topRel + fullH / 2f)
+                                                        else ->
+                                                            Offset(left, top)
                                                     }
-                                                    anchorSize = Offset(width, fullH)
+                                                    anchorSize = if (course.hasValidCustomTime()) {
+                                                        Offset(width, height)
+                                                    } else {
+                                                        Offset(width, fullH)
+                                                    }
                                                 } else {
                                                     anchorCenter = Offset(left, top)
                                                     anchorSize = Offset(width, height)
                                                 }
                                                 draggedCardPosition = anchorCenter
+                                                // 由卡片实测 X 反推所在列：数据星期在调课日列对不上列
+                                                draggedColumnDay = geom?.dayBounds?.entries
+                                                    ?.firstOrNull { (_, b) ->
+                                                        b.size >= 2 && left >= b[0] && left <= b[1]
+                                                    }?.key ?: course.dayOfWeek
                                                 dragMotion.reset()
                                                 floatingOffsetX.floatValue = 0f
                                                 floatingOffsetY.floatValue = 0f
@@ -3523,10 +3588,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                         draggedCardPosition.y + offsetY - cardHeightPx / 2f
                                                     val firstSectionCenterY =
                                                         cardTopY + sectionH / 2f
-                                                    val newTarget = computeDropTarget(
+                                                    val rawTarget = computeDropTarget(
                                                         centerX,
                                                         firstSectionCenterY
                                                     )
+                                                    // 放不下的格子不给落点：起始节次+跨度超过总节次
+                                                    // （与粘贴路径同款校验），否则松手写出
+                                                    // endSection > totalSections 的课，渲染溢出/错位
+                                                    val newTarget = rawTarget?.takeIf {
+                                                        it.second + sectionCount - 1 <= totalSections
+                                                    }
                                                     if (newTarget != pendingDropTarget) {
                                                         pendingDropTarget = newTarget
                                                     }
@@ -3541,42 +3612,49 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                 val week = draggedWeek
                                                 pendingDropTarget = null
                                                 if (source != null && target != null) {
+                                                    // 列 → 数据坐标：调课日列显示的是 followWeekday/followWeek 的课，
+                                                    // 冲突检测与写库都必须落在数据坐标上，几何/动画仍用列
+                                                    val (targetDay, targetWeek) =
+                                                        dataPositionForColumn(target.first)
                                                     val sectionSpan =
                                                         source.endSection - source.startSection
                                                     val targetStart = target.second
                                                     val targetEnd = targetStart + sectionSpan
+                                                    // 同格按数据坐标判：调课日列里原地拖动不再被误判成跨天
                                                     val sameSlot =
-                                                        source.dayOfWeek == target.first &&
+                                                        source.dayOfWeek == targetDay &&
+                                                                week == targetWeek &&
                                                                 source.startSection == targetStart &&
                                                                 source.endSection == targetEnd
                                                     if (!sameSlot) {
                                                         val conflicts = viewModel.getCoursesAtSlot(
-                                                            week,
-                                                            target.first,
+                                                            targetWeek,
+                                                            targetDay,
                                                             targetStart,
                                                             targetEnd
                                                         ).filter {
                                                             it.id != source.id && it.isActiveInWeek(
-                                                                week
+                                                                targetWeek
                                                             )
                                                         }
                                                         if (conflicts.isEmpty()) {
                                                             viewModel.moveCourseForWeek(
                                                                 source.id,
                                                                 week,
-                                                                target.first,
+                                                                targetDay,
                                                                 targetStart,
-                                                                targetEnd
+                                                                targetEnd,
+                                                                targetWeek
                                                             )
                                                             // 单周调课可能拆分/合并出新 id，按目标位重收并隐藏防叠影
                                                             draggingCourseIds =
                                                                 viewModel.getCoursesAtSlot(
-                                                                    week,
-                                                                    target.first,
+                                                                    targetWeek,
+                                                                    targetDay,
                                                                     targetStart,
                                                                     targetEnd
                                                                 )
-                                                                    .filter { it.isActiveInWeek(week) }
+                                                                    .filter { it.isActiveInWeek(targetWeek) }
                                                                     .map { it.id }
                                                                     .toSet()
                                                             snapFloatingCardToTarget(
@@ -3712,6 +3790,11 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                     } else {
                                                         snapFloatingCardToOrigin()
                                                     }
+                                                } else if (source != null) {
+                                                    // 无落点：松手在网格外 / 超出总节次 / 落到重组休课日
+                                                    // → 与「同格」一样吸回原位，不凭空消失
+                                                    stopConflictHover()
+                                                    snapFloatingCardToOrigin()
                                                 } else {
                                                     dismissFloatingCard()
                                                 }
@@ -3744,7 +3827,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                             dropHighlightOrigin = run {
                                                 val source = draggedCardCourse
                                                 if (floatingCardVisible && source != null && !isPasteFlight) {
-                                                    source.dayOfWeek to (source.startSection..source.endSection)
+                                                    // 高亮画在网格列上：调课日列要用列星期，不能用数据星期
+                                                    draggedColumnDay to (source.startSection..source.endSection)
                                                 } else {
                                                     val emptyTarget = emptyCellMenuTarget
                                                     if (emptyTarget != null && shortcutMenuVisible) {
@@ -4091,11 +4175,13 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             val meta = copiedCourseForPaste
                             val target = pasteRangeTarget
                             if (meta != null && target != null) {
-                                val (day, section) = target
+                                // 写库用调课映射后的数据坐标；飞行/几何用列星期
+                                val day = target.dataDay
+                                val section = target.section
                                 val span = (meta.endSection - meta.startSection).coerceAtLeast(0)
                                 val endSection = section + span
-                                // 「当前周」=正在浏览的周，非日历 currentWeek
-                                val pasteWeek = currentViewingWeek
+                                // 「当前周」=该格所属教学周；调课日为 followWeek
+                                val pasteWeek = target.dataWeek
                                 if (endSection > totalSections) {
                                     android.widget.Toast.makeText(context, "空间不足，无法粘贴", android.widget.Toast.LENGTH_SHORT).show()
                                 } else {
@@ -4136,7 +4222,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                         // 落地后再写入课程
                                         playPasteFlightAnimation(
                                             meta,
-                                            day,
+                                            target.columnDay,
                                             section
                                         ) {
                                             viewModel.addCourse(pasted)
@@ -4157,7 +4243,13 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         show = showRescheduleConflictDialog,
                         source = draggedCardCourse,
                         target = pendingConflictCourse,
-                        dropTarget = pendingDropTarget,
+                        // 写库走数据坐标；flyFloatingCardToDropTarget 仍读列坐标算几何
+                        dropTarget = pendingDropTarget?.let {
+                            dataPositionForColumn(it.first).first to it.second
+                        },
+                        dropTargetWeek = pendingDropTarget?.let {
+                            dataPositionForColumn(it.first).second
+                        } ?: draggedWeek,
                         draggedWeek = draggedWeek,
                         viewModel = viewModel,
                         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -4172,14 +4264,14 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             pendingConflictCourse = null
                             val source = draggedCardCourse
                             val target = pendingDropTarget
-                            val week = draggedWeek
                             if (source != null && target != null) {
+                                val (targetDay, targetWeek) = dataPositionForColumn(target.first)
                                 val span = source.endSection - source.startSection
                                 val atTarget = viewModel.getCoursesAtSlot(
-                                    week, target.first, target.second, target.second + span
+                                    targetWeek, targetDay, target.second, target.second + span
                                 )
                                 draggingCourseIds = atTarget
-                                    .filter { it.isActiveInWeek(week) }
+                                    .filter { it.isActiveInWeek(targetWeek) }
                                     .map { it.id }
                                     .toSet()
                             }
@@ -4193,15 +4285,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             val target = pendingDropTarget
                             val week = draggedWeek
                             if (source != null && target != null) {
+                                val (targetDay, targetWeek) = dataPositionForColumn(target.first)
                                 val span = source.endSection - source.startSection
+                                // 目标位按目标周次收、源位按 draggedWeek 收（调课日两者可能不同）
                                 val atTarget = viewModel.getCoursesAtSlot(
-                                    week, target.first, target.second, target.second + span
-                                )
+                                    targetWeek, targetDay, target.second, target.second + span
+                                ).filter { it.isActiveInWeek(targetWeek) }
                                 val atSource = viewModel.getCoursesAtSlot(
                                     week, source.dayOfWeek, source.startSection, source.endSection
-                                )
+                                ).filter { it.isActiveInWeek(week) }
                                 draggingCourseIds = (atTarget + atSource)
-                                    .filter { it.isActiveInWeek(week) }
                                     .map { it.id }
                                     .toSet()
                             }
@@ -4472,15 +4565,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         val sectionH = geom?.sectionHeightPx
                             ?: with(density) { displayAppearance.cardHeight.dp.toPx() }
                         // 高度含午休/晚修分界缝，与网格上分段卡片的视觉外接框一致
-                        val heightPx = if (geom != null) {
-                            courseVisualHeightPx(
+                        val heightPx = when {
+                            // 自定义时间课按时间轴定位/定高，节次几何算出来的高度对不上，用长按实测高
+                            course.hasValidCustomTime() && !isPasteFlight -> draggedCardSize.y
+                            geom != null -> courseVisualHeightPx(
                                 geom,
                                 course.startSection,
                                 course.endSection,
                                 dividerPxFor(geom)
                             )
-                        } else {
-                            (course.endSection - course.startSection + 1) * sectionH
+                            else -> (course.endSection - course.startSection + 1) * sectionH
                         }
                         val baseOffsetX = with(density) {
                             (draggedCardPosition.x - widthPx / 2f).toDp()
@@ -4666,7 +4760,12 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 icon = MiuixIcons.Paste,
                                 label = "粘贴",
                                 onClick = {
-                                    pasteRangeTarget = emptyDay to emptySection
+                                    pasteRangeTarget = PasteTarget(
+                                        columnDay = emptyDay,
+                                        dataDay = emptyAddDay,
+                                        section = emptySection,
+                                        dataWeek = if (emptyAddWeek > 0) emptyAddWeek else currentViewingWeek,
+                                    )
                                     showPasteRangeDialog = true
                                     shortcutMenuVisible = false
                                     coroutineScope.launch {

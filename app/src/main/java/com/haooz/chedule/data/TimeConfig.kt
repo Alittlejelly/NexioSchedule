@@ -676,7 +676,7 @@ data class TimeConfig(
             startMinute = startMinute,
             classDuration = classDuration,
             shortBreak = shortBreak,
-            longBreak = if (longBreakEnabled) longBreak else 0,
+            longBreak = if (longBreakEnabled) longBreak else shortBreak,
             longBreakSection = longBreakSection
         )
     }

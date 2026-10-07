@@ -158,7 +158,15 @@ data class ScheduleGridGeometry(
     val morningSections: Int,
     val afternoonSections: Int,
     val eveningSections: Int,
-    val showBreakDividers: Boolean
+    val showBreakDividers: Boolean,
+    /**
+     * 列星期 → 数据（星期, 周次）。
+     * 调课日列显示的是 followWeekday/followWeek 的课，落点、冲突检测、写库都要映射回数据坐标，
+     * 否则「列星期 + 页周」写进去的课在本页任何列都不渲染（空白格「添加」走的就是这套映射）。
+     */
+    val columnDataPosition: Map<Int, Pair<Int, Int>> = emptyMap(),
+    /** 教学周重组的休课日列：该列永远渲染为空，落进去的课会静默消失，必须拦掉 */
+    val blockedColumns: Set<Int> = emptySet(),
 )
 
 @SuppressLint("ConfigurationScreenWidthHeight")
@@ -418,6 +426,22 @@ fun MainScheduleScreen(
     }
     val semesterLastDate = dateForTeachingPosition(totalWeeks, 7)
         ?: semesterStartMonday.plusWeeks((totalWeeks - 1).toLong()).plusDays(6)
+    /**
+     * 调休条目 → 该课表下的 (周次, 星期)。
+     *
+     * 库存的是**绝对日期**，这里按当前课表的学期开始时间现算，所以切换课表后
+     * 同一天会算出不同周次，调休列自动改跟随那一周的课（旧版存周次本身，换课表就整体错位）。
+     */
+    val followPositionFor: (HolidayManager.Entry) -> Pair<Int, Int>? = remember(
+        semesterStartDate,
+        teachingWeekReorganizations,
+        currentScheduleId,
+    ) {
+        { swap ->
+            scheduleRepository.resolveWorkSwapFollow(swap, currentScheduleId)
+                ?.let { it.week to it.weekday }
+        }
+    }
 
     // 记忆化版本号：假期编辑返回 bump dataVersion 时才重读 SP
     val holidayVersion = remember(scheduleContext, dataVersion, holidayDataRevision) {
@@ -465,6 +489,7 @@ fun MainScheduleScreen(
     val weekendDaysByWeek: Map<Int, Set<Int>> = remember(
         courses, dataVersion, holidayVersion, smartWeekend, totalWeeks,
         semesterStartMonday, workswapIndex, teachingWeekReorganizations,
+        followPositionFor,
         holidayEntriesByYear, holidayBeforeCourseExclusion, sectionTimes, totalSections,
         currentScheduleId,
     ) {
@@ -501,7 +526,7 @@ fun MainScheduleScreen(
                         ).courses.isNotEmpty()
                     }
                     val hasWorkSwap = dateString?.let {
-                        workswapIndex[it]?.followWeekday?.let { day -> day in 1..7 }
+                        workswapIndex[it]?.let { swap -> followPositionFor(swap) != null }
                     } == true
                     return courses.any { it.dayOfWeek == calendarDay && it.isActiveInWeek(week) } ||
                         hasWorkSwap
@@ -521,7 +546,8 @@ fun MainScheduleScreen(
     /** page -> dayOfWeek -> Triple(显示星期, 显示周次, 课程)；调课日显示 follow 星期/周次 */
     val weekFilteredCourses: Map<Int, Map<Int, Triple<Int, Int, List<Course>>>> = remember(
         coursesByDay, showNonCurrentWeek, dataVersion, holidayVersion,
-        workswapIndex, semesterStartMonday, totalWeeks, teachingWeekReorganizations
+        workswapIndex, semesterStartMonday, totalWeeks, teachingWeekReorganizations,
+        followPositionFor,
     ) {
         if (totalWeeks <= 0) emptyMap()
         else HashMap<Int, Map<Int, Triple<Int, Int, List<Course>>>>(totalWeeks).apply {
@@ -531,8 +557,9 @@ fun MainScheduleScreen(
                     val dateForDay = dateForTeachingPosition(weekForPage, dayOfWeek)
                         ?: return@associateWith Triple(dayOfWeek, weekForPage, emptyList())
                     val swapForDay = workswapIndex[dateForDay.toString()]
-                    val displayDay = swapForDay?.followWeekday?.takeIf { it in 1..7 } ?: dayOfWeek
-                    val displayWeek = swapForDay?.followWeek?.takeIf { it > 0 } ?: weekForPage
+                    val follow = swapForDay?.let { followPositionFor(it) }
+                    val displayDay = follow?.second ?: dayOfWeek
+                    val displayWeek = follow?.first ?: weekForPage
                     val dayCourses = coursesByDay[displayDay] ?: emptyList()
                     val filtered = if (showNonCurrentWeek) dayCourses
                     else dayCourses.filter { it.isActiveInWeek(displayWeek) }
@@ -553,6 +580,7 @@ fun MainScheduleScreen(
         semesterStartMonday,
         totalWeeks,
         teachingWeekReorganizations,
+        followPositionFor,
     ) {
         if (totalWeeks <= 0 || !holidayEndCourseExclusion.enabled) {
             emptyMap()
@@ -572,7 +600,7 @@ fun MainScheduleScreen(
                             emptySet()
                         } else {
                             val swapForDay = workswapIndex[dateForDay.toString()]
-                            val displayWeek = swapForDay?.followWeek?.takeIf { it > 0 } ?: weekForPage
+                            val displayWeek = swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
                             (weekFilteredCourses[page]?.get(dayOfWeek)?.third ?: emptyList())
                                 .asSequence()
                                 .filter { it.isActiveInWeek(displayWeek) }
@@ -604,6 +632,7 @@ fun MainScheduleScreen(
         semesterStartMonday,
         totalWeeks,
         teachingWeekReorganizations,
+        followPositionFor,
     ) {
         if (totalWeeks <= 0 || !holidayBeforeCourseExclusion.enabled) {
             emptyMap()
@@ -623,7 +652,7 @@ fun MainScheduleScreen(
                             emptySet()
                         } else {
                             val swapForDay = workswapIndex[dateForDay.toString()]
-                            val displayWeek = swapForDay?.followWeek?.takeIf { it > 0 } ?: weekForPage
+                            val displayWeek = swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
                             HolidayCourseExclusion.cancelledCourseIdsOnDate(
                                 entriesByYear = holidayEntriesByYear,
                                 date = dateForDay,
@@ -642,7 +671,8 @@ fun MainScheduleScreen(
     }
     // page -> dayOfWeek -> (isHoliday, isWorkSwap)，同样预计算
     val weekDayFlags: Map<Int, Map<Int, Pair<Boolean, Boolean>>> = remember(
-        semesterStartMonday, holidayIndex, workswapIndex, totalWeeks, teachingWeekReorganizations
+        semesterStartMonday, holidayIndex, workswapIndex, totalWeeks, teachingWeekReorganizations,
+        followPositionFor,
     ) {
         if (totalWeeks <= 0) emptyMap()
         else HashMap<Int, Map<Int, Pair<Boolean, Boolean>>>(totalWeeks).apply {
@@ -653,7 +683,7 @@ fun MainScheduleScreen(
                         ?: return@associateWith (false to false)
                     val isHoliday = holidayIndex[dateForDay.toString()] != null
                     val isWorkSwap = workswapIndex[dateForDay.toString()]
-                        ?.followWeekday?.takeIf { it in 1..7 } != null
+                        ?.let { followPositionFor(it) != null } ?: false
                     isHoliday to isWorkSwap
                 })
             }
@@ -918,8 +948,15 @@ fun MainScheduleScreen(
                     // 长按瞬间同步推一次，避免“停滑冲刷”晚于长按导致上层拿到旧页 dayBounds（菜单错位/浮层消失）
                     fun buildGridGeometry(): ScheduleGridGeometry {
                         val boundsMap = mutableMapOf<Int, FloatArray>()
+                        val dataMap = mutableMapOf<Int, Pair<Int, Int>>()
+                        val blocked = mutableSetOf<Int>()
                         for (i in 1..7) {
                             dayBoundsArray[i]?.let { boundsMap[i] = it }
+                            weekFilteredCourses[page]?.get(i)?.let { info ->
+                                dataMap[i] = info.first to info.second
+                            }
+                            // 教学周重组休课日：dateForPosition 返回 null，该列永远空白
+                            if (dateForTeachingPosition(week, i) == null) blocked.add(i)
                         }
                         return ScheduleGridGeometry(
                             dayBounds = boundsMap,
@@ -927,7 +964,9 @@ fun MainScheduleScreen(
                             morningSections = morningSections,
                             afternoonSections = afternoonSections,
                             eveningSections = eveningSections,
-                            showBreakDividers = showBreakDividers
+                            showBreakDividers = showBreakDividers,
+                            columnDataPosition = dataMap,
+                            blockedColumns = blocked,
                         )
                     }
                     val pushFreshGeometry by rememberUpdatedState {
@@ -1040,30 +1079,40 @@ fun MainScheduleScreen(
                                         onPopupStateChange(true)
                                     }
                                 }
+                            // 教学周重组的休课日列永远渲染为空：往里加/粘的课在课表与今日页都看不见
+                            // 键里带上 dateForTeachingPosition：它自己随重组数据重建，
+                            // 否则改完教学周重组回主页会继续用旧判断（漏拦/误拦）
+                            val pausedColumn = remember(page, dayOfWeek, dateForTeachingPosition) {
+                                dateForTeachingPosition(week, dayOfWeek) == null
+                            }
                             val stableOnEmptyClick: (Int) -> Unit =
-                                remember(dayOfWeek, addDayForCol, addWeekForCol) {
+                                remember(dayOfWeek, addDayForCol, addWeekForCol, pausedColumn) {
                                     { section ->
-                                        val defaultWeeks =
-                                            if (addWeekForCol > 0) setOf(addWeekForCol) else emptySet()
-                                        viewModel.showAddDialog(addDayForCol, section, null, defaultWeeks)
+                                        if (!pausedColumn) {
+                                            val defaultWeeks =
+                                                if (addWeekForCol > 0) setOf(addWeekForCol) else emptySet()
+                                            viewModel.showAddDialog(addDayForCol, section, null, defaultWeeks)
+                                        }
                                     }
                                 }
                             val stableOnEmptyLongPress: (Int, Float, Float, Float, Float) -> Unit =
-                                remember(dayOfWeek, addDayForCol, addWeekForCol, onEmptyLongPress) {
+                                remember(dayOfWeek, addDayForCol, addWeekForCol, onEmptyLongPress, pausedColumn) {
                                     { section, centerX, cellTopY, width, height ->
-                                        // 长按进菜单时清掉 pending，避免两层交互叠加
-                                        pendingDay = -1
-                                        pendingSection = -1
-                                        onEmptyLongPress(
-                                            dayOfWeek,
-                                            section,
-                                            centerX,
-                                            cellTopY,
-                                            width,
-                                            height,
-                                            addDayForCol,
-                                            addWeekForCol,
-                                        )
+                                        if (!pausedColumn) {
+                                            // 长按进菜单时清掉 pending，避免两层交互叠加
+                                            pendingDay = -1
+                                            pendingSection = -1
+                                            onEmptyLongPress(
+                                                dayOfWeek,
+                                                section,
+                                                centerX,
+                                                cellTopY,
+                                                width,
+                                                height,
+                                                addDayForCol,
+                                                addWeekForCol,
+                                            )
+                                        }
                                     }
                                 }
                             val stableOnCourseLongPress: (Course, Float, Float, Float, Float, com.kyant.backdrop.Backdrop?, Int) -> Unit =

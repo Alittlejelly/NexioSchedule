@@ -489,17 +489,20 @@ class CourseRepository private constructor(context: Context) {
     /**
      * 调课-移动：仅影响该周。单周直接改位置；多周拆分；目标已有同源则合并。
      * 通知由 ViewModel 统一处理，避免竞态。
+     * @param targetWeek 目标位周次；调休列的 followWeek 与源周不同时为跨周移动，默认同周
      */
     fun moveCourseForWeek(
         sourceCourseId: String,
         week: Int,
         targetDayOfWeek: Int,
         targetStartSection: Int,
-        targetEndSection: Int
+        targetEndSection: Int,
+        targetWeek: Int = week
     ): List<Course> {
         val courses = getAllCourses()
         val result = moveWeekInPlace(
-            courses, sourceCourseId, week, targetDayOfWeek, targetStartSection, targetEndSection
+            courses, sourceCourseId, week, targetDayOfWeek, targetStartSection, targetEndSection,
+            targetWeek
         ) ?: return courses
         saveCourses(result, notify = false)
         return result
@@ -507,13 +510,15 @@ class CourseRepository private constructor(context: Context) {
 
     /**
      * 调课-覆盖：按周删除目标位冲突课后移动。同源课不删，交给 move 合并。
+     * @param week 源课所在周；@param targetWeek 目标位周次（冲突课按它删）
      */
     fun overwriteCourseForWeek(
         sourceCourseId: String,
         week: Int,
         targetDayOfWeek: Int,
         targetStartSection: Int,
-        targetEndSection: Int
+        targetEndSection: Int,
+        targetWeek: Int = week
     ): List<Course> {
         val courses = getAllCourses().toMutableList()
         val source = courses.find { it.id == sourceCourseId } ?: return courses
@@ -532,7 +537,7 @@ class CourseRepository private constructor(context: Context) {
                 existing.startSection <= targetEndSection &&
                 existing.endSection >= targetStartSection
             }
-            .filter { existing -> week in resolveSelectedWeeks(existing) }
+            .filter { existing -> targetWeek in resolveSelectedWeeks(existing) }
             .map { it.id }
             .toList()
 
@@ -540,7 +545,7 @@ class CourseRepository private constructor(context: Context) {
         for (id in conflictIds) {
             val idx = result.indexOfFirst { it.id == id }
             if (idx == -1) continue
-            val updated = removeWeekFrom(result[idx], week, resetWeekType = true)
+            val updated = removeWeekFrom(result[idx], targetWeek, resetWeekType = true)
             if (updated == null) {
                 result.removeAt(idx)
             } else {
@@ -549,14 +554,17 @@ class CourseRepository private constructor(context: Context) {
         }
         // 先落盘中间结果，避免 moveCourseForWeek 重读旧数据
         saveCourses(result, notify = false)
-        return moveCourseForWeek(sourceCourseId, week, targetDayOfWeek, targetStartSection, targetEndSection)
+        return moveCourseForWeek(
+            sourceCourseId, week, targetDayOfWeek, targetStartSection, targetEndSection, targetWeek
+        )
     }
 
     /** 调课-交换：双方各拆出该周实例互换；与对方原位同源时同样走合并 */
     fun swapCoursesForWeek(
         sourceCourseId: String,
         targetCourseId: String,
-        week: Int
+        week: Int,
+        targetWeek: Int = week
     ): List<Course> {
         if (sourceCourseId == targetCourseId) return getAllCourses()
         val courses = getAllCourses().toMutableList()
@@ -571,12 +579,27 @@ class CourseRepository private constructor(context: Context) {
 
         val srcWeeks = resolveSelectedWeeks(src)
         val tgtWeeks = resolveSelectedWeeks(tgt)
-        if (week !in srcWeeks || week !in tgtWeeks) return courses
+        if (week !in srcWeeks || targetWeek !in tgtWeeks) return courses
+
+        // 同源课（同名/同教室/同教师）在双方都在的该周互换：位置换了、内容一样，视觉不变 → 跳过。
+        // 注意必须再比一次节次跨度：占 2 节的课和占 1 节的同名课互换是有实际效果的，不能跳过
+        val srcAtTarget = src.copy(
+            dayOfWeek = tgtPos.first,
+            startSection = tgtPos.second,
+            endSection = tgtPos.third
+        )
+        val sameSpan =
+            (src.endSection - src.startSection) == (tgt.endSection - tgt.startSection)
+        if (sameSpan && isSameCourseIdentity(srcAtTarget, tgt)) return courses
 
         var result: MutableList<Course> = courses
-        moveWeekInPlace(result, src.id, week, tgtPos.first, tgtPos.second, tgtPos.third)?.let { result = it }
+        moveWeekInPlace(
+            result, src.id, week, tgtPos.first, tgtPos.second, tgtPos.third, targetWeek
+        )?.let { result = it }
         // 第一步后源可能已拆分，src.id 仍在原课程（已移除该周）
-        moveWeekInPlace(result, tgt.id, week, srcPos.first, srcPos.second, srcPos.third)?.let { result = it }
+        moveWeekInPlace(
+            result, tgt.id, targetWeek, srcPos.first, srcPos.second, srcPos.third, week
+        )?.let { result = it }
 
         saveCourses(result, notify = false)
         return result
@@ -584,6 +607,8 @@ class CourseRepository private constructor(context: Context) {
 
     /**
      * 按周移动的拆分+合并（原地、不落盘）。
+     * @param targetWeek 目标位周次；默认与 week 相同 = 同周内移动。调休列的 followWeek
+     * 与源周不同时走跨周：源课剔除 week、目标位写入 targetWeek
      * @return 新列表；无需改动时返回 null，调用方跳过落盘
      */
     private fun moveWeekInPlace(
@@ -592,20 +617,41 @@ class CourseRepository private constructor(context: Context) {
         week: Int,
         targetDayOfWeek: Int,
         targetStartSection: Int,
-        targetEndSection: Int
+        targetEndSection: Int,
+        targetWeek: Int = week
     ): MutableList<Course>? {
         val result = courses.toMutableList()
         val sourceIdx = result.indexOfFirst { it.id == sourceCourseId }
         if (sourceIdx == -1) return null
         val source = result[sourceIdx]
 
-        if (source.dayOfWeek == targetDayOfWeek &&
-            source.startSection == targetStartSection &&
-            source.endSection == targetEndSection
-        ) return null
+        val samePosition =
+            source.dayOfWeek == targetDayOfWeek &&
+                source.startSection == targetStartSection &&
+                source.endSection == targetEndSection
+        // 同位置同周 = 无事可做
+        if (samePosition && targetWeek == week) return null
 
         val currentSelectedWeeks = resolveSelectedWeeks(source)
         if (week !in currentSelectedWeeks) return null
+
+        if (samePosition) {
+            // 目标周本来就有这节课：挪过去是同一格同一内容，净效果只是让源周凭空少一节
+            // （用户视角 = 拖了一下课没了）→ 判为无事可做，不落盘
+            if (targetWeek in currentSelectedWeeks) return null
+            // 同位置跨周（调休列：同一天、不同周次）→ 只挪周次，
+            // 不拆成两条同槽记录（拆了也只是并回来，平白多一条）
+            val newWeeks = (currentSelectedWeeks.filter { it != week } + targetWeek)
+                .distinct().sorted()
+            result[sourceIdx] = source.copy(
+                selectedWeeks = newWeeks,
+                startWeek = newWeeks.min(),
+                endWeek = newWeeks.max(),
+                weekType = Course.WEEK_TYPE_ALL,
+                lastModified = System.currentTimeMillis()
+            )
+            return result
+        }
 
         val targetTemp = source.copy(
             dayOfWeek = targetDayOfWeek,
@@ -621,7 +667,7 @@ class CourseRepository private constructor(context: Context) {
             // 合并周次进同源课程
             val mergeTarget = result[mergeTargetIdx]
             val mergeWeeks = resolveSelectedWeeks(mergeTarget).toMutableSet()
-            mergeWeeks.add(week)
+            mergeWeeks.add(targetWeek)
             val sortedWeeks = mergeWeeks.sorted()
             result[mergeTargetIdx] = mergeTarget.copy(
                 selectedWeeks = sortedWeeks,
@@ -645,11 +691,15 @@ class CourseRepository private constructor(context: Context) {
                 )
             }
         } else if (currentSelectedWeeks.size == 1 && currentSelectedWeeks.first() == week) {
-            // 源课程只在该周有效，直接改位置
+            // 源课程只在该周有效，直接改位置；跨周时周次一并换到目标周
             result[sourceIdx] = source.copy(
                 dayOfWeek = targetDayOfWeek,
                 startSection = targetStartSection,
                 endSection = targetEndSection,
+                selectedWeeks = if (targetWeek != week) listOf(targetWeek) else source.selectedWeeks,
+                startWeek = if (targetWeek != week) targetWeek else source.startWeek,
+                endWeek = if (targetWeek != week) targetWeek else source.endWeek,
+                weekType = if (targetWeek != week) Course.WEEK_TYPE_ALL else source.weekType,
                 lastModified = System.currentTimeMillis()
             )
         } else {
@@ -667,9 +717,9 @@ class CourseRepository private constructor(context: Context) {
                 dayOfWeek = targetDayOfWeek,
                 startSection = targetStartSection,
                 endSection = targetEndSection,
-                selectedWeeks = listOf(week),
-                startWeek = week,
-                endWeek = week,
+                selectedWeeks = listOf(targetWeek),
+                startWeek = targetWeek,
+                endWeek = targetWeek,
                 weekType = Course.WEEK_TYPE_ALL,
                 lastModified = System.currentTimeMillis()
             )
@@ -893,10 +943,38 @@ class CourseRepository private constructor(context: Context) {
         return hasWorkSwapOnDay(dayOfWeek, week)
     }
 
-    /** 待配置补班（followWeekday 未设置）不视为有课，避免智能周末误显示 */
+    /** 调休跟随解析结果：绝对日期 + 该日期在**当前课表**下对应的 (周次, 星期) */
+    data class WorkSwapFollow(val date: java.time.LocalDate, val week: Int, val weekday: Int)
+
+    /**
+     * 把调休条目的「跟随绝对日期」换算成当前课表的 (周次, 星期)。
+     *
+     * 关键点：存的是日期，周次每次按**当前课表**的学期开始时间现算。
+     * 切换课表 = 换学期开始时间 → 同一天算出不同周次 → 调休列自动改跟随那一周的课。
+     * （改之前存的是周次本身，换课表就整体错位，跟随到别的日期的课上去。）
+     *
+     * @return null = 这条调休还没配跟随日期
+     */
+    fun resolveWorkSwapFollow(
+        swap: HolidayManager.Entry,
+        scheduleId: String = getCurrentScheduleId(),
+    ): WorkSwapFollow? {
+        val date = swap.followLocalDate()
+            // 老数据/老备份没有 followDate：按当前课表把 (周次, 星期) 还原成日期再走同一条路
+            ?: runCatching { dateForTeachingWeekDay(swap.followWeek, swap.followWeekday, scheduleId) }
+                .getOrNull()
+                ?.takeIf { swap.followWeek > 0 && swap.followWeekday in 1..7 }
+            ?: return null
+        val position = teachingWeekPositionForDate(date, scheduleId)
+        // 教学周重组把这天标成休课日时拿不到 weekday，退回日历星期
+        val weekday = position.weekday ?: date.dayOfWeek.value
+        return WorkSwapFollow(date, position.week.toInt(), weekday)
+    }
+
+    /** 待配置补班（未配跟随日期）不视为有课，避免智能周末误显示 */
     fun hasWorkSwapOnDay(dayOfWeek: Int, week: Int): Boolean {
         val swap = workSwapEntryOnDay(dayOfWeek, week) ?: return false
-        return swap.followWeekday in 1..7
+        return resolveWorkSwapFollow(swap) != null
     }
 
     /**
@@ -907,10 +985,9 @@ class CourseRepository private constructor(context: Context) {
         if (dayOfWeek !in 1..7) return false
         if (getAllCourses().any { it.dayOfWeek == dayOfWeek && it.isActiveInWeek(week) }) return true
         val swap = workSwapEntryOnDay(dayOfWeek, week) ?: return false
-        if (swap.followWeekday !in 1..7) return false
-        val mappedWeek = if (swap.followWeek > 0) swap.followWeek else week
+        val follow = resolveWorkSwapFollow(swap) ?: return false
         return getAllCourses().any {
-            it.dayOfWeek == swap.followWeekday && it.isActiveInWeek(mappedWeek)
+            it.dayOfWeek == follow.weekday && it.isActiveInWeek(follow.week)
         }
     }
 
@@ -1887,12 +1964,25 @@ class CourseRepository private constructor(context: Context) {
     /**
      * 保存某个作息方案的时间数据，并广播变更让课表页重算。
      * 节次骨架不在这里改——它属于课表，由时间配置页统一管理。
+     *
+     * @return false 表示没找到目标作息、什么都没写（withRoutineReplaced 静默返回原值）。
+     * 曾经有「保存成功但课表纹丝不动」的反馈无法复现，命中不到时必须留下日志。
      */
-    fun saveRoutine(routineId: Long, edited: TimeConfig, nameOverride: String? = null) {
+    fun saveRoutine(routineId: Long, edited: TimeConfig, nameOverride: String? = null): Boolean {
         val scheduleId = getCurrentScheduleId()
         val base = getTimeConfig(getScheduleTimeConfigId(scheduleId))
-        saveTimeConfig(base.withRoutineReplaced(routineId, edited.routineOf(routineId, nameOverride)))
+        val routine = edited.routineOf(routineId, nameOverride)
+        if (base.routineById(routineId) == null) {
+            android.util.Log.w(
+                TAG,
+                "saveRoutine: 目标作息不存在 config=${base.id} routineId=$routineId " +
+                    "现有=${base.safeRoutines.map { it.id }}，本次保存被丢弃"
+            )
+            return false
+        }
+        saveTimeConfig(base.withRoutineReplaced(routineId, routine))
         notifyCourseChanged("settings")
+        return true
     }
 
     fun deleteTimeConfig(id: Long) {

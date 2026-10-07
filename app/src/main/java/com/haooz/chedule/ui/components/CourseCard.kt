@@ -161,8 +161,9 @@ fun CourseCard(
         )
         if (!sinkPressed) sinkActive = false
     }
+
+    val lastRippleToken = remember { mutableIntStateOf(landRipple.token) }
     if (landRipple.token != 0) {
-        val lastRippleToken = remember { mutableIntStateOf(landRipple.token) }
         LaunchedEffect(landRipple.token) {
             if (landRipple.token == lastRippleToken.intValue) return@LaunchedEffect
             lastRippleToken.intValue = landRipple.token

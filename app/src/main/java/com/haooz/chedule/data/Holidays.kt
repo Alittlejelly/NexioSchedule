@@ -45,6 +45,7 @@ object HolidayManager {
     private const val KEY_BEFORE_EXCLUSION_END_SECTION = "before_course_exclusion_end_section"
     private const val BACKUP_SCHEMA_VERSION = 1
     private const val BACKUP_SCHEMA_VERSION_KEY = "schema_version"
+    private const val KEY_FOLLOW_DATE_MIGRATED = "follow_date_migrated"
     private val _dataRevision = MutableStateFlow(0L)
     val dataRevision = _dataRevision.asStateFlow()
     const val TYPE_HOLIDAY = 0
@@ -61,7 +62,17 @@ object HolidayManager {
         val endDate: String = "",
         val name: String,
         val type: Int,
+        /**
+         * 调休「上哪一天的课」的**绝对日期**（yyyy-MM-dd，空 = 未配置）。
+         *
+         * ⚠ 这是唯一可信来源。周次是相对「课表学期开始时间」算出来的，同一对 (周次,星期)
+         * 在不同课表下指向完全不同的日期 —— 早先存 followWeek/followWeekday 导致一切换课表
+         * 调休列就跟错课。现在存绝对日期，读取时按**当前课表**实时换算，换课表自动跟随。
+         */
+        val followDate: String = "",
+        /** 旧数据兼容：仅用于迁移/老备份还原，读取一律走 [followDate] */
         val followWeek: Int = -1,
+        /** 旧数据兼容：仅用于迁移/老备份还原，读取一律走 [followDate] */
         val followWeekday: Int = -1,
         val custom: Boolean = false,
     ) {
@@ -76,8 +87,18 @@ object HolidayManager {
             return !targetDate.isBefore(startDate) && !targetDate.isAfter(lastDate)
         }
 
+        /** 调休跟随的绝对日期；未配置/格式坏 → null */
+        fun followLocalDate(): LocalDate? =
+            followDate.takeIf { it.isNotBlank() }
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+        /** 是否已配好跟随日期（老数据用 followWeek/followWeekday 也暂时算已配，等迁移） */
+        fun hasFollowMapping(): Boolean =
+            followLocalDate() != null || (followWeek > 0 && followWeekday in 1..7)
+
         fun toJson() = JSONObject().apply {
             put("date", date); put("endDate", endDate); put("name", name); put("type", type)
+            put("followDate", followDate)
             put("followWeek", followWeek); put("followWeekday", followWeekday); put("custom", custom)
         }
     }
@@ -454,12 +475,16 @@ object HolidayManager {
         if (!isStoredOptionalIntValid(item.opt("followWeek"), item.has("followWeek"))) return null
         if (!isStoredOptionalIntValid(item.opt("followWeekday"), item.has("followWeekday"))) return null
         if (!isStoredOptionalBooleanValid(item.opt("custom"), item.has("custom"))) return null
+        val followDate = if (item.has("followDate")) {
+            item.opt("followDate") as? String ?: return null
+        } else ""
 
         val entry = Entry(
             date = date,
             endDate = endDate,
             name = name,
             type = (typeValue as Number).toInt(),
+            followDate = followDate,
             followWeek = item.optInt("followWeek", -1),
             followWeekday = item.optInt("followWeekday", -1),
             custom = item.optBoolean("custom"),
@@ -483,6 +508,9 @@ object HolidayManager {
         }
         if (entry.type == TYPE_WORKSWAP) {
             if (endDate != startDate) return false
+            if (entry.followDate.isNotBlank() &&
+                runCatching { LocalDate.parse(entry.followDate) }.isFailure
+            ) return false
             if (entry.followWeek != -1 && entry.followWeek !in 1..52) return false
             if (entry.followWeekday != -1 && entry.followWeekday !in 1..7) return false
         }
@@ -512,8 +540,20 @@ object HolidayManager {
         val custom = if (item.has("custom")) {
             backupJsonBoolean(item.get("custom")) ?: return null
         } else false
-        return Entry(date, endDate, name, type, followWeek, followWeekday, custom)
-            .takeIf(::isValidEntry)
+        // 老备份没有 followDate：留空，由 followWeek/followWeekday 在迁移时补
+        val followDate = if (item.has("followDate")) {
+            backupString(item.get("followDate")) ?: return null
+        } else ""
+        return Entry(
+            date = date,
+            endDate = endDate,
+            name = name,
+            type = type,
+            followDate = followDate,
+            followWeek = followWeek,
+            followWeekday = followWeekday,
+            custom = custom,
+        ).takeIf(::isValidEntry)
     }
 
     private fun backupString(value: JsonElement?): String? =
@@ -734,7 +774,7 @@ object HolidayManager {
      * [mergeApiEntries] 原样保留，不会被覆盖。
      */
     fun suggestWorkSwapFollowTargets(context: Context, entries: List<Entry>): List<Entry> {
-        val swaps = entries.filter { it.type == TYPE_WORKSWAP && it.followWeekday !in 1..7 }
+        val swaps = entries.filter { it.type == TYPE_WORKSWAP && it.followLocalDate() == null }
         if (swaps.isEmpty()) return entries
 
         // 节日名 → 该段假期的全部日期（展开 date ~ endDate）
@@ -793,17 +833,69 @@ object HolidayManager {
         }
         if (assigned.isEmpty()) return entries
 
-        val repository = CourseRepository(context)
-        // 超出学期总周数的周次不该写进去（UI 会校验 1..总周数，越界值用户保存不了）
-        val maxWeek = runCatching { repository.getTotalWeeks() }.getOrDefault(52).coerceIn(1, 52)
         return entries.map { entry ->
             val target = assigned[entry] ?: return@map entry
-            val week = runCatching { repository.getLiveTeachingWeek(target) }.getOrDefault(0)
-            entry.copy(
-                followWeek = week.takeIf { it in 1..maxWeek } ?: -1,
-                followWeekday = target.dayOfWeek.value,
-            )
+            // 存绝对日期：周次留空，读取时按当前课表实时换算，换课表不再错位
+            entry.copy(followDate = target.toString())
         }
+    }
+
+    /**
+     * 一次性迁移：旧数据存的是「第几周 + 星期几」（相对课表的周次），一切换课表就指向别的日期。
+     * 这里把它换算成绝对日期写进 followDate，之后周次一律按当前课表实时推算。
+     *
+     * 自愈规则：补班日跟随的那一天**必须是放假的日子**，否则这个映射一定是错的
+     * （典型症状：换了课表/改过学期开始时间后，跟随日跑到假期外去了）→ 直接改用建议值重算。
+     */
+    @Synchronized
+    fun migrateLegacyFollowDates(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_FOLLOW_DATE_MIGRATED, false)) return
+        val repository = runCatching { CourseRepository(context) }.getOrNull() ?: return
+        val byYear = loadAllByYear(context)
+        val allEntries = byYear.values.flatten()
+        val legacy = allEntries.filter {
+            it.type == TYPE_WORKSWAP && it.followDate.isBlank() &&
+                it.followWeek > 0 && it.followWeekday in 1..7
+        }
+        if (legacy.isEmpty()) {
+            prefs.edit { putBoolean(KEY_FOLLOW_DATE_MIGRATED, true) }
+            return
+        }
+        // 建议值按日期算，天然不随课表漂移，用它替换掉判定为失效的旧映射。
+        // 建议算法只处理「还没配映射」的条目，所以先把待迁移条目的旧周次清掉再喂进去
+        val suggestionInput = allEntries.map {
+            if (it in legacy) it.copy(followWeek = -1, followWeekday = -1) else it
+        }
+        val suggested = runCatching { suggestWorkSwapFollowTargets(context, suggestionInput) }
+            .getOrDefault(suggestionInput)
+            .associateBy { it.date }
+        val years = byYear.filterValues { entries ->
+            entries.any { it in legacy }
+        }.keys
+        updateEntries(context, years) { current ->
+            current.mapValues { (_, entries) ->
+                entries.map { entry ->
+                    if (entry !in legacy) return@map entry
+                    val derived = runCatching {
+                        repository.dateForTeachingWeekDay(entry.followWeek, entry.followWeekday)
+                    }.getOrNull()
+                    val derivedIsHoliday = derived != null && allEntries.any {
+                        it.type == TYPE_HOLIDAY && it.matches(derived.toString())
+                    }
+                    when {
+                        // 跟随日确实在假期里 → 旧映射可信，原样换算成日期
+                        derivedIsHoliday -> entry.copy(followDate = derived.toString())
+                        // 失效 → 用建议值（没有建议就还是换算，至少让用户能看见并手改）
+                        else -> entry.copy(
+                            followDate = suggested[entry.date]?.followDate
+                                ?: derived?.toString().orEmpty()
+                        )
+                    }
+                }
+            }
+        }
+        prefs.edit { putBoolean(KEY_FOLLOW_DATE_MIGRATED, true) }
     }
 }
 

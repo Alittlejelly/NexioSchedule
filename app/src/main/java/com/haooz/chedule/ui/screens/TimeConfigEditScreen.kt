@@ -249,7 +249,12 @@ fun TimeConfigEditScreen(
     var afternoonSections by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonSections) }
     var eveningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.eveningSections) }
 
-    var quickTimeEnabled by remember(timeConfig) { mutableStateOf(timeConfig.quickTimeEnabled) }
+    // 快捷设置开关只控制参数卡片展开，不落数据层。
+    // 数据层的 quickTimeEnabled 是"课表按参数实时计算"的总开关：为 true 时课表
+    // 完全无视 sectionTimes，为 false 且 sectionTimes 为空时会掉回内置默认时间。
+    // 曾经就因为开关把 false 落库、而用户时间只存在参数里，导致"更新后校时变回默认"。
+    // 所以这里与数据层字段解耦；保存时见下方 quickTimeEnabled = false 的迁移注释。
+    var quickExpanded by remember(timeConfig) { mutableStateOf(timeConfig.quickTimeEnabled) }
     var classDuration by remember(timeConfig) { mutableIntStateOf(timeConfig.classDuration) }
     var shortBreak by remember(timeConfig) { mutableIntStateOf(timeConfig.shortBreak) }
     var longBreakEnabled by remember(timeConfig) { mutableStateOf(timeConfig.longBreakEnabled) }
@@ -741,7 +746,12 @@ fun TimeConfigEditScreen(
                                                 morningSections = morningSections,
                                                 afternoonSections = afternoonSections,
                                                 eveningSections = eveningSections,
-                                                quickTimeEnabled = quickTimeEnabled,
+                                                // 保存统一落 sectionTimes（所见即所存），quickTimeEnabled
+                                                // 恒为 false：老数据若为 true，本次保存即完成迁移——
+                                                // 编辑页显示值（morningTimes 等）本来就来自参数实时计算，
+                                                // 落成 sectionTimes 后课表不再依赖 quickTimeEnabled，
+                                                // 从此开关状态、节次手改都不会再互相打架。
+                                                quickTimeEnabled = false,
                                                 classDuration = classDuration,
                                                 shortBreak = shortBreak,
                                                 longBreakEnabled = longBreakEnabled,
@@ -868,11 +878,11 @@ fun TimeConfigEditScreen(
 
                                 item(key = "quick_settings") {
                                     val bottomEndRadius by animateDpAsState(
-                                        if (quickTimeEnabled) 32.dp else 20.dp,
+                                        if (quickExpanded) 32.dp else 20.dp,
                                         label = "bottomEnd"
                                     )
                                     val bottomStartRadius by animateDpAsState(
-                                        if (quickTimeEnabled) 32.dp else 20.dp,
+                                        if (quickExpanded) 32.dp else 20.dp,
                                         label = "bottomStart"
                                     )
                                     val cardModifier = Modifier.fillMaxWidth().squircleSurface(
@@ -891,7 +901,7 @@ fun TimeConfigEditScreen(
                                             Row(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .clickable {
-                                                        quickTimeEnabled = !quickTimeEnabled
+                                                        quickExpanded = !quickExpanded
                                                     }
                                                     .padding(horizontal = 16.dp, vertical = 14.dp),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -904,11 +914,11 @@ fun TimeConfigEditScreen(
                                                     color = MiuixTheme.colorScheme.onSurface
                                                 )
                                                 Switch(
-                                                    checked = quickTimeEnabled,
-                                                    onCheckedChange = { quickTimeEnabled = it })
+                                                    checked = quickExpanded,
+                                                    onCheckedChange = { quickExpanded = it })
                                             }
                                             AnimatedVisibility(
-                                                visible = quickTimeEnabled,
+                                                visible = quickExpanded,
                                                 enter = expandVertically(),
                                                 exit = shrinkVertically()
                                             ) {

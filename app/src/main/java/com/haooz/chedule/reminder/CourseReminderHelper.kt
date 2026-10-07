@@ -1042,7 +1042,7 @@ object CourseReminderHelper {
     ): Boolean {
         val hasTeachingPosition = !datePosition.isReorganizationPause && datePosition.weekday != null
         val explicitlyMappedPause = workSwapEntry?.let {
-            it.type == HolidayManager.TYPE_WORKSWAP && it.followWeek > 0 && it.followWeekday in 1..7
+            it.type == HolidayManager.TYPE_WORKSWAP && it.hasFollowMapping()
         } == true
         return (hasTeachingPosition || explicitlyMappedPause) &&
             displayWeek in 1..totalWeeks && displayWeek <= lastWeekWithCourses
@@ -1075,11 +1075,13 @@ object CourseReminderHelper {
         val holidayEntries = HolidayManager.entriesForDate(entriesByYear, date)
         val targetEntry = holidayEntries.firstOrNull { it.type == HolidayManager.TYPE_WORKSWAP }
         val datePosition = repository.teachingWeekPositionForDate(date)
-        val isWorkSwap = targetEntry?.followWeekday?.let { it in 1..7 } == true
-        val displayDay = targetEntry?.followWeekday?.takeIf { it in 1..7 }
+        // 跟随绝对日期 → 按当前课表换算成 (周次, 星期)；换课表自动跟随那一周的课
+        val follow = targetEntry?.let { repository.resolveWorkSwapFollow(it) }
+        val isWorkSwap = follow != null
+        val displayDay = follow?.weekday
             ?: datePosition.weekday ?: calendarDay
-        // 未配置调休覆盖时，用教学周映射相对今天的偏移，并避免今日调休 followWeek 污染。
-        val displayWeek = targetEntry?.followWeek?.takeIf { it > 0 }
+        // 未配置调休覆盖时，用教学周映射相对今天的偏移，并避免今日调休跟随周次污染。
+        val displayWeek = follow?.week
             ?: alignedStoredWeekForDate(repository, date)
         val exclusion = HolidayManager.loadEndCourseExclusion(context)
         val beforeExclusion = HolidayManager.loadBeforeCourseExclusion(context)
