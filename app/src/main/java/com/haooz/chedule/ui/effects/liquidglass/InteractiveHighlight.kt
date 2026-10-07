@@ -42,6 +42,15 @@ class InteractiveHighlight(
      */
     val radiusBaseDp: Dp? = null,
     /**
+     * 是否**固定**光晕半径、不再与节点 minDimension 取 min。
+     *
+     * 默认 false：半径取 min(自身尺寸, [radiusBaseDp])，防止大基准在小按钮上漫出圆外。
+     * 传 true 则 [radiusBaseDp] 原样生效，用于**面板本身很小、但光晕需要固定大小**的场合
+     * （如 ShortcutMenu：面板高约 84dp，minOf 会把 150dp 基准夹成 84dp，光晕明显偏小）。
+     * true 时必须给 [radiusBaseDp]，否则回退节点 minDimension。
+     */
+    val fixedRadius: Boolean = false,
+    /**
      * 按压进度改由**外部状态**驱动（非 null 时忽略自身手势与弹簧）。
      *
      * 用于不能挂手势的场景：全屏手势层压在最上层会挡住下层兄弟节点
@@ -125,8 +134,12 @@ half4 main(float2 coord) {
             val progress = pressProgressOverride?.invoke() ?: pressProgressAnimation.value
             if (progress > 0f) {
                 // 半径/圆心两分支共用，避免 shader 与 Brush 各算一份漂移掉
-                val base = radiusBaseDp?.let { minOf(size.minDimension, it.toPx()) }
-                    ?: size.minDimension
+                // fixedRadius=true 时原样用 radiusBaseDp，跳过与节点尺寸取 min
+                val base = when {
+                    radiusBaseDp == null -> size.minDimension
+                    fixedRadius -> radiusBaseDp.toPx()
+                    else -> minOf(size.minDimension, radiusBaseDp.toPx())
+                }
                 val radius = base * 1.5f * radiusScale()
                 val pos = position(size, positionAnimation.value)
                 val haloCenter = Offset(

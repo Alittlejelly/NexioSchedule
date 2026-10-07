@@ -123,16 +123,32 @@ internal fun computeDragTransform(
     )
 }
 
-/** 菜单项登记信息：面板局部坐标下的纵向区间 + 点击动作 */
+/**
+ * 滑选轴向。
+ *
+ * 竖排弹窗/侧栏按 Y 滑选（默认），横排面板（如课程长按的快捷条）按 X 滑选。
+ * 状态上带轴向而不是各调用点各传一次：登记区间、命中测试、手势取坐标三处
+ * 必须同轴，分开传迟早会漂。
+ */
+enum class DragSelectAxis { Vertical, Horizontal }
+
+/** 菜单项登记信息：面板局部坐标下**沿滑选轴**的区间 + 点击动作 */
 class DropdownPanelEntry internal constructor() {
-    internal var top = 0f
-    internal var bottom = 0f
+    /**
+     * 沿滑选轴的起止（不含 graphicsLayer 变换的 root 坐标减面板原点）。
+     * 竖轴 = 上下缘，横轴 = 左右缘 —— 同一对字段，一套命中测试。
+     */
+    internal var start = 0f
+    internal var end = 0f
     internal var action: (() -> Unit)? = null
     internal var enabled = true
 }
 
 /** 跟手滑选状态。由面板内容层创建，经 [LocalDropdownPanelDragSelect] 下发给菜单项 */
-class DropdownPanelDragSelectState internal constructor() {
+class DropdownPanelDragSelectState internal constructor(
+    /** 滑选轴向；横排面板传 [DragSelectAxis.Horizontal]，默认竖排 */
+    val axis: DragSelectAxis = DragSelectAxis.Vertical,
+) {
     private val entries = mutableStateListOf<DropdownPanelEntry>()
 
     /** 当前命中的项；null = 松手不执行，菜单保持展开 */
@@ -148,8 +164,11 @@ class DropdownPanelDragSelectState internal constructor() {
     var fitsOnScreen by mutableStateOf(true)
         internal set
 
-    /** 面板顶端在 root 里的 y，供菜单项把 boundsInRoot 换算成面板局部坐标 */
+    /** 面板顶端在 root 里的 y，供菜单项把 boundsInRoot 换算成面板局部坐标（竖轴） */
     var panelTopInRoot by mutableFloatStateOf(0f)
+
+    /** 面板左缘在 root 里的 x（横轴用，竖轴不读） */
+    var panelLeftInRoot by mutableFloatStateOf(0f)
 
     internal fun register(entry: DropdownPanelEntry) {
         if (!entries.contains(entry)) entries.add(entry)
@@ -160,14 +179,14 @@ class DropdownPanelDragSelectState internal constructor() {
         if (selected === entry) selected = null
     }
 
-    internal fun updateBounds(entry: DropdownPanelEntry, top: Float, bottom: Float) {
-        entry.top = top
-        entry.bottom = bottom
+    internal fun updateBounds(entry: DropdownPanelEntry, start: Float, end: Float) {
+        entry.start = start
+        entry.end = end
     }
 
-    /** @param y 面板局部 y；@return 命中的项，null = 空白处 */
-    internal fun hitTest(y: Float): DropdownPanelEntry? {
-        val hit = entries.firstOrNull { it.enabled && y >= it.top && y < it.bottom }
+    /** @param position 沿滑选轴的面板局部坐标（竖轴 y / 横轴 x）；@return 命中的项，null = 空白处 */
+    internal fun hitTest(position: Float): DropdownPanelEntry? {
+        val hit = entries.firstOrNull { it.enabled && position >= it.start && position < it.end }
         selected = hit
         return hit
     }
@@ -184,6 +203,9 @@ internal val LocalDropdownPanelDragSelect =
  * 面板上**唯一**的手势状态：按下 → 命中 → 逐帧改命中 → 松手执行。
  * 菜单项上不能再挂 clickable —— 两个手势状态互相抢事件正是「先按住再滑动会跳状态」的根因。
  *
+ * 命中沿 [DragSelectAxis] 轴取坐标：竖排面板（下拉菜单/侧栏）用 y，
+ * 横排面板（课程快捷条）用 x —— 三处（登记/命中/手势）同轴由状态保证。
+ *
  * 收起态不接管（面板太小、没有项可选），也不消费 down 事件，收起态点按展开仍走触发区
  * 原有的 clickable。
  *
@@ -196,6 +218,9 @@ fun Modifier.dropdownPanelDragSelect(
     hapticFeedback: HapticFeedback,
 ): Modifier = pointerInput(Unit) {
     val scrollSlop = ScrollTapSlop.toPx()
+    // 沿滑选轴取坐标：竖排弹窗/侧栏用 y，横排快捷条用 x。axis 构造后不变，可在此取定
+    val axisPosition: (Offset) -> Float =
+        if (state.axis == DragSelectAxis.Horizontal) ({ it.x }) else ({ it.y })
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         // 面板没长开时不参与：收起态照常点按展开
@@ -205,7 +230,7 @@ fun Modifier.dropdownPanelDragSelect(
             // 位移超过 slop 判为滚动：放弃本次点选且不消费事件，滚动不受影响。
             val startY = down.position.y
             val startX = down.position.x
-            state.hitTest(startY)
+            state.hitTest(axisPosition(down.position))
             var scrolled = false
             while (true) {
                 val change = awaitPointerEvent()
@@ -223,14 +248,14 @@ fun Modifier.dropdownPanelDragSelect(
             if (!scrolled) tapped?.action?.invoke()
             return@awaitEachGesture
         }
-        // 一屏装得下：跟手滑选，独占纵向手势
+        // 一屏装得下：跟手滑选，独占该轴手势
         down.consume()
-        var lastHit = state.hitTest(down.position.y)
+        var lastHit = state.hitTest(axisPosition(down.position))
         while (true) {
             val change = awaitPointerEvent()
                 .changes.fastFirstOrNull { it.id == down.id } ?: break
             if (!change.pressed) break
-            val hit = state.hitTest(change.position.y)
+            val hit = state.hitTest(axisPosition(change.position))
             if (hit != null && hit !== lastHit) {
                 // 仅「换了一项」才震，按下即命中的那一下不震
                 hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -276,7 +301,9 @@ private fun dropdownPanelEntryHighlightColor(isDark: Boolean): Color =
     if (isDark) Color.White.copy(0.1f) else Color.Black.copy(0.06f)
 
 /**
- * 菜单项侧：登记纵向区间 + 绘制命中高亮。供 `DropdownImpl` 等菜单项组件调用。
+ * 菜单项侧：登记沿滑选轴的区间（竖排上下缘 / 横排左右缘）+ 绘制命中高亮。
+ * 供 `DropdownImpl` 等菜单项组件调用；轴向由 [DropdownPanelDragSelectState.axis] 定，
+ * 调用方只管把项排在面板里。
  *
  * 用 drawBehind 而非 background：`DropdownImpl` 的项自带一层 alpha=1 的不透明白底
  * （`.drawBehind { drawRect(surfaceContainer) }`）。Modifier 链越靠后越晚绘制，调用方
@@ -335,8 +362,15 @@ fun Modifier.dropdownPanelEntry(
     this
         .onGloballyPositioned {
             // boundsInRoot 不含 graphicsLayer 变换，面板与项都取 root 坐标再作差
-            val top = it.boundsInRoot().top - (dragSelect?.panelTopInRoot ?: 0f)
-            dragSelect?.updateBounds(entry, top, top + it.size.height)
+            val dragState = dragSelect ?: return@onGloballyPositioned
+            val bounds = it.boundsInRoot()
+            if (dragState.axis == DragSelectAxis.Horizontal) {
+                val left = bounds.left - dragState.panelLeftInRoot
+                dragState.updateBounds(entry, left, left + it.size.width)
+            } else {
+                val top = bounds.top - dragState.panelTopInRoot
+                dragState.updateBounds(entry, top, top + it.size.height)
+            }
         }
         .drawBehind {
             if (maskAlpha <= 0f) return@drawBehind
