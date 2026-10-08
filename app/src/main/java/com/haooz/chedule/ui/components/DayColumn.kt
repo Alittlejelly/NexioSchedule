@@ -479,7 +479,9 @@ private fun CourseCardsLayer(
         }
 
         renderData.segments.forEachIndexed { idx, (segStartSection, segEndSection) ->
-            val displayCourse = remember(course.id, segStartSection, segEndSection) {
+            // 键必须带 course 本身：只记 id/节次时，改课程颜色/名称/教室后课程对象变了但键没变，
+            // 分段副本会被缓存成旧值，卡片要等到重新进入/滑走才刷新
+            val displayCourse = remember(course, segStartSection, segEndSection) {
                 course.copy(startSection = segStartSection, endSection = segEndSection)
             }
             val segOffset = (grid.sectionTop[segStartSection] ?: 0f).toInt()

@@ -743,36 +743,5 @@ data class TimeConfig(
             else -> emptyMap()
         }
 
-        fun fromRepository(repository: CourseRepository): TimeConfig {
-            val sectionTimes = mutableMapOf<String, String>()
-            for (period in listOf("morning", "afternoon", "evening")) {
-                val times = repository.getPeriodTimes(period)
-                for ((idx, time) in times) {
-                    sectionTimes["${period}_$idx"] = time
-                }
-            }
-            return TimeConfig(
-                morningSections = repository.getMorningSections(),
-                afternoonSections = repository.getAfternoonSections(),
-                eveningSections = repository.getEveningSections(),
-                quickTimeEnabled = repository.getQuickTimeEnabled(),
-                classDuration = repository.getClassDuration(),
-                shortBreak = repository.getShortBreak(),
-                longBreakEnabled = repository.getLongBreakEnabled(),
-                longBreakMorning = repository.getLongBreakMorning(),
-                longBreakAfternoon = repository.getLongBreakAfternoon(),
-                longBreakEvening = repository.getLongBreakEvening(),
-                longBreakMorningSection = repository.getLongBreakMorningSection(),
-                longBreakAfternoonSection = repository.getLongBreakAfternoonSection(),
-                longBreakEveningSection = repository.getLongBreakEveningSection(),
-                morningStartHour = repository.getMorningStartHour(),
-                morningStartMinute = repository.getMorningStartMinute(),
-                afternoonStartHour = repository.getAfternoonStartHour(),
-                afternoonStartMinute = repository.getAfternoonStartMinute(),
-                eveningStartHour = repository.getEveningStartHour(),
-                eveningStartMinute = repository.getEveningStartMinute(),
-                sectionTimes = sectionTimes
-            )
-        }
     }
 }

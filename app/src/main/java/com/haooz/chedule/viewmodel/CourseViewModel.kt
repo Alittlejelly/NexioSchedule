@@ -175,6 +175,9 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-mutate")
         // 课程变了要重排闹钟：增删改/调课/交换都走 saveCourses(notify=false)
         viewModelScope.launch(Dispatchers.IO) { rescheduleReminders() }
+        // 跨 ViewModel 实例广播：主页与管理页各自持有独立 CourseViewModel，
+        // 不广播的话管理页改色/改时段后主页要重启 App 才刷新
+        repository.notifyCoursesBulkChanged()
     }
 
     private fun updateWidgets() {

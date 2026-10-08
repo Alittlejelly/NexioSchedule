@@ -625,7 +625,7 @@ object CourseReminderHelper {
 
     private fun cancelCourseStartAlarms(context: Context, alarmManager: AlarmManager) {
         val intent = Intent(context, CourseStartReceiver::class.java)
-        // 新固定 ID 的到点闹钟（真实 + 测试）
+        // 固定 ID 的到点闹钟（真实 + 测试）
         for (rc in intArrayOf(LIVE_COUNTDOWN_ID, LIVE_TEST_COUNTDOWN_ID)) {
             val pending = PendingIntent.getBroadcast(
                 context,
@@ -634,17 +634,6 @@ object CourseReminderHelper {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             alarmManager.cancel(pending)
-        }
-        // 旧版按课程名 hash 派生 RC 的残留
-        val allCourses = CourseRepository(context).getAllCourses()
-        for (course in allCourses) {
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                10000 + course.name.hashCode(),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.cancel(pendingIntent)
         }
     }
 
@@ -743,7 +732,7 @@ object CourseReminderHelper {
                 putExtra(EXTRA_REMINDER_TYPE, TYPE_PRE_CLASS)
                 putExtra(EXTRA_COURSE_NAME, course.name)
                 putExtra(EXTRA_COURSE_SECTION, course.getTimeDisplayText())
-                // START_TIME 作 fallback（旧闹钟无 EXTRA_COURSE_ID 时按 name+section+time 匹配）
+                // START_TIME 作闹钟里的课程时间快照：回查失败时用它拼 dedupId
                 putExtra(EXTRA_COURSE_START_TIME, startTime)
                 putExtra(EXTRA_COURSE_ID, course.id)
             }
@@ -2108,13 +2097,6 @@ object CourseReminderHelper {
         manager.cancel(LIVE_TEST_COUNTDOWN_ID)
         manager.cancel(LIVE_TEST_STARTED_ID)
         manager.cancel(LIVE_TEST_IN_CLASS_ID)
-        // 旧版按课程名 hash 的残留 ID
-        val legacyId = countdownPrefs.getInt("notificationId", 0)
-        if (legacyId != 0 && legacyId != LIVE_COUNTDOWN_ID && legacyId != LIVE_TEST_COUNTDOWN_ID) {
-            manager.cancel(legacyId)
-            manager.cancel(legacyId + 1)
-            manager.cancel(legacyId + 2)
-        }
         countdownPrefs.edit {
             putBoolean("active", false)
                 .putBoolean("in_class_active", false)
