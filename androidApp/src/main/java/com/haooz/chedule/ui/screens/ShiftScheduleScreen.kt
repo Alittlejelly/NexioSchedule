@@ -76,6 +76,8 @@ fun ShiftScheduleScreen(
 ) {
     val shiftScheduleCourses by shiftViewModel.shiftScheduleCourses.collectAsState()
     val shiftScheduleSections by shiftViewModel.shiftScheduleSections.collectAsState()
+    // ⚠ context 在这里**真的有用**：下面要 `context as? ComponentActivity as? MainActivity`
+    // 拿 `isInFreeformWindow`（自由窗口判断）。别因为「看着像残留」就删 —— 删了编译不过。
     val context = LocalContext.current
     val repository = remember(context) { CourseRepository.getInstance() }
     val hasReorganizedComparison = remember(shiftScheduleCourses.keys, scheduleDataVersion) {

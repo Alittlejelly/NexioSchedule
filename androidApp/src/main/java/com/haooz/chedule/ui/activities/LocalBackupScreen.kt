@@ -385,7 +385,8 @@ fun LocalBackupScreen(
 
     val courseViewModel = remember { CourseViewModel(context.applicationContext as Application) }
     val scheduleViewModel = remember { ScheduleViewModel(context.applicationContext as Application) }
-    val settingsViewModel = remember { SettingsViewModel(context.applicationContext as Application) }
+    // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context）
+    val settingsViewModel = remember { SettingsViewModel() }
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
 
     // 扫描要读每个 json 并 Gson 全量解析，必须在 IO 线程做；初值留空，由 LaunchedEffect 填充

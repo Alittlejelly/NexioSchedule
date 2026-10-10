@@ -3,11 +3,11 @@ package com.haooz.chedule.viewmodel
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +31,14 @@ internal fun shouldAdvanceForReorganizedWeekend(
     return !hasCoursesToday()
 }
 
-class SettingsViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * ⚠ 原来是 `AndroidViewModel(application)`，仅仅为了拿 `Context` 去调
+ * `CourseReminderHelper.resolveDaySchedule(context, …)`；而那个 `context` 参数
+ * **函数体根本没用**（见 `DayScheduleResolver` 的说明）。
+ * 提醒时刻算法抠进 `:core` 后，这里不再需要 `Application` → 退回普通 [ViewModel]，
+ * 于是本文件可以进 `:ui-shared`（引用它的页面也随之解锁）。
+ */
+class SettingsViewModel : ViewModel() {
 
     private val repository = CourseRepository()
 
@@ -45,11 +52,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val start = runCatching {
                     LocalDate.parse(repository.getClassStartTime().replace('/', '-'))
                 }.getOrNull() ?: return emptySet()
-                return com.haooz.chedule.reminder.CourseReminderHelper.effectiveWeekendDays(
+                return DayScheduleResolver.effectiveWeekendDays(
                     start, week, rules,
                 ) { date ->
-                    com.haooz.chedule.reminder.CourseReminderHelper
-                        .resolveDaySchedule(getApplication(), date, repository).courses.isNotEmpty()
+                    DayScheduleResolver
+                        .resolveDaySchedule(date, repository).courses.isNotEmpty()
                 }
             }
             buildSet {
@@ -60,8 +67,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                             .dateForPosition(start, week, weekday, emptyList())
                     }.getOrNull()
                     val hasCourses = if (date != null && isBeforeHolidayExclusionActive(date)) {
-                        com.haooz.chedule.reminder.CourseReminderHelper
-                            .resolveDaySchedule(getApplication(), date, repository)
+                        DayScheduleResolver
+                            .resolveDaySchedule(date, repository)
                             .courses.isNotEmpty()
                     } else {
                         repository.hasCoursesOnDayInWeek(weekday, week)
@@ -90,14 +97,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }.getOrNull()
             // Holiday filtering and an explicit work-swap are both defined on the real date.
             return shouldAdvanceForReorganizedWeekend(today, start, rules) {
-                com.haooz.chedule.reminder.CourseReminderHelper
-                    .resolveDaySchedule(getApplication(), today, repository).courses.isNotEmpty()
+                DayScheduleResolver
+                    .resolveDaySchedule(today, repository).courses.isNotEmpty()
             }
         }
         val today = todayLocalDate()
         val hasCourses = if (isBeforeHolidayExclusionActive(today)) {
-            com.haooz.chedule.reminder.CourseReminderHelper
-                .resolveDaySchedule(getApplication(), today, repository).courses.isNotEmpty()
+            DayScheduleResolver
+                .resolveDaySchedule(today, repository).courses.isNotEmpty()
         } else {
             repository.hasDisplayableCoursesOnDay(todayDayOfWeek, week)
         }

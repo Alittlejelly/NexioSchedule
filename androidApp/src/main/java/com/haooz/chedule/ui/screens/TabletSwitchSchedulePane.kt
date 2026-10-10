@@ -98,7 +98,7 @@ fun TabletSwitchSchedulePane(
     // 编辑模式：左上角 Close 退出
     val isEditMode = remember { mutableStateOf(false) }
     // 右栏预览：跟随当前选中课表；节数/上中晚分段与主课表同一套配置
-    val context = androidx.compose.ui.platform.LocalContext.current
+    // （原 `val context = LocalContext.current` 取了没用 —— 死变量，迁 :ui-shared 时删掉）
     val repository = remember { CourseRepository() }
     val previewName by scheduleViewModel.currentScheduleName.collectAsState()
     val currentCourses by viewModel.courses.collectAsState()

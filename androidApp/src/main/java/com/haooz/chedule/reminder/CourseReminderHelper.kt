@@ -25,6 +25,8 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseScheduleDateBounds
+import com.haooz.chedule.data.DayScheduleResolver
+import com.haooz.chedule.data.DayScheduleResolver.DayScheduleResolution
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayBeforeCourseExclusion
 import com.haooz.chedule.data.HolidayEndCourseExclusion
@@ -978,26 +980,10 @@ object CourseReminderHelper {
     }.maxByOrNull { it.first }?.second
 
     /**
-     * 小组件/ContentProvider/今日页/次日提醒共用的某日课表解析。
-     * 节假日默认空课，末日例外只返回命中课程；调休按 followWeekday/followWeek 映射。
+     * ⚠ 某日课表解析已整体抠进 `:core` 的 [DayScheduleResolver]（平台中立的纯计算，
+     * iOS 本地通知也要用）。这里的 [DayScheduleResolution] 与下面几个函数改为**委托**，
+     * 行为一位未改 —— 提醒排课算错的代价是用户上课没收到通知，且极难复现。
      */
-    data class DayScheduleResolution(
-        val courses: List<Course>,
-        /** 实际用于查课的星期（调休映射后） */
-        val displayDayOfWeek: Int,
-        /** 实际用于查课的周次 */
-        val displayWeek: Int,
-        /** 日历上的星期（未映射） */
-        val calendarDayOfWeek: Int,
-        /** 目标日是否为节假日 */
-        val isHolidayDate: Boolean,
-        /** 目标日是否配置了调休映射 */
-        val isWorkSwap: Boolean,
-        /** 目标日是节假日末日，且配置启用了节次课程排除 */
-        val isHolidayEndCourseExclusionActive: Boolean = false,
-        /** 目标日是假期前一天，且配置启用了节次课程排除 */
-        val isHolidayBeforeCourseExclusionActive: Boolean = false,
-    )
 
     /** 由开学日推目标日期所在日历课表周；仅作相对偏移，不直接当「当前周」 */
     fun calendarWeekForDate(repository: CourseRepository, date: LocalDate): Int =
@@ -1020,9 +1006,8 @@ object CourseReminderHelper {
      * does not advance when the app remains closed across a week boundary.
      * 调休 followWeek 仍由调用方优先覆盖。
      */
-    fun alignedStoredWeekForDate(repository: CourseRepository, date: LocalDate): Int {
-        return repository.getLiveTeachingWeek(date)
-    }
+    fun alignedStoredWeekForDate(repository: CourseRepository, date: LocalDate): Int =
+        DayScheduleResolver.alignedStoredWeekForDate(repository, date)
 
     internal fun liveTeachingWeek(
         semesterStartDate: LocalDate,
@@ -1031,31 +1016,31 @@ object CourseReminderHelper {
     ): Int = com.haooz.chedule.data.TeachingWeekReorganization.mapDate(semesterStartDate, date, rules)
         .week.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
 
-    internal fun effectiveWeekendDays(
+    fun effectiveWeekendDays(
         semesterStartDate: LocalDate,
         week: Int,
         rules: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
         hasCoursesOnDate: (LocalDate) -> Boolean,
-    ): Set<Int> = (6..7).filterTo(mutableSetOf()) { weekday ->
-        com.haooz.chedule.data.TeachingWeekReorganization
-            .dateForPosition(semesterStartDate, week, weekday, rules)
-            ?.let(hasCoursesOnDate) == true
-    }
+    ): Set<Int> = DayScheduleResolver.effectiveWeekendDays(
+        semesterStartDate = semesterStartDate,
+        week = week,
+        rules = rules,
+        hasCoursesOnDate = hasCoursesOnDate,
+    )
 
-    internal fun canResolveCourseCandidates(
+    fun canResolveCourseCandidates(
         datePosition: TeachingWeekPosition,
         workSwapEntry: HolidayEntry?,
         displayWeek: Int,
         totalWeeks: Int,
         lastWeekWithCourses: Int,
-    ): Boolean {
-        val hasTeachingPosition = !datePosition.isReorganizationPause && datePosition.weekday != null
-        val explicitlyMappedPause = workSwapEntry?.let {
-            it.type == HolidayManager.TYPE_WORKSWAP && it.hasFollowMapping()
-        } == true
-        return (hasTeachingPosition || explicitlyMappedPause) &&
-            displayWeek in 1..totalWeeks && displayWeek <= lastWeekWithCourses
-    }
+    ): Boolean = DayScheduleResolver.canResolveCourseCandidates(
+        datePosition = datePosition,
+        workSwapEntry = workSwapEntry,
+        displayWeek = displayWeek,
+        totalWeeks = totalWeeks,
+        lastWeekWithCourses = lastWeekWithCourses,
+    )
 
     fun resolveDaySchedule(context: Context, forTomorrow: Boolean): DayScheduleResolution {
         val today = todayLocalDate()
@@ -1078,56 +1063,13 @@ object CourseReminderHelper {
         date: LocalDate,
         repository: CourseRepository,
         holidayEntriesByYear: Map<Int, List<HolidayEntry>>?,
-    ): DayScheduleResolution {
-        val calendarDay = date.dayOfWeek.isoDayNumber
-        val entriesByYear = holidayEntriesByYear ?: HolidayManager.loadAllByYear()
-        val holidayEntries = HolidayManager.entriesForDate(entriesByYear, date)
-        val targetEntry = holidayEntries.firstOrNull { it.type == HolidayManager.TYPE_WORKSWAP }
-        val datePosition = repository.teachingWeekPositionForDate(date)
-        // 跟随绝对日期 → 按当前课表换算成 (周次, 星期)；换课表自动跟随那一周的课
-        val follow = targetEntry?.let { repository.resolveWorkSwapFollow(it) }
-        val isWorkSwap = follow != null
-        val displayDay = follow?.weekday
-            ?: datePosition.weekday ?: calendarDay
-        // 未配置调休覆盖时，用教学周映射相对今天的偏移，并避免今日调休跟随周次污染。
-        val displayWeek = follow?.week
-            ?: alignedStoredWeekForDate(repository, date)
-        val exclusion = HolidayManager.loadEndCourseExclusion()
-        val beforeExclusion = HolidayManager.loadBeforeCourseExclusion()
-        return resolveDaySchedule(
-            date = date,
-            entriesByYear = entriesByYear,
-            exclusion = exclusion,
-            beforeExclusion = beforeExclusion,
-            displayDayOfWeek = displayDay,
-            displayWeek = displayWeek,
-            calendarDayOfWeek = calendarDay,
-            isWorkSwap = isWorkSwap,
-            candidates = {
-                val totalWeeks = repository.getTotalWeeks()
-                val lastWeekWithCourses = repository.getLastWeekWithCourses()
-                if (!canResolveCourseCandidates(
-                        datePosition = datePosition,
-                        workSwapEntry = targetEntry,
-                        displayWeek = displayWeek,
-                        totalWeeks = totalWeeks,
-                        lastWeekWithCourses = lastWeekWithCourses,
-                    )
-                ) {
-                    emptyList()
-                } else {
-                    repository.getAllCourses()
-                        .filter { it.dayOfWeek == displayDay && it.isActiveInWeek(displayWeek) }
-                        .sortedBy { getCourseStartTime(it, repository).toMinutes() }
-                }
-            },
-            sectionTimes = repository::getCurrentSectionTimes,
-            sectionCount = {
-                repository.getMorningSections() +
-                    repository.getAfternoonSections() + repository.getEveningSections()
-            },
-        )
-    }
+    ): DayScheduleResolution = DayScheduleResolver.resolveDaySchedule(
+        // ⚠ context **从未被使用**（原实现只读 HolidayManager 与 repository），
+        // 保留它只是为了 20 个既有调用点一行都不用改 —— 别因为「参数没用」就删掉签名。
+        date = date,
+        repository = repository,
+        holidayEntriesByYear = holidayEntriesByYear,
+    )
 
     internal fun resolveDaySchedule(
         date: LocalDate,
@@ -1141,28 +1083,19 @@ object CourseReminderHelper {
         sectionTimes: () -> Map<Int, String>,
         sectionCount: () -> Int,
         beforeExclusion: HolidayBeforeCourseExclusion = HolidayBeforeCourseExclusion(),
-    ): DayScheduleResolution {
-        val dayResolution = HolidayCourseExclusion.resolveDayCourses(
-            entriesByYear = entriesByYear,
-            date = date,
-            exclusion = exclusion,
-            candidates = candidates,
-            sectionTimes = sectionTimes,
-            sectionCount = sectionCount,
-            beforeExclusion = beforeExclusion,
-        )
-        return DayScheduleResolution(
-            courses = dayResolution.courses,
-            displayDayOfWeek = displayDayOfWeek,
-            displayWeek = displayWeek,
-            calendarDayOfWeek = calendarDayOfWeek,
-            isHolidayDate = dayResolution.isHolidayDate,
-            isWorkSwap = isWorkSwap,
-            isHolidayEndCourseExclusionActive = dayResolution.isHolidayEndCourseExclusionActive,
-            isHolidayBeforeCourseExclusionActive =
-                dayResolution.isHolidayBeforeCourseExclusionActive,
-        )
-    }
+    ): DayScheduleResolution = DayScheduleResolver.resolveDaySchedule(
+        date = date,
+        entriesByYear = entriesByYear,
+        exclusion = exclusion,
+        displayDayOfWeek = displayDayOfWeek,
+        displayWeek = displayWeek,
+        calendarDayOfWeek = calendarDayOfWeek,
+        isWorkSwap = isWorkSwap,
+        candidates = candidates,
+        sectionTimes = sectionTimes,
+        sectionCount = sectionCount,
+        beforeExclusion = beforeExclusion,
+    )
 
     /** 节假日/调休数据变更后：重排提醒并立即刷新已放置的小部件 */
     fun onHolidayDataChanged(context: Context) {

@@ -121,7 +121,8 @@ fun PreferenceSettingsScreen(
         else -> systemDark
     }
 
-    val settingsViewModel = remember { SettingsViewModel(context.applicationContext as android.app.Application) }
+    // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context）
+    val settingsViewModel = remember { SettingsViewModel() }
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val reminderPrefs = remember { AppStorage.store("course_reminder_prefs") }
