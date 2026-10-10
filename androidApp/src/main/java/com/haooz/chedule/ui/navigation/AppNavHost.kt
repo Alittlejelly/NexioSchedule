@@ -206,35 +206,36 @@ fun AppNavHost(
         // ── 整栈常驻（2026-10-10 起）：栈内每一层都保持组合，像 Activity back stack
         // 实例全活着 —— 任意深度 pop 回去都是活页，不是重建。
         // 绘制三档（等价 stop 的 Activity 不画窗口）：
-        //   栈顶     → 常画
-        //   直接下层 → 只在转场/手势进行中（0<p<1）画 —— 预测性返回露出的是活页
+        //   栈顶     → 常画（在黑幕之上单独画，见下方）
+        //   直接下层 → p<1 就画，p==1（被顶层完全盖住）才暂停 ——
+        //              ⚠ 不能用「0<p<1」判：push 起始帧 p 恰好=0、顶层还在屏外，
+        //              那一帧下层必须画，否则会闪出主界面（实测踩过）
         //   更深层   → 永远不画（任何 p 下都被完全遮住），只保留组合与状态
+        val topIndexInStack = if (outgoing == null) lastIndex else -1
         for (index in routes.indices) {
+            if (index == topIndexInStack) continue // 顶层最后画：黑幕要压在下层上、顶层下
             val route = routes[index]
-            val isTop = outgoing == null && index == lastIndex
             val isDirectUnder = index == underIndex
             val fraction: () -> Float = when {
-                isTop -> ({ 1f - progress.value })
                 isDirectUnder -> ({ -NAV_PARALLAX * progress.value })
                 // 更深层固定停靠位：p 永远不影响它们
                 else -> ({ -NAV_PARALLAX })
             }
             val paused: () -> Boolean = when {
-                isTop -> ({ false })
-                isDirectUnder -> ({ !inFlight() })
+                isDirectUnder -> ({ progress.value >= 1f })
                 else -> ({ true })
             }
             PageLayer(
                 fraction = fraction,
                 paused = paused,
-                clipShape = if (isTop) screenClipShape else null,
                 inFlight = inFlight,
             ) {
                 stateHolder.SaveableStateProvider(route.id) { content(route) }
             }
         }
 
-        // 黑幕：夹在下层与上层之间，随 p 渐暗。
+        // 黑幕：夹在「下层各页」与「顶层页」之间，随 p 渐暗 —— 只压暗被盖住的内容，
+        // 推入的顶层页不被压暗（与拆 Activity 时代 Activity 转场的层级一致）。
         // ⚠ 显隐不能挂「转场进行中」这种组合期状态：跟手期间没有动画在跑（纯逐帧落值），
         // 那样手势全程没有压暗。常驻挂载，只在 draw 阶段跳过稳定态。
         if (router.hasOverlay || outgoing != null) {
@@ -249,16 +250,17 @@ fun AppNavHost(
             )
         }
 
-        // pop 期间：被弹出的那层（已出栈）仍在屏上，把退出动画播完
-        val outgoingRoute = outgoing
-        if (outgoingRoute != null) {
+        // 顶层：pop 期间是被弹出的那层（已出栈，播完退出动画）；否则是栈顶。
+        // 常画、带屏幕圆角裁切、位于黑幕之上 —— 黑幕不压它。
+        val visibleTop = outgoing ?: router.current
+        if (visibleTop != null) {
             PageLayer(
                 fraction = { 1f - progress.value },
                 paused = { false },
                 clipShape = screenClipShape,
                 inFlight = inFlight,
             ) {
-                stateHolder.SaveableStateProvider(outgoingRoute.id) { content(outgoingRoute) }
+                stateHolder.SaveableStateProvider(visibleTop.id) { content(visibleTop) }
             }
         }
     }
