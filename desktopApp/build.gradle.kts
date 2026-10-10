@@ -32,8 +32,25 @@ kotlin {
             implementation(project(":backdrop"))
             // 桌面 Compose 运行时（Window / application）
             implementation(compose.desktop.currentOs)
+            // ⚠ 必须显式声明：:core 虽用 `api(libs.kotlinx.datetime)`，但**没有传到桌面端的运行时
+            // classpath** —— 打开用了它的页面（AddEditCourseBottomSheet / CourseTimeSettingsScreen 等）
+            // 会直接崩：
+            //   ClassNotFoundException: kotlinx.datetime.Clock$System / LocalDate
+            // 编译期不报错（能解析符号），只有运行时才炸，所以很容易漏。
+            implementation(libs.kotlinx.datetime)
         }
     }
+}
+
+// ⚠ 强制 kotlinx-datetime 回 0.6.2（与 gradle/libs.versions.toml 一致）。
+// 桌面端的 Compose Desktop 依赖树会把 datetime 提升到 **0.7.1**，而 0.7 起
+// `Clock` 被移出 kotlinx.datetime（改挂 kotlin.time），`LocalDate.monthNumber` 也改名了 ——
+// 本项目代码仍按 0.6.2 的 API 写，于是运行时直接崩：
+//   ClassNotFoundException: kotlinx.datetime.Clock$System
+// **编译期不报错**（符号能解析），只有点开用了它的页面（课表节数与时间 / 添加课程）才炸。
+// Android 侧依赖树不同、没被提升，所以真机不崩 —— 这个坑只在桌面端出现。
+configurations.all {
+    resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
 }
 
 compose.desktop {

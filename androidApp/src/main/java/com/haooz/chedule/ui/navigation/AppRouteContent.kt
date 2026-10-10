@@ -260,6 +260,8 @@ private fun WidgetIntroRoute(router: AppRouter) {
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var showGuideDialog by remember { mutableStateOf(false) }
+    // 小组件刷新是 Android 专有能力（`widget/WidgetUpdateCache`），留在宿主注入给页面
+    val context = LocalContext.current
 
     DocumentPageScaffold(
         title = "桌面小部件",
@@ -314,6 +316,10 @@ private fun WidgetIntroRoute(router: AppRouter) {
         WidgetIntroScreen(
             scrollBehavior = scrollBehavior,
             liquidGlassBackdrop = backdrop,
+            onRequestWidgetRefresh = {
+                com.haooz.chedule.widget.WidgetUpdateCache.clear()
+                com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(context)
+            },
         )
     }
 }

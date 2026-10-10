@@ -621,8 +621,7 @@ private fun BlurBottomSheetContent(
                         }
                         // 滚动渐变遮罩：对齐 CollapsibleTopAppBar，随 showButtonShadow 淡入
                         //（与 shadowAlpha 同一条动画），压住顶栏下滚过的内容
-                        val gradientColor =
-                            if (sheetAppDark) Color.Black else Color.White
+                        val gradientColor = MiuixTheme.colorScheme.surface
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

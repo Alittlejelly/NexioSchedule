@@ -1,7 +1,6 @@
 /** 赞赏作者页面 - Screen（含前三名领奖台排行） */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,13 +39,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.R
 import com.haooz.chedule.data.AppreciationFetcher
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
@@ -64,6 +61,10 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_anonymous_avatar
+import com.haooz.chedule.uishared.resources.zanshangma
 
 /** 名次金属色： */
 private fun rankAccent(rank: Int, isDark: Boolean): Color = when (rank) {
@@ -72,7 +73,6 @@ private fun rankAccent(rank: Int, isDark: Boolean): Color = when (rank) {
     else ->  Color(0xFFD4A574)
 }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun AppreciateAuthorScreen(
     scrollBehavior: SharedScrollBehavior? = null,
@@ -410,7 +410,7 @@ private fun DonorAvatar(item: AppreciationItem, size: androidx.compose.ui.unit.D
     ) {
         if (isAnonymous) {
             Icon(
-                painter = painterResource(id = R.drawable.ic_anonymous_avatar),
+                painter = painterResource(Res.drawable.ic_anonymous_avatar),
                 contentDescription = "匿名",
                 modifier = Modifier
                     .size(size)
@@ -442,7 +442,7 @@ private fun DonateQrCard(isTablet: Boolean = false) {
             insideMargin = PaddingValues(0.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.zanshangma),
+                painter = painterResource(Res.drawable.zanshangma),
                 contentDescription = "赞赏码",
                 modifier = Modifier
                     .fillMaxSize()
@@ -514,7 +514,7 @@ private fun AppreciationListItem(item: AppreciationItem) {
         ) {
             if (isAnonymous) {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_anonymous_avatar),
+                    painter = painterResource(Res.drawable.ic_anonymous_avatar),
                     contentDescription = "匿名",
                     modifier = Modifier
                         .size(40.dp)

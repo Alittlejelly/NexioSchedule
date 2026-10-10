@@ -2,6 +2,7 @@
 package top.yukonga.miuix.kmp.basic
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -59,10 +60,31 @@ actual fun NativeTextField(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         decorationBox = { innerTextField ->
             // hint 与输入区同位叠放，等价 EditText 的内部 hint（有内容即隐藏）
-            Box(contentAlignment = Alignment.CenterStart) {
+            //
+            // ⚠ 两处都必须 `fillMaxWidth()`：`textAlign` 只在**有多余宽度**时才生效。
+            // 不撑满的话 Box 与 Text 都是 wrap content，`TextAlign.End` 形同虚设
+            // —— hint 靠左、输入文本对不齐，而 Android 侧 EditText 自己填满给定宽度并
+            // 按 `textAlignment` 同时对齐 hint 与文本，两端表现就不一致了。
+            // （所有调用点都给定宽：`fillMaxWidth(0.65f)` 或 `width(56.dp)`，撑满即所需宽度。）
+            //
+            // ⚠ Box 的 `contentAlignment` 也要跟着 `textAlign` 走：
+            // 若 innerTextField 按 wrap-content 测量（不同 Compose 版本行为不同），
+            // 光靠 `textStyle.textAlign` 是无效的（没有多余宽度可对齐），
+            // 此时靠 Box 把它放到 End/Center 才对得上 Android 侧 EditText 的表现；
+            // 若它本来就填满宽度，contentAlignment 是 no-op，由 textAlign 生效。
+            // 两种情况下结果一致 —— 不要只留其中一种。
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = when (textAlign) {
+                    TextAlign.Center -> Alignment.Center
+                    TextAlign.End, TextAlign.Right -> Alignment.CenterEnd
+                    else -> Alignment.CenterStart
+                },
+            ) {
                 if (value.isEmpty() && hint.isNotEmpty()) {
                     Text(
                         text = hint,
+                        modifier = Modifier.fillMaxWidth(),
                         style = textStyle.copy(
                             color = hintColor,
                             fontWeight = textStyle.fontWeight ?: FontWeight.Medium,

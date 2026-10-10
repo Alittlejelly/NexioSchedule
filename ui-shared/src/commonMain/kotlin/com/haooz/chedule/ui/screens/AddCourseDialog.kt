@@ -1,7 +1,6 @@
 /** 添加/编辑课程对话框 - Blur版本 */
 package com.haooz.chedule.ui.screens
 
-import android.annotation.SuppressLint
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -46,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.state.ToggleableState
@@ -92,10 +90,10 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.data.randomUuidV4
 
 /** 揭示分组数（基本信息/星期/节次/周次/颜色/删除） */
 private const val REVEAL_GROUP_COUNT = 6
@@ -149,7 +147,6 @@ private class AddCourseFormState(
 
 }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun AddCourseDialog(
     show: Boolean,
@@ -169,7 +166,6 @@ fun AddCourseDialog(
 ) {
     val isEdit = course != null
     val hapticFeedback = LocalHapticFeedback.current
-    val context = LocalContext.current
     val isDark = isAppDarkTheme()
     // 嵌套弹窗在 root popup host，强制跟随应用主题而非壁纸主题
     val appDialogDark = rememberAppSettingDark()
@@ -294,7 +290,7 @@ fun AddCourseDialog(
             val weeksToSave = if (isContiguous) emptyList() else sortedWeeks
 
             val newCourse = Course(
-                id = course?.id ?: UUID.randomUUID().toString(),
+                id = course?.id ?: randomUuidV4(),
                 name = form.name.trim(),
                 classroom = form.classroom.trim(),
                 teacher = form.teacher.trim(),
@@ -717,7 +713,6 @@ fun AddCourseDialog(
     }
 }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 private fun AddCourseDialogContent(
     isEdit: Boolean,
@@ -1427,7 +1422,6 @@ private fun RowScope.CustomColorSwatch(
 }
 
 /** 时间段 时:分 双滚轮选择器 */
-@SuppressLint("DefaultLocale")
 @Composable
 private fun TimeRangePickerGroup(
     startHour: Int,
@@ -1450,7 +1444,7 @@ private fun TimeRangePickerGroup(
             range = 0..23,
             visibleItemCount = 3,
             itemHeight = 60.dp,
-            label = { String.format("%02d", it) },
+            label = { it.toString().padStart(2, '0') },
             wrapAround = true,
             textStyle = MiuixTheme.textStyles.title2,
             modifier = Modifier.weight(1f)
@@ -1471,7 +1465,7 @@ private fun TimeRangePickerGroup(
             range = minuteValues.indices,
             visibleItemCount = 3,
             itemHeight = 60.dp,
-            label = { String.format("%02d", minuteValues[it]) },
+            label = { minuteValues[it].toString().padStart(2, '0') },
             wrapAround = true,
             textStyle = MiuixTheme.textStyles.title2,
             modifier = Modifier.weight(1f)
@@ -1488,7 +1482,7 @@ private fun TimeRangePickerGroup(
             range = 0..23,
             visibleItemCount = 3,
             itemHeight = 60.dp,
-            label = { String.format("%02d", it) },
+            label = { it.toString().padStart(2, '0') },
             wrapAround = true,
             textStyle = MiuixTheme.textStyles.title2,
             modifier = Modifier.weight(1f)
@@ -1509,7 +1503,7 @@ private fun TimeRangePickerGroup(
             range = minuteValues.indices,
             visibleItemCount = 3,
             itemHeight = 60.dp,
-            label = { String.format("%02d", minuteValues[it]) },
+            label = { minuteValues[it].toString().padStart(2, '0') },
             wrapAround = true,
             textStyle = MiuixTheme.textStyles.title2,
             modifier = Modifier.weight(1f)
@@ -1531,9 +1525,8 @@ private fun parseTimeMinute(time: String?): Int {
     return parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
 }
 
-@SuppressLint("DefaultLocale")
 private fun formatTime(hour: Int, minute: Int): String {
-    return String.format("%02d:%02d", hour, minute)
+    return hour.toString().padStart(2, '0') + ":" + minute.toString().padStart(2, '0')
 }
 
 /** 自定义时间弹窗可用分钟值（每 5 分钟一档） */

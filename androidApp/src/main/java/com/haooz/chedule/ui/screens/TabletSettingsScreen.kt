@@ -687,6 +687,11 @@ fun TabletSettingsScreen(
                                 TabletSettingsDest.Widget -> WidgetIntroScreen(
                                     scrollBehavior = null,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
+                                    onRequestWidgetRefresh = {
+                                        com.haooz.chedule.widget.WidgetUpdateCache.clear()
+                                        com.haooz.chedule.widget.WidgetUpdateCache
+                                            .updateInstalledWidgets(context)
+                                    },
                                 )
 
                                 TabletSettingsDest.ScheduleImport -> BackupAndMigrationScreen(

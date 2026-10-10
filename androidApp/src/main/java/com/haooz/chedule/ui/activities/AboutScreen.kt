@@ -59,7 +59,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpOffset
@@ -67,7 +66,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
-import com.haooz.chedule.R
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.data.changelogData
@@ -108,6 +106,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_github
+import com.haooz.chedule.uishared.resources.ic_gitee
 
 @SuppressLint("LocalContextGetResourceValueCall", "ConfigurationScreenWidthHeight")
 @Composable
@@ -1096,7 +1098,7 @@ fun AboutScreen(
                     ) {
                         Image(
                             modifier = Modifier.size(48.dp),
-                            painter = painterResource(id = R.drawable.ic_github),
+                            painter = painterResource(Res.drawable.ic_github),
                             contentDescription = "GitHub",
                             colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onSurface)
                         )
@@ -1119,7 +1121,7 @@ fun AboutScreen(
                     ) {
                         Image(
                             modifier = Modifier.size(48.dp),
-                            painter = painterResource(id = R.drawable.ic_gitee),
+                            painter = painterResource(Res.drawable.ic_gitee),
                             contentDescription = "Gitee"
                         )
                         Spacer(modifier = Modifier.height(8.dp))

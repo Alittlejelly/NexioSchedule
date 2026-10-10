@@ -476,8 +476,7 @@ private fun BlurBottomSheetTabletContent(
                             Box(modifier = Modifier.fillMaxWidth().height(60.dp))
                         }
                         // 滚动渐变遮罩：对齐 CollapsibleTopAppBar，随 showButtonShadow 淡入
-                        val gradientColor =
-                            if (sheetAppDark) Color.Black else Color.White
+                        val gradientColor = MiuixTheme.colorScheme.surface
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

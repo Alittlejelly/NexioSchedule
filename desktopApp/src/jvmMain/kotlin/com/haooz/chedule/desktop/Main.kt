@@ -31,12 +31,15 @@ import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.FileAppFile
 import com.haooz.chedule.data.FileKeyValueStore
+import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.screens.AddCourseDialog
+import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import java.io.File
@@ -98,6 +101,9 @@ private enum class DesktopPage(val title: String) {
     Communication("交流与反馈"),
     SchoolSelection("教务导入 · 选择学校"),
     CourseTimeSettings("课表节数与时间"),
+    AppreciateAuthor("赞赏作者"),
+    AddCourse("添加课程（弹窗）"),
+    WidgetIntro("桌面小部件介绍"),
 }
 
 @Composable
@@ -139,6 +145,26 @@ private fun DesktopShell() {
                             scrollBehavior = scrollBehavior,
                         )
                         DesktopPage.Home -> Unit // 上面已分流，不可达
+                        // 第十批迁入：赞赏作者（捐赠明细，走 :core 的 AppreciationFetcher）
+                        DesktopPage.AppreciateAuthor -> AppreciateAuthorScreen(
+                            scrollBehavior = scrollBehavior,
+                        )
+                        // 第十二批迁入：添加课程弹窗（自带 OverlayDialog 浮层，不套页面脚手架）
+                        DesktopPage.AddCourse -> AddCourseDialog(
+                            show = true,
+                            course = null,
+                            selectedDay = 1,
+                            onDismiss = { page = DesktopPage.Home },
+                            onConfirm = { page = DesktopPage.Home },
+                            onDelete = { },
+                        )
+                        // 第十四批迁入：桌面小部件介绍页。
+                        // onRequestWidgetRefresh 是 Android 专有能力（AppWidget + RemoteViews），
+                        // 桌面端没有小组件 —— 宿主给空实现，页面本体照样完整渲染。
+                        DesktopPage.WidgetIntro -> WidgetIntroScreen(
+                            scrollBehavior = scrollBehavior,
+                            onRequestWidgetRefresh = { },
+                        )
                     }
                 }
             }

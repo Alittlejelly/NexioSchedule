@@ -10,10 +10,6 @@ import com.haooz.chedule.data.nowLocalTime
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BlurMaskFilter
-import android.graphics.Canvas
-import android.graphics.Paint
 import android.location.Geocoder
 import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import androidx.core.graphics.createBitmap
 import com.google.gson.Gson
 import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
@@ -69,86 +64,67 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_widget_location
+import org.jetbrains.compose.resources.DrawableResource
+import androidx.compose.foundation.Image
+import com.haooz.chedule.uishared.resources.icon_t_storm
+import com.haooz.chedule.uishared.resources.icon_float_dirt
+import com.haooz.chedule.uishared.resources.icon_ice_rain
+import com.haooz.chedule.uishared.resources.icon_light_snow
+import com.haooz.chedule.uishared.resources.icon_heavy_rain
+import com.haooz.chedule.uishared.resources.icon_moderate_rain
+import com.haooz.chedule.uishared.resources.icon_light_rain
+import com.haooz.chedule.uishared.resources.icon_heavy_snow
+import com.haooz.chedule.uishared.resources.icon_moderate_snow
+import com.haooz.chedule.uishared.resources.icon_overcast
+import com.haooz.chedule.uishared.resources.icon_cloudy
+import com.haooz.chedule.uishared.resources.icon_cloudy_night
+import com.haooz.chedule.uishared.resources.icon_sunny
+import com.haooz.chedule.uishared.resources.icon_sunny_night
 
 // 中国天气网 type（中文）→ 图标
-private fun getWeatherIconRes(type: String, isNight: Boolean = false): Int = when {
-    type.contains("冰雹") || type.contains("雷") -> R.drawable.icon_t_storm
+//
+// 2026-10-10：返回类型由 Android 的 `Int` 资源 ID 改为 CMP 的 `DrawableResource`（走 composeResources），
+// 图标本体已迁到 `:ui-shared` 的 `composeResources/drawable/`。
+private fun getWeatherIconRes(type: String, isNight: Boolean = false): DrawableResource = when {
+    type.contains("冰雹") || type.contains("雷") -> Res.drawable.icon_t_storm
     type.contains("雾") || type.contains("霾") || type.contains("浮尘") ||
-        type.contains("扬沙") || type.contains("沙尘") -> R.drawable.icon_float_dirt
-    type.contains("冻雨") -> R.drawable.icon_ice_rain
-    type.contains("雨夹雪") -> R.drawable.icon_light_snow
-    type.contains("暴雨") || type.contains("大雨") -> R.drawable.icon_heavy_rain
-    type.contains("中雨") -> R.drawable.icon_moderate_rain
-    type.contains("小雨") || type.contains("阵雨") || type.contains("雨") -> R.drawable.icon_light_rain
-    type.contains("暴雪") || type.contains("大雪") -> R.drawable.icon_heavy_snow
-    type.contains("中雪") -> R.drawable.icon_moderate_snow
-    type.contains("小雪") || type.contains("雪") -> R.drawable.icon_light_snow
-    type.contains("阴") -> R.drawable.icon_overcast
-    type.contains("多云") -> if (isNight) R.drawable.icon_cloudy_night else R.drawable.icon_cloudy
-    type.contains("晴") -> if (isNight) R.drawable.icon_sunny_night else R.drawable.icon_sunny
-    else -> if (isNight) R.drawable.icon_sunny_night else R.drawable.icon_sunny
+        type.contains("扬沙") || type.contains("沙尘") -> Res.drawable.icon_float_dirt
+    type.contains("冻雨") -> Res.drawable.icon_ice_rain
+    type.contains("雨夹雪") -> Res.drawable.icon_light_snow
+    type.contains("暴雨") || type.contains("大雨") -> Res.drawable.icon_heavy_rain
+    type.contains("中雨") -> Res.drawable.icon_moderate_rain
+    type.contains("小雨") || type.contains("阵雨") || type.contains("雨") -> Res.drawable.icon_light_rain
+    type.contains("暴雪") || type.contains("大雪") -> Res.drawable.icon_heavy_snow
+    type.contains("中雪") -> Res.drawable.icon_moderate_snow
+    type.contains("小雪") || type.contains("雪") -> Res.drawable.icon_light_snow
+    type.contains("阴") -> Res.drawable.icon_overcast
+    type.contains("多云") -> if (isNight) Res.drawable.icon_cloudy_night else Res.drawable.icon_cloudy
+    type.contains("晴") -> if (isNight) Res.drawable.icon_sunny_night else Res.drawable.icon_sunny
+    else -> if (isNight) Res.drawable.icon_sunny_night else Res.drawable.icon_sunny
 }
-
-// 阴影用图标 alpha 蒙版模糊，贴合轮廓（半透明图标不透出圆底边界）
+/**
+ * 天气图标。
+ *
+ * 2026-10-10 大幅简化：**去掉了原来的「alpha 蒙版模糊阴影」**。
+ * 原实现要用 `ContextCompat.getDrawable` + `Bitmap` + `Canvas` + `BlurMaskFilter` 渲染两张位图
+ * （图标 + 阴影）再叠画 —— 深度依赖 Android 图形 API，是这页迁进共享模块的最大障碍；
+ * 而实际观感收益有限（阴影贴合轮廓的效果在 23dp 尺寸下几乎看不出来）。
+ *
+ * 现在就是普通的 `painterResource`，因此 `LocalContext` 也不再需要。
+ */
 @Composable
 private fun WeatherIcon(
-    resourceId: Int,
+    resource: DrawableResource,
     size: Dp,
-    shadowColor: Color,
-    shadowRadius: Dp
 ) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val iconPx = with(density) { size.roundToPx() }.coerceAtLeast(1)
-    val radiusPx = with(density) { shadowRadius.toPx() }.coerceAtLeast(1f)
-    // 外溢边距，避免阴影被画布裁切
-    val marginPx = (radiusPx * 1.1f).roundToInt().coerceAtLeast(2)
-    val totalPx = iconPx + marginPx * 2
-    val shadowArgb = shadowColor.toArgb()
-    val shadowBitmap = remember(resourceId, totalPx, radiusPx, shadowArgb) {
-        createWeatherShadowBitmap(
-            source = renderWeatherIconBitmap(context, resourceId, totalPx, marginPx),
-            radiusPx = radiusPx,
-            shadowArgb = shadowArgb
-        )
-    }
-    val iconBitmap = remember(resourceId, totalPx, marginPx) {
-        renderWeatherIconBitmap(context, resourceId, totalPx, marginPx)
-    }
-    val totalDp = with(density) { totalPx.toDp() }
-    Canvas(modifier = Modifier.size(totalDp)) {
-        drawImage(shadowBitmap.asImageBitmap())
-        drawImage(iconBitmap.asImageBitmap())
-    }
-}
-
-// 图标居中渲染到带边距的 ARGB 位图，边距供阴影外溢
-private fun renderWeatherIconBitmap(context: Context, resourceId: Int, totalPx: Int, insetPx: Int): Bitmap {
-    val drawable = ContextCompat.getDrawable(context, resourceId)
-    val bitmap = createBitmap(totalPx, totalPx)
-    if (drawable != null) {
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(insetPx, insetPx, totalPx - insetPx, totalPx - insetPx)
-        drawable.draw(canvas)
-    }
-    return bitmap
-}
-
-// 由图标位图生成贴合轮廓的模糊阴影
-private fun createWeatherShadowBitmap(source: Bitmap, radiusPx: Float, shadowArgb: Int): Bitmap {
-    val alphaMask = createBitmap(source.width, source.height, Bitmap.Config.ALPHA_8)
-    Canvas(alphaMask).drawBitmap(source, 0f, 0f, null)
-    val shadow = createBitmap(source.width, source.height)
-    Canvas(shadow).drawBitmap(
-        alphaMask,
-        0f,
-        0f,
-        Paint().apply {
-            color = shadowArgb
-            maskFilter = BlurMaskFilter(radiusPx, BlurMaskFilter.Blur.NORMAL)
-        }
+    Image(
+        painter = painterResource(resource),
+        contentDescription = null,
+        modifier = Modifier.size(size),
     )
-    return shadow
 }
 
 // 供设置页作废缓存，下次进入今日页按新设置重拉
@@ -998,10 +974,8 @@ fun TodayAssistantCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (weather.loaded && !weather.temperature.isNaN()) {
                         WeatherIcon(
-                            resourceId = getWeatherIconRes(weather.weatherType, weather.isNight()),
+                            resource = getWeatherIconRes(weather.weatherType, weather.isNight()),
                             size = 23.dp,
-                            shadowColor = Color.Black.copy(alpha = 0.24f),
-                            shadowRadius = 5.dp
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
@@ -1013,8 +987,8 @@ fun TodayAssistantCard(
                         androidx.compose.foundation.layout.Box(modifier = Modifier.padding(vertical = 4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 androidx.compose.foundation.Image(
-                                    painter = androidx.compose.ui.res.painterResource(
-                                        id = R.drawable.ic_widget_location
+                                    painter = org.jetbrains.compose.resources.painterResource(
+                                        Res.drawable.ic_widget_location
                                     ),
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
@@ -1032,8 +1006,8 @@ fun TodayAssistantCard(
                         androidx.compose.foundation.layout.Box(modifier = Modifier.padding(vertical = 4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 androidx.compose.foundation.Image(
-                                    painter = androidx.compose.ui.res.painterResource(
-                                        id = R.drawable.ic_widget_location
+                                    painter = org.jetbrains.compose.resources.painterResource(
+                                        Res.drawable.ic_widget_location
                                     ),
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
@@ -1049,10 +1023,8 @@ fun TodayAssistantCard(
                         }
                     } else {
                         WeatherIcon(
-                            resourceId = R.drawable.icon_overcast,
+                            resource = Res.drawable.icon_overcast,
                             size = 23.dp,
-                            shadowColor = Color.Black.copy(alpha = 0.24f),
-                            shadowRadius = 5.dp
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(

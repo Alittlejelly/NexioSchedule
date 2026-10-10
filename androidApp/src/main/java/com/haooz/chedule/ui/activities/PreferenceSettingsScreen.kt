@@ -38,14 +38,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
-import com.haooz.chedule.R
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
@@ -71,6 +69,11 @@ import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.theme_preview_light
+import com.haooz.chedule.uishared.resources.theme_preview_night
+import org.jetbrains.compose.resources.DrawableResource
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -207,7 +210,7 @@ fun PreferenceSettingsScreen(
                     ) {
                         ThemeSelectionBox(
                             label = "浅色模式",
-                            drawableRes = R.drawable.theme_preview_light,
+                            drawableRes = Res.drawable.theme_preview_light,
                             selected = !effectiveDark,
                             onClick = onClick@ {
                                 // 自动模式下点了与当前系统一致的框，保持自动
@@ -219,7 +222,7 @@ fun PreferenceSettingsScreen(
                         )
                         ThemeSelectionBox(
                             label = "深色模式",
-                            drawableRes = R.drawable.theme_preview_night,
+                            drawableRes = Res.drawable.theme_preview_night,
                             selected = effectiveDark,
                             onClick = onClick@ {
                                 // 自动模式下点了与当前系统一致的框，保持自动
@@ -523,7 +526,7 @@ fun PreferenceSettingsScreen(
 @Composable
 private fun ThemeSelectionBox(
     label: String,
-    drawableRes: Int,
+    drawableRes: DrawableResource,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier

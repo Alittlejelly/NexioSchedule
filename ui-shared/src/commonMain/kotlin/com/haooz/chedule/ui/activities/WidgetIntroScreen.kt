@@ -1,7 +1,6 @@
 /** 小组件使用引导页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -33,13 +32,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.R
 import com.haooz.chedule.data.CourseRepository
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
@@ -47,8 +44,6 @@ import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.widget.CourseWidgetProviderStandard
-import com.haooz.chedule.widget.TodayCourseWidgetProviderStandard
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -59,12 +54,24 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.graphics.Color as ComposeColor
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_miuix_logo
+import com.haooz.chedule.uishared.resources.ic_widget_clock
+import com.haooz.chedule.uishared.resources.ic_widget_location
 
-@SuppressLint("ConfigurationScreenWidthHeight")
+/**
+ * @param onRequestWidgetRefresh 小组件边距改完后通知宿主刷新已添加的小组件。
+ *   小组件是 **Android 专有**（`AppWidgetManager` + `RemoteViews`），iOS 是 WidgetKit、
+ *   桌面端根本没有 —— 所以这里只暴露「刷新」这一个动作，具体实现由宿主注入。
+ *   与 `SchoolSelectionScreen(onAdapterSelected)` / `CourseTimeSettingsScreen(onEditRoutine)`
+ *   同一套路：**平台专有能力留在宿主，页面本体保持平台中立**。
+ */
 @Composable
 fun WidgetIntroScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    onRequestWidgetRefresh: () -> Unit = {},
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = isTabletWidth()
@@ -149,7 +156,6 @@ fun WidgetIntroScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                val context = LocalContext.current
                 val repository = remember { CourseRepository() }
                 var paddingMode by remember { mutableIntStateOf(repository.getWidgetPaddingMode()) }
                 WidgetPaddingSelector(
@@ -159,8 +165,9 @@ fun WidgetIntroScreen(
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                         paddingMode = mode
                         repository.setWidgetPaddingMode(mode)
-                        com.haooz.chedule.widget.WidgetUpdateCache.clear()
-                        com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(context)
+                        // 写库之后让宿主刷小组件（`WidgetUpdateCache` 在 Android 专有的 widget 包里，
+                        // 本页不直接依赖它 —— 桌面端没有小组件，宿主传空实现即可）。
+                        onRequestWidgetRefresh()
                     }
                 )
 
@@ -201,7 +208,7 @@ private fun WidgetPreviewToday() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(R.drawable.ic_miuix_logo),
+                    painter = painterResource(Res.drawable.ic_miuix_logo),
                     contentDescription = null,
                     modifier = Modifier.size(22.dp).padding(end = 6.dp).graphicsLayer(scaleY = -1f),
                     alpha = 0.8f
@@ -252,7 +259,7 @@ private fun WidgetPreviewSmall2x2() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(R.drawable.ic_miuix_logo),
+                        painter = painterResource(Res.drawable.ic_miuix_logo),
                         contentDescription = null,
                         modifier = Modifier
                             .size(16.dp)
@@ -291,7 +298,7 @@ private fun WidgetPreviewSmall2x2() {
                     ) {
                         // Icon: 12dp, marginEnd=6dp
                         androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_widget_clock),
+                            painter = painterResource(Res.drawable.ic_widget_clock),
                             contentDescription = null,
                             modifier = Modifier.size(12.dp),
                             alpha = 0.5f
@@ -310,7 +317,7 @@ private fun WidgetPreviewSmall2x2() {
                     ) {
                         // Icon: 12dp, marginEnd=6dp
                         androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_widget_location),
+                            painter = painterResource(Res.drawable.ic_widget_location),
                             contentDescription = null,
                             modifier = Modifier.size(12.dp),
                             alpha = 0.5f
