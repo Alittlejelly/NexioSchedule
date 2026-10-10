@@ -3,6 +3,7 @@ package com.haooz.chedule
 import android.app.Application
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.asKeyValueStore
+import com.haooz.chedule.platform.AndroidScheduleEffects
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,10 @@ class NexioApplication : Application() {
         )
         // 课表外观单例：尽早初始化，主界面首帧即可读壁纸与卡片参数
         com.haooz.chedule.data.ScheduleAppearance.init(this)
+        // 课程变更后的平台副作用（重排提醒 / 手表同步 / 刷新小组件）。
+        // CourseViewModel / ScheduleViewModel 已进 :ui-shared，不能直接碰 reminder/widget，
+        // 只能经 :core 的 ScheduleEffects 出口回调到这里 —— 未注入时静默丢弃。
+        com.haooz.chedule.data.ScheduleEffects.init(AndroidScheduleEffects(this))
         // 预测性返回动画开关：应用启动即同步到全局单例（应用设置中可切换）
         PredictiveBackSettings.enabled = AppStorage.store("app_preferences")
             .getBoolean(PredictiveBackSettings.KEY_PREDICTIVE_BACK_ANIMATION, true)

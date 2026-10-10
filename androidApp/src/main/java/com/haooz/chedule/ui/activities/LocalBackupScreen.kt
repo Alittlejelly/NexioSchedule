@@ -383,8 +383,9 @@ fun LocalBackupScreen(
     var backupMode by remember { mutableStateOf("all") }
     var selectedSchedule by remember { mutableStateOf("") }
 
-    val courseViewModel = remember { CourseViewModel(context.applicationContext as Application) }
-    val scheduleViewModel = remember { ScheduleViewModel(context.applicationContext as Application) }
+    // 三个 VM 都已去掉 Application（平台副作用走 :core 的 ScheduleEffects 出口）
+    val courseViewModel = remember { CourseViewModel() }
+    val scheduleViewModel = remember { ScheduleViewModel() }
     // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context）
     val settingsViewModel = remember { SettingsViewModel() }
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()

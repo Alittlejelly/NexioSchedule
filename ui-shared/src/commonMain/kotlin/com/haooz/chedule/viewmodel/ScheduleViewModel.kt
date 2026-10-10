@@ -1,17 +1,22 @@
 package com.haooz.chedule.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.reminder.CourseReminderHelper
-import kotlinx.coroutines.Dispatchers
+import com.haooz.chedule.data.ScheduleEffects
+import com.haooz.chedule.data.ioDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class ScheduleViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * ⚠ 原来继承 `AndroidViewModel(application)`，只为拿 `Context` 去调 `CourseReminderHelper`。
+ * 现在重排提醒走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入
+ * `AndroidScheduleEffects` 接手），这里不再需要 Application。
+ * 保持无参构造：调用点用 AndroidX 的 `viewModel()`，默认工厂只认无参构造。
+ */
+class ScheduleViewModel : ViewModel() {
 
     private val repository = CourseRepository()
 
@@ -26,7 +31,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
     init {
         // 摘要需反序列化全部课程，首屏不用，放 IO 避免阻塞首帧
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             refreshScheduleList()
         }
     }
@@ -60,7 +65,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         repository.switchToSchedule(scheduleId)
         _currentScheduleName.value = scheduleId
         // 重排闹钟并驱动 widget 刷新链，否则新课表 30 分钟内的课可能漏提醒
-        CourseReminderHelper.startReminderService(getApplication(), repository)
+        ScheduleEffects.rescheduleReminders()
     }
 
     fun getCurrentScheduleTimeConfigId(): Long {
@@ -82,7 +87,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
         refreshScheduleList()
         // 取消已删除课程的闹钟
-        CourseReminderHelper.startReminderService(getApplication(), repository)
+        ScheduleEffects.rescheduleReminders()
         return names
     }
 

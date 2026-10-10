@@ -6,16 +6,15 @@ import com.haooz.chedule.data.minusDays
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.reminder.CourseReminderHelper
-import com.haooz.chedule.widget.CourseWidgetProviderStandard
-import com.haooz.chedule.widget.TodayCourseWidgetProviderStandard
-import kotlinx.coroutines.Dispatchers
+import com.haooz.chedule.data.ScheduleEffects
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.data.synchronizedOn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +22,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 
-class CourseViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * ⚠ 原来继承 `AndroidViewModel(application)`，只为拿 `Context` 去调提醒服务 /
+ * 小组件 / 手表三者 —— 现在这三件事全走 `:core` 的 [ScheduleEffects] 出口，
+ * 由 `NexioApplication` 注入 `AndroidScheduleEffects` 接手，这里不再需要 Application。
+ *
+ * 保持**无参构造**很重要：调用点几乎都用 AndroidX 的 `viewModel()`（默认工厂
+ * 只认无参构造），改成带参就得给每个调用点写自定义 Factory。
+ */
+class CourseViewModel : ViewModel() {
 
     private val repository = CourseRepository()
     private var loadedScheduleId = repository.getCurrentScheduleId()
@@ -91,8 +98,8 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         if (reorganizationChanged || currentScheduleChanged || restoreChanged) {
             _dataVersion.value++
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            synchronized(courseRefreshLock) {
+        viewModelScope.launch(ioDispatcher) {
+            synchronizedOn(courseRefreshLock) {
                 if (reorganizationChanged || currentScheduleChanged || restoreChanged) {
                     loadEssentialData()
                 }
@@ -105,15 +112,16 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         repository.addCourseChangedListener(courseChangedListener)
-        synchronized(courseRefreshLock) { loadEssentialData() }
-        viewModelScope.launch(Dispatchers.IO) {
-            synchronized(courseRefreshLock) { loadCourses() }
+        synchronizedOn(courseRefreshLock) { loadEssentialData() }
+        viewModelScope.launch(ioDispatcher) {
+            synchronizedOn(courseRefreshLock) { loadCourses() }
         }
     }
 
     private fun rescheduleReminders() {
-        val context = getApplication<Application>()
-        CourseReminderHelper.startReminderService(context, repository)
+        // 提醒服务是 Android 专有（AlarmManager），走 :core 的出口回调，
+        // 由 NexioApplication 注入的 AndroidScheduleEffects 接过去。
+        ScheduleEffects.rescheduleReminders()
     }
 
     /**
@@ -164,7 +172,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun applyCoursesAndRefreshWidgets(courses: List<Course>) {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             _courses.value = courses
             // 调课/交换可能不改变 size，必须 bump 才能让 dayRange 等按 dataVersion 记忆的 UI 重算
             _dataVersion.value++
@@ -174,12 +182,12 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun mutateCourses(mutation: () -> List<Course>) {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             applyCoursesAndRefreshWidgets(mutation())
         }
-        com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-mutate")
+        ScheduleEffects.syncWearable("course-mutate")
         // 课程变了要重排闹钟：增删改/调课/交换都走 saveCourses(notify=false)
-        viewModelScope.launch(Dispatchers.IO) { rescheduleReminders() }
+        viewModelScope.launch(ioDispatcher) { rescheduleReminders() }
         // 跨 ViewModel 实例广播：主页与管理页各自持有独立 CourseViewModel，
         // 不广播的话管理页改色/改时段后主页要重启 App 才刷新
         repository.notifyCoursesBulkChanged()
@@ -187,7 +195,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun updateWidgets() {
         viewModelScope.launch {
-            com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(getApplication())
+            ScheduleEffects.refreshWidgets()
         }
     }
 
@@ -213,14 +221,14 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     // 返回 Job：调用方需等待加载完成后再截取新课表快照
     fun reloadCourses(): Job {
         com.haooz.chedule.ui.utils.FeatureLog.t("课程数据", "reload")
-        return viewModelScope.launch(Dispatchers.IO) {
-            synchronized(courseRefreshLock) { loadData() }
+        return viewModelScope.launch(ioDispatcher) {
+            synchronizedOn(courseRefreshLock) { loadData() }
         }
     }
 
     // 云同步导入后刷新周次等基本数据
     fun refreshEssentialData() {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             if (loadEssentialData()) _dataVersion.value++
             rescheduleReminders()
         }
@@ -228,14 +236,14 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Refresh rule-dependent screen caches after an in-place tablet settings edit. */
     fun refreshTeachingWeekReorganizations() {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             if (loadEssentialData()) _dataVersion.value++
         }
     }
 
     // Rebase the semester start so the selected teaching week remains stable under merge rules.
     fun setCurrentWeek(week: Int) {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             com.haooz.chedule.ui.utils.FeatureLog.t("课表", "set_week", "week=$week")
             val oldWeek = _currentWeek.value
             val newStartDate = if (week != oldWeek) {
@@ -245,7 +253,11 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
                     date = todayLocalDate(),
                     teachingWeek = week.toLong(),
                     rules = repository.getTeachingWeekReorganizations(),
-                ) ?: return
+                    // ⚠ 必须写具名 return@synchronizedOn：
+                    // `synchronizedOn` 是**刻意非 inline** 的（见 :core 的 `Lock.kt`），
+                    // 非局部 `return` 会被 Kotlin 拒绝。这里 lambda 就是函数体本身、
+                    // 块后无代码，所以退化成具名返回行为完全一致。
+                ) ?: return@synchronizedOn
             } else null
             _currentWeek.value = week
             repository.setCurrentWeek(week)
@@ -264,7 +276,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     fun setClassStartTime(time: String) {
         // 教务导入常给 yyyy-MM-dd；先规范化，避免被 getClassStartTime 重置成今天
         val normalized = CourseRepository.normalizeClassStartDate(time) ?: return
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             _classStartTime.value = normalized
             repository.setClassStartTime(normalized)
 
@@ -278,7 +290,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setTotalWeeks(weeks: Int) {
         if (weeks !in 1..CourseRepository.MAX_TOTAL_WEEKS) return
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             _totalWeeks.value = weeks
             repository.setTotalWeeks(weeks)
             _isHoliday.value = isWeekHoliday(_currentWeek.value)
@@ -376,7 +388,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun replaceCourses(courses: List<Course>) {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             val currentScheduleId = repository.getCurrentScheduleId()
             val coursesWithSchedule = courses.map { course ->
                 if (course.scheduleId.isEmpty()) {
@@ -393,7 +405,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun appendCourses(courses: List<Course>) {
-        synchronized(courseRefreshLock) {
+        synchronizedOn(courseRefreshLock) {
             val currentScheduleId = repository.getCurrentScheduleId()
             // 补 scheduleId，id 冲突时重新生成
             val existingIds = _courses.value.map { it.id }.toSet()
@@ -404,7 +416,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
                     course
                 }
                 if (withSchedule.id.isEmpty() || withSchedule.id in existingIds) {
-                    withSchedule.copy(id = java.util.UUID.randomUUID().toString())
+                    withSchedule.copy(id = randomUuidV4())
                 } else {
                     withSchedule
                 }
