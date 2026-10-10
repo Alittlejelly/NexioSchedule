@@ -2,7 +2,6 @@ package com.haooz.chedule.ui.screens
 
 import com.haooz.chedule.data.todayLocalDate
 
-import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -53,7 +52,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -125,6 +123,8 @@ import java.net.URL
 import kotlinx.datetime.LocalDate
 import kotlin.time.Duration.Companion.milliseconds
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 平板设置页目的地：原一级 + 原二级入口全部平铺在左栏；
@@ -170,7 +170,7 @@ fun TabletSettingsChromeOverlay() {
     val collapsedH = top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
     val titleColor = MiuixTheme.colorScheme.onSurface
     val density = LocalDensity.current
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val widthDp = screenWidthDp()
     val statusBarPx = with(density) { statusBar.roundToPx() }
     val collapsedHPx = with(density) { collapsedH.roundToPx() }
     val collapsedTotalPx = with(density) {
@@ -178,7 +178,7 @@ fun TabletSettingsChromeOverlay() {
             com.haooz.chedule.ui.components.TabletNavIconRailWidth).toPx()
     }
     val expandedWidthPx = with(density) {
-        (screenWidthDp.dp * com.haooz.chedule.ui.components.TabletNavSideWidthFraction).toPx()
+        (widthDp.dp * com.haooz.chedule.ui.components.TabletNavSideWidthFraction).toPx()
     }
 
     BoxWithConstraints(
@@ -429,7 +429,7 @@ fun TabletSettingsScreen(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         // 左栏固定为屏宽 0.39，不随侧栏展开/收起变化；剩余宽度全给右栏
-        val leftWidth = LocalConfiguration.current.screenWidthDp.dp * 0.39f
+        val leftWidth = screenWidthDp().dp * 0.39f
         val rightWidth = maxWidth - leftWidth
         // screen 层内容已位于导航栏之外（pager 已按 railPadding 前移），分界就在左栏宽度处
         val dividerX = leftWidth
@@ -806,21 +806,13 @@ fun TabletSettingsScreen(
                                                     context
                                                 )
                                                 com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
-                                                android.widget.Toast.makeText(
-                                                    context,
-                                                    "已发送超级岛测试通知",
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
+                                                showToast("已发送超级岛测试通知")
                                             } else {
                                                 CourseReminderHelper.sendTestLiveNotification(
                                                     context
                                                 )
                                                 com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
-                                                android.widget.Toast.makeText(
-                                                    context,
-                                                    "已发送实时活动测试通知",
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
+                                                showToast("已发送实时活动测试通知")
                                             }
                                         },
                                         backdrop = rightPaneBackdrop,
@@ -1034,7 +1026,7 @@ fun TabletSettingsScreen(
                                             } ?: false
                                             if (!saved) {
                                                 // 保存被丢弃必须让用户看见：以前静默丢弃，表现成「改完保存、重开还是原来的」
-                                                Toast.makeText(context, "保存失败，请重试", Toast.LENGTH_SHORT).show()
+                                                showToast("保存失败，请重试")
                                             }
                                             timeConfigRefreshTrigger++
                                             uiScope.launch {
@@ -1391,20 +1383,12 @@ private fun TabletSemesterPane(
                         if (newSemesterName.isNotBlank()) {
                             val name = newSemesterName
                             if (name in scheduleNames) {
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "该课表名称已存在",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
+                                showToast("该课表名称已存在")
                             } else {
                                 scheduleViewModel.createNewSemesterSchedule(name)
                                 showNewSemesterDialog = false
                                 newSemesterName = ""
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "「${name}」创建成功",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
+                                showToast("「${name}」创建成功")
                             }
                         }
                     },
@@ -1638,9 +1622,7 @@ private fun TabletHolidayPane(
                             !merged -> "本地数据异常，更新未保存"
                             else -> "已更新 ${result.size} 条记录"
                         }
-                    android.widget.Toast.makeText(
-                        context, message, android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                    showToast(message)
                 }
             }
         }

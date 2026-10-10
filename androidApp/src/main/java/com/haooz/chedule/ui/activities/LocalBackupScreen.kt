@@ -6,7 +6,6 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
@@ -44,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +88,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 private const val BACKUP_DIR_NAME = "Neixo_Schedule"
 
@@ -439,11 +439,7 @@ fun LocalBackupScreen(
                     showRestoreDialog = true
                 },
                 onFailure = { e ->
-                    Toast.makeText(
-                        context,
-                        "无法识别备份文件：${e.message ?: "格式错误"}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    showToast("无法识别备份文件：${e.message ?: "格式错误"}")
                 }
             )
         }
@@ -497,10 +493,10 @@ fun LocalBackupScreen(
             isRestoring = false
             result.fold(
                 onSuccess = {
-                    Toast.makeText(context, "恢复成功", Toast.LENGTH_SHORT).show()
+                    showToast("恢复成功")
                 },
                 onFailure = { e ->
-                    Toast.makeText(context, "恢复失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    showToast("恢复失败: ${e.message}")
                 }
             )
         }
@@ -516,7 +512,7 @@ fun LocalBackupScreen(
         refreshHistory()
     }
 
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(
@@ -617,7 +613,7 @@ fun LocalBackupScreen(
                             onClick = {
                                 if (isBackingUp) return@ArrowPreference
                                 if (backupMode == "single" && selectedSchedule.isEmpty()) {
-                                    Toast.makeText(context, "请先选择要备份的课表", Toast.LENGTH_SHORT).show()
+                                    showToast("请先选择要备份的课表")
                                     return@ArrowPreference
                                 }
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
@@ -677,11 +673,11 @@ fun LocalBackupScreen(
                                     isBackingUp = false
                                     result.fold(
                                         onSuccess = { name ->
-                                            Toast.makeText(context, "备份成功: $name", Toast.LENGTH_SHORT).show()
+                                            showToast("备份成功: $name")
                                             refreshHistory()
                                         },
                                         onFailure = { e ->
-                                            Toast.makeText(context, "备份失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            showToast("备份失败: ${e.message}")
                                         }
                                     )
                                 }
@@ -949,17 +945,13 @@ fun LocalBackupScreen(
                             try {
                                 delay(300.milliseconds)
                                 if (target.delete()) {
-                                    Toast.makeText(context, "删除成功", Toast.LENGTH_SHORT).show()
+                                    showToast("删除成功")
                                 } else {
-                                    Toast.makeText(
-                                        context,
-                                        "删除失败：文件不存在或不可写",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("删除失败：文件不存在或不可写")
                                 }
                                 refreshHistory()
                             } catch (e: Exception) {
-                                Toast.makeText(context, "删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                showToast("删除失败: ${e.message}")
                             } finally {
                                 // 放在 finally：否则扫描抛异常时该卡片会永久停在 alpha=0
                                 deletingFileName = null

@@ -4,7 +4,6 @@ package com.haooz.chedule.ui.activities
 import com.haooz.chedule.data.HolidayEntry
 
 import android.annotation.SuppressLint
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
@@ -84,6 +82,8 @@ import kotlinx.datetime.LocalDate
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /** 数据管理：课表导入 / 导出 / 备份 三种页面模式 */
 enum class ScheduleDataManageMode {
@@ -117,7 +117,7 @@ fun BackupAndMigrationScreen(
         selectedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
     )
 
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val webDavManager = remember { WebDavManager { com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(context) } }
@@ -163,10 +163,10 @@ fun BackupAndMigrationScreen(
                     context.contentResolver.openOutputStream(it)?.use { os ->
                         os.write(json.toByteArray(Charsets.UTF_8))
                     }
-                    Toast.makeText(context, "导出成功", Toast.LENGTH_SHORT).show()
+                    showToast("导出成功")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                showToast("导出失败: ${e.message}")
             } finally {
                 pendingExportJson = null
             }
@@ -182,10 +182,10 @@ fun BackupAndMigrationScreen(
                     context.contentResolver.openOutputStream(it)?.use { os ->
                         os.write(ics.toByteArray(Charsets.UTF_8))
                     }
-                    Toast.makeText(context, "导出成功", Toast.LENGTH_SHORT).show()
+                    showToast("导出成功")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                showToast("导出失败: ${e.message}")
             } finally {
                 pendingExportIcs = null
             }
@@ -209,13 +209,13 @@ fun BackupAndMigrationScreen(
                         pendingImportScheduleName = scheduleName
                         showImportConfirmDialog = true
                     } else {
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        showToast(message)
                     }
                 } else {
-                    Toast.makeText(context, "文件读取失败", Toast.LENGTH_SHORT).show()
+                    showToast("文件读取失败")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                showToast("导入失败: ${e.message}")
             }
         }
     }
@@ -237,13 +237,13 @@ fun BackupAndMigrationScreen(
                         pendingImportScheduleName = scheduleName
                         showImportConfirmDialog = true
                     } else {
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        showToast(message)
                     }
                 } else {
-                    Toast.makeText(context, "文件读取失败", Toast.LENGTH_SHORT).show()
+                    showToast("文件读取失败")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                showToast("导入失败: ${e.message}")
             }
         }
     }
@@ -531,7 +531,7 @@ fun BackupAndMigrationScreen(
                                 holdDownState = showShareExportConfirmDialog,
                                 onClick = {
                                     if (selectedExportSchedule.isBlank()) {
-                                        Toast.makeText(context, "请先选择要分享的课表", Toast.LENGTH_SHORT).show()
+                                        showToast("请先选择要分享的课表")
                                     } else if (!isSharingExport) {
                                         showShareExportConfirmDialog = true
                                     }
@@ -554,17 +554,9 @@ fun BackupAndMigrationScreen(
                                         val path = com.haooz.chedule.wearable.WearableScheduleSync
                                             .exportToWearable(context, selectedExportSchedule)
                                         if (path != null) {
-                                            Toast.makeText(
-                                                context,
-                                                "已导出并推送手环\n$path",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            showToast("已导出并推送手环\n$path", longDuration = true)
                                         } else {
-                                            Toast.makeText(
-                                                context,
-                                                "导出失败，请确认手环已连接",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            showToast("导出失败，请确认手环已连接")
                                         }
                                     }
                                 }
@@ -659,7 +651,7 @@ fun BackupAndMigrationScreen(
                                     pendingImportScheduleName,
                                     pendingImportData!!
                                 )
-                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                showToast(message, longDuration = true)
                             }
                             showImportConfirmDialog = false
                             pendingImportData = null
@@ -765,7 +757,7 @@ fun BackupAndMigrationScreen(
                             if (isImportingShareCode) return@TextButton
                             val code = shareCodeInput.trim()
                             if (code.isBlank()) {
-                                Toast.makeText(context, "请输入口令", Toast.LENGTH_SHORT).show()
+                                showToast("请输入口令")
                                 return@TextButton
                             }
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -782,11 +774,7 @@ fun BackupAndMigrationScreen(
                                             showImportConfirmDialog = true
                                         },
                                         onFailure = { e ->
-                                            Toast.makeText(
-                                                context,
-                                                e.message ?: "口令不存在或已过期",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            showToast(e.message ?: "口令不存在或已过期")
                                         }
                                     )
                                 } finally {
@@ -849,7 +837,7 @@ fun BackupAndMigrationScreen(
                         val source = thirdPartySource
                         val code = thirdPartyCodeInput.trim()
                         if (code.isBlank()) {
-                            Toast.makeText(context, "请输入${source.inputLabel}", Toast.LENGTH_SHORT).show()
+                            showToast("请输入${source.inputLabel}")
                             return@TextButton
                         }
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -869,11 +857,7 @@ fun BackupAndMigrationScreen(
                                         showThirdPartyConfirmDialog = true
                                     },
                                     onFailure = { e ->
-                                        Toast.makeText(
-                                            context,
-                                            e.message ?: "口令无效或导入失败",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                        showToast(e.message ?: "口令无效或导入失败", longDuration = true)
                                     }
                                 )
                             } finally {
@@ -947,7 +931,7 @@ fun BackupAndMigrationScreen(
                                 scheduleName = name,
                                 payload = payload,
                             )
-                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            showToast(message, longDuration = true)
                         }
                         showThirdPartyConfirmDialog = false
                     },
@@ -1050,7 +1034,7 @@ private fun buildExportJson(
     val repository = CourseRepository()
     val data = buildShareScheduleMap(repository, scheduleName)
     if (data == null) {
-        Toast.makeText(viewModel.getApplication(), "「$scheduleName」课表为空，无法导出", Toast.LENGTH_SHORT).show()
+        showToast("「$scheduleName」课表为空，无法导出")
         return null
     }
     return GsonBuilder().setPrettyPrinting().create().toJson(data)
@@ -1129,7 +1113,7 @@ private fun buildExportIcs(
     val repository = CourseRepository()
     val courses = repository.getCoursesForSchedule(scheduleName)
     if (courses.isEmpty()) {
-        Toast.makeText(viewModel.getApplication(), "「$scheduleName」课表为空，无法导出", Toast.LENGTH_SHORT).show()
+        showToast("「$scheduleName」课表为空，无法导出")
         return null
     }
 

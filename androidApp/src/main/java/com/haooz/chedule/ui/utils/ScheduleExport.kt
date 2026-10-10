@@ -12,7 +12,6 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.view.View
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
@@ -34,6 +33,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import com.haooz.chedule.data.showToast
 
 // ════════════════════════════════════════════════════════════════════════
 //  课表导出 —— 单文件全包（分享给其他 App / 分享口令）
@@ -395,13 +395,13 @@ fun performScheduleShare(
     val repository = CourseRepository.getInstance()
     val scheduleMap = buildShareScheduleMap(repository, scheduleName)
     if (scheduleMap == null) {
-        Toast.makeText(context, "「$scheduleName」课表为空，无法分享", Toast.LENGTH_SHORT).show()
+        showToast("「$scheduleName」课表为空，无法分享")
         return
     }
     onSharingChanged(true)
     scope.launch {
         try {
-            Toast.makeText(context, "正在生成分享口令…", Toast.LENGTH_SHORT).show()
+            showToast("正在生成分享口令…")
             val json = GsonBuilder().create().toJson(scheduleMap)
             ShareCodeApi.createShare(scheduleName, json).fold(
                 onSuccess = { created ->
@@ -412,25 +412,13 @@ fun performScheduleShare(
                         created.scheduleName
                     )
                     if (ok) {
-                        Toast.makeText(
-                            context,
-                            "口令已复制：「${created.code}」30 分钟内有效",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        showToast("口令已复制：「${created.code}」30 分钟内有效", longDuration = true)
                     } else {
-                        Toast.makeText(
-                            context,
-                            "口令已复制「${created.code}」，但生成图片失败",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        showToast("口令已复制「${created.code}」，但生成图片失败", longDuration = true)
                     }
                 },
                 onFailure = { e ->
-                    Toast.makeText(
-                        context,
-                        "分享失败：${e.message ?: "网络错误"}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    showToast("分享失败：${e.message ?: "网络错误"}")
                 }
             )
         } finally {

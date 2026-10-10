@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,6 +55,7 @@ import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 internal data class ShiftSchedulePageDayRangeKey(
     val week: Int,
@@ -87,8 +87,7 @@ fun ShiftScheduleScreen(
     val isInFreeformWindow = activity?.isInFreeformWindow == true
     val isDark = isAppDarkTheme()
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
 

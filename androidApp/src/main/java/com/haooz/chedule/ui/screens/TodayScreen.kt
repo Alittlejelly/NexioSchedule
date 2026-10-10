@@ -49,14 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -106,6 +105,8 @@ import kotlinx.datetime.LocalTime
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.screenHeightDp
 
 // 有壁纸 backdrop 才走毛玻璃半透明路径，与模糊半径无关（blur=0 仍采样壁纸）
 // 原 TIME_FORMATTER("HH:mm") / DATE_FORMATTER("yyyy年M月d日") 是 java.time 的 DateTimeFormatter，
@@ -341,7 +342,7 @@ fun TodayScreen(
     scrollToTodayTrigger: Int = 0,
     jumpToDateTrigger: Int = 0,
     onJumpToDateProcessed: () -> Unit = {},
-    wallpaperBitmap: android.graphics.Bitmap? = null,
+    wallpaperBitmap: ImageBitmap? = null,
     wallpaperOffset: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero,
     wallpaperScale: Float = 1f,
     wallpaperBrightness: Float = 0f,
@@ -372,10 +373,9 @@ fun TodayScreen(
     val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
 
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
     val appContext = LocalContext.current.applicationContext
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val screenWidthPx = with(density) { screenWidthDp().dp.toPx() }
+    val screenHeightPx = with(density) { screenHeightDp().dp.toPx() }
     val minWallpaperScale = remember(wallpaperBitmap, screenWidthPx, screenHeightPx) {
         if (wallpaperBitmap != null && wallpaperBitmap.width > 0 && wallpaperBitmap.height > 0) {
             val fitScale = minOf(screenWidthPx / wallpaperBitmap.width, screenHeightPx / wallpaperBitmap.height)
@@ -520,7 +520,7 @@ fun TodayScreen(
                         ApiCompat.blurRenderEffect(24f * density.density)
                     }
                     androidx.compose.foundation.Image(
-                        bitmap = wallpaperBitmap.asImageBitmap(),
+                        bitmap = wallpaperBitmap,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxSize()

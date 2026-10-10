@@ -22,3 +22,10 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun screenWidthDp(): Int
+
+/**
+ * 当前窗口高度（dp）—— `LocalConfiguration.current.screenHeightDp` 的跨平台替身。
+ * 只判「竖屏还是横屏」的调用点用它（如平板侧栏的避让策略分流）。
+ */
+@Composable
+expect fun screenHeightDp(): Int

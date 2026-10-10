@@ -73,7 +73,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -139,6 +138,9 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.screenHeightDp
 
 /** 挖洞遮罩路径缓存：尺寸/圆角不变时只 translate，避免每帧重建 squircle */
 private class CutoutPathCache {
@@ -218,10 +220,9 @@ fun CustomizeScheduleScreen(
     val cutoutOffsetTargetPx = with(densityObj) { 10.dp.toPx() }
     val sheetOffsetTargetPx = with(densityObj) { 90.dp.toPx() }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.screenWidthDp >= 600
-    val screenHPx = with(densityObj) { configuration.screenHeightDp.dp.toPx() }
-    val screenWPx = with(densityObj) { configuration.screenWidthDp.dp.toPx() }
+    val isTablet = isTabletWidth()
+    val screenHPx = with(densityObj) { screenHeightDp().dp.toPx() }
+    val screenWPx = with(densityObj) { screenWidthDp().dp.toPx() }
 
     // 壁纸最小缩放：填满短边，避免缩放过小时露出底部背景
     val minWallpaperScale = remember(wallpaperBitmap, screenWPx, screenHPx) {

@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.utils
 import android.content.Context
 import android.content.Intent
 import com.haooz.chedule.data.NexioLog
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.haooz.chedule.shizuku.ShizukuManager
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +14,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import com.haooz.chedule.data.showToast
 
 /** 应用更新：下载与安装的公共入口，弹窗与设置页共用 */
 internal object UpdateInstaller {
@@ -140,11 +140,11 @@ internal object UpdateInstaller {
                 }
                 if (ok) {
                     onInstallingChanged(false)
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    showToast(message)
                     onFinished?.invoke()
                 } else {
                     NexioLog.w(TAG, "静默安装失败，回退系统安装器: $message")
-                    Toast.makeText(context, "静默安装失败，已改用系统安装器", Toast.LENGTH_SHORT).show()
+                    showToast("静默安装失败，已改用系统安装器")
                     // 关键：先解除 installing 状态再拉起安装器。
                     // 否则用户在系统安装器里点取消后，弹窗会永久停在「安装中」且无法关闭。
                     onInstallingChanged(false)
@@ -163,7 +163,7 @@ internal object UpdateInstaller {
 
     private fun launchSystemInstaller(context: Context, file: File) {
         if (!file.exists()) {
-            Toast.makeText(context, "安装包不存在，请重新下载", Toast.LENGTH_SHORT).show()
+            showToast("安装包不存在，请重新下载")
             return
         }
         try {
@@ -175,7 +175,7 @@ internal object UpdateInstaller {
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "安装失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            showToast("安装失败: ${e.message}")
         }
     }
 }

@@ -46,6 +46,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.core.content.edit
 import kotlin.time.Duration.Companion.milliseconds
+import com.haooz.chedule.data.showToast
 
 /**
  * 更新弹窗：每天启动时检查一次更新，有新版本则弹窗提示。
@@ -151,7 +152,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
     fun startDownload() {
         val tag = updateTagName
         if (tag.isBlank()) {
-            android.widget.Toast.makeText(context, "未找到版本信息", android.widget.Toast.LENGTH_SHORT).show()
+            showToast("未找到版本信息")
             return
         }
         isDownloading = true
@@ -168,11 +169,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             isResolvingUrl = false
             if (apkUrl.isNullOrBlank()) {
                 isDownloading = false
-                android.widget.Toast.makeText(
-                    context,
-                    "获取下载地址失败，请到「设置 - 应用更新」中重试",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
+                showToast("获取下载地址失败，请到「设置 - 应用更新」中重试", longDuration = true)
                 return@launch
             }
             try {
@@ -186,7 +183,7 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             } catch (e: Exception) {
                 isDownloading = false
                 downloadComplete = false
-                android.widget.Toast.makeText(context, "下载失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                showToast("下载失败: ${e.message}")
             }
         }
     }

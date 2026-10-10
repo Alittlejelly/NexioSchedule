@@ -30,6 +30,17 @@ class NexioApplication : Application() {
         com.haooz.chedule.data.AppStorage.init { name ->
             getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
         }
+        // 平台提示条：:core 只认 showToast(...)，Android 实现在这里接线（同 AppStorage/AppFiles 套路）。
+        // 用 applicationContext（Application 本身即 Context）—— Toast 不需要窗口令牌，
+        // 且不会像 Activity Context 那样挂住页面实例。时长语义与迁移前的
+        // Toast.LENGTH_SHORT / LENGTH_LONG 逐字一致。
+        com.haooz.chedule.data.initToast { message, long ->
+            android.widget.Toast.makeText(
+                this,
+                message,
+                if (long) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
         // 应用版本号：跨平台侧（:core）无法读 PackageManager，启动时注入一次。
         // 上报负载里的 app_version 依赖它，漏掉会变成 "unknown"。
         com.haooz.chedule.data.AppInfo.init(
@@ -52,6 +63,18 @@ class NexioApplication : Application() {
         // 应用材质档位：按钮/低栏等 chrome 折射随档降级
         com.haooz.chedule.ui.utils.AppMaterialSettings.load()
         com.haooz.chedule.ui.utils.CrashLogHelper.install(this)
+        // 埋点入口：FeatureLog 已抽到 :core（供 viewmodel 等平台中立代码使用），
+        // 真正的轨迹记录在这里接回 CrashLogHelper。必须在 install 之后 —— 未注入时
+        // FeatureLog 静默丢弃，不会崩，但录制中的轨迹会丢，排查时容易误判。
+        com.haooz.chedule.ui.utils.FeatureLog.init(
+            trace = { feature, event, detail ->
+                com.haooz.chedule.ui.utils.CrashLogHelper.trace(feature, event, detail)
+            },
+            recording = { feature, event, detail ->
+                com.haooz.chedule.ui.utils.CrashLogHelper.traceRecording(feature, event, detail)
+            },
+            isRecording = { com.haooz.chedule.ui.utils.CrashLogHelper.isRecording },
+        )
         warmUpSharedPreferences()
         cleanupTransientFiles()
         initWearableSync()

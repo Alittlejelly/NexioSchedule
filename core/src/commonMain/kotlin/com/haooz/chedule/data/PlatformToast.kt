@@ -1,0 +1,26 @@
+package com.haooz.chedule.data
+
+/**
+ * 平台提示条：Android 上是 `Toast`，其他平台按各自能力降级。
+ *
+ * ## 为什么抽这一层
+ *
+ * `Toast.makeText(...)` 需要 `android.content.Context`，是 `:androidApp` UI 层页面迁进
+ * `:ui-shared` 时**命中次数最多**的阻塞项（115 处调用 / 21 个文件）。不抽掉它，
+ * 课程表、设置、导入导出这些主要页面一个都搬不动。
+ *
+ * ## 为什么是全局函数而不是 `@Composable`
+ *
+ * 调用点大量落在**非组合上下文**里：协程、回调、`@JavascriptInterface` 之后的
+ * 主线程 post。挂 Composable 反而改不动。代价是需要平台侧持有 Application 级
+ * Context（Android 由 `NexioApplication` 注入，见 `PlatformToast.android.kt`）。
+ *
+ * ## ⚠ Android 侧行为必须与 `Toast.makeText` 逐字一致
+ *
+ * - `longDuration = false` → `Toast.LENGTH_SHORT`（约 2s）
+ * - `longDuration = true`  → `Toast.LENGTH_LONG`（约 3.5s）
+ * - **不排队、不合并**：连续调用就是连续弹两条，与原实现一致。
+ *   （`ui/web/AndroidBridge` 里那条 `currentToast?.cancel()` 的复用优化是 JS 桥接专用，
+ *    不走这里，别拿它当通用语义。）
+ */
+expect fun showToast(message: String, longDuration: Boolean = false)

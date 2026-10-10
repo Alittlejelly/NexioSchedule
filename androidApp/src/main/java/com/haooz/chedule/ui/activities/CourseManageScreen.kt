@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.activities
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -49,7 +48,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +86,8 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -138,7 +138,7 @@ fun CourseManageScreen(
         drawContent()
     }
     val isDark = isAppDarkTheme()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val dayNames = listOf("", "周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -531,7 +531,7 @@ fun CourseManageScreen(
                                 onEditDismiss()
                             } else {
                                 if (courses.any { it.name == newCourseName.trim() }) {
-                                    Toast.makeText(context, "已存在同名课程", Toast.LENGTH_SHORT).show()
+                                    showToast("已存在同名课程")
                                 } else {
                                     val course = Course(
                                         id = UUID.randomUUID().toString(),

@@ -21,7 +21,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -67,11 +66,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,7 +80,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
-import com.haooz.chedule.R
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_phone_pc
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.ScriptRepository
@@ -113,6 +112,9 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.concurrent.atomic.AtomicBoolean
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 private const val DESKTOP_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -289,10 +291,10 @@ fun WebViewScreen(
     onReloadRef: ((() -> Unit) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
+        val widthDp = screenWidthDp()
+        ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
     } else 0.dp
     var currentUrl by remember { mutableStateOf(importUrl ?: "about:blank") }
     var loadingProgress by remember { mutableFloatStateOf(0f) }
@@ -488,7 +490,7 @@ var pageTitle by remember { mutableStateOf("加载中...") }
             onTaskCompleted = {
                 currentOnTaskCompleted()
                 if (!importCompleted) {
-                    Toast.makeText(context, "导入完成", Toast.LENGTH_LONG).show()
+                    showToast("导入完成", longDuration = true)
                 }
                 currentOnBack()
             },
@@ -544,7 +546,7 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         if (assetJsPath != null) {
             showCourseTablePicker = true
         } else {
-            Toast.makeText(context, "无导入脚本", Toast.LENGTH_LONG).show()
+            showToast("无导入脚本", longDuration = true)
         }
     }
 
@@ -560,12 +562,12 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                     androidBridge.setImportTableId(tableId)
                     val fullJsCode = "window.currentTableId = '$tableId';\n$jsCode"
                     webView.evaluateJavascript(fullJsCode, null)
-                    Toast.makeText(context, "正在执行导入脚本...", Toast.LENGTH_SHORT).show()
+                    showToast("正在执行导入脚本...")
                 } else {
-                    Toast.makeText(context, "脚本下载失败: $path", Toast.LENGTH_LONG).show()
+                    showToast("脚本下载失败: $path", longDuration = true)
                 }
             }
-        } ?: Toast.makeText(context, "无导入脚本", Toast.LENGTH_LONG).show()
+        } ?: showToast("无导入脚本", longDuration = true)
     }
 
     // 单选列表对话框
@@ -662,7 +664,7 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                             }
                         } else {
                             view.post {
-                                Toast.makeText(view.context, "加载失败: ${error.description}", Toast.LENGTH_LONG).show()
+                                showToast("加载失败: ${error.description}", longDuration = true)
                             }
                         }
                     }
@@ -880,7 +882,7 @@ private fun WebImportDockContent(
             ) {
                 IconButton(onClick = onToggleDesktopMode) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_phone_pc),
+                        painter = painterResource(Res.drawable.ic_phone_pc),
                         contentDescription = "切换手机版/桌面版",
                         modifier = Modifier.size(22.dp),
                         tint = if (isLightTheme) Color.Black else Color.White

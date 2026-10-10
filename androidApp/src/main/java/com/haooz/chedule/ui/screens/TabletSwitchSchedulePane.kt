@@ -43,7 +43,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -75,6 +74,7 @@ import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 平板切换课表：左右分栏。
@@ -124,7 +124,7 @@ fun TabletSwitchSchedulePane(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // 左栏固定为屏宽 0.39，与课程管理/设置分栏一致
-        val listWidth = LocalConfiguration.current.screenWidthDp.dp * 0.39f
+        val listWidth = screenWidthDp().dp * 0.39f
         val rightWidth = maxWidth - listWidth
         val topInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
             .asPaddingValues().calculateTopPadding()

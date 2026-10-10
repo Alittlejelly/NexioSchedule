@@ -27,42 +27,7 @@ import java.io.FileOutputStream
 //  也不进全量备份（外观是本机观感，不随备份迁移）。
 // ════════════════════════════════════════════════════════════════════════
 
-/** 卡片内容对齐方式 */
-enum class CardContentAlignment(val label: String) {
-    TOP_START("顶部居左"),
-    TOP_CENTER("顶部居中"),
-    CENTER_START("中间居左"),
-    CENTER_CENTER("中间居中");
-
-    companion object {
-        fun fromOrdinal(ordinal: Int): CardContentAlignment =
-            entries.getOrElse(ordinal) { CENTER_CENTER }
-    }
-}
-
-/** 卡片文字配色 */
-enum class CardTextColor(val label: String) {
-    COLORFUL("彩色"),
-    SOLID("纯色");
-
-    companion object {
-        fun fromOrdinal(ordinal: Int): CardTextColor =
-            entries.getOrElse(ordinal) { COLORFUL }
-    }
-}
-
-/** 卡片玻璃对壁纸的透镜折射强度（需壁纸才生效） */
-enum class CardRefractionLevel(val label: String, val lensRadiusDp: Float, val lensStrengthDp: Float) {
-    OFF("关闭", 0f, 0f),
-    WEAK("较弱", 5f, 9f),
-    DEFAULT("默认", 6f, 14f),
-    STRONG("较强", 8f, 22f);
-
-    companion object {
-        fun fromOrdinal(ordinal: Int): CardRefractionLevel =
-            entries.getOrElse(ordinal) { DEFAULT }
-    }
-}
+/** 卡片内容对齐方式 / 文字配色 / 透镜折射强度：已下沉 :core（同包名 CardTextColor.kt） */
 
 /**
  * 课表外观自定义页「默认主题」下拉的取值。

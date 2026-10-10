@@ -2123,6 +2123,41 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
+     * 教务导入：把脚本下发的默认单节时长 / 课间休息时长落到目标课表的 TimeConfig。
+     *
+     * 只改 [TimeConfig.classDuration] / [TimeConfig.shortBreak]，节数、节次时间、作息方案
+     * 全部原样保留；目标课表尚未绑定 TimeConfig 时新建一个并绑定（与 [applyTimeImportToSchedule] 一致）。
+     * 与「作息时间是否为空」无关：即使脚本同时下发了 preset_time_slots（显式节次时间），
+     * 这两个默认值也作为课表骨架参数落库，供无显式时间的节次推算使用。
+     */
+    fun applyImportedDefaultDurationsToSchedule(
+        scheduleId: String,
+        classDuration: Int,
+        shortBreak: Int,
+    ) {
+        val configId = getScheduleTimeConfigId(scheduleId)
+        if (configId != 0L) {
+            val base = getTimeConfig(configId)
+            saveTimeConfig(
+                base.copy(
+                    name = base.name.ifBlank { scheduleId },
+                    classDuration = classDuration,
+                    shortBreak = shortBreak,
+                )
+            )
+        } else {
+            val newId = addTimeConfig(
+                TimeConfig(
+                    name = scheduleId,
+                    classDuration = classDuration,
+                    shortBreak = shortBreak,
+                )
+            )
+            setScheduleTimeConfigId(scheduleId, newId)
+        }
+    }
+
+    /**
      * 节数变化时保持课程时段相对位置；不向上钳制，缩节数后课暂落网格外。
      */
     private fun remapCoursesForNewSectionCounts(

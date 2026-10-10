@@ -9,7 +9,6 @@ import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
 
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,7 +59,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -122,6 +120,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.datetime.LocalDate
 import kotlin.math.floor
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 private val YEAR_RANGE = 2024..2035
 private val WEEKDAYS = listOf(
@@ -259,7 +259,7 @@ fun HolidaySettingsScreen(
             currentTotalWeeks,
             teachingWeekReorganizations,
         ) ?: run {
-            Toast.makeText(context, "当前课表没有可用的原始周次可重组", Toast.LENGTH_SHORT).show()
+            showToast("当前课表没有可用的原始周次可重组")
             return
         }
         firstOriginalWeek = selected
@@ -296,7 +296,7 @@ fun HolidaySettingsScreen(
             totalWeeks = currentTotalWeeks,
         )
         if (error != null) {
-            Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+            showToast(error)
             return
         }
         if (!repository.setTeachingWeekReorganizations(
@@ -306,7 +306,7 @@ fun HolidaySettingsScreen(
                 changedRule = proposed,
             )
         ) {
-            Toast.makeText(context, "保存失败，现有规则未更改", Toast.LENGTH_SHORT).show()
+            showToast("保存失败，现有规则未更改")
             return
         }
         teachingWeekReorganizations = updated
@@ -319,7 +319,7 @@ fun HolidaySettingsScreen(
     fun deleteTeachingWeekRule() {
         val rule = teachingWeekReorganizations.getOrNull(editingTeachingWeekRuleIndex) ?: return
         if (!repository.removeTeachingWeekReorganization(rule, currentScheduleId)) {
-            Toast.makeText(context, "删除失败，现有规则未更改", Toast.LENGTH_SHORT).show()
+            showToast("删除失败，现有规则未更改")
             return
         }
         val updated = teachingWeekReorganizations.toMutableList().apply {
@@ -397,7 +397,7 @@ fun HolidaySettingsScreen(
         val isHoliday = dialogType == HolidayManager.TYPE_HOLIDAY
         val startDate = "%04d-%02d-%02d".format(startYear, startMonth, startDay)
         if (runCatching { LocalDate.parse(startDate) }.isFailure) {
-            Toast.makeText(context, "日期格式不正确", Toast.LENGTH_SHORT).show()
+            showToast("日期格式不正确")
             return
         }
         val endDate = if (isHoliday) {
@@ -406,19 +406,19 @@ fun HolidaySettingsScreen(
             ""
         }
         if (isHoliday && endDate < startDate) {
-            Toast.makeText(context, "结束日期不能早于开始日期", Toast.LENGTH_SHORT).show()
+            showToast("结束日期不能早于开始日期")
             return
         }
         val week = followWeek.toIntOrNull()?.takeIf { it > 0 } ?: -1
         val weekday = followWeekday.toIntOrNull()?.takeIf { it in 1..7 } ?: -1
         if (!isHoliday && (week !in 1..currentTotalWeeks || weekday !in 1..7)) {
-            Toast.makeText(context, "请明确选择有效的跟随周次和星期", Toast.LENGTH_SHORT).show()
+            showToast("请明确选择有效的跟随周次和星期")
             return
         }
         // UI 上的「第 X 周 星期 Y」只是当前课表的投影，落库一律转成绝对日期
         val followDateValue = if (isHoliday) null else dateOfTeachingWeek(week, weekday)
         if (!isHoliday && followDateValue == null) {
-            Toast.makeText(context, "该周次在当前课表下没有对应日期", Toast.LENGTH_SHORT).show()
+            showToast("该周次在当前课表下没有对应日期")
             return
         }
         // 按开始日期所属年份落库，避免 UI 选中年与日期年不一致时 workSwap 查不到
@@ -452,7 +452,7 @@ fun HolidaySettingsScreen(
             updated.mapValues { (_, entries) -> entries.toList() }
         }
         if (!saved) {
-            Toast.makeText(context, "节假日数据无法读取，未覆盖原数据", Toast.LENGTH_LONG).show()
+            showToast("节假日数据无法读取，未覆盖原数据", longDuration = true)
             return
         }
         reload()
@@ -470,7 +470,7 @@ fun HolidaySettingsScreen(
             }
         } ?: true
         if (!deleted) {
-            Toast.makeText(context, "节假日数据无法读取，未删除原数据", Toast.LENGTH_LONG).show()
+            showToast("节假日数据无法读取，未删除原数据", longDuration = true)
             return
         }
         reload()
@@ -483,7 +483,7 @@ fun HolidaySettingsScreen(
     val listState = rememberLazyListState()
     val holidayEntries = entries.filter { it.type == HolidayManager.TYPE_HOLIDAY }
     val workswapEntries = entries.filter { it.type == HolidayManager.TYPE_WORKSWAP }
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val draftRuleForPreview = draftTeachingWeekRule()
@@ -679,7 +679,7 @@ fun HolidaySettingsScreen(
                         summary = "第${beforeCourseExclusion.startSection}–${beforeCourseExclusion.endSection}节",
                         onClick = {
                             if (configuredSectionCount <= 0) {
-                                Toast.makeText(context, "当前课表尚未配置节次", Toast.LENGTH_SHORT).show()
+                                showToast("当前课表尚未配置节次")
                             } else {
                                 editingBeforeCourseExclusion = true
                                 val maxSection = configuredSectionCount
@@ -713,7 +713,7 @@ fun HolidaySettingsScreen(
                         summary = "第${endCourseExclusion.startSection}–${endCourseExclusion.endSection}节",
                         onClick = {
                             if (configuredSectionCount <= 0) {
-                                Toast.makeText(context, "当前课表尚未配置节次", Toast.LENGTH_SHORT).show()
+                                showToast("当前课表尚未配置节次")
                             } else {
                                 editingBeforeCourseExclusion = false
                                 val maxSection = configuredSectionCount
@@ -845,7 +845,7 @@ fun HolidaySettingsScreen(
                 CourseReminderHelper.onHolidayDataChanged(context)
                 showSectionRangeDialog = false
             } else {
-                Toast.makeText(context, "当前课表节次范围已变化，请重新选择", Toast.LENGTH_SHORT).show()
+                showToast("当前课表节次范围已变化，请重新选择")
             }
         },
     )
@@ -998,7 +998,7 @@ private fun TeachingWeekRuleEditDialog(
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
     val sheetBackgroundColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)

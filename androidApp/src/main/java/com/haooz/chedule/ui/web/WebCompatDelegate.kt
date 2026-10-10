@@ -16,6 +16,7 @@ import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 private const val TAG = "WebCompatDelegate"
 
@@ -138,6 +139,14 @@ val JS_PROMISE_BRIDGE = """
                     window._androidPromiseResolvers[promiseId] = resolve;
                     window._androidPromiseRejectors[promiseId] = reject;
                     AndroidBridge.savePresetTimeSlots(timeSlotsJsonString, promiseId);
+                });
+            },
+            saveComboSchedule: function(comboJsonString) {
+                return new Promise((resolve, reject) => {
+                    const promiseId = 'saveCombo_' + Date.now() + Math.random().toString(36).substring(2);
+                    window._androidPromiseResolvers[promiseId] = resolve;
+                    window._androidPromiseRejectors[promiseId] = reject;
+                    AndroidBridge.saveComboSchedule(comboJsonString, promiseId);
                 });
             }
         };

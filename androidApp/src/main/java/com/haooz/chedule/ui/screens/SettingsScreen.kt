@@ -12,7 +12,6 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -91,6 +89,8 @@ import java.util.Calendar
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 // 解析失败时回退到今天，避免弹窗初值出现非法日期
 internal fun parseDate(dateStr: String): Triple<Int, Int, Int> {
@@ -183,7 +183,7 @@ fun SettingsScreen(
         drawContent()
     }
     val isDark = isAppDarkTheme()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
@@ -619,12 +619,12 @@ fun SettingsScreen(
                             if (newSemesterName.isNotBlank()) {
                                 val name = newSemesterName
                                 if (name in scheduleViewModel.scheduleNames.value) {
-                                    Toast.makeText(context, "该课表名称已存在", Toast.LENGTH_SHORT).show()
+                                    showToast("该课表名称已存在")
                                 } else {
                                     scheduleViewModel.createNewSemesterSchedule(name)
                                     showNewSemesterDialog = false
                                     newSemesterName = ""
-                                    Toast.makeText(context, "「${name}」创建成功", Toast.LENGTH_SHORT).show()
+                                    showToast("「${name}」创建成功")
                                 }
                             }
                         },
@@ -882,6 +882,8 @@ private fun parseShiguangScheduleJson(data: Map<String, Any>): Triple<Boolean, S
             (config["semesterStartDate"] as? String)?.let { settings["class_start_time"] = it }
             (config["semesterTotalWeeks"] as? Number)?.toInt()?.let { settings["total_weeks"] = it }
             (config["firstDayOfWeek"] as? Number)?.toInt()?.let { settings["first_day_of_week"] = it }
+            (config["defaultClassDuration"] as? Number)?.toInt()?.let { settings["class_duration"] = it }
+            (config["defaultBreakDuration"] as? Number)?.toInt()?.let { settings["break_duration"] = it }
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -1335,6 +1337,8 @@ internal fun applyScheduleData(
         val importedMorningSections = (settings?.get("morning_sections") as? Number)?.toInt()
         val importedAfternoonSections = (settings?.get("afternoon_sections") as? Number)?.toInt()
         val importedEveningSections = (settings?.get("evening_sections") as? Number)?.toInt()
+        val importedClassDuration = (settings?.get("class_duration") as? Number)?.toInt()?.takeIf { it > 0 }
+        val importedBreakDuration = (settings?.get("break_duration") as? Number)?.toInt()?.takeIf { it > 0 }
 
         if (importedMorningSections != null || importedAfternoonSections != null || importedEveningSections != null || times != null) {
             val sectionTimesMap = mutableMapOf<String, String>()
@@ -1354,6 +1358,8 @@ internal fun applyScheduleData(
                 morningSections = importedMorningSections ?: 4,
                 afternoonSections = importedAfternoonSections ?: 4,
                 eveningSections = importedEveningSections ?: 4,
+                classDuration = importedClassDuration ?: 45,
+                shortBreak = importedBreakDuration ?: 10,
                 sectionTimes = sectionTimesMap,
                 sectionNames = importedSectionNames,
                 routines = importedRoutines
@@ -1395,6 +1401,27 @@ internal fun applyScheduleData(
             (settings["morning_sections"] as? Number)?.toInt()?.let { settingsViewModel.setMorningSections(it) }
             (settings["afternoon_sections"] as? Number)?.toInt()?.let { settingsViewModel.setAfternoonSections(it) }
             (settings["evening_sections"] as? Number)?.toInt()?.let { settingsViewModel.setEveningSections(it) }
+
+            // 官方文档 config：firstDayOfWeek（1=周一…7=周日，默认 1）。App 表格固定周一起始，
+            // 学校以其它日为周起始时课程 day 相对该周起始，换算回绝对星期防落列错位（与教务导入一致）。
+            (settings["first_day_of_week"] as? Number)?.toInt()?.takeIf { it in 2..7 }?.let { firstDay ->
+                val repository = CourseRepository.getInstance()
+                val currentCourses = repository.getAllCourses()
+                if (currentCourses.isNotEmpty()) {
+                    val remapped = currentCourses.map { course ->
+                        val day = course.dayOfWeek
+                        if (day in 1..7) {
+                            val absolute = (day - 1 + (firstDay - 1)) % 7 + 1
+                            if (absolute != day) course.copy(dayOfWeek = absolute) else course
+                        } else {
+                            course
+                        }
+                    }
+                    if (remapped.indices.any { remapped[it].dayOfWeek != currentCourses[it].dayOfWeek }) {
+                        viewModel.replaceCourses(remapped)
+                    }
+                }
+            }
 
             @Suppress("UNCHECKED_CAST")
             val times = data["times"] as? Map<String, Any>

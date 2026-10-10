@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.activities
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.getStringOrNull
@@ -34,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +69,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.io.File
 import androidx.compose.ui.graphics.Color as ComposeColor
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 private fun checkForUpdate(
     context: Context,
@@ -207,7 +207,7 @@ fun UpdateSettingsScreen(
         drawRect(backdropColor)
         drawContent()
     }
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(
@@ -357,17 +357,9 @@ fun UpdateSettingsScreen(
                                                 isInstalling = false
                                             } else if (!update) {
                                                 if (release == null) {
-                                                    Toast.makeText(
-                                                        context,
-                                                        "检查更新失败，请检查网络连接",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                    showToast("检查更新失败，请检查网络连接")
                                                 } else {
-                                                    Toast.makeText(
-                                                        context,
-                                                        "当前已是最新版本",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                    showToast("当前已是最新版本")
                                                 }
                                             }
                                         }
@@ -583,7 +575,7 @@ fun UpdateSettingsScreen(
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                     val tag = latestRelease?.tagName
                                     if (tag.isNullOrBlank()) {
-                                        Toast.makeText(context, "未找到版本信息", Toast.LENGTH_SHORT).show()
+                                        showToast("未找到版本信息")
                                         showDownloadDialog = false
                                         return@Button
                                     }
@@ -605,11 +597,7 @@ fun UpdateSettingsScreen(
                                         isResolvingApk = false
                                         if (apkUrl.isNullOrBlank()) {
                                             isDownloading = false
-                                            Toast.makeText(
-                                                context,
-                                                "获取下载地址失败，请稍后重试",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            showToast("获取下载地址失败，请稍后重试", longDuration = true)
                                             showDownloadDialog = false
                                             return@launch
                                         }
@@ -621,11 +609,7 @@ fun UpdateSettingsScreen(
                                             downloadComplete = true
                                             isDownloading = false
                                         } catch (e: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                "下载失败: ${e.message}",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
+                                            showToast("下载失败: ${e.message}")
                                             isDownloading = false
                                             showDownloadDialog = false
                                         }

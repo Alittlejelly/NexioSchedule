@@ -33,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
@@ -59,6 +58,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.graphics.Color as ComposeColor
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -67,7 +67,7 @@ fun WidgetIntroScreen(
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     val backdropColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {

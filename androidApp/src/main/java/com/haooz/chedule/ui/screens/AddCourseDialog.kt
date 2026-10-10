@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -95,6 +94,8 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /** 揭示分组数（基本信息/星期/节次/周次/颜色/删除） */
 private const val REVEAL_GROUP_COUNT = 6
@@ -270,17 +271,9 @@ fun AddCourseDialog(
     val onConfirmClick: () -> Unit = {
         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
         if (form.name.isBlank()) {
-            android.widget.Toast.makeText(
-                context,
-                "请输入课程名称",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            showToast("请输入课程名称")
         } else if (form.selectedWeeks.isEmpty()) {
-            android.widget.Toast.makeText(
-                context,
-                "请选择上课周次",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            showToast("请选择上课周次")
         } else if (form.startSection <= form.endSection) {
             val sortedWeeks = form.selectedWeeks.sorted()
             val minWeek = sortedWeeks.first()
@@ -323,7 +316,7 @@ fun AddCourseDialog(
         }
     }
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
 
     if (isTablet) {
         BlurBottomSheetTablet(
@@ -745,7 +738,7 @@ private fun AddCourseDialogContent(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
 
     // rememberUpdatedState 保证稳定引用 + 调用时拿到最新 lambda（remember{} 会冻结旧值）
     val stableOnShowSectionDialog by rememberUpdatedState(onShowSectionDialog)

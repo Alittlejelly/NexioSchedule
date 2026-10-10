@@ -17,3 +17,12 @@ actual fun screenWidthDp(): Int {
     val widthDp = if (density > 0f) widthPx / density else widthPx
     return widthDp.toInt()
 }
+
+/** 桌面：同 [screenWidthDp] 的口径，取窗口高度。 */
+@Composable
+actual fun screenHeightDp(): Int {
+    val heightPx = LocalWindowInfo.current.containerSize.height.toFloat()
+    val density = LocalDensity.current.density
+    val heightDp = if (density > 0f) heightPx / density else heightPx
+    return heightDp.toInt()
+}

@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.screens
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -56,7 +55,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -117,6 +115,8 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 // ===================== Morph Animation Foundation =====================
 
@@ -749,7 +749,7 @@ fun TimeConfigEditScreen(
     }
     val isDark = isAppDarkTheme()
     val isLiquidGlass = liquidGlassBackdrop != null
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val s = animState.value
@@ -1226,11 +1226,7 @@ fun TimeConfigEditScreen(
                                                                     lbE,
                                                                     lbsE
                                                                 )
-                                                            Toast.makeText(
-                                                                context,
-                                                                "课程时间已应用",
-                                                                Toast.LENGTH_SHORT
-                                                            ).show()
+                                                            showToast("课程时间已应用")
                                                         },
                                                         colors = ButtonDefaults.textButtonColorsPrimary(),
                                                         modifier = Modifier.fillMaxWidth().padding(
@@ -1778,7 +1774,7 @@ fun TimeConfigEditScreen(
                                             val startMinutes = tempSpecialStartHour * 60 + tempSpecialStartMinute
                                             val endMinutes = tempSpecialEndHour * 60 + tempSpecialEndMinute
                                             if (endMinutes <= startMinutes) {
-                                                Toast.makeText(context, "结束时间需晚于开始时间", Toast.LENGTH_SHORT).show()
+                                                showToast("结束时间需晚于开始时间")
                                                 return@TextButton
                                             }
                                             val startStr = String.format("%02d:%02d", tempSpecialStartHour, tempSpecialStartMinute)
@@ -1999,11 +1995,7 @@ fun TimeConfigEditScreen(
                                             val startMinutes = tempStartHour * 60 + tempStartMinute
                                             val endMinutes = tempEndHour * 60 + tempEndMinute
                                             if (endMinutes <= startMinutes) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "结束时间需晚于开始时间",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                showToast("结束时间需晚于开始时间")
                                                 return@TextButton
                                             }
                                             val newTimeStr = "${
@@ -2194,11 +2186,7 @@ fun TimeConfigEditScreen(
                                                     excludeId = routineId
                                                 )
                                             ) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "该日期已有作息，请换一个生效日期",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                showToast("该日期已有作息，请换一个生效日期")
                                                 return@TextButton
                                             }
                                             routineEffectiveMonth = tempRoutineMonth

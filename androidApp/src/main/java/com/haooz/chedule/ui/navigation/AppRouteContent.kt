@@ -1,7 +1,6 @@
 package com.haooz.chedule.ui.navigation
 
 import android.graphics.Bitmap
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.Animatable
@@ -45,7 +44,6 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -119,6 +117,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.time.Duration.Companion.milliseconds
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /**
  * 子页路由 → 页面的映射表。
@@ -257,7 +257,7 @@ private fun AiImportRoute(router: AppRouter) {
 @Composable
 private fun WidgetIntroRoute(router: AppRouter) {
     val hapticFeedback = LocalHapticFeedback.current
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var showGuideDialog by remember { mutableStateOf(false) }
 
@@ -322,7 +322,7 @@ private fun WidgetIntroRoute(router: AppRouter) {
 @Composable
 private fun CourseReminderRoute(router: AppRouter) {
     val context = LocalContext.current
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     DocumentPageScaffold(
@@ -345,11 +345,11 @@ private fun CourseReminderRoute(router: AppRouter) {
                     if (islandEnabled) {
                         IslandNotificationHelper.sendTestIslandNotification(context)
                         com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
-                        Toast.makeText(context, "已发送超级岛测试通知", Toast.LENGTH_SHORT).show()
+                        showToast("已发送超级岛测试通知")
                     } else {
                         CourseReminderHelper.sendTestLiveNotification(context)
                         com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
-                        Toast.makeText(context, "已发送实时活动测试通知", Toast.LENGTH_SHORT).show()
+                        showToast("已发送实时活动测试通知")
                     }
                 },
                 backdrop = backdrop,
@@ -461,7 +461,7 @@ private fun HolidaySettingsRoute(router: AppRouter) {
  */
 @Composable
 private fun WebDavSettingsRoute(router: AppRouter) {
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var connected by remember { mutableStateOf(false) }
     var onTestConnection by remember { mutableStateOf({}) }
@@ -750,7 +750,7 @@ private fun CourseTimeSettingsRoute(router: AppRouter) {
                         } ?: false
                         if (!saved) {
                             // 保存被丢弃必须让用户看见：以前静默丢弃，表现成「改完保存、重开还是原来的」
-                            Toast.makeText(context, "保存失败，请重试", Toast.LENGTH_SHORT).show()
+                            showToast("保存失败，请重试")
                         }
                         listRefreshTrigger++
                     },

@@ -106,7 +106,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -212,6 +211,10 @@ import kotlin.math.sin
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.screenHeightDp
 
 /** 取消进行中的 pager 滚动/惯性 */
 private suspend fun PagerState.cancelScroll() {
@@ -1303,13 +1306,12 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             viewModel.bumpDataVersion()
         }
     }
-    val config = LocalConfiguration.current
-    val isTablet = config.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val navBarStyle = if (isTablet) "rail" else "standard"
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val density = LocalDensity.current
-    val screenWPx = with(density) { config.screenWidthDp.dp.toPx() }
-    val screenHPx = with(density) { config.screenHeightDp.dp.toPx() }
+    val screenWPx = with(density) { screenWidthDp().dp.toPx() }
+    val screenHPx = with(density) { screenHeightDp().dp.toPx() }
     val latestScreenWPx by rememberUpdatedState(screenWPx)
     val latestScreenHPx by rememberUpdatedState(screenHPx)
 
@@ -2570,22 +2572,22 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri == null) {
-            android.widget.Toast.makeText(context, "未选择图片", android.widget.Toast.LENGTH_SHORT).show()
+            showToast("未选择图片")
             return@rememberLauncherForActivityResult
         }
         if (wallpaperDecodeJob?.isActive == true) {
-            android.widget.Toast.makeText(context, "正在处理壁纸，请稍候", android.widget.Toast.LENGTH_SHORT).show()
+            showToast("正在处理壁纸，请稍候")
             return@rememberLauncherForActivityResult
         }
         val decodeW = screenWPx
         val decodeH = screenHPx
-        android.widget.Toast.makeText(context, "正在处理壁纸…", android.widget.Toast.LENGTH_SHORT).show()
+        showToast("正在处理壁纸…")
         wallpaperDecodeJob = coroutineScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
                 decodeWallpaperSampled(context, uri, decodeW, decodeH)
             }
             if (bitmap == null) {
-                android.widget.Toast.makeText(context, "壁纸解码失败，请换一张图片", android.widget.Toast.LENGTH_LONG).show()
+                showToast("壁纸解码失败，请换一张图片", longDuration = true)
                 return@launch
             }
             val oldWallpaper = wallpaperBitmap
@@ -2714,6 +2716,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
         // 无壁纸周左右滑：跳过 liquidGlass 整树逐帧重录（chrome 采样缓存随之跳过模糊）。
         // 落页靠 recordKey 里的 currentPage 补一帧；有壁纸时玻璃要跟像素，仍每帧重录。
         val latestHasWallpaperForGlass by rememberUpdatedState(wallpaperBitmap != null)
+        // 传给页面的壁纸：Compose 的 ImageBitmap，页面因此不再依赖 android.graphics.Bitmap。
+        //
+        // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都**新建包装对象**，每帧新建会让
+        // Image 的位图纹理反复重建（同本文件 4583 行附近快照那处的注释）。
+        // 本 Activity 内部的 Bitmap 生命周期管理（decodeWallpaperSampled / recycleIndependentBitmap
+        // 的 `===` 身份比较）**一律不动** —— 只有跨模块边界的页面参数换类型。
+        val wallpaperImage = remember(wallpaperBitmap) { wallpaperBitmap?.asImageBitmap() }
+        val originalWallpaperImage = remember(originalWallpaperBitmap) {
+            originalWallpaperBitmap?.asImageBitmap()
+        }
         // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结
         val liquidGlassMustRecord = remember(scheduleScrollState, todayListScrollInProgress, pagerState, todayPagerState, mainPagerState) {
             var lastRailExpand = Float.NaN
@@ -3480,7 +3492,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                             scrollToTodayTrigger = scrollToTodayTrigger,
                                             jumpToDateTrigger = todayJumpToDateTrigger,
                                             onJumpToDateProcessed = { todayJumpToDateTrigger = 0 },
-                                            wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperBitmap else wallpaperBitmap,
+                                            wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
                                             wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
                                             wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
                                             useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
@@ -3877,7 +3889,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                                     dismissFloatingCard()
                                                 }
                                             },
-                                            wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperBitmap else wallpaperBitmap,
+                                            wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
                                             wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
                                             wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
                                             useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
@@ -4261,12 +4273,12 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 // 「当前周」=该格所属教学周；调课日为 followWeek
                                 val pasteWeek = target.dataWeek
                                 if (endSection > totalSections) {
-                                    android.widget.Toast.makeText(context, "空间不足，无法粘贴", android.widget.Toast.LENGTH_SHORT).show()
+                                    showToast("空间不足，无法粘贴")
                                 } else {
                                     val conflicts = viewModel.getCoursesAtSlot(pasteWeek, day, section, endSection)
                                         .filter { it.isActiveInWeek(pasteWeek) }
                                     if (conflicts.isNotEmpty()) {
-                                        android.widget.Toast.makeText(context, "目标位置有课，无法粘贴", android.widget.Toast.LENGTH_SHORT).show()
+                                        showToast("目标位置有课，无法粘贴")
                                     } else {
                                         val pasted = if (allWeeks) {
                                             meta.copy(
@@ -4816,7 +4828,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 delay(240.milliseconds)
                                 shortcutMenuCourse = null
                             }
-                            android.widget.Toast.makeText(context, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                            showToast("已复制")
                         }
                     ),
                     ShortcutMenuItem(

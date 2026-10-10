@@ -9,3 +9,7 @@ import androidx.compose.ui.platform.LocalConfiguration
  */
 @Composable
 actual fun screenWidthDp(): Int = LocalConfiguration.current.screenWidthDp
+
+/** Android：同 [screenWidthDp]，继续读 LocalConfiguration（零回归）。 */
+@Composable
+actual fun screenHeightDp(): Int = LocalConfiguration.current.screenHeightDp

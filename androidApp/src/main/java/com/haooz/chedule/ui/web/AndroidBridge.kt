@@ -302,6 +302,34 @@ class AndroidBridge(
         }
     }
 
+    /** JS 调用：将组合作息方案（官方文档 4. comboSchedule）数据传回 Android 端进行保存 */
+    @JavascriptInterface
+    fun saveComboSchedule(comboJsonString: String, promiseId: String) {
+        NexioLog.d(TAG, "接收到组合作息数据，大小: ${comboJsonString.length} 字节")
+        handler.post {
+            try {
+                val combo = gson.fromJson(comboJsonString, ComboScheduleJsonModel::class.java)
+                NexioLog.d(TAG, "组合作息解析成功: name=${combo.name}, 方案数=${combo.publicSchedules.size}")
+
+                val targetId = importTableId
+                AppStorage.store("edu_import_prefs").edit {
+                    // 原样存，结构校验与转换交给消费端（与 preset_time_slots 同套路）
+                    putString("combo_schedule", comboJsonString)
+                    // 同前：null 走显式 remove
+                    if (targetId != null) putString("target_schedule_id", targetId)
+                    else remove("target_schedule_id")
+                }
+
+                Toast.makeText(context, "组合作息导入成功", Toast.LENGTH_SHORT).show()
+                resolveJsPromise(promiseId, "true")
+            } catch (e: Exception) {
+                NexioLog.e(TAG, "组合作息解析失败: ${e.message}", e)
+                Toast.makeText(context, "组合作息导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+                rejectJsPromise(promiseId, "组合作息导入失败: ${e.message}")
+            }
+        }
+    }
+
     /** JS 调用：通知 Native 端 JS 任务已逻辑完成 */
     @JavascriptInterface
     fun notifyTaskCompletion() {
@@ -360,5 +388,22 @@ class AndroidBridge(
         val startTime: String,
         val endTime: String,
         val alias: String? = null
+    )
+
+    /**
+     * 官方文档 4. comboSchedule 组合作息方案：
+     * 同一课表在不同日期区间使用不同作息（如夏季/冬季），整个对象可选。
+     * 模板负载：{ name, publicSchedules: [{ name, startDate, endDate, timeSlots: [{number, startTime, endTime}] }] }
+     */
+    data class ComboScheduleJsonModel(
+        val name: String = "",
+        val publicSchedules: List<ComboScheduleItemJsonModel> = emptyList()
+    )
+
+    data class ComboScheduleItemJsonModel(
+        val name: String = "",
+        val startDate: String? = null,
+        val endDate: String? = null,
+        val timeSlots: List<TimeSlotJsonModel> = emptyList()
     )
 }

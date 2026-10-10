@@ -188,16 +188,9 @@ internal fun copyShareCodeToClipboard(context: Context, code: String) {
 
 private const val TAG = "ThirdPartyShareImport"
 
-/** 教务通用工具中已提取到课表导入页的适配器 ID */
-object ExtractedShareTools {
-    const val WAKEUP = "WakeUp"
-    const val STARLINK = "StarLink"
-    val ADAPTER_IDS = setOf(WAKEUP, STARLINK)
-
-    const val GLOBAL_TOOLS_SCHOOL_ID = "GLOBAL_TOOLS"
-    const val GLOBAL_TOOLS_RESOURCE = "GLOBAL_TOOLS"
-    const val WAKEUP_JS = "wake_up.js"
-}
+// ExtractedShareTools 已抽成独立文件并迁入 :ui-shared（同包名，这里直接可见，无需 import）。
+// 它只是一组常量，原先跟 WebView/Gson/Handler 挤在同一个文件里，
+// 会让平台中立的学校/适配器选择页反向依赖整个 Android 导入模块。
 
 enum class ThirdPartyShareSource(val displayName: String, val inputLabel: String) {
     WakeUp("WakeUp课程表口令导入", "分享口令"),

@@ -23,11 +23,25 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// composeResources 的生成类包名必须显式指定。
+// 不配的话 CMP 会拿 **Gradle 项目名**拼包名 —— 本仓库 rootProject.name = "Nexio课程表"，
+// 生成出来的包会变成 `nexio课程表.ui_shared.generated.resources`（中文 + 下划线，又怪又不可控）。
+compose.resources {
+    packageOfResClass = "com.haooz.chedule.uishared.resources"
+    // ⚠ 默认生成的 Res 是 internal —— 只在 :ui-shared 内部可见。
+    // 但 :androidApp 的页面（WebViewScreen 等）还在 Android 模块里直接引用它，
+    // 不开 public 会报 "Cannot access 'object Res : Any': it is internal in file"。
+    publicResClass = true
+}
+
 kotlin {
     android {
         namespace = "com.haooz.chedule.uishared"
         compileSdk = 37
         minSdk = 26
+        // ⚠ CMP 1.8.0 起 androidLibrary 目标必须显式开资源，否则访问 composeResources
+        // 会抛 MissingResourceException（见 docs/KMP_IOS_MIGRATION_PLAN.md F 节）。
+        androidResources.enable = true
     }
     jvm()
 
@@ -36,6 +50,13 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.ui)
             implementation(compose.material3)
+            // composeResources：跨平台资源（R.drawable → Res.drawable 的归宿）。
+            // 生成类为 `Res`（不是 `R`），资源放 src/commonMain/composeResources/。
+            //
+            // ⚠ 必须用 api 而不是 implementation：`Res` 类与 `painterResource` 会被
+            // :androidApp 的页面直接引用（页面还在 Android 模块里），implementation 不传递，
+            // 调用方会报 "Unresolved reference 'resources'" / "Unresolved reference 'Res'"。
+            api(compose.components.resources)
             // 数据层与跨平台抽象（AppStorage / AppFiles / HttpService / ioDispatcher…）
             api(project(":core"))
             // 页面骨架与组件（Scaffold / CollapsibleTopAppBar / OverlayDialog…）
@@ -50,6 +71,16 @@ kotlin {
             implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}")
+            // KMP 版 lifecycle：ViewModel / viewModelScope 的跨平台实现（页面迁入本模块后要用）。
+            //
+            // 选 2.9.6（jetbrains 组）而不是 AndroidX 组直连：它转发到 androidx.lifecycle 2.9.4，
+            // 而 :androidApp 侧的 lifecycle-viewmodel 本来就被 CMP 的 compose-ui 顶到 2.10.0，
+            // 冲突解析取高版本 —— **实测对本项目 Android 侧的依赖版本零影响**
+            //（`dependencyInsight` 核对过，见 2026-10-10 迁移记录）。
+            //
+            // ⚠ 首次拉取需要联网（`lifecycle-viewmodel-desktop` 等 jvm 变体本地缓存没有）；
+            //   拉过一次之后 `--offline` 门禁可正常跑。
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.6")
         }
     }
 }

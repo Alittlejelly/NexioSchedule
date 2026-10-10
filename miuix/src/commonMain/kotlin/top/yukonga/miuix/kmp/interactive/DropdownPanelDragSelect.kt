@@ -37,7 +37,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastFirstOrNull
-import com.kyant.backdrop.edgelight.isSystemLightTheme
+import top.yukonga.miuix.kmp.theme.LocalForcedDarkTheme
+import top.yukonga.miuix.kmp.theme.rememberAppSettingDark
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -144,8 +145,13 @@ class DropdownPanelEntry internal constructor() {
     internal var enabled = true
 }
 
-/** 跟手滑选状态。由面板内容层创建，经 [LocalDropdownPanelDragSelect] 下发给菜单项 */
-class DropdownPanelDragSelectState internal constructor(
+/**
+ * 跟手滑选状态。由面板内容层创建，经 [LocalDropdownPanelDragSelect] 下发给菜单项。
+ *
+ * 构造器放开为 public（2026-10-10）：创建方都是**模块外的面板**——
+ * :app 的平板侧栏、:ui-shared 的玻璃菜单。internal 会让它们无法构造本状态。
+ */
+class DropdownPanelDragSelectState(
     /** 滑选轴向；横排面板传 [DragSelectAxis.Horizontal]，默认竖排 */
     val axis: DragSelectAxis = DragSelectAxis.Vertical,
 ) {
@@ -358,8 +364,11 @@ fun Modifier.dropdownPanelEntry(
         label = "dropdownPanelEntryAlpha",
     )
     // drawBehind 的 lambda 不是 @Composable，主题色必须在这里取好再传进去。
-    // isLightTheme 来自 expect：App 可覆盖为「读 theme_mode 偏好」，不传则跟随系统。
-    val highlightColor = dropdownPanelEntryHighlightColor(isSystemLightTheme())
+    // 必须读 **App 主题**（theme_mode 偏好 + 壁纸强制），不能读系统深浅色：
+    // 迁移前是 isAppDarkTheme()，若换成 isSystemLightTheme()，App 内主题与系统不一致时
+    // 遮罩颜色会反（深色面板盖黑遮罩、浅色面板盖白遮罩，看起来就像遮罩消失了）。
+    val appDark = LocalForcedDarkTheme.current ?: rememberAppSettingDark()
+    val highlightColor = dropdownPanelEntryHighlightColor(appDark)
     this
         .onGloballyPositioned {
             // boundsInRoot 不含 graphicsLayer 变换，面板与项都取 root 坐标再作差

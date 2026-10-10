@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
@@ -57,7 +56,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
@@ -108,6 +106,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @SuppressLint("LocalContextGetResourceValueCall", "ConfigurationScreenWidthHeight")
 @Composable
@@ -139,7 +139,7 @@ fun AboutScreen(
     val activity = LocalActivity.current
     val uriHandler = LocalUriHandler.current
     val isInDark = isAppDarkTheme()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
 
     val packageInfo = remember {
@@ -954,16 +954,12 @@ fun AboutScreen(
                                                     canShareRecording = CrashLogHelper.hasReadyRecording
                                                     recordingElapsedSec =
                                                         (CrashLogHelper.recordingElapsedMs() / 1000L).toInt()
-                                                    Toast.makeText(
-                                                        context,
-                                                        when {
+                                                    showToast(when {
                                                             !ok && recordingActive -> "录制已在进行"
                                                             ok && recordingActive -> "已开始录制，最长 30 分钟"
                                                             ok && !recordingActive -> "录制已结束，可分享"
                                                             else -> "操作失败，请重试"
-                                                        },
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                        })
                                                 }
                                             },
                                             modifier = Modifier.weight(1f),
@@ -985,11 +981,7 @@ fun AboutScreen(
                                                         CrashLogHelper.shareReadyRecording(context)
                                                     }
                                                     exportingCrashLog = false
-                                                    Toast.makeText(
-                                                        context,
-                                                        if (ok) "已打开分享，请把日志发给开发者" else "分享失败，请重试",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                    showToast(if (ok) "已打开分享，请把日志发给开发者" else "分享失败，请重试")
                                                 }
                                             },
                                             modifier = Modifier.weight(1f),

@@ -33,7 +33,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -57,6 +56,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 /** 平板课程管理：左右分栏，两侧内容均复用原有页面 */
 @Composable
@@ -96,7 +96,7 @@ fun TabletCourseManagePane(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         // 左栏固定为屏宽 0.39，不随侧栏展开/收起变化；剩余宽度全给右栏
-        val listWidth = LocalConfiguration.current.screenWidthDp.dp * 0.39f
+        val listWidth = screenWidthDp().dp * 0.39f
         val rightWidth = maxWidth - listWidth
         val topInset = WindowInsets.systemBars.only(WindowInsetsSides.Top)
             .asPaddingValues().calculateTopPadding()

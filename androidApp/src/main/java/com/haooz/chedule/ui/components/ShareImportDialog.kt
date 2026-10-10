@@ -1,7 +1,6 @@
 package com.haooz.chedule.ui.components
 
 import android.content.Intent
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +27,7 @@ import com.haooz.chedule.viewmodel.SettingsViewModel
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import com.haooz.chedule.data.showToast
 
 /**
  * 分享导入课表的状态与弹窗。
@@ -83,11 +83,11 @@ internal fun ShareImportDialog(
                             shareImportScheduleName = scheduleName
                             showShareImportDialog = true
                         } else {
-                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            showToast(message)
                         }
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    showToast("导入失败: ${e.message}")
                 }
             }
         }
@@ -140,7 +140,7 @@ internal fun ShareImportDialog(
                                 shareImportScheduleName,
                                 shareImportData!!
                             )
-                            Toast.makeText(context, importMessage, Toast.LENGTH_LONG).show()
+                            showToast(importMessage, longDuration = true)
                         }
                         showShareImportDialog = false
                         shareImportData = null

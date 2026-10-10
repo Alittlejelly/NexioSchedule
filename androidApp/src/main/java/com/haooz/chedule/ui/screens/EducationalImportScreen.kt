@@ -16,7 +16,6 @@ package com.haooz.chedule.ui.screens
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,6 +57,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.TimeRoutine
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.data.school.AdapterData
@@ -96,6 +95,9 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。
@@ -161,10 +163,10 @@ fun EducationalImportScreen(
 
     when (currentScreen) {
         "selection" -> {
-            val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+            val isTablet = isTabletWidth()
             val tabletHorizontalPadding = if (isTablet) {
-                val screenWidthDp = LocalConfiguration.current.screenWidthDp
-                ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
+                val widthDp = screenWidthDp()
+                ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
             } else 0.dp
             val hapticFeedback = LocalHapticFeedback.current
             val displayTabs = listOf("学校导入", "通用工具")
@@ -381,7 +383,7 @@ fun EducationalImportScreen(
                                     courseViewModel.replaceCourses(courses)
                                 }
                                 scheduleViewModel.refreshScheduleList()
-                                Toast.makeText(toastContext, "课程已保存，共 ${courses.size} 门课程", Toast.LENGTH_SHORT).show()
+                                showToast("课程已保存，共 ${courses.size} 门课程")
                             },
                             onTaskCompleted = {
                                 val prefs = AppStorage.store("edu_import_prefs")
@@ -393,8 +395,15 @@ fun EducationalImportScreen(
                                 }
                                 val hasStartDate = prefs.getStringOrNull("semester_start_date") != null
                                 val hasTotalWeeks = prefs.getInt("semester_total_weeks", -1) > 0
-                                if (hasStartDate || hasTotalWeeks) {
+                                val hasClassDuration = prefs.getInt("default_class_duration", -1) > 0
+                                val hasBreakDuration = prefs.getInt("default_break_duration", -1) > 0
+                                val hasFirstDayOfWeek = prefs.getInt("first_day_of_week", -1) > 0
+                                if (hasStartDate || hasTotalWeeks || hasClassDuration || hasBreakDuration || hasFirstDayOfWeek) {
                                     applyImportedScheduleConfig(courseViewModel, scheduleViewModel)
+                                }
+                                val hasComboSchedule = prefs.getStringOrNull("combo_schedule") != null
+                                if (hasComboSchedule) {
+                                    applyComboSchedule(settingsViewModel, courseViewModel, scheduleViewModel, targetScheduleId)
                                 }
                             },
                             onPageTitleChanged = { webPageTitle = it },
@@ -541,8 +550,12 @@ private fun applyPresetTimeSlots(
 }
 
 /**
- * 应用教务脚本通过 saveCourseConfig 传回的课表配置（开学时间、总周数）。
- * 与 applyPresetTimeSlots 一致，仅在导入完成时消费一次性标记，避免重复/旧数据覆盖。
+ * 应用教务脚本通过 saveCourseConfig 传回的课表配置：
+ * - 开学时间、总周数（semesterStartDate / semesterTotalWeeks）；
+ * - 默认单节 / 课间时长（defaultClassDuration / defaultBreakDuration → 目标课表 TimeConfig）；
+ * - 周起始日（firstDayOfWeek → 导入课程的星期归一化，保证落在 App 固定周一起始的表格上不错位）。
+ * 与 applyPresetTimeSlots 一致，仅在导入完成时消费一次性标记，避免重复/旧数据覆盖；
+ * 消费后整组清掉，防止残留旧值在下次导入时被误应用。
  * 开学日写入目标课表（可能非当前课表）；日期先规范化，防止被读路径重置成今天。
  */
 private fun applyImportedScheduleConfig(
@@ -556,6 +569,7 @@ private fun applyImportedScheduleConfig(
     val targetScheduleId = prefs.getStringOrNull("target_schedule_id")
     val isTargetCurrent = targetScheduleId.isNullOrEmpty() ||
         targetScheduleId == scheduleViewModel.currentScheduleName.value
+    val repository = CourseRepository.getInstance()
 
     var applied = false
     if (startDate != null) {
@@ -563,8 +577,7 @@ private fun applyImportedScheduleConfig(
             courseViewModel.setClassStartTime(startDate)
         } else if (!targetScheduleId.isNullOrEmpty()) {
             // 只写目标课表存储，不 refreshEssentialData：当前 UI/提醒不应被非当前课表改动触发
-            CourseRepository.getInstance()
-                .setClassStartTime(targetScheduleId, startDate)
+            repository.setClassStartTime(targetScheduleId, startDate)
         }
         applied = true
         NexioLog.d("EduImport", "应用开学日: raw=$rawStart -> $startDate target=$targetScheduleId")
@@ -575,20 +588,196 @@ private fun applyImportedScheduleConfig(
         if (isTargetCurrent) {
             courseViewModel.setTotalWeeks(totalWeeks)
         } else if (!targetScheduleId.isNullOrEmpty()) {
-            CourseRepository.getInstance()
-                .setTotalWeeks(targetScheduleId, totalWeeks)
+            repository.setTotalWeeks(targetScheduleId, totalWeeks)
         }
         applied = true
     }
-    if (applied) {
-        prefs.edit {
-            remove("semester_start_date")
-            remove("semester_total_weeks")
-            remove("target_schedule_id")
+
+    // 官方文档 config：defaultClassDuration（默认 45）/ defaultBreakDuration（默认 10）可选，
+    // 未提供用默认值。桥接层已写入 prefs，这里落到目标课表 TimeConfig（节数、节次时间、作息方案
+    // 原样保留；无绑定配置时新建并绑定）。
+    val classDuration = prefs.getInt("default_class_duration", -1)
+    val breakDuration = prefs.getInt("default_break_duration", -1)
+    if (classDuration > 0 || breakDuration > 0) {
+        val targetId = if (isTargetCurrent) repository.getCurrentScheduleId() else targetScheduleId
+        if (!targetId.isNullOrEmpty()) {
+            repository.applyImportedDefaultDurationsToSchedule(
+                scheduleId = targetId,
+                classDuration = classDuration.takeIf { it > 0 } ?: 45,
+                shortBreak = breakDuration.takeIf { it > 0 } ?: 10,
+            )
+            applied = true
+            NexioLog.d("EduImport", "应用默认节次时长: class=$classDuration break=$breakDuration target=$targetId")
         }
+    }
+
+    // 官方文档 config：firstDayOfWeek（1=周一…7=周日，默认 1）描述学校周起始日。
+    // App 表格固定周一起始、不随导入改动；学校以其它日为周起始时，其课程 day 编号相对该周起始，
+    // 落列前换算回绝对星期（1=周一…7=周日），否则整表错位一天。firstDayOfWeek=1 恒等，跳过。
+    val firstDayOfWeek = prefs.getInt("first_day_of_week", 1)
+    if (firstDayOfWeek in 2..7) {
+        val targetId = if (isTargetCurrent) repository.getCurrentScheduleId() else targetScheduleId
+        if (!targetId.isNullOrEmpty()) {
+            val courses = repository.getCoursesForSchedule(targetId)
+            if (courses.isNotEmpty()) {
+                val remapped = courses.map { course ->
+                    val day = course.dayOfWeek
+                    if (day in 1..7) {
+                        val absolute = (day - 1 + (firstDayOfWeek - 1)) % 7 + 1
+                        if (absolute != day) course.copy(dayOfWeek = absolute) else course
+                    } else {
+                        course
+                    }
+                }
+                if (remapped.indices.any { remapped[it].dayOfWeek != courses[it].dayOfWeek }) {
+                    if (isTargetCurrent) {
+                        courseViewModel.replaceCourses(remapped)
+                    } else {
+                        scheduleViewModel.saveCoursesToSchedule(targetId, remapped)
+                    }
+                    NexioLog.d("EduImport", "按周起始日归一化星期: firstDayOfWeek=$firstDayOfWeek target=$targetId")
+                }
+            }
+            applied = true
+        }
+    }
+
+    // config 是一次性消费标记：导入完成后整组清掉，避免残留旧值在下次导入时被误应用。
+    prefs.edit {
+        remove("semester_start_date")
+        remove("semester_total_weeks")
+        remove("default_class_duration")
+        remove("default_break_duration")
+        remove("first_day_of_week")
+        remove("target_schedule_id")
+    }
+    if (applied) {
         NexioLog.d("EduImport", "应用课表配置成功: 开学时间=$startDate, 总周数=$totalWeeks, target=$targetScheduleId")
     }
 }
+
+/**
+ * 应用教务脚本通过 saveComboSchedule 传回的组合作息方案（官方文档 4. comboSchedule）。
+ * 同一课表在不同日期区间用不同作息（如夏季/冬季）；每个方案以 startDate 为生效起点，
+ * 时间槽按官方「差量合并」语义：只覆盖脚本提交的节次，其余节次沿用基础时间段
+ * （preset_time_slots / 课表现有节次时间），避免方案切换后未覆盖节次丢时间。
+ * 与 applyPresetTimeSlots 一致，仅在导入完成时消费一次性标记。
+ */
+private fun applyComboSchedule(
+    settingsViewModel: SettingsViewModel,
+    courseViewModel: CourseViewModel,
+    scheduleViewModel: ScheduleViewModel,
+    targetScheduleId: String?,
+) {
+    val prefs = AppStorage.store("edu_import_prefs")
+    val comboJson = prefs.getStringOrNull("combo_schedule") ?: return
+    try {
+        val combo = Gson().fromJson(comboJson, ComboScheduleImportModel::class.java)
+        val comboName = combo?.name.orEmpty()
+        val items = combo?.publicSchedules.orEmpty()
+        if (items.isEmpty()) {
+            prefs.edit { remove("combo_schedule") }
+            return
+        }
+
+        val isTargetCurrent = targetScheduleId.isNullOrEmpty() ||
+            targetScheduleId == scheduleViewModel.currentScheduleName.value
+        val repository = CourseRepository.getInstance()
+        val targetId = if (isTargetCurrent) repository.getCurrentScheduleId() else targetScheduleId
+        if (targetId.isNullOrEmpty()) {
+            prefs.edit { remove("combo_schedule") }
+            return
+        }
+
+        val base = repository.getTimeConfig(repository.getScheduleTimeConfigId(targetId))
+        val morning = base.morningSections
+        val afternoon = base.afternoonSections
+        val evening = base.eveningSections
+
+        var nextId = base.nextRoutineId()
+        val routines = items.mapNotNull { item ->
+            val start = item.startDate ?: return@mapNotNull null
+            val month = start.substringBefore("-").toIntOrNull() ?: return@mapNotNull null
+            val day = start.substringAfter("-").substringBefore("-").toIntOrNull() ?: return@mapNotNull null
+            if (month !in 1..12 || day !in 1..31) return@mapNotNull null
+
+            // 差量合并：以基础时间段为底，仅覆盖脚本提交的节次
+            val merged = base.sectionTimes.toMutableMap()
+            for (slot in item.timeSlots) {
+                val number = slot.number
+                if (number <= 0) continue
+                val startTime = slot.startTime
+                val endTime = slot.endTime
+                if (startTime.isNullOrEmpty() || endTime.isNullOrEmpty()) continue
+                val key = when {
+                    number <= morning -> "morning_$number"
+                    number <= morning + afternoon -> "afternoon_${number - morning}"
+                    number <= morning + afternoon + evening -> "evening_${number - morning - afternoon}"
+                    else -> continue
+                }
+                merged[key] = "$startTime-$endTime"
+            }
+
+            TimeRoutine(
+                id = nextId++,
+                name = item.name.ifBlank { comboName.ifBlank { "作息方案" } },
+                effectiveMonth = month,
+                effectiveDay = TimeRoutine.clampDayOfMonth(month, day),
+                // 时间字段以基础配置为准：方案只携带节次时间差量，其余沿用课表当前值
+                quickTimeEnabled = base.quickTimeEnabled,
+                classDuration = base.classDuration,
+                shortBreak = base.shortBreak,
+                longBreakEnabled = base.longBreakEnabled,
+                longBreakMorning = base.longBreakMorning,
+                longBreakAfternoon = base.longBreakAfternoon,
+                longBreakEvening = base.longBreakEvening,
+                longBreakMorningSection = base.longBreakMorningSection,
+                longBreakAfternoonSection = base.longBreakAfternoonSection,
+                longBreakEveningSection = base.longBreakEveningSection,
+                morningStartHour = base.morningStartHour,
+                morningStartMinute = base.morningStartMinute,
+                afternoonStartHour = base.afternoonStartHour,
+                afternoonStartMinute = base.afternoonStartMinute,
+                eveningStartHour = base.eveningStartHour,
+                eveningStartMinute = base.eveningStartMinute,
+                sectionTimes = merged,
+            )
+        }
+        if (routines.isEmpty()) {
+            prefs.edit { remove("combo_schedule") }
+            return
+        }
+
+        repository.saveTimeConfig(base.copy(routines = routines))
+        if (isTargetCurrent) {
+            settingsViewModel.refreshSettings()
+            courseViewModel.refreshEssentialData()
+        }
+        prefs.edit { remove("combo_schedule") }
+        NexioLog.d("EduImport", "应用组合作息成功: ${routines.size} 个方案 target=$targetId")
+    } catch (e: Exception) {
+        NexioLog.e("EduImport", "应用组合作息失败: ${e.message}")
+    }
+}
+
+/** comboSchedule 消费端模型（与 AndroidBridge.ComboScheduleJsonModel 同构） */
+private data class ComboScheduleImportModel(
+    val name: String = "",
+    val publicSchedules: List<ComboScheduleImportItem> = emptyList()
+)
+
+private data class ComboScheduleImportItem(
+    val name: String = "",
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val timeSlots: List<ComboTimeSlotImportModel> = emptyList()
+)
+
+private data class ComboTimeSlotImportModel(
+    val number: Int,
+    val startTime: String? = null,
+    val endTime: String? = null
+)
 
 /**
  * 教务脚本索引的后台更新器（原 `EducationalImportActivity` 的 companion，
@@ -653,7 +842,7 @@ internal object EduImportUpdater {
                     else -> "更新失败"
                 }
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    showToast(msg)
                 }
                 if (result >= 0) {
                     val prefs = AppStorage.store(PREFS_NAME)
@@ -662,7 +851,7 @@ internal object EduImportUpdater {
             } catch (e: Exception) {
                 NexioLog.e(TAG, "手动更新失败: ${e.message}")
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "更新失败", Toast.LENGTH_SHORT).show()
+                    showToast("更新失败")
                 }
             } finally {
                 isUpdating.value = false

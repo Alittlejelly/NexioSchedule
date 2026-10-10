@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -50,7 +49,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.state.ToggleableState
@@ -82,6 +80,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.util.UUID
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
@@ -199,7 +199,7 @@ fun AiImportScreen(
 请严格按此格式返回，不要添加其他说明文字。"""
     }
 
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(
@@ -416,7 +416,7 @@ fun AiImportScreen(
                                     context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("课表导入提示词", promptText)
                                 clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "提示词已复制到剪切板", Toast.LENGTH_SHORT).show()
+                                showToast("提示词已复制到剪切板")
                             },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -545,11 +545,7 @@ fun AiImportScreen(
                             } else {
                                 viewModel.replaceCourses(parsedCourses.toList())
                             }
-                            Toast.makeText(
-                                context,
-                                if (appendMode) "成功添加 ${parsedCourses.size} 门课程" else "成功导入 ${parsedCourses.size} 门课程",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            showToast(if (appendMode) "成功添加 ${parsedCourses.size} 门课程" else "成功导入 ${parsedCourses.size} 门课程", longDuration = true)
                             showConfirmDialog = false
                             onBack()
                         }

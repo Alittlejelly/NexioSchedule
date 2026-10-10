@@ -33,13 +33,17 @@ import com.haooz.chedule.data.FileAppFile
 import com.haooz.chedule.data.FileKeyValueStore
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
+import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
+import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import java.io.File
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -92,6 +96,8 @@ private enum class DesktopPage(val title: String) {
     License("开源协议"),
     PrivacyPolicy("隐私政策"),
     Communication("交流与反馈"),
+    SchoolSelection("教务导入 · 选择学校"),
+    CourseTimeSettings("课表节数与时间"),
 }
 
 @Composable
@@ -106,19 +112,34 @@ private fun DesktopShell() {
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (page) {
-                DesktopPage.Home -> HomeContent(onOpen = { page = it })
-                DesktopPage.Changelog -> PageContainer(onBack = { page = DesktopPage.Home }) {
-                    ChangelogScreen()
-                }
-                DesktopPage.License -> PageContainer(onBack = { page = DesktopPage.Home }) {
-                    LicenseScreen()
-                }
-                DesktopPage.PrivacyPolicy -> PageContainer(onBack = { page = DesktopPage.Home }) {
-                    PrivacyPolicyScreen()
-                }
-                DesktopPage.Communication -> PageContainer(onBack = { page = DesktopPage.Home }) {
-                    CommunicationScreen()
+            if (page == DesktopPage.Home) {
+                HomeContent(onOpen = { page = it })
+            } else {
+                // 与 Android 路由页**同一个脚手架**（DocumentPageScaffold）：
+                // 折叠大标题顶栏 + 液态玻璃圆形返回按钮 + 采样层。
+                // 这正是「多平台视觉一致性」的验证点 —— 同一份组件代码在桌面渲染。
+                PageContainer(
+                    title = page.title,
+                    onBack = { page = DesktopPage.Home },
+                ) { scrollBehavior ->
+                    when (page) {
+                        DesktopPage.Changelog -> ChangelogScreen(scrollBehavior)
+                        DesktopPage.License -> LicenseScreen(scrollBehavior)
+                        DesktopPage.PrivacyPolicy -> PrivacyPolicyScreen(scrollBehavior)
+                        DesktopPage.Communication -> CommunicationScreen(scrollBehavior)
+                        // 第四批迁入：教务导入的学校/适配器选择页（纯 Compose，零平台依赖）
+                        // onAdapterSelected 在 Android 侧接「打开 WebView 导入」；验证阶段给空实现
+                        DesktopPage.SchoolSelection -> SchoolSelectionScreen(
+                            scrollBehavior = scrollBehavior,
+                            onAdapterSelected = { _, _ -> },
+                        )
+                        // 第七批迁入：课表节数与时间（onEditRoutine 指向宿主路由，验证阶段给空实现）
+                        DesktopPage.CourseTimeSettings -> CourseTimeSettingsScreen(
+                            onEditRoutine = { _, _, _ -> },
+                            scrollBehavior = scrollBehavior,
+                        )
+                        DesktopPage.Home -> Unit // 上面已分流，不可达
+                    }
                 }
             }
         }
@@ -164,18 +185,19 @@ private fun HomeContent(onOpen: (DesktopPage) -> Unit) {
     }
 }
 
-/** 详情页容器：内容之上浮一个返回按钮（正式版由 DocumentPageScaffold 接管）。 */
+/**
+ * 详情页容器：与 Android 路由页共用 [DocumentPageScaffold]（折叠大标题 + 玻璃返回按钮 + 采样层）。
+ */
 @Composable
-private fun PageContainer(onBack: () -> Unit, content: @Composable () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        content()
-        Button(
-            onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp),
-        ) {
-            Text(text = "返回")
-        }
+private fun PageContainer(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable (SharedScrollBehavior?) -> Unit,
+) {
+    DocumentPageScaffold(
+        title = title,
+        onBack = onBack,
+    ) { scrollBehavior, _ ->
+        content(scrollBehavior)
     }
 }

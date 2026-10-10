@@ -53,7 +53,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +106,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 // ===================== Animation Foundation =====================
 
@@ -240,7 +240,7 @@ fun CourseEditScreen(
     var showColorDialog by remember { mutableStateOf(false) }
     var customColor by remember { mutableStateOf(Color(selectedColor)) }
 
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val density = LocalDensity.current

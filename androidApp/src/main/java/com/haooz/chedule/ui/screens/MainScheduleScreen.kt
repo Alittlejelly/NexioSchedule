@@ -11,7 +11,6 @@ import kotlinx.datetime.isoDayNumber
 import com.haooz.chedule.ui.utils.ApiCompat
 
 import android.annotation.SuppressLint
-import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animate
@@ -70,8 +69,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -83,7 +82,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -147,23 +145,18 @@ import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.screenHeightDp
 
 // 普通 holder 而非 state：避免 onGloballyPositioned 每次写入触发卡片重组
 private class CardBoundsHolder {
     var rect: Rect? = null
 }
 
-/**
- * 课程表页面级触控状态。刻意用普通 holder 而非 snapshot state：
- * 里面的值每帧都可能变（滑动坐标、手指数量），用 state 会带着几十张卡一起重组。
- */
-class ScheduleTouchState {
-    /** 页面是否正在滑动（横滑 pager 或页内纵滑） */
-    var scrolling: Boolean = false
-    /** 本次手势是否出现过「多指」。必须放在页面层统计：Compose 只把「命中该节点的指针」
-     *  派发给节点，卡片自己看不到落在别的卡片上的手指。用于拦掉多指误触发的点击/长按。 */
-    var multiTouch: Boolean = false
-}
+// ScheduleTouchState 已抽出迁入 :ui-shared（DayColumn / CourseCard 要放进公开签名）。
+// 本文件与调用方同包名，引用不变。
 
 data class ScheduleGridGeometry(
     val dayBounds: Map<Int, FloatArray>,
@@ -221,7 +214,7 @@ fun MainScheduleScreen(
     onCourseDrag: (courseId: String, offsetX: Float, offsetY: Float) -> Unit = { _, _, _ -> },
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
     onCourseMenuDismiss: () -> Unit = {},
-    wallpaperBitmap: android.graphics.Bitmap? = null,
+    wallpaperBitmap: ImageBitmap? = null,
     wallpaperOffset: Offset = Offset.Zero,
     wallpaperScale: Float = 1f,
     // true：壁纸由主 pager 后共享层绘制，本页透明叠上，切 tab 时不随页平移
@@ -284,13 +277,12 @@ fun MainScheduleScreen(
     // 支持不连续点选，保存时自动合并为连续区间
     var specialItemSelectedDays by remember { mutableStateOf(setOf<Int>()) }
     val hapticFeedback = LocalHapticFeedback.current
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val density = LocalDensity.current
     // 沉浸式：滚动视口不避开底栏。底部留白写进滚动 layout 高度，避免被测量链裁掉
     val scheduleEndSpacer = 175.dp
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+    val screenWidthPx = with(density) { screenWidthDp().dp.toPx() }
+    val screenHeightPx = with(density) { screenHeightDp().dp.toPx() }
     val scrollState = externalScrollState
     // 非 state 版本：卡片 onGloballyPositioned 读取不触发重组
     val touchState = remember { ScheduleTouchState() }
@@ -810,12 +802,11 @@ fun MainScheduleScreen(
                         )
                     } else null
                 }
-                val imageBitmap = remember(wallpaperBitmap) { wallpaperBitmap.asImageBitmap() }
                 val wallpaperBlurEffect = remember(wallpaperBlur) {
                     ApiCompat.blurRenderEffect(12f * density.density)
                 }
                 androidx.compose.foundation.Image(
-                    bitmap = imageBitmap,
+                    bitmap = wallpaperBitmap,
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
@@ -1675,10 +1666,10 @@ fun MainScheduleScreen(
                     val selected = specialItemSelectedDays.sorted()
                     when {
                         trimmedName.isBlank() -> {
-                            Toast.makeText(scheduleContext, "请输入名称", Toast.LENGTH_SHORT).show()
+                            showToast("请输入名称")
                         }
                         selected.isEmpty() -> {
-                            Toast.makeText(scheduleContext, "请选择至少一个星期", Toast.LENGTH_SHORT).show()
+                            showToast("请选择至少一个星期")
                         }
                         else -> {
                             // 不连续点选合并为连续区间，如 {1,3,4} → 两个子块。

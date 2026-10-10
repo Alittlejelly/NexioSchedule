@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -43,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -80,14 +78,21 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import androidx.compose.ui.graphics.Color as ComposeColor
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /** 课程提醒页详细流程日志：仅「开始录制」后写入 */
 private fun rlog(event: String, detail: String = "") {
     com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(event, detail)
 }
 
-/** lambda 版：未录制时 detail 不求值，用于带 String.format 的埋点 */
-private inline fun rlog(event: String, detail: () -> String) {
+/**
+ * lambda 版：未录制时 detail 不求值，用于带 String.format 的埋点。
+ *
+ * ⚠ 不能是 `inline`：FeatureLog.reminderFlow 已改为非 inline（本模块 android 变体 target 与
+ * :androidApp 不一致，跨模块 inline 编不过），inline 参数无法继续往下传。
+ */
+private fun rlog(event: String, detail: () -> String) {
     com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(event, detail)
 }
 
@@ -272,7 +277,7 @@ fun CourseReminderScreen(
         } else {
             pendingPermissionAction = null
             rlog("permission_notification_denied")
-            Toast.makeText(context, "需要通知权限才能使用课程提醒功能", Toast.LENGTH_SHORT).show()
+            showToast("需要通知权限才能使用课程提醒功能")
         }
     }
 
@@ -285,7 +290,7 @@ fun CourseReminderScreen(
         containerColor = Color.Transparent,
         selectedContainerColor = Color.Transparent,
     )
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -529,7 +534,7 @@ fun CourseReminderScreen(
                                 // Android N 起同样被判定为切换勿扰，未授权会直接抛异常
                                 if (!ClassDndHelper.isDndPermissionGranted(context)) {
                                     rlog("dnd_mode_permission_needed", "mode=$mode")
-                                    Toast.makeText(context, "该档位需要勿扰权限，已为你打开授权页", Toast.LENGTH_SHORT).show()
+                                    showToast("该档位需要勿扰权限，已为你打开授权页")
                                     dndPermissionLauncher.launch(
                                         Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                                     )
@@ -652,11 +657,7 @@ fun CourseReminderScreen(
                                                         rlog("shizuku_authorize_result", "granted=$granted")
                                                         shizukuAuthorized = granted
                                                         if (!granted) {
-                                                            Toast.makeText(
-                                                                context,
-                                                                "Shizuku 授权失败",
-                                                                Toast.LENGTH_SHORT
-                                                            ).show()
+                                                            showToast("Shizuku 授权失败")
                                                         }
                                                     }
                                                 },
@@ -1008,7 +1009,7 @@ fun CourseReminderScreen(
                                                     Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                                                 )
                                             } catch (_: Exception) {
-                                                Toast.makeText(context, "请手动在系统设置中授予勿扰权限", Toast.LENGTH_SHORT).show()
+                                                showToast("请手动在系统设置中授予勿扰权限")
                                             }
                                         }
                                     }

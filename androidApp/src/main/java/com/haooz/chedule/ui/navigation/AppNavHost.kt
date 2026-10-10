@@ -452,8 +452,9 @@ private fun inverseEasingTime(easing: Easing, progress: Float): Float {
 /** 还原 1da9c0a8 二级页转场参数 */
 private const val NAV_ENTER_DURATION = 600
 private const val NAV_EXIT_DURATION = 320
-// 这两个也被 [MainLayerTransition] 用（主界面那半边要和下层页用同一套视差/压暗）
-internal const val NAV_PARALLAX = 0.24f
+// NAV_PARALLAX 已随 NavTransitionState 迁入 :ui-shared（同包名，这里无需 import、
+// 也不用再声明 —— 跨模块后必须是 public，否则 androidApp 读不到）。
+// 压暗只在本文件用，保持 internal。
 internal const val NAV_BG_DIM = 0.42f
 
 /** 入场：更晚进入减速，尾段拖得更长更慢 */

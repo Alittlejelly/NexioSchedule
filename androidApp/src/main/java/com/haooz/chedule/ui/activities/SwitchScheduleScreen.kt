@@ -2,7 +2,6 @@
 package com.haooz.chedule.ui.activities
 
 import android.annotation.SuppressLint
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
@@ -73,7 +72,6 @@ import androidx.compose.ui.semantics.onClick as onSemanticsClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
@@ -134,6 +132,8 @@ import kotlin.math.sign
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import com.haooz.chedule.data.showToast
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @SuppressLint("ConfigurationScreenWidthHeight", "MutableCollectionMutableState")
 @Composable
@@ -424,7 +424,7 @@ fun SwitchScheduleScreen(
     // 注意：这里不要再挂一个未被消费的 layerBackdrop —— 它会把整页内容每帧额外离屏录制一遍，
     // 而录制结果没有任何 drawBackdrop 使用，等于白烧一整条渲染管线。
     val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     LaunchedEffect(showAddDialog) {
@@ -749,11 +749,7 @@ fun SwitchScheduleScreen(
                                         val selected = selectedSchedules.firstOrNull()
                                         if (selected != null && !isSharingSchedule) {
                                             if (buildShareScheduleMap(repository, selected) == null) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "「$selected」课表为空，无法分享",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                showToast("「$selected」课表为空，无法分享")
                                             } else {
                                                 shareConfirmScheduleName = selected
                                                 showShareConfirmDialog = true
@@ -1091,11 +1087,7 @@ fun SwitchScheduleScreen(
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (scheduleNames.contains(newScheduleName)) {
-                                    Toast.makeText(
-                                        context,
-                                        "已存在同名课表",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("已存在同名课表")
                                     return@TextButton
                                 }
                                 val name = newScheduleName
@@ -1156,11 +1148,7 @@ fun SwitchScheduleScreen(
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (editScheduleName.isBlank()) {
-                                    Toast.makeText(
-                                        context,
-                                        "请输入课表名称",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("请输入课表名称")
                                     return@TextButton
                                 }
                                 if (editScheduleName == editingScheduleName) {
@@ -1169,11 +1157,7 @@ fun SwitchScheduleScreen(
                                     return@TextButton
                                 }
                                 if (scheduleNames.contains(editScheduleName)) {
-                                    Toast.makeText(
-                                        context,
-                                        "已存在同名课表",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("已存在同名课表")
                                     return@TextButton
                                 }
                                 val oldName = editingScheduleName
@@ -1319,11 +1303,7 @@ fun SwitchScheduleScreen(
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (folders.any { it.name == newFolderName }) {
-                                    Toast.makeText(
-                                        context,
-                                        "已存在同名文件夹",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("已存在同名文件夹")
                                     return@TextButton
                                 }
                                 val name = newFolderName
@@ -1390,11 +1370,7 @@ fun SwitchScheduleScreen(
                                     return@TextButton
                                 }
                                 if (folders.any { it.name == editFolderName && it.id != editingFolderId }) {
-                                    Toast.makeText(
-                                        context,
-                                        "已存在同名文件夹",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    showToast("已存在同名文件夹")
                                     return@TextButton
                                 }
                                 com.haooz.chedule.ui.utils.FeatureLog.switchSchedule(
