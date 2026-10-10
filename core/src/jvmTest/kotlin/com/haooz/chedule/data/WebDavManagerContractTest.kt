@@ -21,8 +21,6 @@ import kotlin.test.assertTrue
  * 所以这里塞一个**记录请求的假 [HttpService]**，把「发出去的请求长什么样」逐条钉死：
  * 方法 / URL / `Authorization` / `Depth` / body / contentType。
  * 换实现时只要这些不变，线上行为就不会变。
- *
- * ⚠ 本文件不入库（用户长期要求）。
  */
 class WebDavManagerContractTest {
 
@@ -258,6 +256,54 @@ class WebDavManagerContractTest {
         assertEquals(1, holidayCallbackCount)
         // 数据确实写进去了
         assertEquals(listOf("甲"), repository.getScheduleNames())
+    }
+
+    /**
+     * 云端备份含「孤儿时间配置绑定」时恢复必须成功 —— 用户真实踩坑（2026-10-10 报障）。
+     *
+     * 云端备份（如 2026-10-01 11:36 那份）由当时的旧版 App 导出，
+     * `data` 里带 `schedule_time_config_默认课表`（课表已删、绑定键残留）。
+     * 旧校验要求绑定名 ∈ schedule_names → `restoreLatestBackup` 的 catch 把
+     * 异常包成用户看到的 **「恢复异常: Invalid full schedule backup:
+     * time configuration belongs to an unknown schedule」**。
+     * 修复 `9d13813` 后孤儿绑定被豁免（与本地恢复共用同一个
+     * `importAllPreferences` → `validateFullScheduleBackupStructure`）——
+     * 本用例钉住云端链路同样被覆盖。
+     *
+     * 断言全部走 repository 自身（getScheduleNames / exportAllPreferences），
+     * 不依赖本地 store —— CourseRepository 是 JVM 级单例，本地 store 可能不是同一份。
+     */
+    @Test
+    fun `云端备份含孤儿时间配置绑定也能恢复成功`() = runTest {
+        http.on("PROPFIND", urlSuffix = "/backups", code = 207, body = propfindBody)
+        // 与真实 41 键备份同构的云端信封（data 里带孤儿绑定）
+        val payload = """
+            {"version":1,"backupTime":"2026-10-01 11:36:00","backupId":"backup_20261001_113600",
+             "data":{"schedule_names":"[\"大二上\"]",
+                     "schedule_folders":"[{\"id\":\"folder_default\",\"name\":\"默认文件夹\",\"schedules\":[\"大二上\"]}]",
+                     "current_schedule_id":"大二上",
+                     "schedule_大二上_courses":"[{\"name\":\"高等数学\",\"dayOfWeek\":1,\"startSection\":1,\"endSection\":2,\"selectedWeeks\":[1,2]}]",
+                     "schedule_time_config_大二上":0,
+                     "schedule_time_config_默认课表":0,
+                     "holiday_entries":{"entries_2026":"[]"},
+                     "holiday_end_course_exclusion":{"schema_version":1,"enabled":false,"startSection":1,"endSection":1},
+                     "holiday_before_course_exclusion":{"schema_version":1,"enabled":false,"startSection":1,"endSection":1}}}
+        """.trimIndent()
+        http.on("GET", code = 200, body = payload)
+
+        val repository = CourseRepository.getInstance()
+        val result = manager.restoreLatestBackup(repository)
+        assertTrue(result is RestoreResult.Success, "实际: $result")
+
+        assertEquals(listOf("大二上"), repository.getScheduleNames())
+        assertEquals("大二上", repository.getCurrentScheduleId())
+        assertEquals(1, holidayCallbackCount)
+        // 孤儿绑定作为正常残留原样落库（修复注释：残留写回去与现状一致，无害）
+        val exported = repository.exportAllPreferences()
+        assertTrue(
+            "schedule_time_config_默认课表" in exported.keys,
+            "云端恢复后孤儿绑定应原样保留，实际键：${exported.keys.filter { it.startsWith("schedule_time_config_") }}",
+        )
     }
 
     @Test
