@@ -5,9 +5,9 @@
 > **②Android 数据层的 KMP 收口**（七节，**D1/D2 已完成**，执行记录见 7.7）。
 > 宏观 KMP 迁移计划见 `docs/KMP_IOS_MIGRATION_PLAN.md`（含 ⑦–⑬ 数据层批次记录），本文不重复。
 >
-> **代码基线**：`master` `057d6ab` + `ca95feb` + `b974cf2`（**工作区已干净，全部已提交**）。
-> Android `assembleDebug` 通过 · `:core:jvmTest` **241 用例全绿（已入库）** ·
-> `checkKmpPurity` 185 文件通过 · `:core:compileKotlinLinuxX64` 通过 ·
+> **代码基线**：`master` `bfceff1`（**工作区已干净，全部已提交**）。
+> Android `assembleDebug` 通过 · `:core:jvmTest` **244 用例全绿（已入库）** ·
+> `checkKmpPurity` 192 文件通过 · `:core:compileKotlinLinuxX64` 通过 ·
 > `:backdrop` / `:miuix` `compileKotlinWasmJs` 通过（`-Pnexio.wasm=true`）·
 > `:core:compileKotlinIosArm64` / `IosSimulatorArm64` **在 Windows 上编译通过**（`b974cf2`）。
 

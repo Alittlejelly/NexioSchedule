@@ -30,12 +30,14 @@
 
 ### 2. ✅ 测试已全部入库（2026-10-10，`057d6ab`）
 
-`core/src/commonTest/`（10 个）与 `core/src/jvmTest/`（14 个）共 **241 个用例已提交**，
+`core/src/commonTest/`（10 个）与 `core/src/jvmTest/`（15 个）共 **244 个用例已提交**，
 连同 `jvmTest/resources/school_index.pb`（77KB，真实 248 校生产索引，作差分基准夹具）。
 
 此前这两处是 untracked、但 `core/build.gradle.kts` 已提交测试依赖 —— 新克隆的仓库
-`:core:check` 跑不到任何测试。**这个不一致已消除**，现在版本库里能真跑到这 241 个用例。
-跑法：`./gradlew :core:jvmTest --rerun-tasks`（22 个测试类 / 0 失败）。
+`:core:check` 跑不到任何测试。**这个不一致已消除**，现在版本库里能真跑到这 244 个用例。
+跑法：`./gradlew :core:jvmTest --rerun-tasks`（25 个测试类 / 0 失败）。
+244 = 241（入库时）+ 3（2026-10-10 晚新增：孤儿时间配置绑定恢复回归 ×2 +
+WebDAV 云端同款回归 ×1 —— 报障的「旧版备份无法恢复」根因闭环，见批次记录）。
 
 > ⚠ **提交前先确认**：`school_index.pb` 是**真实生产索引**。若此仓库会公开，
 > 需评估是否换成脱敏/合成索引（当前已入库）。
@@ -59,8 +61,10 @@
 | ✅ **`ScheduleBackup` 下沉 `:core`** | **已完成**（2026-10-09）：WebDAV 收敛到 `HttpService`，iOS 侧不再有第二处网络实现要写（见「当前进展 ⑬」） | — |
 | ✅ **存储层三平台闭环（`KeyValueStore`）** | **已完成**（2026-10-10）：Android 实现 `SharedPreferencesStore` 搬到 `core/src/androidMain`；iOS 实现 `UserDefaultsStore` 已写好；`:androidApp` 直调 `getSharedPreferences` **88 → 46 处**（剩余全属类别 C）。详见 handoff 文档 **7.7** | 中 —— ✅ **编译已验证**（2026-10-10，Windows 上 `compileKotlinIosArm64` 通过）；**运行时**三点仍需真机，见 A2 |
 
-**UI 导航改造（阶段 5 前置）已起步** —— 增量 1 做完（路由器基础设施 + 关于页宿主化，
-Manifest 23 → 20 个 Activity）。详见「🎯 UI 导航改造」一节，**下一个增量是把宿主迁到 `MainActivity`**。
+**UI 导航改造（阶段 5 前置）已全部完成** —— Manifest 23 → **2**（只剩 `MainActivity` +
+`ImportAlias`），20 条路由。2026-10-10 教务导入 Activity 也并入路由并删除，
+**全应用单 Activity 收官**；路由页改为**整栈常驻组合 + 三档暂停绘制**
+（任意深度 pop 回去是活页，静止层不画）。详见 handoff 文档一~二节。
 
 **数据层已全部完成**（⑫⑬）。`:androidApp/data` 只剩两个**按归属不该进 `:core`** 的文件
 （见 ⑬-c）：`ScheduleAppearance`（Bitmap）/ `WallpaperTransform`（Compose `Offset`），
@@ -89,7 +93,7 @@ Manifest 23 → 20 个 Activity）。详见「🎯 UI 导航改造」一节，**
 # 或拆开跑（等价）
 ./gradlew :core:compileKotlinLinuxX64 :core:compileTestKotlinLinuxX64   # commonMain/Test 平台中立
 ./gradlew checkKmpPurity              # 已知 JVM 专有 API 静态扫描
-./gradlew :core:jvmTest --rerun-tasks # 241 个用例（已入库）
+./gradlew :core:jvmTest --rerun-tasks # 244 个用例（已入库）
 
 # 动了 commonMain / skikoMain 时，额外跑非 JVM 编译门禁（需联网 + PATH 有 Node）
 ./gradlew -Pnexio.wasm=true checkKmpWasmJs
@@ -544,10 +548,10 @@ wasmJs 同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），因此同�
 
 | 模块 | 源文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 34 (+15 平台实现) | ~9,365 | common / android / **jvm / linuxX64(门禁)** | **整个数据层**（课程/时间配置/节假日/课表名/文件夹/备份/WebDAV）+ 9 套跨平台抽象 |
-| `:backdrop` | 64 | 5,458 | common / android / skiko | KMP 化，含 edgelight + capsule；skikoMain 已经 **wasmJs + iOS 编译验证**（2026-10-10） |
-| `:miuix` | 105 | 26,032 | common / android / skiko | KMP 化；**2026-10-10 又推进一批**（见下）：`BlurBottomSheet`×2 迁 commonMain、`NativeTextField`/`NativeMiuixTextField` 改 expect/actual、删除 `OverlayBottomSheet` 死代码 —— 四目标（android/jvm/wasmJs/iosArm64）编译通过，androidMain 从 11 文件/2,917 行瘦身到 **9 文件/1,571 行** |
-| `:androidApp` | 148 | 69,983 | android | Android-only，**剩余迁移主体** |
+| `:core` | 52 (+24 测试) | ~9,346 主代码 | common / android / **jvm / linuxX64(门禁)** | **整个数据层**（课程/时间配置/节假日/课表名/文件夹/备份/WebDAV）+ 9 套跨平台抽象 |
+| `:backdrop` | 64 | 5,463 | common / android / skiko | KMP 化，含 edgelight + capsule；skikoMain 已经 **wasmJs + iOS 编译验证**（2026-10-10） |
+| `:miuix` | 108 | 26,089 | common 92 / android **9** / skiko 7 | KMP 化；公共组件**全部进 commonMain**（2026-10-10 两批，见下）：Sheet×2 / 输入框 expect-actual / SearchBar+InputField / 死代码删除 —— androidMain 只剩 9 个纯平台端文件（1,093 行） |
+| `:androidApp` | 131 | 64,233 | android | Android-only，**剩余迁移主体**；**单 Activity 收官**（2026-10-10，仅 MainActivity + ImportAlias） |
 
 `:core` 已有的 8 套跨平台能力：`NexioLog`（日志）/ `KeyValueStore`+`AppStorage`（存储）/
 `HttpService`（网络）/ `JsonSupport`（JSON）/ `PlatformInfo`（设备信息）/ `AppFile`+`AppFiles`（文件）/
@@ -566,8 +570,48 @@ wasmJs 同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），因此同�
 - `:core/commonMain` → `compileKotlinLinuxX64` 通过 ⇒ **Native 目标也能编**（`commonTest` 同）
 - `:backdrop` / `:miuix` 的 `commonMain` + `skikoMain` → `compileKotlinWasmJs` +
   `compileKotlinIosArm64` 均通过（2026-10-10 起，此前「从未针对 Native 编译」已作废）；
-  平台专有 API 仍靠 `checkKmpPurity` 静态兜底（189 文件）
+  平台专有 API 仍靠 `checkKmpPurity` 静态兜底（**192 文件**）
 - `:androidApp:assembleDebug` 通过（APK 19.96MB）
+
+### ✅ 已完成批次 · miuix 清零 + 单 Activity 收官 + 备份恢复回归（2026-10-10 晚）
+
+**① miuix 公共组件全部进 commonMain（收尾批）**
+- `SearchBar` + `InputField`（503 行）→ commonMain：阴影绘制抽成
+  `internal/CanvasShadow` expect/actual 三件套（android=`BlurMaskFilter` 逐字搬出 /
+  skiko=Skia `MaskFilter.makeBlur`）；返回手势改 `NavigationBackHandlerFor`
+- `DynamicColors` 改名 `DynamicColors.android.kt`：实测它**早已跨平台**
+  （官方 miuix-ui 提供 commonMain `expect fun platformDynamicColors` + skiko 兜底），
+  fork 版 336 行是 Android 端增强实现，androidMain 就是正确位置
+- **`:miuix/androidMain` 只剩 9 个纯平台端文件（1,093 行）** —— 公共组件部分清零。
+  剩余构成：两个 EditText 输入框 actual + TextFieldCompat + DynamicColors +
+  4 个 expect/actual 的 android 端 + CanvasShadow.android
+
+**② 教务导入页并入路由，全应用单 Activity 收官**
+- 用户决定推翻「EducationalImportActivity 按约定保留」：**彻底单 Activity，只能有 MainActivity**
+- Activity（671 行）删除 → `ui/screens/EducationalImportScreen.kt`（UI 主体 +
+  `EduImportUpdater` 对象，原 companion 逻辑逐字保留）；新增
+  `AppRoute.EducationalImport`（第 20 条路由）；Manifest **23 → 2**
+- WebView 注入链路（`@JavascriptInterface`）按决定**原样留在 Screen 内**，注入细节后置
+- 路由架构同日升级：**整栈常驻组合 + 三档暂停绘制**（`AppRouter.routes` 只读视图 +
+  `SkipDrawNode`）—— 任意深度 pop 回去是活页；静止层不画（等价 stop 的 Activity）。
+  期间修掉三处动画回归：路由转场圆角裁切锚点（clip 必须在 layout 内层）、
+  黑幕层级（必须在「下层各页」与「顶层页」之间）、push 起始帧下层误暂停（p=0
+  时 `inFlight=false` 导致主界面裸露一帧，规则应为 `p < 1` 就画）。
+  详见 handoff 一~二节
+
+**③ 备份恢复报障闭环（用户报障 ×2，同根因）**
+- 症状：旧版备份 `全部备份_20261009_155910.json`（41 键）与 WebDAV 云端
+  10-01 备份均无法恢复，Toast「Invalid full schedule backup: time configuration
+  belongs to an unknown schedule」
+- 根因：备份含**孤儿时间配置绑定** `schedule_time_config_默认课表`（课表已删、
+  绑定键残留，前缀不同没被一起清）。旧校验（1.6.4-1008 及更早）要求绑定名 ∈
+  schedule_names → 拒绝。**修复已在 `9d13813` 落地**（孤儿绑定豁免，注释原话
+  「用户连自己的备份都恢复不了」）—— 手机装 ≥ 该提交的构建即可恢复，数据层无新改动
+- 新增 3 个回归测试（jvmTest 241 → **244**）：孤儿绑定校验豁免（内联样例 +
+  真实文件全链路）+ WebDAV 云端同款（FakeHttp 信封）。
+  ⚠ 测试设计坑：`CourseRepository()` 实为 `getInstance()` 单例（`operator fun invoke`
+  转发），prefs 在 JVM 内首次构造时钉死当时的 AppStorage store —— 回归测试改为
+  **纯函数层断言**（顺序无关），否则污染 FullBackupRoundTripTest
 
 ### ✅ 已完成批次 · miuix 收尾（Sheet / 输入框进 commonMain + 死代码清理，2026-10-10）
 
@@ -709,7 +753,14 @@ class HttpResult(code, bytes, truncated = false)   // 超限返回 truncated=tru
 
 顺手修掉：这两个仓库原本各自 `new OkHttpClient()`（第 11、12 套连接池），现在复用 `HttpService`。
 
-### 🎯 UI 导航改造（阶段 5 前置）· 增量 1+2 已完成（2026-10-09）
+### 🎯 UI 导航改造（阶段 5 前置）· **已全部完成**（增量 1+2 记于 2026-10-09）
+
+> **✅ 收官（2026-10-10）**：增量 3~6 把 Manifest 收到 **6**；此后 `SwitchScheduleActivity`
+> 死代码删除、教务导入 Activity 并入路由（`AppRoute.EducationalImport`）——
+> **Manifest 23 → 2**（仅 MainActivity + ImportAlias），20 条路由，全应用单 Activity。
+> 本节保留增量 1/2 的原始记录供追溯；最新状态以 **handoff 文档**一~二节为准
+>（含预测性返回动画、单进度转场、整栈常驻 + 三档暂停绘制）。
+> 下文「⚠️ 已知未做：预测性返回的动画」已被后续增量完成，同样以 handoff 为准。
 
 > **增量 1**（`0ce3c8a`）：路由器基础设施 + AboutActivity 宿主化（4 条路由），删 3 个 Activity
 > **增量 1.5**（`a1e7f7e`）：修复返回丢滚动状态（`SaveableStateHolder`）
