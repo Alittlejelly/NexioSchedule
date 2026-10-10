@@ -1,8 +1,7 @@
 /** 课程管理页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
+import com.haooz.chedule.data.SnapshotBitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -48,7 +47,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,13 +81,12 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.util.UUID
+import com.haooz.chedule.data.randomUuidV4
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun CourseManageScreen(
     scrollBehavior: SharedScrollBehavior? = null,
@@ -102,7 +99,7 @@ fun CourseManageScreen(
         top: Float,
         width: Float,
         height: Float,
-        snapshot: Bitmap?,
+        snapshot: SnapshotBitmap?,
         cardColor: Color,
         cardAlpha: Float
     ) -> Unit = { _, _, _, _, _, _, _, _ -> },
@@ -128,7 +125,6 @@ fun CourseManageScreen(
     sectionTimes: Map<Int, String> = emptyMap(),
 ) {
     val hapticFeedback = LocalHapticFeedback.current
-    val context = LocalContext.current
     val courses by viewModel.courses.collectAsState()
     var listScrollY by remember { mutableIntStateOf(0) }
 
@@ -534,7 +530,7 @@ fun CourseManageScreen(
                                     showToast("已存在同名课程")
                                 } else {
                                     val course = Course(
-                                        id = UUID.randomUUID().toString(),
+                                        id = randomUuidV4(),
                                         name = newCourseName.trim(),
                                         classroom = "",
                                         teacher = "",
@@ -661,7 +657,7 @@ private fun CourseManageCard(
     daySectionInfo: String,
     isHidden: Boolean = false,
     isSelected: Boolean = false,
-    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: Bitmap?) -> Unit,
+    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: SnapshotBitmap?) -> Unit,
     onLongPress: (left: Float, top: Float, width: Float, height: Float) -> Unit = { _, _, _, _ -> }
 ) {
     var cardLeft by remember { mutableFloatStateOf(0f) }

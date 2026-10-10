@@ -81,6 +81,11 @@ kotlin {
             // ⚠ 首次拉取需要联网（`lifecycle-viewmodel-desktop` 等 jvm 变体本地缓存没有）；
             //   拉过一次之后 `--offline` 门禁可正常跑。
             implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.6")
+            // `viewModel()` 这个 **@Composable 工厂** 在单独的 artifact 里（`-compose` 后缀）。
+            // 页面迁进 commonMain 后默认用 `viewModel: XxxViewModel = viewModel()` 拿实例
+            // （AndroidX 默认工厂只认无参构造，所以 VM 都保持无参），没有这条就编不过。
+            // 版本与上面保持一致（同属 JetBrains 的 KMP 移植线）。
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
         }
     }
 }
