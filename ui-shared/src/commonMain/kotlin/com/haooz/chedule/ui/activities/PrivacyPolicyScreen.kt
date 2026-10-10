@@ -21,11 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.ui.utils.screenWidthDp
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -224,11 +224,11 @@ fun PrivacyPolicyScreen(
     }
 
     val listState = rememberLazyListState()
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = screenWidthDp() >= 600
     // 平板按屏宽在 20~128dp 间线性放大：600dp 屏=20dp，1200dp 及以上封顶 128dp
     val tabletHorizontalPadding = if (isTablet) {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
+        val widthDp = screenWidthDp()
+        ((widthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
     } else 16.dp
 
     Scaffold(

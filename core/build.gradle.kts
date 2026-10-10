@@ -54,6 +54,16 @@ kotlin {
     linuxX64()
 
     sourceSets {
+        // 「Android 与 JVM 桌面共用」的实现（java.io.File 系）：FileAppFile 等。
+        // 与 :miuix/:backdrop 的 skikoMain 同一招 —— 用 srcDir 共享同一份源码，
+        // 不复制两份（commonMain 里放不了 java.*，linuxX64 门禁会挂）。
+        androidMain {
+            kotlin.srcDir("src/jvmShared/kotlin")
+        }
+        jvmMain {
+            kotlin.srcDir("src/jvmShared/kotlin")
+        }
+
         commonMain.dependencies {
             // java.time 的跨平台替代：LocalDate / LocalDateTime / Instant 等。
             // 必须用 api —— LocalDate 出现在 :core 的公开签名里（Course / HolidayEntry /

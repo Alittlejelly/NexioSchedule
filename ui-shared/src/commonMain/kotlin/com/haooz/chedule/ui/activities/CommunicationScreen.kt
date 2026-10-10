@@ -1,7 +1,6 @@
 /** 交流与反馈页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,10 +15,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.ui.utils.screenWidthDp
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -32,7 +31,6 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun CommunicationScreen(
     scrollBehavior: SharedScrollBehavior? = null,
@@ -42,7 +40,7 @@ fun CommunicationScreen(
         drawRect(backdropColor)
         drawContent()
     }
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = screenWidthDp() >= 600
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     Scaffold(

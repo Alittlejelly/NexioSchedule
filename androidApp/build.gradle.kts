@@ -72,6 +72,10 @@ dependencies {
     // 领域模型：Course / ScheduleFolder / TimeConfig。包名不变，import 无需改动
     implementation(project(":core"))
 
+    // ===== 共享 UI（阶段 5 分批迁入的页面 / 主题）=====
+    // 包名与迁移前一致，调用方 import 一行不用改
+    implementation(project(":ui-shared"))
+
     // ===== 液态玻璃效果库（fork 自 io.github.kyant0:backdrop 2.0.1，KMP）=====
     // 取代原先直接放在 :app 里的 com/kyant/backdrop（Android-only fork）
     implementation(project(":backdrop"))

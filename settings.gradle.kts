@@ -28,5 +28,9 @@ include(":androidApp")
 include(":backdrop")
 include(":core")
 include(":miuix")
+// 阶段 5：共享 UI 模块（android + jvm 双目标）。UI 从 :androidApp 分批迁入，
+// 桌面端（:desktopApp）与 Android 端共用同一批页面。
+include(":ui-shared")
+include(":desktopApp")
  
 

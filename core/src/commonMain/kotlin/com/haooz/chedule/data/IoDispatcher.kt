@@ -22,4 +22,5 @@ import kotlinx.coroutines.CoroutineDispatcher
  * 把网络/JSON 这类阻塞操作放进去不会卡住主线程，语义上与 JVM 的 IO 池足够接近。
  * Native 平台本身不提供独立的 IO 池（coroutines 1.9.0 未公开）。
  */
-internal expect val ioDispatcher: CoroutineDispatcher
+/** 执行阻塞式 IO 的调度器。public：`:ui-shared` 的页面（如 License 全文加载）也要用。 */
+expect val ioDispatcher: CoroutineDispatcher

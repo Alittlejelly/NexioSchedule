@@ -2,8 +2,9 @@
 
 > 目标平台：**iOS**（iPad 一并覆盖）  
 > 策略：渐进式，全程不打断 1.6.x 正常发版  
-> 制定日期：2026-10-08 · 最近更新：2026-10-09（Kotlin 2.4.10，AGP 9.2.1，CMP 1.12.0）  
-> 代码状态：`master` `ada9380`，Android 侧 `assembleDebug` 通过；**iOS 尚未接入**
+> 制定日期：2026-10-08 · 最近更新：**2026-10-10 晚**（阶段 5 第一批 + 桌面验证客户端落地）  
+> 代码状态：见 handoff 文档顶部基线；Android `assembleDebug` 通过；**桌面客户端已能真跑**（`:desktopApp`）；
+> **iOS 尚未接入**
 
 ---
 
@@ -77,7 +78,7 @@ WebDAV 云端同款回归 ×1 —— 报障的「旧版备份无法恢复」根�
 | ~~**Native HTTP 实现**（`HttpService.native`）~~ | ✅ **已完成**（2026-10-10）：`iosMain/HttpService.ios.kt`（NSURLSession delegate 流式读），**未引入 Ktor**，双 iOS 目标编译通过；占位挪到 `linuxX64Main`。剩下的只是**真机运行验证**（WebDAV PROPFIND / 8MB 截断 / 断网抛错） | ~~中~~ → 低 |
 | **Gson 4 条通道**（10 个文件） | 全在 `:androidApp` 的 UI/导入导出层。**现阶段不需要动** —— Gson 留在 `:androidApp` 是允许的，只有阶段 5 把 UI 搬进共享模块时才必须清掉 | 高（等 UI 迁移时再做） |
 | **阶段 5 的 UI 迁移** | 61.7k 行 Compose UI，`LocalConfiguration` 42 处 / `LocalContext` 32 处 | 大，按批次 |
-| **阶段 5 前置：建 `:ui-shared`** | CMP 共享 UI 模块；`ScheduleAppearance` / `WallpaperTransform` 的归属地 | 中 |
+| **阶段 5 前置：建 `:ui-shared`** | ✅ **已建**（2026-10-10 晚，android+jvm 双目标），第一批 11 个文件已迁入，见「已完成批次 · 桌面验证客户端」 | ~~中~~ → 进行中 |
 | **Gson 迁移**（文档风险表里的 **R2，最高**） | **真实备份已到手**（2026-10-09）→ 前置调研做完，配置要求已量出（见「🔬 R2 前置调研」）。仍需 `@Serializable` + 显式字段清单。⚠ `TeachingWeekReorganization` 的 Gson **已经换掉了**（⑨-b），剩的是单课表备份 / 分享码 / 教务导入 + 全量备份 4 条通道 | 高 —— 数据格式一变，存量用户读不出来。**已从「未知风险」降为「有明确配置要求」** |
 | **`AppFile` 的 iOS 实现**（A3） | Native HTTP 已完成后，iOS 侧**剩余的唯一硬实现**：`NSFileManager` 实现 `AppFile` 接口 + 启动注入（约 30 行，照抄 `FileAppFile.kt`）。契约与落盘路径逐字要求见 A3 | 中（路径抄错 = 学校索引引导失效） |
 
@@ -544,14 +545,68 @@ wasmJs 同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），因此同�
 > 教训：**「能编过」必须明确是「哪个目标能编过」**。只要 commonMain 没有非 JVM 目标参与编译，
 > 「KMP 化完成」就是没有依据的结论。
 
+### ✅ 已完成批次 · 阶段 5 第一批 + 桌面验证客户端（2026-10-10 深夜）
+
+**目标**：兑现「桌面端能真跑」—— 用第二个平台验证迁移成果，而不是只靠编译器。
+
+**① 新建两个模块**
+
+| 模块 | 说明 |
+|---|---|
+| `:ui-shared` | 阶段 5 的共享 UI 归宿。android + jvm 双目标（CMP 插件），已纳入 `checkKmpPurity` 的 `purityModules`。**暂不挂 wasmJs/iOS 目标**（挂了会撞 FAIL_ON_PROJECT_REPOS，同 :miuix 注释） |
+| `:desktopApp` | Compose Desktop 宿主（同 :androidApp 是平台宿主，不受 commonMain 规则约束）。当前形态是**迁移验证壳**：首页列出已迁页面，每批迁移后加入口；全部迁完后由正式路由替换 |
+
+**② 第一批 12 个文件迁入 `:ui-shared`（git mv 保留历史，包名不变，调用方 import 零改动）**
+
+主题 3（Theme/Color/Type）+ 数据 1（ChangelogData）+ 工具 2（AppMaterialSettings / PredictiveBackSettings）
++ 纯展示页 6（PrivacyConsent / Changelog / Communication / License / PrivacyPolicy + PolicySection 模型）。
+改造点（每处都保持 Android 行为逐字不变）：
+
+- `@SuppressLint` 注解删除（lint 抑制，非运行时）
+- **`LocalConfiguration.screenWidthDp` → 新 expect/actual `screenWidthDp()`**（`ui/utils/ScreenSize.kt`）：
+  Android actual 继续读 `LocalConfiguration`（零回归），jvm actual 按窗口像素÷密度（同 miuix `TabletWidth.skiko` 口径）。
+  只判「是不是平板」的调用点优先用 `:miuix` 现成的 `isTabletWidth()`
+- License 页 `context.assets.open("LICENSE")` → **`AppFiles.readAsset`**（Android 侧注入 assets、桌面注入 classpath，同一契约）
+- License 页 `Dispatchers.IO` → `:core` 的 `ioDispatcher`（为此把它从 internal 改为 **public**，4 个 actual 同步）
+- `PredictiveBackSettings` 补 `import kotlin.concurrent.Volatile`（纯度门禁实测拦下：不限定的 `@Volatile` 靠 JVM 默认导入，commonMain 编不过）
+
+**③ `FileAppFile` 归位 `:core`（计划 7.2 的 D1 遗留）**：挪到 `core/src/jvmShared/kotlin`，
+用 **srcDir 同时接进 androidMain 与 jvmMain**（与 skikoMain 同一招），一份代码两端共用。
+
+**④ 桌面存储：`FileKeyValueStore`（core/src/jvmMain，约 300 行）**
+
+每个偏好名一个 JSON 文件（17 个名字绝不合并），**每个值带类型标签落盘**（`["i",42]` / `["l",42]`）——
+与 iOS `UserDefaultsStore` 同一个坑：`CourseRepository` 复制课表按 `is Int`/`is Long` 分支，
+JSON 数字还原时猜错类型 = 用户设置静默丢失。文件损坏**不静默清空**：改名 `.corrupt-<时间戳>` 隔离保留现场。
+新增 12 个 jvmTest（`:core:jvmTest` 244 → **256 用例**），断言口径与 `KeyValueStoreRoundTripTest`（InMemory）一致。
+
+**⑤ 桌面真跑验证（截图存证后已清理）**：`.\gradlew.bat :desktopApp:run` 启动，
+首页（主题/存储注入生效）与「更新日志」页（迁移页面本体：miuix 卡片 + blur 采样 + `screenWidthDp()` + 迁移数据）均完整渲染。
+
+**⑥ 🔴 本批踩到并修复的真事故：miuix 0.9.3 与 CMP 1.12.0 的 skiko 二进制不兼容**
+
+桌面启动即 `NoSuchMethodError: Image.makeShader(…, SamplingMode, Matrix33)`。根因：
+`Matrix33` 在 skiko 0.150.1（CMP 1.12.0 所带）已是 `@JvmInline value class`（JVM 签名变 `float[]` + 方法名混淆），
+而 **miuix-squircle 0.9.3 是 compose 1.11.1 构建的**，字节码还调旧的 `Matrix33` 普通类签名。
+桌面是第一个真跑 skiko 的目标，所以只有它暴露（Android 的 squircle 走 android.graphics 路径）。
+**修复：官方 miuix 子库 0.9.3 → 0.9.4**（squircle/icons/blur/preference，0.9.4 用 compose 1.12.0 构建、签名匹配；
+`navigation3-ui` 是独立版本线、maven 无 0.9.4，单独 pin `miuixNavigation3=0.9.3`）。
+⚠ **升级 CMP 时，miuix 官方子库版本必须一起动**（版本目录里已写明）。Android material3 解析未受影响（仍 1.5.0-alpha19）。
+
+**⑦ 门禁全绿**（离线红线 + wasmJs + 桌面）：`checkKmpPurity` **204 文件**（+ui-shared 的 12 个）·
+`:core:check` **256 用例** · `:miuix/backdrop/ui-shared:check` · `:androidApp:assembleDebug` ·
+`-Pnexio.wasm=true checkKmpWasmJs`（0.9.4 的 wasm-js 变体已验证存在并通过编译）· `:desktopApp:compileKotlinJvm`。
+
 ### 模块现状
 
 | 模块 | 源文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 52 (+24 测试) | ~9,346 主代码 | common / android / **jvm / linuxX64(门禁)** | **整个数据层**（课程/时间配置/节假日/课表名/文件夹/备份/WebDAV）+ 9 套跨平台抽象 |
+| `:core` | 53 (+25 测试) | ~9.6k 主代码 | common / android / **jvm / linuxX64(门禁)** / **jvmShared(FileAppFile)** | **整个数据层**（课程/时间配置/节假日/课表名/文件夹/备份/WebDAV）+ 跨平台抽象；新增桌面存储 `FileKeyValueStore` |
 | `:backdrop` | 64 | 5,463 | common / android / skiko | KMP 化，含 edgelight + capsule；skikoMain 已经 **wasmJs + iOS 编译验证**（2026-10-10） |
-| `:miuix` | 108 | 26,089 | common 92 / android **9** / skiko 7 | KMP 化；公共组件**全部进 commonMain**（2026-10-10 两批，见下）：Sheet×2 / 输入框 expect-actual / SearchBar+InputField / 死代码删除 —— androidMain 只剩 9 个纯平台端文件（1,093 行） |
-| `:androidApp` | 131 | 64,233 | android | Android-only，**剩余迁移主体**；**单 Activity 收官**（2026-10-10，仅 MainActivity + ImportAlias） |
+| `:miuix` | 108 | 26,089 | common 92 / android **9** / skiko 7 | KMP 化；公共组件**全部进 commonMain**；官方子库依赖已升 **0.9.4**（与 CMP 1.12.0 的 skiko 匹配） |
+| **`:ui-shared`** | **14** | **~2,117** | common / android / jvm | **阶段 5 已开工**：主题 + 数据 + 6 个纯展示页迁入；纯度扫描已覆盖 |
+| **`:desktopApp`** | 1 | ~200 | jvm | **桌面验证壳已能真跑**：启动注入（AppStorage/AppFiles/AppInfo）+ 已迁页面渲染 |
+| `:androidApp` | 119 | ~65.7k | android | Android-only，**剩余迁移主体**；**单 Activity 收官**（2026-10-10，仅 MainActivity + ImportAlias） |
 
 `:core` 已有的 8 套跨平台能力：`NexioLog`（日志）/ `KeyValueStore`+`AppStorage`（存储）/
 `HttpService`（网络）/ `JsonSupport`（JSON）/ `PlatformInfo`（设备信息）/ `AppFile`+`AppFiles`（文件）/

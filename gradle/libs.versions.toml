@@ -26,7 +26,14 @@ material3 = "1.5.0-alpha19"           # Material3 (MotionScheme 公开 API 需�
 webkit = "1.17.0"                     # AndroidX WebKit（document-start 脚本注入，桌面版视口需在页面脚本前生效）
 
 # 第三方 UI
-miuix = "0.9.3"                       # Miuix 小米风格组件库
+# ⚠ 必须与 composeMultiplatform 版本匹配：0.9.3 是 compose 1.11.1 构建的，
+# 其 skiko 调用（Image.makeShader 的 Matrix33 旧签名）在 CMP 1.12.0 的
+# skiko 0.150.1（Matrix33 已是 value class，签名变 float[] + 方法名混淆）上
+# 运行即 NoSuchMethodError —— 桌面端（第一个真跑 skiko 的目标）2026-10-10 实测踩中。
+# 0.9.4 用 compose 1.12.0 构建，签名匹配。升级 CMP 时这两个版本要一起动。
+miuix = "0.9.4"
+# navigation3-ui 是独立版本线：maven 上没有 0.9.4，最高 0.9.3（单独 pin 住）
+miuixNavigation3 = "0.9.3"
 # Backdrop 已 fork 到本地源码，不再声明远程依赖
 
 materialKolor = "4.1.1"               # Material Color for Multiplatform（miuix theme 依赖）
@@ -61,7 +68,7 @@ miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-a
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }             # 图标资源
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }               # 模糊效果
 miuix-squircle = { group = "top.yukonga.miuix.kmp", name = "miuix-squircle-android", version.ref = "miuix" }       # 超椭圆形状
-miuix-navigation3 = { group = "top.yukonga.miuix.kmp", name = "miuix-navigation3-ui-android", version.ref = "miuix" }  # Navigation3 导航
+miuix-navigation3 = { group = "top.yukonga.miuix.kmp", name = "miuix-navigation3-ui-android", version.ref = "miuixNavigation3" }  # Navigation3 导航
 
 # ===== 序列化 / 网络 =====
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }                                     # JSON 序列化

@@ -86,7 +86,7 @@ kotlin {
             implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui:${libs.versions.miuix.get()}")
+            implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui:${libs.versions.miuixNavigation3.get()}")
         }
         androidMain.dependencies {
             // SearchBar / BottomSheet 的返回键处理，CMP 无对应库，Android 侧走原生实现

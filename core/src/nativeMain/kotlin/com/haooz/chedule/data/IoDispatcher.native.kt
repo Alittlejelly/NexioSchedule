@@ -9,4 +9,4 @@ import kotlinx.coroutines.Dispatchers
  * Native 上 `Dispatchers.IO` 是 `internal`，改用 `Dispatchers.Default` ——
  * 它在 Native 背后是多线程工作池，不会阻塞主线程。
  */
-internal actual val ioDispatcher: CoroutineDispatcher get() = Dispatchers.Default
+actual val ioDispatcher: CoroutineDispatcher get() = Dispatchers.Default

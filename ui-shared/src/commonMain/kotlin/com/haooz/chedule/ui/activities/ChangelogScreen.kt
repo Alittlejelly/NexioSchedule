@@ -1,7 +1,6 @@
 /** 更新日志页 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -33,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +39,7 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.data.changelogData
+import com.haooz.chedule.ui.utils.screenWidthDp
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -52,7 +51,6 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun ChangelogScreen(
     scrollBehavior: SharedScrollBehavior? = null,
@@ -64,10 +62,10 @@ fun ChangelogScreen(
         drawRect(backdropColor)
         drawContent()
     }
-    val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+    val isTablet = screenWidthDp() >= 600
     val tabletHorizontalPadding = if (isTablet) {
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
-        ((screenWidthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
+        val widthDp = screenWidthDp()
+        ((widthDp - 600).coerceIn(0, 600) / 600f * 108 + 20).dp
     } else 16.dp
 
     val expandedStates = remember {

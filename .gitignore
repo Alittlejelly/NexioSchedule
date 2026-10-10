@@ -7,6 +7,8 @@ androidApp/release
 core/build
 backdrop/build
 miuix/build
+ui-shared/build
+desktopApp/build
 local.properties
 
 # --- IDE 配置 ---

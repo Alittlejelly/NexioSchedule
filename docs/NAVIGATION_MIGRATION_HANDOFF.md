@@ -13,10 +13,17 @@
 
 ## ⚡ 下一手要做的（按优先级）
 
-> **2026-10-10 更新**：原排第 1 的「测试不入库」不一致已消除（`057d6ab`），
-> `skikoMain` 编译盲区已收窄（`ca95feb`）。
+> **2026-10-10 深夜更新**：阶段 5 已开工 —— `:ui-shared` + `:desktopApp` 落地，第一批 12 个文件迁入，
+> **桌面客户端已能真跑**（截图验证首页 + 更新日志页）。执行记录见 KMP 计划文档
+> 「✅ 已完成批次 · 阶段 5 第一批 + 桌面验证客户端」。⚠ 该批次顺带修了一个真事故：
+> miuix 官方子库 0.9.3 与 CMP 1.12.0 的 skiko 二进制不兼容（桌面 NoSuchMethodError），
+> 已升 0.9.4；**升级 CMP 时官方 miuix 子库必须一起动**。
 
-1. **`:core` 声明 `binaries.framework`** —— iOS 侧 Swift 才能 `import Shared`。
+1. **阶段 5 第二批迁移**（当前主线）：按本会话验证过的套路继续 —— 闭包分析找种子页 →
+   git mv 进 `:ui-shared` → 用 `screenWidthDp()`/`isTabletWidth()`/`AppFiles` 等既有抽象消化平台差异 →
+   桌面壳加入口真跑验证 → 门禁全绿。下一批候选：About 系（闭包被 KDoc 假边撑大的页面逐个拆）
+   与 DocumentPageScaffold（需先给 `LiquidTopBarButton` 的 `android.graphics` 绘制做 expect/actual）。
+2. **`:core` 声明 `binaries.framework`** —— iOS 侧 Swift 才能 `import Shared`。
    **不做则 `compileKotlinIosArm64` 绿了也没用**。代码片段见 KMP 计划文档 **A0-1**。
 2. **iOS 运行时验证（需 macOS）** —— ✅ **编译部分已在 Windows 上完成**（`b974cf2`，
    `-Pnexio.ios=true :core:compileKotlinIosArm64` + `IosSimulatorArm64` 均通过，

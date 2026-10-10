@@ -168,7 +168,7 @@ abstract class CheckKmpPurityTask : DefaultTask() {
 
 /** 需要扫描的源集：commonMain 是「必须跨平台」，skikoMain 是「jvm 与 iOS 共享」。 */
 val puritySourceSets = listOf("commonMain", "skikoMain")
-val purityModules = listOf("core", "backdrop", "miuix")
+val purityModules = listOf("core", "backdrop", "miuix", "ui-shared")
 
 tasks.register<CheckKmpPurityTask>("checkKmpPurity") {
     group = "verification"
