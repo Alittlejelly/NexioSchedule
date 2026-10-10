@@ -1,7 +1,7 @@
 /** 课程管理页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import com.haooz.chedule.data.SnapshotBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -99,7 +99,7 @@ fun CourseManageScreen(
         top: Float,
         width: Float,
         height: Float,
-        snapshot: SnapshotBitmap?,
+        snapshot: ImageBitmap?,
         cardColor: Color,
         cardAlpha: Float
     ) -> Unit = { _, _, _, _, _, _, _, _ -> },
@@ -657,7 +657,7 @@ private fun CourseManageCard(
     daySectionInfo: String,
     isHidden: Boolean = false,
     isSelected: Boolean = false,
-    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: SnapshotBitmap?) -> Unit,
+    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: ImageBitmap?) -> Unit,
     onLongPress: (left: Float, top: Float, width: Float, height: Float) -> Unit = { _, _, _, _ -> }
 ) {
     var cardLeft by remember { mutableFloatStateOf(0f) }
