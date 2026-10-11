@@ -27,6 +27,7 @@
 `iosSimulatorArm64` **编译通过**；`:core` 跨平台测试在模拟器上 **109 用例 0 失败**；
 `:ui-shared` 的 **`NexioShared.framework` 两个目标都链接成功**（`linkDebugFrameworkIos{Arm64,SimulatorArm64}`）。
 原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
+**iOS 代码侧能力已齐**（A1 网络 / A2 偏好 / A3 文件三个 actual 都写好并编译通过），缺的只剩**工程侧**。
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
 （含本体）/课表导入导出备份页/外观自定义页/教务导入（外壳+本体）已迁**；`:ui-shared` 已迁入 104 文件 / 46.4k 行；
@@ -220,13 +221,6 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
    **`WebViewScreen` 与三个对话框一行不用动**。
 3. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
 
-> ✅ **已完成的「页面」**：`BackupAndMigrationScreen`（`23a7a369`）、`SettingsScreen` 本体（`b3713502`）、
-> `CustomizeScheduleScreen`（`bf06b6f9`）、`WebViewScreen` 外壳（`231c74bc`）、`EducationalImportScreen`（`4d2d4198`）。
-
-> ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
-> （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
-> 页外快照走「宿主裁好 → 页面收 `ImageBitmap?`」。两种场景都有落地方案，后续页面照抄。
-
 ### 🔑 迁移框架铁律（用户 10-11 拍板）
 
 **页面 UI 一律迁 `:ui-shared` commonMain**（否则 iOS/桌面要重写一遍）；**只有 Android 专有「能力」留
@@ -262,6 +256,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
 | `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
 | `231c74bc` | **第二十六批**：`WebViewScreen` 外壳迁 `:ui-shared`（1241→893 行）+ 新增 `ui/web/WebHost.kt` 契约 + `AndroidWebHost`（494 行，网页本体）；复核时修回写丢的 `findActivity` 的 `ContextWrapper` 分支 | 10-11 |
 | `bf06b6f9` | **第二十五批**：`CustomizeScheduleScreen` 迁 `:ui-shared`（壁纸/快照重灾区）；`Bitmap`→`ImageBitmap` + `CombinationThumbnail` 投影；`ThemeMode` 下沉 :core；**补扫描器规则抓 `"…".format()` 盲区** | 10-11 |
@@ -374,10 +369,13 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 2. `persistentDomainForName` 对自定义 suite 是否返回非空（`all()` 依赖它）
 3. `raw is String` 对 plist 里的 `NSString` 是否成立
 
-### A3. `AppFile`（`NSFileManager`）+ 启动注入 —— ⚠ 待写（约 30 行，照抄 `FileAppFile.kt`）
+### A3. `AppFile`（`NSFileManager`）—— ✅ 已实现（`iosMain/NsFileAppFile.kt`，编译已过，运行时待真机）
 
-契约：`writeBytes` **必须自动创建父目录**；`resolve(relative)` 以 `/` 分隔；`root` 指向沙盒私有目录。
+`AppFiles.init(root = NsFileAppFile(defaultDocumentsDir()), readAsset = { … })`。
+契约：`writeBytes` **自动创建父目录**；`resolve(relative)` 以 `/` 分隔；读缺失文件**抛**（不返回空）；
+`defaultDocumentsDir()` 取 **Documents**（对应 `filesDir`；⚠ 别用 Caches / tmp，系统会在空间不足时清空）。
 **落盘路径必须逐字保持**：`repo/index/school_index.pb`、`repo/schools/resources`（抄错 = 学校索引引导失效）。
+配套 `FoundationBytes.kt` 提供 `NSData ⇄ ByteArray`（⚠ 空数组不能取 `addressOf(0)`，走 `null + 0` 分支）。
 
 ### A4. 启动注入（3 个 `init`，缺任何一个都会在首次使用时抛异常）
 
@@ -426,7 +424,8 @@ AppFiles.init(
    ```
 3. ✅ 风险 R6 已排除：官方 miuix 5 个 artifact **都有 `-iosarm64` 变体**（Windows 上纯依赖解析
    即可验证）：`./gradlew -Pnexio.ios=true :miuix:dependencies --configuration iosArm64CompileKlibraries`
-4. ⚠ A0-1 `binaries.framework` **还没声明**
+4. ✅ A0-1 `binaries.framework` **已声明并链接成功**（`:ui-shared`，`NexioShared` 静态，
+   设备 + 模拟器两目标；第二十七批实测）
 5. ⚠ A0-2 `Info.plist` 键**还没加**
 6. 跑 `./gradlew -Pnexio.ios=true :core:compileKotlinIosArm64`，**不要只跑 android / jvm**
 
@@ -440,8 +439,9 @@ AppFiles.init(
 | skikoMain 能在 iOS 跑 | ⚠ 编译已验证，**运行未验证**（Wasm 与 Native 的 stdlib 仍有差异） |
 | `KeyValueStore` iOS 实现 | ✅ 编译已验证；**运行时**三点待真机（A2） |
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
+| iOS 文件层（`AppFile`） | ✅ **已实现并编译通过**（第二十八批）；运行时待真机 |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | ❌ **无 Xcode 工程**；A3 未写；A0-1 / A0-2 未做 |
+| iOS 已可用 | ❌ **无 Xcode 工程**；A0-1 / A0-2 未做（A1~A3 代码已齐） |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
