@@ -53,6 +53,10 @@ class AndroidUpdateController(private val context: Context) : UpdateController {
     override fun localApkPath(tag: String): String =
         UpdateInstaller.apkFile(context, tag).absolutePath
 
+    override fun cleanOldApks(keepTag: String?) {
+        UpdateChecker.cleanOldApks(context, keepTag)
+    }
+
     override fun resolveApkUrl(tag: String, source: String, channel: String): String? =
         UpdateChecker.resolveApkUrl(context, tag, source, channel)
 

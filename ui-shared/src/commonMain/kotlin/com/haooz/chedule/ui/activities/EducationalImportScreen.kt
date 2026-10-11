@@ -10,13 +10,22 @@
  *    系统栏 = 宿主全局处理。
  *
  * 仍在 Android 侧的部分
- * （WebView 分支的注入、Toast、Gson 保存）
+ * （WebView 宿主通过 `WebHost` 注入；Toast 与 JSON 均为跨平台 API）
  * 按用户决定**暂留本文件**，注入细节后置处理。
  */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.content.Context
+// ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
+//
+// 平台面只有四处，全部按既有模板收敛：
+//  · `LocalContext` 那行（toastContext）**声明后从未使用** → 删。
+//  · `@SuppressLint("UseKtx")` 是 Android lint 注解 → 删。
+//  · `forceUpdate(context: Context)` 的 context 形参**从未被函数体使用** → 去掉形参。
+//  · `System.currentTimeMillis()` → `Clock.System.now().toEpochMilliseconds()`；
+//    `Dispatchers.IO` → `ioDispatcher`。
+//  · 网页宿主（WebView 本体）改成 `webHostFactory` 注入 —— 本页的 WebView 分支
+//    只负责把宿主转交给已迁 :ui-shared 的 WebViewScreen。
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,15 +55,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.haooz.chedule.data.parseJsonArray
+import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.optJsonArray
+import com.haooz.chedule.data.optJsonObject
+import com.haooz.chedule.data.optString
+import com.haooz.chedule.data.optInt
+import com.haooz.chedule.data.hasKey
+import com.haooz.chedule.data.isJsonNull
+import com.haooz.chedule.data.length
+import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.launch
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.TimeRoutine
@@ -76,8 +93,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.ui.web.NoopWebHost
+import com.haooz.chedule.ui.web.WebHost
+import com.haooz.chedule.ui.web.WebHostConfig
+import com.haooz.chedule.ui.web.WebHostEvents
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -98,7 +120,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.web.rememberAndroidWebHost
 
 /**
  * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。
@@ -111,6 +132,11 @@ import com.haooz.chedule.ui.web.rememberAndroidWebHost
  */
 @Composable
 fun EducationalImportScreen(
+    /**
+     * 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 尚未提供时用 [NoopWebHost]。
+     * 本页只把它转交给已迁 `:ui-shared` 的 `WebViewScreen`（网页本体是平台能力）。
+     */
+    webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
     isInFreeformWindow: Boolean,
     isUpdating: Boolean,
     dataVersion: Int,
@@ -346,7 +372,6 @@ fun EducationalImportScreen(
             val adapter = selectedAdapter
             if (school != null && adapter != null) {
                 val hapticFeedback = LocalHapticFeedback.current
-                val toastContext = LocalContext.current
 
                 Scaffold { paddingValues ->
                     val topBarHeightDp = with(LocalDensity.current) {
@@ -434,9 +459,7 @@ fun EducationalImportScreen(
                             onReloadRef = { action -> reloadWebViewAction = action },
                             // 网页本体（WebView / JS 桥 / PixelCopy 采色）留在 Android 侧：
                             // 页面外壳已迁 :ui-shared，这里只把宿主造出来注入进去。
-                            webHostFactory = { config, events ->
-                                rememberAndroidWebHost(config, events)
-                            },
+                            webHostFactory = webHostFactory,
                         )
 
                         ProgressiveBlurTopBar(
@@ -509,10 +532,17 @@ private fun applyPresetTimeSlots(
     val prefs = AppStorage.store("edu_import_prefs")
     val timeSlotsJson = prefs.getStringOrNull("preset_time_slots") ?: return
     try {
-        val timeSlots = Gson().fromJson<List<Map<String, Any>>>(
-            timeSlotsJson,
-            object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
-        ) ?: return
+        // Gson 的 `List<Map<String,Any>>` 运行时反射在 Kotlin/Native 不存在；用项目已有的
+        // JsonElement 动态工具逐字段读（与该 JSON 契约相同：缺键/类型不对时走默认值）。
+        val timeSlots = parseJsonArray(timeSlotsJson).mapNotNull { element ->
+            (element as? JsonObject)?.let { slot ->
+                PresetTimeSlot(
+                    number = slot.optInt("number", 0),
+                    startTime = slot.optString("startTime"),
+                    endTime = slot.optString("endTime"),
+                )
+            }
+        }
         if (timeSlots.isEmpty()) return
 
         val isTargetCurrent = targetScheduleId.isNullOrEmpty() ||
@@ -538,10 +568,10 @@ private fun applyPresetTimeSlots(
         val eveningTimes = mutableMapOf<Int, String>()
 
         for (slot in timeSlots) {
-            val number = (slot["number"] as? Number)?.toInt() ?: continue
-            val startTime = slot["startTime"] as? String ?: ""
-            val endTime = slot["endTime"] as? String ?: ""
-            if (startTime.isEmpty() || endTime.isEmpty()) continue
+            val number = slot.number
+            val startTime = slot.startTime
+            val endTime = slot.endTime
+            if (number <= 0 || startTime.isEmpty() || endTime.isEmpty()) continue
             val timeStr = "$startTime-$endTime"
 
             when {
@@ -696,9 +726,26 @@ private fun applyComboSchedule(
     val prefs = AppStorage.store("edu_import_prefs")
     val comboJson = prefs.getStringOrNull("combo_schedule") ?: return
     try {
-        val combo = Gson().fromJson(comboJson, ComboScheduleImportModel::class.java)
-        val comboName = combo?.name.orEmpty()
-        val items = combo?.publicSchedules.orEmpty()
+        // Gson 运行时反射换成 common JsonElement 的逐字段读取。
+        val combo = parseJsonObject(comboJson)
+        val comboName = combo.optString("name")
+        val items = combo.optJsonArray("publicSchedules")?.mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val slots = item.optJsonArray("timeSlots")?.mapNotNull { slotElement ->
+                val slot = slotElement as? JsonObject ?: return@mapNotNull null
+                ComboTimeSlotImportModel(
+                    number = slot.optInt("number", 0),
+                    startTime = slot.optionalString("startTime"),
+                    endTime = slot.optionalString("endTime"),
+                )
+            }.orEmpty()
+            ComboScheduleImportItem(
+                name = item.optString("name"),
+                startDate = item.optionalString("startDate"),
+                endDate = item.optionalString("endDate"),
+                timeSlots = slots,
+            )
+        }.orEmpty()
         if (items.isEmpty()) {
             prefs.edit { remove("combo_schedule") }
             return
@@ -785,6 +832,16 @@ private fun applyComboSchedule(
 }
 
 /** comboSchedule 消费端模型（与 AndroidBridge.ComboScheduleJsonModel 同构） */
+private data class PresetTimeSlot(
+    val number: Int,
+    val startTime: String,
+    val endTime: String,
+)
+
+/** Preserve Gson's nullable String fields: absent / explicit JSON null → null; otherwise optString text. */
+private fun JsonObject.optionalString(key: String): String? =
+    if (hasKey(key) && !isJsonNull(key)) optString(key) else null
+
 private data class ComboScheduleImportModel(
     val name: String = "",
     val publicSchedules: List<ComboScheduleImportItem> = emptyList()
@@ -811,24 +868,23 @@ private data class ComboTimeSlotImportModel(
  * - [startUpdateIfNeeded]：进入页面时调用（原 onCreate 时机），距上次成功更新 ≥7 天才动
  * - [forceUpdate]：顶栏「更新」按钮，结果 Toast 给用户
  */
-internal object EduImportUpdater {
+object EduImportUpdater {
 
     private const val TAG = "EduImport"
     private const val PREFS_NAME = "edu_import_prefs"
     private const val KEY_LAST_UPDATE_TIME = "last_update_time"
     private const val AUTO_UPDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000L
 
-    private val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    internal val isUpdating = MutableStateFlow(false)
-    internal val dataVersion = MutableStateFlow(0)
+    private val updateScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    val isUpdating = MutableStateFlow(false)
+    val dataVersion = MutableStateFlow(0)
 
-    @SuppressLint("UseKtx")
     fun startUpdateIfNeeded() {
         if (isUpdating.value) return
 
         val prefs = AppStorage.store(PREFS_NAME)
         val lastUpdateTime = prefs.getLong(KEY_LAST_UPDATE_TIME, 0)
-        val now = System.currentTimeMillis()
+        val now = Clock.System.now().toEpochMilliseconds()
         val needsUpdate = lastUpdateTime == 0L || (now - lastUpdateTime > AUTO_UPDATE_INTERVAL_MS)
 
         if (!needsUpdate) {
@@ -841,7 +897,7 @@ internal object EduImportUpdater {
                 ScriptRepository(ScriptRepository.getRepoUrl()).updateAll(
                     onLog = { }
                 )
-                prefs.edit { putLong(KEY_LAST_UPDATE_TIME, System.currentTimeMillis()) }
+                prefs.edit { putLong(KEY_LAST_UPDATE_TIME, Clock.System.now().toEpochMilliseconds()) }
             } catch (e: Exception) {
                 NexioLog.e(TAG, "更新失败: ${e.message}")
             } finally {
@@ -851,7 +907,7 @@ internal object EduImportUpdater {
         }
     }
 
-    fun forceUpdate(context: Context) {
+    fun forceUpdate() {
         if (isUpdating.value) return
         isUpdating.value = true
         updateScope.launch {
@@ -865,18 +921,15 @@ internal object EduImportUpdater {
                     -1 -> "更新失败，请检查网络连接"
                     else -> "更新失败"
                 }
-                withContext(Dispatchers.Main) {
-                    showToast(msg)
-                }
+                // Toast 必须回主线程（与迁移前逐字一致）；Main 是 kotlinx-coroutines 的跨平台 dispatcher。
+                withContext(Dispatchers.Main) { showToast(msg) }
                 if (result >= 0) {
                     val prefs = AppStorage.store(PREFS_NAME)
-                    prefs.edit { putLong(KEY_LAST_UPDATE_TIME, System.currentTimeMillis()) }
+                    prefs.edit { putLong(KEY_LAST_UPDATE_TIME, Clock.System.now().toEpochMilliseconds()) }
                 }
             } catch (e: Exception) {
                 NexioLog.e(TAG, "手动更新失败: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    showToast("更新失败")
-                }
+                withContext(Dispatchers.Main) { showToast("更新失败") }
             } finally {
                 isUpdating.value = false
                 dataVersion.value++

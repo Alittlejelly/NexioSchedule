@@ -98,6 +98,7 @@ import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.activities.EducationalImportScreen
+import com.haooz.chedule.ui.web.rememberAndroidWebHost
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.ApiCompat
@@ -1394,13 +1395,13 @@ private fun EducationalImportRoute(router: AppRouter) {
     LaunchedEffect(Unit) { EduImportUpdater.startUpdateIfNeeded() }
     val isUpdating by EduImportUpdater.isUpdating.collectAsState()
     val dataVersion by EduImportUpdater.dataVersion.collectAsState()
-    val toastContext = LocalContext.current
 
     EducationalImportScreen(
+        webHostFactory = { config, events -> rememberAndroidWebHost(config, events) },
         isInFreeformWindow = isInFreeformWindow(),
         isUpdating = isUpdating,
         dataVersion = dataVersion,
-        onForceUpdate = { EduImportUpdater.forceUpdate(toastContext) },
+        onForceUpdate = { EduImportUpdater.forceUpdate() },
         onFinish = { router.popBack() },
     )
 }

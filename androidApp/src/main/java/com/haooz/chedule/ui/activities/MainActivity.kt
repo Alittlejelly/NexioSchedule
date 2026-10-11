@@ -72,6 +72,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.ui.navigation.AppNavHost
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.AppRouteContent
@@ -145,6 +146,8 @@ import com.haooz.chedule.ui.components.LocalLandRipple
 import com.haooz.chedule.ui.components.ScheduleBottomBar
 import com.haooz.chedule.ui.components.ScheduleTopBar
 import com.haooz.chedule.ui.components.ShareImportDialog
+import com.haooz.chedule.ui.components.SharedFileIntent
+import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.components.UpdateDialog
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
@@ -4163,16 +4166,37 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         }
                     }
 
+                    // 页面已迁 :ui-shared：宿主把分享 Intent 摊平成 SharedFileIntent，
+                    // 并提供一个「读该 uri 全部文本」的回调（contentResolver 是 Android 能力）。
+                    val sharedFileIntent = activity?.let { act ->
+                        act.shareIntentUri?.let { uri ->
+                            SharedFileIntent(uri.toString(), act.shareIntentVersion)
+                        }
+                    }
                     ShareImportDialog(
-                        activity = activity,
-                        shareIntentVersion = activity?.shareIntentVersion ?: 0,
+                        shareIntent = sharedFileIntent,
+                        onShareIntentConsumed = { activity?.clearShareIntent() },
+                        readSharedFileText = { uriString ->
+                            try {
+                                activity?.contentResolver
+                                    ?.openInputStream(android.net.Uri.parse(uriString))
+                                    ?.bufferedReader()?.use { it.readText() }
+                            } catch (e: Exception) {
+                                showToast("导入失败: ${e.message}")
+                                null
+                            }
+                        },
                         courseViewModel = viewModel,
                         scheduleViewModel = scheduleViewModel,
                         settingsViewModel = settingsViewModel,
                         liquidGlassBackdrop = liquidGlassBackdrop,
                     )
 
-                    UpdateDialog(liquidGlassBackdrop = liquidGlassBackdrop)
+                    // 页面已迁 :ui-shared：更新能力（检查/下载/校验/安装）由宿主注入
+                    UpdateDialog(
+                        updateController = remember { AndroidUpdateController(context) },
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                    )
 
                     val showJumpWeekDialog by viewModel.showJumpWeekDialog.collectAsState()
                     var jumpWeekTemp by remember { mutableIntStateOf(1) }
@@ -4561,6 +4585,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             onTabSelected = onTabletTabSelected,
                             backdrop = chromeBackdrop,
                             isShiftMode = isShiftMode,
+                            // 侧栏遮罩圆角：原来自取 Activity.window，现由宿主注入（同一份 px）
+                            screenCornerRadiusPx = screenCornerRadius,
                             onSidebarExpandedChange = {
                                 com.haooz.chedule.ui.components.TabletNavSideState.expanded = it
                             },

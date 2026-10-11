@@ -1,6 +1,15 @@
 package com.haooz.chedule.ui.components
 
-import android.content.Context
+// ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
+//
+// 平台面收敛成两样：
+//  · `UpdateChecker` / `UpdateInstaller` / `packageManager` → 已有的 `UpdateController`
+//    接口（宿主注入 `AndroidUpdateController`）。顺手给它补了 `cleanOldApks`，
+//    并把纯函数的 `parseVersion` / `isBetaVersion` / `isNewerVersion` 下沉 :core。
+//  · `File` → 绝对路径 `String`（控制器本来就是这么约定的）。
+//  · `SimpleDateFormat("yyyy-MM-dd")` → `todayLocalDate().toString()`（ISO 格式一致）。
+//  · `Dispatchers.IO` → `ioDispatcher`（前者在 Native 上是 internal）。
+
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
 import androidx.compose.foundation.layout.Arrangement
@@ -22,14 +31,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.ui.utils.UpdateChecker
-import com.haooz.chedule.ui.utils.UpdateInstaller
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,21 +45,26 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import androidx.core.content.edit
 import kotlin.time.Duration.Companion.milliseconds
+import com.haooz.chedule.data.NoopUpdateController
+import com.haooz.chedule.data.UpdateController
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.isNewerVersion
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.todayLocalDate
 
 /**
  * 更新弹窗：每天启动时检查一次更新，有新版本则弹窗提示。
  * 点「更新」直接下载安装包（已下好则直接安装），不再跳转设置页再点一次。
  */
 @Composable
-internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null) {
-    val context = LocalContext.current
+/**
+ * @param updateController 更新能力（检查 / 下载 / 校验 / 安装）；桌面/iOS 用 [NoopUpdateController]
+ */
+fun UpdateDialog(
+    updateController: UpdateController = NoopUpdateController,
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+) {
     val hapticFeedback = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -70,7 +80,8 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadComplete by remember { mutableStateOf(false) }
     var isInstalling by remember { mutableStateOf(false) }
-    var downloadedFile by remember { mutableStateOf<File?>(null) }
+    // 用绝对路径而不是 File：跨平台侧没有 java.io.File（控制器接口也是这么定的）
+    var downloadedApkPath by remember { mutableStateOf<String?>(null) }
 
     fun updateChannel(): String = updatePrefs.getString("update_channel", "stable")
 
@@ -86,15 +97,15 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
 
         if (!autoCheck) return@LaunchedEffect
 
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val today = todayLocalDate().toString()
         val lastCheckDate = updatePrefs.getString("last_check_date", "")
 
         if (lastCheckDate != today) {
             val channel = updateChannel()
             val source = downloadSource()
-            val (hasUpdate, release) = withContext(Dispatchers.IO) {
+            val (hasUpdate, release) = withContext(ioDispatcher) {
                 try {
-                    UpdateChecker.checkForUpdate(context, source, channel)
+                    updateController.checkForUpdate(source, channel)
                 } catch (e: Exception) {
                     NexioLog.e("UpdateDialog", "检查更新失败", e)
                     Pair(false, null)
@@ -108,9 +119,9 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             }
 
             if (hasUpdate && release != null) {
-                UpdateChecker.persistRelease(context, release)
-                UpdateChecker.rememberApkDigest(context, release.tagName, release.apkSha256, release.apkSize)
-                UpdateChecker.cleanOldApks(context, release.tagName)
+                updateController.persistRelease(release)
+                updateController.rememberApkDigest(release.tagName, release.apkSha256, release.apkSize)
+                updateController.cleanOldApks(release.tagName)
             }
         }
 
@@ -120,13 +131,11 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
         val tag = updatePrefs.getString("latest_tag", "")
         val body = updatePrefs.getString("latest_body", "")
 
-        val currentVersion = try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
-        } catch (_: Exception) { "" }
+        val currentVersion = updateController.currentVersion
         val localVersion = currentVersion.removePrefix("v")
         val remoteVersion = tag.removePrefix("v")
 
-        val actuallyHasUpdate = hasUpdate && tag.isNotBlank() && UpdateChecker.isNewerVersion(remoteVersion, localVersion)
+        val actuallyHasUpdate = hasUpdate && tag.isNotBlank() && isNewerVersion(remoteVersion, localVersion)
         if (hasUpdate && !actuallyHasUpdate) {
             updatePrefs.edit { putBoolean("has_update", false) }
         }
@@ -135,11 +144,11 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             updateTagName = tag
             updateBody = body
             // 校验需解析 APK，放 IO 线程
-            hasDownloadedApk = withContext(Dispatchers.IO) {
-                UpdateInstaller.hasValidApk(context, tag)
+            hasDownloadedApk = withContext(ioDispatcher) {
+                updateController.hasValidApk(tag)
             }
             if (hasDownloadedApk) {
-                downloadedFile = UpdateInstaller.apkFile(context, tag)
+                downloadedApkPath = updateController.localApkPath(tag)
                 downloadComplete = true
             }
             delay(800.milliseconds)
@@ -163,8 +172,8 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
             // 当天缓存里可能没有下载地址（发版时 release 先于 APK 资产创建），
             // 这里不直接放弃：resolveApkUrl 会在缓存为空时回源重查并回写缓存。
             // 否则弹窗会一直报「未找到下载链接」，只有进设置页重新检查才能下。
-            val apkUrl = withContext(Dispatchers.IO) {
-                UpdateChecker.resolveApkUrl(context, tag, downloadSource(), updateChannel())
+            val apkUrl = withContext(ioDispatcher) {
+                updateController.resolveApkUrl(tag, downloadSource(), updateChannel())
             }
             isResolvingUrl = false
             if (apkUrl.isNullOrBlank()) {
@@ -173,10 +182,10 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
                 return@launch
             }
             try {
-                val file = UpdateInstaller.downloadApk(context, apkUrl, tag) { p ->
+                val path = updateController.downloadApk(apkUrl, tag) { p ->
                     downloadProgress = p
                 }
-                downloadedFile = file
+                downloadedApkPath = path
                 downloadComplete = true
                 isDownloading = false
                 hasDownloadedApk = true
@@ -189,10 +198,9 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
     }
 
     fun startInstall() {
-        val file = downloadedFile ?: return
-        UpdateInstaller.installApk(
-            context = context,
-            file = file,
+        val apkPath = downloadedApkPath ?: return
+        updateController.installApk(
+            apkPath = apkPath,
             onInstallingChanged = { isInstalling = it },
             onFinished = {
                 // 安装流程已交棒（静默成功 / 系统安装器已拉起）：
@@ -306,8 +314,8 @@ internal fun UpdateDialog(liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = nu
                         when {
                             isDownloading || isInstalling -> Unit
                             downloadComplete || hasDownloadedApk -> {
-                                if (downloadedFile == null && updateTagName.isNotBlank()) {
-                                    downloadedFile = UpdateInstaller.apkFile(context, updateTagName)
+                                if (downloadedApkPath == null && updateTagName.isNotBlank()) {
+                                    downloadedApkPath = updateController.localApkPath(updateTagName)
                                 }
                                 startInstall()
                             }

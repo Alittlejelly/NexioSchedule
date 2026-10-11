@@ -1,6 +1,9 @@
 package com.haooz.chedule.ui.utils
 
 import android.content.Context
+import com.haooz.chedule.data.isBetaVersion
+import com.haooz.chedule.data.isNewerVersion
+import com.haooz.chedule.data.parseVersion
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
@@ -53,35 +56,9 @@ internal object UpdateChecker {
     /** 校验结论；[reason] 用于日志与用户提示，仅在失败时有值 */
     data class ApkCheck(val ok: Boolean, val reason: String? = null)
 
-    /**
-     * 解析版本号为数字序列。
-     * 格式: [v]MAJOR.MINOR.PATCH[-DATE] 或 [v]MAJOR.MINOR.PATCH.BETA[-DATE]
-     * 例: 1.5.0-0905 → [1,5,0]；1.5.0.2-0905 → [1,5,0,2]
-     * 日期后缀不参与比较。
-     */
-    fun parseVersion(raw: String): List<Int> {
-        val cleaned = raw.trim().removePrefix("v").removePrefix("V")
-            .substringBefore('-')
-            .substringBefore('+')
-        return cleaned.split('.').map { it.toIntOrNull() ?: 0 }
-    }
-
-    /** 是否 beta 版（第 4 段版本号存在） */
-    fun isBetaVersion(raw: String): Boolean = parseVersion(raw).size >= 4
-
-    /** 比较版本：remote 是否比 local 更新。忽略日期后缀。 */
-    fun isNewerVersion(remote: String, local: String): Boolean {
-        val r = parseVersion(remote)
-        val l = parseVersion(local)
-        val max = maxOf(r.size, l.size)
-        for (i in 0 until max) {
-            val rv = r.getOrElse(i) { 0 }
-            val lv = l.getOrElse(i) { 0 }
-            if (rv > lv) return true
-            if (rv < lv) return false
-        }
-        return false
-    }
+    // parseVersion / isBetaVersion / isNewerVersion 已下沉 :core（同包名 VersionCompare.kt，
+    // 2026-07-11 第二十七批）—— 它们一行平台 API 都没有，而 UpdateDialog 迁 :ui-shared 后要用。
+    // 本文件通过同模块顶层的 import 继续调用，行为逐字不变。
 
     // 需在 IO 线程调用。
     // stable: 正式通道，跳过 prerelease 与 beta 版本（含第4段版本号）

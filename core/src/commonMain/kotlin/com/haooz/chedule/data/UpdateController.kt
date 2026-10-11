@@ -80,6 +80,16 @@ interface UpdateController {
     ): String
 
     /**
+     * 清掉本地缓存的旧安装包（保留下载中/已校验完成的当前包）。
+     *
+     * 原实现 `UpdateChecker.cleanOldApks(context, keepTag)` 是 Android 专有的文件目录扫描，
+     * 故收进本接口；调用点在检查到新版本之后（与迁移前一致）。
+     *
+     * @param keepTag 要保留的版本 tag；null/空白 = 全清
+     */
+    fun cleanOldApks(keepTag: String?)
+
+    /**
      * 安装本地 APK（Android：优先 Shizuku 静默安装，失败回退系统安装器）。
      *
      * @param apkPath [localApkPath] / [downloadApk] 返回的绝对路径
@@ -127,6 +137,7 @@ object NoopUpdateController : UpdateController {
     override fun hasValidApk(tag: String): Boolean = false
     // hasValidApk 恒 false，正常流程走不到这里；返回空串只为满足非空签名
     override fun localApkPath(tag: String): String = ""
+    override fun cleanOldApks(keepTag: String?) {}
     override fun resolveApkUrl(tag: String, source: String, channel: String): String? = null
     // resolveApkUrl 恒 null，下载按钮会在拿到 null 后提前 return，正常流程走不到这里
     override suspend fun downloadApk(

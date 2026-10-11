@@ -1,12 +1,5 @@
 package com.haooz.chedule.ui.components
-import com.haooz.chedule.ui.utils.ApiCompat
 
-import android.app.Activity
-import android.os.Build
-import android.content.Context
-import android.content.Intent
-import android.view.RoundedCorner
-import android.view.WindowManager
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -56,7 +49,6 @@ import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,7 +57,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
 import com.haooz.chedule.ui.basic.dropdownPanelDragSelect
 import com.haooz.chedule.ui.basic.dropdownPanelEntry
@@ -213,60 +204,27 @@ private class TabletNavPanelWidthElement(
  * `:ui-shared` 的 components/TabletNavChromeTitleSlot.kt —— TabletSettingsScreen 迁入
  * commonMain 后需要它，且它只依赖跨平台符号。本文件保留 Android 专有的
  * TabletNavSideBar / LiquidNavigationRail / startActivity* 等。
+ *
+ * 2026-10-11 本文件整体迁入 `:ui-shared`（第二十七批）—— 原注释说「TabletNavSideBar 是
+ * Android 专有（Activity/WindowManager）」，实际只卡在一处：遮罩圆角要从 `Activity.window`
+ * 取。改成宿主注入 `screenCornerRadiusPx` 之后整份 UI 都跨平台了。
+ * 同时删掉三个 Android 专有导航辅助（`startActivityNoNavAnim` / `startActivityTabletNavAware` /
+ * `navigateMainTabFromSecondary`）—— 单 Activity 路由改造后**全仓已零调用**。
  */
 
 /**
  * 整块玻璃遮罩圆角：屏幕圆角 − 左缘间距；取不到系统圆角时退回 28.dp。
+ *
+ * @param screenCornerRadiusPx 屏幕圆角（**px**）；0 = 取不到 → 按 28.dp 基准。
+ *   原实现自己从 `Activity.window` 取（`ApiCompat.windowCornerRadius`），那是 Android 专有；
+ *   现在由宿主注入 —— MainActivity 的 `screenCornerRadius` 就是这个值（同一份 px）。
  */
 @Composable
-private fun rememberTabletNavMaskCorner(): Dp {
-    val context = LocalContext.current
+private fun rememberTabletNavMaskCorner(screenCornerRadiusPx: Float): Dp {
     val density = LocalDensity.current
-    val screenRadius = remember(context, density) {
-        val activity = context as? android.app.Activity
-        val px = activity?.let { ApiCompat.windowCornerRadius(it.window) } ?: 0f
-        with(density) { px.toDp() }
-    }
+    val screenRadius = with(density) { screenCornerRadiusPx.toDp() }
     val resolved = if (screenRadius > 0.dp) screenRadius else 28.dp
     return (resolved - 10.dp).coerceAtLeast(0.dp)
-}
-
-fun Context.startActivityNoNavAnim(intent: Intent) {
-    startActivity(intent)
-    if (this is Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
-        } else {
-            @Suppress("DEPRECATION")
-            overridePendingTransition(0, 0)
-        }
-    }
-}
-
-fun Context.startActivityTabletNavAware(intent: Intent) {
-    if (TabletNavSideState.expanded) {
-        startActivityNoNavAnim(intent)
-    } else {
-        startActivity(intent)
-    }
-}
-
-fun navigateMainTabFromSecondary(context: Context, tab: Int) {
-    TabletNavSideState.pendingMainTab = tab
-    val intent = Intent(context, MainActivity::class.java).apply {
-        putExtra(MainActivity.EXTRA_MAIN_TAB, tab)
-        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-    }
-    context.startActivityNoNavAnim(intent)
-    if (context is Activity && context !is MainActivity) {
-        context.finish()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            context.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
-        } else {
-            @Suppress("DEPRECATION")
-            context.overridePendingTransition(0, 0)
-        }
-    }
 }
 
 /**
@@ -278,6 +236,8 @@ fun navigateMainTabFromSecondary(context: Context, tab: Int) {
 @Composable
 fun TabletNavSideBar(
     backdrop: Backdrop?,
+    /** 屏幕圆角（px）；宿主注入，0 = 取不到（退回 28.dp 基准） */
+    screenCornerRadiusPx: Float = 0f,
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     isShiftMode: Boolean = false,
@@ -323,7 +283,7 @@ fun TabletNavSideBar(
     val dragSelect = remember { DropdownPanelDragSelectState() }
     val hapticFeedback = LocalHapticFeedback.current
     // 玻璃遮罩圆角：屏幕圆角 − 左缘间距，不写死
-    val sideCorner = rememberTabletNavMaskCorner()
+    val sideCorner = rememberTabletNavMaskCorner(screenCornerRadiusPx)
     val density = LocalDensity.current
     val widthDp = screenWidthDp()
     val screenWidth = widthDp.dp
@@ -674,6 +634,8 @@ fun LiquidNavigationRail(
     onTabSelected: (Int) -> Unit,
     backdrop: com.kyant.backdrop.Backdrop,
     isShiftMode: Boolean,
+    /** 屏幕圆角（px）；宿主注入，0 = 取不到（退回 28.dp 基准） */
+    screenCornerRadiusPx: Float = 0f,
     modifier: Modifier = Modifier,
     onSidebarExpandedChange: ((Boolean) -> Unit)? = null,
     showBackToNow: Boolean = false,
@@ -687,6 +649,7 @@ fun LiquidNavigationRail(
 
     TabletNavSideBar(
         backdrop = backdrop,
+        screenCornerRadiusPx = screenCornerRadiusPx,
         selectedTab = liquidSelectedTab,
         onTabSelected = onTabSelected,
         isShiftMode = isShiftMode,
