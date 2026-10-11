@@ -24,7 +24,7 @@
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
-`iosSimulatorArm64` **编译通过**；`:core` 跨平台测试在模拟器上 **109 用例 0 失败**；
+`iosSimulatorArm64` **编译通过**；`:core` 跨平台测试在模拟器上 **116 用例 0 失败**（含 iOS 专属的 `NsFileAppFileTest` 7 个）；
 `:ui-shared` 的 **`NexioShared.framework` 两个目标都链接成功**（`linkDebugFrameworkIos{Arm64,SimulatorArm64}`）。
 原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
 **iOS 代码侧能力已齐**（A1 网络 / A2 偏好 / A3 文件三个 actual 都写好并编译通过），缺的只剩**工程侧**。
@@ -105,7 +105,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 > ✅ 2026-10-11 实测（macOS 27 / Xcode 27 / Kotlin/Native 2.4.10）：
 > 四个模块的 `iosArm64` + `iosSimulatorArm64` **全部编译通过**；
-> `:core:iosSimulatorArm64Test` **109 个用例 0 失败**（在模拟器里真跑）；
+> `:core:iosSimulatorArm64Test` **116 个用例 0 失败**（在模拟器里真跑，含 iOS 专属 7 个）；
 > `:ui-shared` 的 framework **两个目标都链接成功**（`NexioShared.framework`，静态，~267 MB）。
 
 > ⚠ **wasmJs 门禁与 `check` 互斥**：`-Pnexio.wasm=true` 期间 Kotlin/Wasm 插件会在配置阶段
@@ -369,7 +369,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 2. `persistentDomainForName` 对自定义 suite 是否返回非空（`all()` 依赖它）
 3. `raw is String` 对 plist 里的 `NSString` 是否成立
 
-### A3. `AppFile`（`NSFileManager`）—— ✅ 已实现（`iosMain/NsFileAppFile.kt`，编译已过，运行时待真机）
+### A3. `AppFile`（`NSFileManager`）—— ✅ 已实现且**运行时已验证**（`iosMain/NsFileAppFile.kt` + `iosTest/NsFileAppFileTest.kt`）
 
 `AppFiles.init(root = NsFileAppFile(defaultDocumentsDir()), readAsset = { … })`。
 契约：`writeBytes` **自动创建父目录**；`resolve(relative)` 以 `/` 分隔；读缺失文件**抛**（不返回空）；
@@ -439,7 +439,7 @@ AppFiles.init(
 | skikoMain 能在 iOS 跑 | ⚠ 编译已验证，**运行未验证**（Wasm 与 Native 的 stdlib 仍有差异） |
 | `KeyValueStore` iOS 实现 | ✅ 编译已验证；**运行时**三点待真机（A2） |
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
-| iOS 文件层（`AppFile`） | ✅ **已实现并编译通过**（第二十八批）；运行时待真机 |
+| iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
 | iOS 已可用 | ❌ **无 Xcode 工程**；A0-1 / A0-2 未做（A1~A3 代码已齐） |
 
