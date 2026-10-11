@@ -50,7 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.jsonToPlainValue
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
@@ -176,7 +177,9 @@ private fun countSchedulesInBackup(file: File): Int {
     return try {
         if (file.length() > MAX_BACKUP_PARSE_BYTES) return 0
         val json = file.readText(Charsets.UTF_8)
-        val data: Map<String, Any> = Gson().fromJson(json, object : TypeToken<Map<String, Any>>() {}.type)
+        // kotlinx（R2）：只读统计，plain Map 类型与原 Gson 一致
+        @Suppress("UNCHECKED_CAST")
+        val data = jsonToPlainValue(parseJsonObject(json)) as Map<String, Any>
         if (data.containsKey("schedule_name") && data.containsKey("courses")) {
             1
         } else {
