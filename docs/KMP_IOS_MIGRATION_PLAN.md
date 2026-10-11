@@ -213,8 +213,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 **剩余待迁 23 文件 / 14.2k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. **宿主层**（最后）—— `AppNavHost`（navigationevent 最后残留）/ `AppRouteContent` / `MainActivity` /
-   `NexioApplication`。这些是宿主壳，iOS 会重写入口，Android 保留。
+1. **宿主层**（进行中，已迁 2/12 个 Route）—— `AppRouteContent` 的其余 Route / `AppNavHost`
+   （navigationevent 最后残留）/ `MainActivity` / `NexioApplication`。这些是宿主壳，
+   iOS 会重写入口，Android 保留。⚠ 迁完也**先别在 iOS 入口引用**，R13 未解。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
@@ -561,6 +562,7 @@ AppFiles.init(
 | ~~R10~~ | ~~`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名~~ | — | **已解**（`73677f72`）：补成完整 fork + 三处 exclude 官方 miuix-ui。机制见下方专条，**别再退回部分 fork** |
 | R11 | `kotlinx-datetime` 在 iOS 变体被 CMP material3 顶到 0.7.1 | 同一二进制两个版本 → 链接必炸 | ✅ 已在根 `build.gradle.kts` force 回 0.6.2；0.7 升级要**全项目一起做** |
 | R12 | checkKmpPurity 抓不到「全限定名」java API | iOS 编不过 | ✅ 已由 `:ui-shared` 的 iOS 编译兜住；大文件迁移时仍要 grep `java.` 字面量 |
+| **R13** | iOS 入口引用真实页面后，链接报 `Undefined symbols … miuix.kmp.preference#ArrowPreference` | iOS 接不上真实页面 | 官方 miuix 子库（preference/icons/blur）的 klib 进不了链接图。⚠ 之前「能跑」只是 Xcode 没重新链接（见 §5 `a1f7897d`）；**接真实页面前必须先解** |
 
 ### R10 详述 —— 已解，但机制值得记住（**别让 fork 再变回「部分 fork」**）
 
