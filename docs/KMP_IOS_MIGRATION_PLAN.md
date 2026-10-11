@@ -20,14 +20,15 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`7ce095fe`**（2026-10-11）。⚠ 工作区可能有**并发会话**改动，动手前 `git status --short` 逐文件核对归属。
-🟡 冲刺期**多会话并发**改同一仓库（本轮已遇到：另一会话在改 EducationalImportScreen 包名迁移）。
+**代码状态**：`master` = **`d6790c6b`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
+🟡 冲刺期**多会话并发**改同一仓库（本轮已遇到并一并完成并发会话中断的 EducationalImportScreen 包名迁移）。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳已迁**；
-`:ui-shared` 已迁入 88 文件 / 35.9k 行；`:androidApp` 剩 54 文件 / 32.2k 行。
-**应用代码完成度约 65%**。设置链：TabletSettingsScreen 外壳已迁（8 dest 用 androidPane 槽位过渡），
-SettingsScreen 待迁（仅剩嵌套）。**下一步 = 逐个迁 androidPane 槽位里的页面 UI + 能力注入**。
-**R2 读侧已完成**；写侧留待备份页迁 commonMain。iOS target 默认关闭，无 Xcode 工程。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳/
+提醒设置页/更新设置页已迁**；`:ui-shared` 已迁入 90 文件 / 37.8k 行；`:androidApp` 剩 54 文件 / 30.6k 行。
+**应用代码完成度约 68%**。
+**能力注入抽象已建**：DiagnosticRecorder / UpdateController / ReminderController（:core 接口 + Android 包装）。
+androidPane 槽位剩 **BackupAndMigration / LocalBackup**（R2 写侧 + 文件 I/O，单独一批）+ SettingsScreen 待迁。
+**R2 读侧已完成**；写侧随备份页迁移处理。iOS target 默认关闭，无 Xcode 工程。
 
 ### 本机环境（不看会白踩半天）
 
@@ -202,10 +203,11 @@ androidApp，通过注入（回调/槽位/接口）解耦**。没有「页面留
 - **宿主层**：`MainActivity` / `AppNavHost` / `AppRouteContent` / `NexioApplication`
 - **WebView 内容宿主**：`WebViewScreen` 的 webview 本体（iOS 要 WKWebView；但页面外壳仍迁 + 槽位注入 webview 宿主）
 
-**这些「能力纠缠页」的 UI 仍要逐个迁**（各自注入能力）：`CourseReminderScreen`（注入闹钟/电池/权限）、
-`BackupAndMigrationScreen`/`LocalBackupScreen`（注入文件 I/O/分享，R2 写侧）、`UpdateSettingsScreen`
-（注入更新安装）、`WebViewScreen` 外壳、`CustomizeScheduleScreen`（壁纸/快照）。
-TabletSettingsScreen 的 `androidPane` 槽位是**过渡**——外壳先迁，槽位页 UI 后续批次逐个迁 + 注入。
+**这些「能力纠缠页」的 UI 仍要逐个迁**（各自注入能力）：~~`CourseReminderScreen`（ReminderController）~~ ✅、
+~~`UpdateSettingsScreen`（UpdateController）~~ ✅、`BackupAndMigrationScreen`/`LocalBackupScreen`（注入文件
+I/O/分享，R2 写侧，**下一批**）、`WebViewScreen` 外壳、`CustomizeScheduleScreen`（壁纸/快照）。
+TabletSettingsScreen 的 `androidPane` 槽位是**过渡**——外壳先迁，槽位页 UI 后续批次逐个迁 + 注入；
+剩余槽位页 = BackupAndMigration/LocalBackup（Preference/About/AiImport 三页本体早已迁，只是调用点内联 Android 代码）。
 
 > ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
 > （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
@@ -228,6 +230,7 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 | `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
 | `b35aeaa6` | `AboutScreen` 进 `:ui-shared`；抽 `DiagnosticRecorder` 平台抽象；SettingsScreen 清 Calendar/UUID | 10-11 |
 | `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
+| `d6790c6b` | 槽位页 UI 迁移首批：`UpdateSettingsScreen`/`CourseReminderScreen` 迁 `:ui-shared`；抽 UpdateController/ReminderController 接口 | 10-11 |
 | `c4373883` | `AiImportScreen` 进 `:ui-shared`（剪贴板注入）+ 备份夹具入库 | 10-11 |
 | `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
