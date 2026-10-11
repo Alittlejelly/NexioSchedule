@@ -54,7 +54,7 @@ import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.screens.applyScheduleData
-import com.haooz.chedule.ui.screens.parseFullScheduleJson
+import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.ui.screens.parseIcsFile
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import top.yukonga.miuix.kmp.utils.overScrollVertical

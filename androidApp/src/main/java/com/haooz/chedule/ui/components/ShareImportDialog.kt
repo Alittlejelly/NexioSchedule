@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.activities.MainActivity
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
 import com.haooz.chedule.ui.screens.applyScheduleData
-import com.haooz.chedule.ui.screens.parseFullScheduleJson
+import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.ui.screens.parseIcsFile
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
