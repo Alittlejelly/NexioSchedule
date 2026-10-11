@@ -1,15 +1,5 @@
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
-import androidx.activity.compose.LocalActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -52,11 +42,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode as ComposeBlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -65,21 +54,16 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.createBitmap
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.data.changelogData
 import com.haooz.chedule.ui.effects.background.BgEffectBackground
 import com.haooz.chedule.ui.effects.miuix.rememberBlurBackdrop
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
-import com.haooz.chedule.ui.utils.CrashLogHelper
-import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -104,14 +88,16 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.haooz.chedule.data.DiagnosticRecorder
+import com.haooz.chedule.data.NoopDiagnosticRecorder
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.ioDispatcher
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import org.jetbrains.compose.resources.painterResource
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.ic_github
 import com.haooz.chedule.uishared.resources.ic_gitee
 
-@SuppressLint("LocalContextGetResourceValueCall", "ConfigurationScreenWidthHeight")
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
@@ -131,65 +117,57 @@ fun AboutScreen(
      * 继续走 `startActivity`。
      */
     onNavigate: (AppRoute) -> Unit = {},
+    /** 应用版本号（宿主从 packageManager 取）；桌面/iOS 用各自来源 */
+    appVersion: String = "未知版本",
+    /** 应用名 */
+    appName: String = "Nexio课程表",
+    /** 应用图标（已裁边的 ImageBitmap）；null 不显示（回退为首字母文本） */
+    appIcon: ImageBitmap? = null,
+    /** 撤回隐私同意后退出应用（Android = activity.finishAffinity）；桌面/iOS 空实现 */
+    onExitApp: () -> Unit = {},
+    /** 诊断录制控制器（Android = CrashLogHelper 包装）；桌面/iOS 用 NoopDiagnosticRecorder */
+    diagnosticRecorder: DiagnosticRecorder = NoopDiagnosticRecorder,
 ) {
     // 弹窗默认跟随自身玻璃层；内嵌时由外层指定全屏层
     val dialogGlass: Backdrop = dialogBackdrop ?: liquidGlassBackdrop
     val hapticFeedback = LocalHapticFeedback.current
     val scrollBehavior = rememberSharedScrollBehavior()
-    val context = LocalContext.current
-    // 撤回同意后需要关闭整个应用，用 Activity 引用执行 finishAffinity
-    val activity = LocalActivity.current
     val uriHandler = LocalUriHandler.current
     val isInDark = isAppDarkTheme()
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
 
-    val packageInfo = remember {
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0)
-        } catch (_: Exception) {
-            null
-        }
-    }
-    val appName = remember {
-        packageInfo?.applicationInfo?.labelRes?.let {
-            context.getString(it)
-        } ?: context.applicationInfo?.nonLocalizedLabel?.toString() ?: "Nexio课程表"
-    }
-    val appVersion = remember {
-        packageInfo?.versionName ?: "未知版本"
-    }
-
     val backdrop = rememberBlurBackdrop()
     val lazyListState = rememberLazyListState()
     val uiScope = rememberCoroutineScope()
-    var recordingActive by remember { mutableStateOf(CrashLogHelper.isRecording) }
-    var canShareRecording by remember { mutableStateOf(CrashLogHelper.hasReadyRecording) }
+    var recordingActive by remember { mutableStateOf(diagnosticRecorder.isRecording) }
+    var canShareRecording by remember { mutableStateOf(diagnosticRecorder.hasReadyRecording) }
     var recordingElapsedSec by remember { mutableStateOf(0) }
     var exportingCrashLog by remember { mutableStateOf(false) }
 
     // 恢复上次被中断的录制：Application 启动已在后台做，这里兜底等待一次再读状态
+    // （ensureRecovered 是磁盘恢复，保持在 IO 调度器上；commonMain 无 Dispatchers.IO，用 :core 的 ioDispatcher）
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            CrashLogHelper.ensureRecovered(context)
+        withContext(ioDispatcher) {
+            diagnosticRecorder.ensureRecovered()
         }
-        recordingActive = CrashLogHelper.isRecording
-        canShareRecording = CrashLogHelper.hasReadyRecording
-        recordingElapsedSec = (CrashLogHelper.recordingElapsedMs() / 1000L).toInt()
+        recordingActive = diagnosticRecorder.isRecording
+        canShareRecording = diagnosticRecorder.hasReadyRecording
+        recordingElapsedSec = (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
     }
 
     // 录制倒计时；到 30 分钟自动结束并点亮分享
     LaunchedEffect(recordingActive) {
         if (!recordingActive) return@LaunchedEffect
         while (recordingActive) {
-            CrashLogHelper.ensureRecordingNotExpired()
-            recordingActive = CrashLogHelper.isRecording
-            canShareRecording = CrashLogHelper.hasReadyRecording
-            recordingElapsedSec = (CrashLogHelper.recordingElapsedMs() / 1000L).toInt()
-            if (!CrashLogHelper.isRecording) break
+            diagnosticRecorder.ensureRecordingNotExpired()
+            recordingActive = diagnosticRecorder.isRecording
+            canShareRecording = diagnosticRecorder.hasReadyRecording
+            recordingElapsedSec = (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
+            if (!diagnosticRecorder.isRecording) break
             kotlinx.coroutines.delay(1000)
         }
-        canShareRecording = CrashLogHelper.hasReadyRecording
+        canShareRecording = diagnosticRecorder.hasReadyRecording
     }
 
     val scrollProgress by remember {
@@ -304,23 +282,8 @@ fun AboutScreen(
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    val appIcon = remember {
-                        val drawable = try {
-                            context.packageManager.getApplicationIcon(context.packageName)
-                        } catch (_: Exception) {
-                            context.applicationInfo.icon
-                                .takeIf { it != 0 }
-                                ?.let { id -> runCatching { context.getDrawable(id) }.getOrNull() }
-                        }
-                        if (drawable != null) {
-                            val size = maxOf(drawable.intrinsicWidth, drawable.intrinsicHeight, 1)
-                            val bitmap = createBitmap(size, size)
-                            val canvas = Canvas(bitmap)
-                            drawable.setBounds(0, 0, size, size)
-                            drawable.draw(canvas)
-                            cropBitmapToOpaque(bitmap).asImageBitmap()
-                        } else null
-                    }
+                    // 应用图标由宿主注入（Android 宿主负责 drawable→Bitmap→裁边→ImageBitmap）；
+                    // null 时回退为首字母文本
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -911,15 +874,16 @@ fun AboutScreen(
                                         color = MiuixTheme.colorScheme.onSurface
                                     )
                                     val remainSec =
-                                        ((CrashLogHelper.MAX_RECORD_MS / 1000L) - recordingElapsedSec)
+                                        ((diagnosticRecorder.maxRecordMs / 1000L) - recordingElapsedSec)
                                             .coerceAtLeast(0)
                                     val mm = remainSec / 60
                                     val ss = remainSec % 60
                                     val statusText = when {
                                         recordingActive ->
-                                            "录制中… 剩余 %d:%02d \n正在记入日志，崩溃/被杀自动结束".format(mm, ss)
+                                            // 跨平台替代 String.format("%02d")（checkKmpPurity 拦截 + Locale 字形问题）
+                                            "录制中… 剩余 ${mm}:${ss.toString().padStart(2, '0')} \n正在记入日志，崩溃/被杀自动结束"
                                         canShareRecording ->
-                                            when (CrashLogHelper.readyReason) {
+                                            when (diagnosticRecorder.readyReason) {
                                                 "crash" -> "检测到崩溃，日志已自动保存，可直接分享"
                                                 "process_killed" -> "上次进程被杀，已自动结束录制，可分享"
                                                 "timeout_30min" -> "录制已达 30 分钟上限，可分享"
@@ -944,18 +908,18 @@ fun AboutScreen(
                                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                                 exportingCrashLog = true
                                                 uiScope.launch {
-                                                    val ok = withContext(Dispatchers.IO) {
-                                                        if (CrashLogHelper.isRecording) {
-                                                            CrashLogHelper.stopRecording(context, "manual")
+                                                    val ok = withContext(ioDispatcher) {
+                                                        if (diagnosticRecorder.isRecording) {
+                                                            diagnosticRecorder.stopRecording("manual")
                                                         } else {
-                                                            CrashLogHelper.startRecording(context)
+                                                            diagnosticRecorder.startRecording()
                                                         }
                                                     }
                                                     exportingCrashLog = false
-                                                    recordingActive = CrashLogHelper.isRecording
-                                                    canShareRecording = CrashLogHelper.hasReadyRecording
+                                                    recordingActive = diagnosticRecorder.isRecording
+                                                    canShareRecording = diagnosticRecorder.hasReadyRecording
                                                     recordingElapsedSec =
-                                                        (CrashLogHelper.recordingElapsedMs() / 1000L).toInt()
+                                                        (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
                                                     showToast(when {
                                                             !ok && recordingActive -> "录制已在进行"
                                                             ok && recordingActive -> "已开始录制，最长 30 分钟"
@@ -979,8 +943,8 @@ fun AboutScreen(
                                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                                 exportingCrashLog = true
                                                 uiScope.launch {
-                                                    val ok = withContext(Dispatchers.IO) {
-                                                        CrashLogHelper.shareReadyRecording(context)
+                                                    val ok = withContext(ioDispatcher) {
+                                                        diagnosticRecorder.shareReadyRecording()
                                                     }
                                                     exportingCrashLog = false
                                                     showToast(if (ok) "已打开分享，请把日志发给开发者" else "分享失败，请重试")
@@ -1172,7 +1136,7 @@ fun AboutScreen(
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         com.haooz.chedule.data.PrivacyConsent.revoke()
                         showRevokeDialog = false
-                        activity?.finishAffinity()
+                        onExitApp()
                     },
                     textColor = Color(0xFFF44336),
                     modifier = Modifier.weight(1f)
@@ -1182,32 +1146,3 @@ fun AboutScreen(
     }
 }
 
-/** 裁掉 AdaptiveIcon 画布四周透明区域，避免 About 页图标显得过小。 */
-private fun cropBitmapToOpaque(source: Bitmap): Bitmap {
-    val width = source.width
-    val height = source.height
-    if (width <= 0 || height <= 0) return source
-    val pixels = IntArray(width * height)
-    source.getPixels(pixels, 0, width, 0, 0, width, height)
-    var minX = width
-    var minY = height
-    var maxX = -1
-    var maxY = -1
-    var index = 0
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            if (pixels[index] ushr 24 != 0) {
-                if (x < minX) minX = x
-                if (x > maxX) maxX = x
-                if (y < minY) minY = y
-                if (y > maxY) maxY = y
-            }
-            index++
-        }
-    }
-    if (maxX < minX || maxY < minY) return source
-    val croppedWidth = maxX - minX + 1
-    val croppedHeight = maxY - minY + 1
-    if (croppedWidth == width && croppedHeight == height) return source
-    return Bitmap.createBitmap(source, minX, minY, croppedWidth, croppedHeight)
-}

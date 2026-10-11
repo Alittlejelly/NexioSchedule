@@ -9,9 +9,7 @@ import com.haooz.chedule.data.weeksBetween
 import kotlinx.datetime.isoDayNumber
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,8 +83,8 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.datetime.LocalDate
-import java.util.Calendar
-import java.util.UUID
+import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.data.randomUuidV4
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.haooz.chedule.data.showToast
@@ -98,8 +96,9 @@ internal fun parseDate(dateStr: String): Triple<Int, Int, Int> {
         val parts = dateStr.split("/")
         Triple(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
     } catch (_: Exception) {
-        val cal = Calendar.getInstance()
-        Triple(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+        // kotlinx-datetime（R2 跨平台）：替代 JVM 的 java.util.Calendar
+        val d = todayLocalDate()
+        Triple(d.year, d.monthNumber, d.dayOfMonth)
     }
 }
 
@@ -1185,7 +1184,7 @@ internal fun applyScheduleData(
                 }
                 courses.add(
                     Course(
-                        id = UUID.randomUUID().toString(),
+                        id = randomUuidV4(),
                         name = name,
                         classroom = classroom,
                         teacher = teacher,
@@ -1352,13 +1351,4 @@ internal fun applyScheduleData(
     } catch (e: Exception) {
         return Pair(false, "导入失败: ${e.message}")
     }
-}
-
-private fun Context.findActivity(): Activity? {
-    var ctx: Context? = this
-    while (ctx is ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
 }

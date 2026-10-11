@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import com.haooz.chedule.data.todayLocalDate
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -52,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -131,6 +133,7 @@ import kotlinx.datetime.LocalDate
 import kotlin.time.Duration.Companion.milliseconds
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
@@ -793,6 +796,50 @@ fun TabletSettingsScreen(
                                         rememberLayerBackdrop()
                                     // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                                     val appRouter = LocalAppRouter.current
+                                    // 宿主能力注入：版本号 / 应用名 / 图标（drawable→Bitmap→裁透明边→ImageBitmap）/ 退出 / 诊断录制
+                                    // （裁边逻辑原在 AboutScreen.cropBitmapToOpaque，随迁移到 ui-shared 已删除，宿主在此复刻）
+                                    val aboutActivity = LocalActivity.current
+                                    val aboutPackageInfo = remember {
+                                        runCatching {
+                                            context.packageManager.getPackageInfo(context.packageName, 0)
+                                        }.getOrNull()
+                                    }
+                                    val aboutIcon = remember {
+                                        runCatching { context.packageManager.getApplicationIcon(context.packageName) }
+                                            .getOrNull()
+                                            ?.let { drawable ->
+                                                val size = maxOf(drawable.intrinsicWidth, drawable.intrinsicHeight, 1)
+                                                val bitmap = androidx.core.graphics.createBitmap(size, size)
+                                                drawable.setBounds(0, 0, size, size)
+                                                drawable.draw(android.graphics.Canvas(bitmap))
+                                                val pixels = IntArray(size * size)
+                                                bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
+                                                var minX = size
+                                                var minY = size
+                                                var maxX = -1
+                                                var maxY = -1
+                                                for (y in 0 until size) {
+                                                    for (x in 0 until size) {
+                                                        if (pixels[y * size + x] ushr 24 != 0) {
+                                                            if (x < minX) minX = x
+                                                            if (x > maxX) maxX = x
+                                                            if (y < minY) minY = y
+                                                            if (y > maxY) maxY = y
+                                                        }
+                                                    }
+                                                }
+                                                val cropped = if (maxX >= minX && maxY >= minY &&
+                                                    (maxX - minX + 1 != size || maxY - minY + 1 != size)
+                                                ) {
+                                                    android.graphics.Bitmap.createBitmap(
+                                                        bitmap, minX, minY, maxX - minX + 1, maxY - minY + 1
+                                                    )
+                                                } else {
+                                                    bitmap
+                                                }
+                                                cropped.asImageBitmap()
+                                            }
+                                    }
                                     AboutScreen(
                                         onBack = {},
                                         liquidGlassBackdrop = aboutBackdrop,
@@ -805,6 +852,15 @@ fun TabletSettingsScreen(
                                         onNavigate = { route ->
                                             appRouter.navigate(route)
                                         },
+                                        appVersion = remember { aboutPackageInfo?.versionName ?: "未知版本" },
+                                        appName = remember {
+                                            aboutPackageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
+                                                ?: context.applicationInfo?.nonLocalizedLabel?.toString()
+                                                ?: "Nexio课程表"
+                                        },
+                                        appIcon = aboutIcon,
+                                        onExitApp = { aboutActivity?.finishAffinity() },
+                                        diagnosticRecorder = remember { AndroidDiagnosticRecorder(context) },
                                     )
                                 }
 

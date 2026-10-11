@@ -101,6 +101,7 @@ import com.haooz.chedule.ui.screens.EducationalImportScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.ApiCompat
+import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -1265,13 +1266,63 @@ private fun CourseManageRoute(router: AppRouter) {
     }
 }
 
-/** 关于页（原来内联在 AboutActivity 的 1200 行，已抽到 `AboutScreen.kt`）。 */
+/** 关于页（原来内联在 AboutActivity 的 1200 行，已抽到 `:ui-shared` commonMain 的 `AboutScreen.kt`）。 */
 @Composable
 private fun AboutRoute(router: AppRouter) {
+    val context = LocalContext.current
+    val activity = LocalActivity.current
+    val packageInfo = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+    }
+    // 应用图标：drawable → Bitmap → 裁掉 AdaptiveIcon 四周透明边 → ImageBitmap
+    // （裁边逻辑原在 AboutScreen.cropBitmapToOpaque，随迁移到 ui-shared 已删除，宿主在此复刻）
+    val aboutIcon = remember {
+        runCatching { context.packageManager.getApplicationIcon(context.packageName) }
+            .getOrNull()
+            ?.let { drawable ->
+                val size = maxOf(drawable.intrinsicWidth, drawable.intrinsicHeight, 1)
+                val bitmap = androidx.core.graphics.createBitmap(size, size)
+                drawable.setBounds(0, 0, size, size)
+                drawable.draw(android.graphics.Canvas(bitmap))
+                val pixels = IntArray(size * size)
+                bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
+                var minX = size
+                var minY = size
+                var maxX = -1
+                var maxY = -1
+                for (y in 0 until size) {
+                    for (x in 0 until size) {
+                        if (pixels[y * size + x] ushr 24 != 0) {
+                            if (x < minX) minX = x
+                            if (x > maxX) maxX = x
+                            if (y < minY) minY = y
+                            if (y > maxY) maxY = y
+                        }
+                    }
+                }
+                val cropped = if (maxX >= minX && maxY >= minY &&
+                    (maxX - minX + 1 != size || maxY - minY + 1 != size)
+                ) {
+                    android.graphics.Bitmap.createBitmap(bitmap, minX, minY, maxX - minX + 1, maxY - minY + 1)
+                } else {
+                    bitmap
+                }
+                cropped.asImageBitmap()
+            }
+    }
     AboutScreen(
         onBack = { router.popBack() },
         liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(),
         onNavigate = { router.navigate(it) },
+        appVersion = remember { packageInfo?.versionName ?: "未知版本" },
+        appName = remember {
+            packageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
+                ?: context.applicationInfo?.nonLocalizedLabel?.toString()
+                ?: "Nexio课程表"
+        },
+        appIcon = aboutIcon,
+        onExitApp = { activity?.finishAffinity() },
+        diagnosticRecorder = remember { AndroidDiagnosticRecorder(context) },
     )
 }
 
