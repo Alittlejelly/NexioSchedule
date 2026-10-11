@@ -4032,6 +4032,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                         cardHeightPerSection = currentAppearance().cardHeight,
                                         liquidGlassBackdrop = liquidGlassBackdrop,
                                         scheduleScrollBehavior = scheduleScrollBehavior,
+                                        isInFreeformWindow = isInFreeformWindow,
+                                        titleBarHeight = activity?.titleBarHeight ?: 56.dp,
                                     )
 
                                     1 -> SettingsScreen(

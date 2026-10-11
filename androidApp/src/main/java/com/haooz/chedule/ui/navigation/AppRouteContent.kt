@@ -479,6 +479,10 @@ private fun HolidaySettingsRoute(router: AppRouter) {
                 reload()
             },
             reload = { reload() },
+            // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
+            onHolidayDataChanged = {
+                CourseReminderHelper.onHolidayDataChanged(context)
+            },
         )
     }
 }

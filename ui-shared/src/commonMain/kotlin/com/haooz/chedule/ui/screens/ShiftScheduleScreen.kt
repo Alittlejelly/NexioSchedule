@@ -1,8 +1,6 @@
 /** 排班课表页面 */
 package com.haooz.chedule.ui.screens
 
-import android.annotation.SuppressLint
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,7 +60,6 @@ internal data class ShiftSchedulePageDayRangeKey(
     val scheduleDataVersion: Int,
 )
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun ShiftScheduleScreen(
     shiftViewModel: ShiftViewModel,
@@ -73,20 +69,19 @@ fun ShiftScheduleScreen(
     cardHeightPerSection: Float = 54f,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     scheduleScrollBehavior: SharedScrollBehavior? = null,
+    /** 是否自由形态窗口（小米平板分屏/PC 模式）；Android 宿主注入，桌面/iOS 恒 false */
+    isInFreeformWindow: Boolean = false,
+    /** 自由形态窗口的标题栏高度（isInFreeformWindow=true 时用于顶距计算）；默认 56.dp */
+    titleBarHeight: androidx.compose.ui.unit.Dp = 56.dp,
 ) {
     val shiftScheduleCourses by shiftViewModel.shiftScheduleCourses.collectAsState()
     val shiftScheduleSections by shiftViewModel.shiftScheduleSections.collectAsState()
-    // ⚠ context 在这里**真的有用**：下面要 `context as? ComponentActivity as? MainActivity`
-    // 拿 `isInFreeformWindow`（自由窗口判断）。别因为「看着像残留」就删 —— 删了编译不过。
-    val context = LocalContext.current
-    val repository = remember(context) { CourseRepository.getInstance() }
+    val repository = remember { CourseRepository.getInstance() }
     val hasReorganizedComparison = remember(shiftScheduleCourses.keys, scheduleDataVersion) {
         (shiftScheduleCourses.keys + repository.getCurrentScheduleId()).any { name ->
             repository.getTeachingWeekReorganizations(name).isNotEmpty()
         }
     }
-    val activity = context as? ComponentActivity as? com.haooz.chedule.ui.activities.MainActivity
-    val isInFreeformWindow = activity?.isInFreeformWindow == true
     val isDark = isAppDarkTheme()
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val isTablet = isTabletWidth()
@@ -137,7 +132,7 @@ fun ShiftScheduleScreen(
                 .verticalScroll(scrollState)
                 .padding(
                     top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
-                        if (isInFreeformWindow) (activity.titleBarHeight) + 40.dp else 96.dp,
+                        if (isInFreeformWindow) titleBarHeight + 40.dp else 96.dp,
                     bottom = 140.dp
                 )
         ) {

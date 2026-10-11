@@ -8,7 +8,6 @@ import com.haooz.chedule.data.plusDays
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
 
-import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,7 +58,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -73,7 +71,6 @@ import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.reminder.CourseReminderHelper
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
@@ -137,6 +134,10 @@ private val WEEKDAYS = listOf(
 private fun monthLabel(value: Int): String = "${value}月"
 private fun dayLabel(value: Int): String = "${value}日"
 
+// commonMain 没有 JVM 的 String.format（原来是 "%04d-%02d-%02d".format(...)），改用 padStart 手写零填充日期
+private fun isoDate(year: Int, month: Int, day: Int): String =
+    "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
+
 @Composable
 fun HolidaySettingsScreen(
     scrollBehavior: SharedScrollBehavior?,
@@ -146,11 +147,14 @@ fun HolidaySettingsScreen(
     onYearChange: (Int) -> Unit,
     reload: () -> Unit,
     onTeachingWeekReorganizationsChanged: () -> Unit = {},
+    // 节假日/调休/教学周数据变更后的平台副作用（重排提醒 + 勿扰 + 刷新小部件）。
+    // 由 Android 宿主注入：CourseReminderHelper.onHolidayDataChanged(context)。
+    // 不直接调 reminder 模块 —— 那是 Android 专有的（内部要 Context，桌面/iOS 无此概念）。
+    onHolidayDataChanged: () -> Unit = {},
 ) {
-    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
-    val repository = remember(context) { CourseRepository.getInstance() }
+    val repository = remember { CourseRepository.getInstance() }
     val currentScheduleId = repository.getCurrentScheduleId()
     val currentTotalWeeks = repository.getTotalWeeks(currentScheduleId)
     val semesterStartDate = remember(currentScheduleId) {
@@ -164,10 +168,10 @@ fun HolidaySettingsScreen(
     val configuredSectionCount = repository.getMorningSections(currentScheduleId) +
         repository.getAfternoonSections(currentScheduleId) +
         repository.getEveningSections(currentScheduleId)
-    val endCourseExclusion = remember(context, holidayDataRevision) {
+    val endCourseExclusion = remember(holidayDataRevision) {
         HolidayManager.loadEndCourseExclusion()
     }
-    val beforeCourseExclusion = remember(context, holidayDataRevision) {
+    val beforeCourseExclusion = remember(holidayDataRevision) {
         HolidayManager.loadBeforeCourseExclusion()
     }
     var showSectionRangeDialog by remember { mutableStateOf(false) }
@@ -313,7 +317,7 @@ fun HolidaySettingsScreen(
         showTeachingWeekRuleDialog = false
         showTeachingWeekDeleteConfirm = false
         onTeachingWeekReorganizationsChanged()
-        CourseReminderHelper.onHolidayDataChanged(context)
+        onHolidayDataChanged()
     }
 
     fun deleteTeachingWeekRule() {
@@ -329,7 +333,7 @@ fun HolidaySettingsScreen(
         showTeachingWeekDeleteConfirm = false
         showTeachingWeekRuleDialog = false
         onTeachingWeekReorganizationsChanged()
-        CourseReminderHelper.onHolidayDataChanged(context)
+        onHolidayDataChanged()
     }
 
     fun startAdding(type: Int) {
@@ -377,7 +381,7 @@ fun HolidaySettingsScreen(
         } else null
         // 已存的绝对日期 → 老数据的 (周次,星期) → 建议值，统一按**当前课表**投影成 (周次,星期)
         val initialFollow = entry.followLocalDate()
-            ?: followDate(context, entry.followWeek.toString(), entry.followWeekday.toString())
+            ?: followDate(entry.followWeek.toString(), entry.followWeekday.toString())
             ?: suggestion?.followLocalDate()
         if (initialFollow != null) {
             val position = TeachingWeekReorganization.mapDate(
@@ -395,13 +399,13 @@ fun HolidaySettingsScreen(
 
     fun saveEntry() {
         val isHoliday = dialogType == HolidayManager.TYPE_HOLIDAY
-        val startDate = "%04d-%02d-%02d".format(startYear, startMonth, startDay)
+        val startDate = isoDate(startYear, startMonth, startDay)
         if (runCatching { LocalDate.parse(startDate) }.isFailure) {
             showToast("日期格式不正确")
             return
         }
         val endDate = if (isHoliday) {
-            "%04d-%02d-%02d".format(endYear, endMonth, endDay)
+            isoDate(endYear, endMonth, endDay)
         } else {
             ""
         }
@@ -456,7 +460,7 @@ fun HolidaySettingsScreen(
             return
         }
         reload()
-        CourseReminderHelper.onHolidayDataChanged(context)
+        onHolidayDataChanged()
         showDialog = false
         editingEntry = null
     }
@@ -474,7 +478,7 @@ fun HolidaySettingsScreen(
             return
         }
         reload()
-        CourseReminderHelper.onHolidayDataChanged(context)
+        onHolidayDataChanged()
         showDeleteConfirm = false
         showDialog = false
         editingEntry = null
@@ -670,7 +674,7 @@ fun HolidaySettingsScreen(
                         onCheckedChange = { enabled ->
                             val updated = beforeCourseExclusion.copy(enabled = enabled)
                             if (HolidayManager.saveBeforeCourseExclusion(updated)) {
-                                CourseReminderHelper.onHolidayDataChanged(context)
+                                onHolidayDataChanged()
                             }
                         },
                     )
@@ -704,7 +708,7 @@ fun HolidaySettingsScreen(
                         onCheckedChange = { enabled ->
                             val updated = endCourseExclusion.copy(enabled = enabled)
                             if (HolidayManager.saveEndCourseExclusion(updated)) {
-                                CourseReminderHelper.onHolidayDataChanged(context)
+                                onHolidayDataChanged()
                             }
                         },
                     )
@@ -842,7 +846,7 @@ fun HolidaySettingsScreen(
                 )
             }
             if (saved) {
-                CourseReminderHelper.onHolidayDataChanged(context)
+                onHolidayDataChanged()
                 showSectionRangeDialog = false
             } else {
                 showToast("当前课表节次范围已变化，请重新选择")
@@ -1874,8 +1878,8 @@ private fun displayDate(value: String): String {
 }
 
 // 根据指定周次和星期，计算其对应的真实日期（以开学所在周的周一作为第 1 周起点）
+// 注意：原来的 `context: Context` 形参从未被使用（函数体只用 CourseRepository），迁 :ui-shared 时删掉
 private fun followDate(
-    context: Context,
     followWeek: String,
     followWeekday: String,
 ): LocalDate? {
@@ -1956,7 +1960,6 @@ private fun EntryEditDialog(
 ) {
     val isHoliday = dialogType == HolidayManager.TYPE_HOLIDAY
     val hapticFeedback = LocalHapticFeedback.current
-    val context = LocalContext.current
     OverlayDialog(
         title = dialogTitle,
         summary = null,
@@ -1998,7 +2001,7 @@ private fun EntryEditDialog(
             }
             if (!isHoliday) {
                 // 显示成日期，让用户能核对「补的是哪一天」；存档也是这个日期
-                val date = followDate(context, followWeek, followWeekday)
+                val date = followDate(followWeek, followWeekday)
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
