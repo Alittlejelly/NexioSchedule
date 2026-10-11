@@ -23,12 +23,13 @@
 **代码状态**：`master` = **`6ca87004`**（2026-10-11 第二十二批）。工作区**可能有并行子代理在改**（R2 序列化 + AiImportScreen 进行中），动手前先 `git status` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏 + 排班页 + 节假日设置 + 偏好设置已迁**；
-`:ui-shared` 已迁入 84 文件 / 32.2k 行；`:androidApp` 剩 56 文件 / 35.9k 行，其中 **25 文件 8.1k 行永不迁移**，
-**真正待迁 31 文件 / 27.8k 行**。**应用代码完成度约 59%**。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏 + 排班 + 节假日设置 + 偏好 + AI 导入已迁**；
+`:ui-shared` 已迁入 85 文件 / 32.2k 行；`:androidApp` 剩 54 文件 / 34.1k 行，其中 **25 文件 8.1k 行永不迁移**，
+**真正待迁 29 文件 / 26.0k 行**。**应用代码完成度约 61%**。
 **`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**。
+🔴 **R2 批次进行中**：✅ 导入通道（parseFullScheduleJson）Gson→kotlinx 已完成 + 真实备份 round-trip 回归通过；
+⏳ **剩余 = 备份文件 I/O**（LocalBackupScreen/BackupAndMigrationScreen 的 Gson 读写，与 Android SAF/FileProvider 纠缠，**需真机备份/恢复验证**）。
 iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
-🔴 **当前主战场 = R2 批次**（Gson 备份/分享/导入序列化 → kotlinx，用户真实备份 round-trip 回归中）。
 
 ### 本机环境（不看会白踩半天）
 
@@ -94,12 +95,12 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 
 | 模块 | 文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 95 (+26 测试) | 16.5k | common **42** / android 9 / ios 2 / jvm 9 / jvmShared 2 / native 8 / **linuxX64 1（门禁）** | **数据层 100%**；13 套跨平台能力 |
+| `:core` | 97 (+26 测试) | 16.8k | common **43** / android 9 / ios 2 / jvm 9 / jvmShared 2 / native 8 / **linuxX64 1（门禁）** | **数据层 100%**；13 套跨平台能力 + R2 导入编解码 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | 108 | 28.2k | common **92** / android 9 / skiko 7 | KMP 化；公共组件全进 commonMain；官方子库 **0.9.4** |
 | `:ui-shared` | **84** | **32.2k** | common **82** / android 1 / jvm 1 | 阶段 5 进行中（主页双屏/排班/节假日/偏好已入，剩设置链 R2 + 工具层） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **56** | **35.9k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
+| `:androidApp` | **54** | **34.1k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
 
 **`:core` 的 13 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -179,23 +180,26 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 > 每次迁移后还要跑 `.workbuddy-ai/tmp/dupscan.py` 查跨模块同名同包冲突（本会话重建过，只查跨模块）。
 > ⚠ 扫描器也会误报/漏报（已知误报：`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁一次再全信**。
 
-1. **设置链收尾** —— `TabletSettingsScreen`（1554 行，反向依赖 14→约 8：About/AiImport/
-   BackupAndMigration 三个内嵌页 + `CourseReminderHelper.onHolidayDataChanged`/`sendTestLiveNotification`
-   （回调注入，第十八批模板）+ `java.net.HttpURLConnection`（看用途，可能是检查更新，抽 `HttpService`）。
-   `SettingsScreen`（1471 行）卡 `Activity/ContextWrapper`（找 Activity 用，需解耦）+ Gson ×1
-   （`parseFullScheduleJson` = **R2 导入通道**，与备份三页同批做 round-trip 回归）+ `Calendar/UUID`
-   （→ kotlinx-datetime/`randomUuidV4`）。
-2. **ShiftScheduleScreen**（303 行，4 项：LocalContext/androidx.activity/全限定 MainActivity）
-   —— 排班页，MainActivity 全限定引用可用回调注入拆掉；`androidx.activity` 是 BackHandler
-   （NavigationBackHandlerFor 模板已有）。
-3. **备份三页（Gson R2，最高风险）** —— `BackupAndMigrationScreen`/`LocalBackupScreen`/
-   `EducationalImportScreen` + `SettingsScreen` 的导入通道，**必须有真实备份 round-trip 回归**。
-   `ScheduleAppearance`（Gson 文件）本体留 androidApp（Bitmap/LruCache 专有），纯数据类已拆走。
-4. **`ui/utils` 清尾** —— `ActivitySystemBars`/`ApiCompat`/`UpdateChecker`/`UpdateInstaller`/
-   `CrashLogHelper` 判定**平台专有留守**；`ScheduleExport`/`ScheduleImport` 归 R2 批次。
-   `MiuixVisualEffectsPolicy`（HyperOS 探测）判定**留守**。
-5. **`AppNavHost`**（导航骨架）—— navigationevent 最后残留；宿主层，最后处理。
-6. **`TodayAssistant.kt`** —— 天气栈（Gson/定位/Geocoder）**留守**；卡片已通过槽位注入解耦。
+1. **R2 备份文件 I/O（最高风险，剩余主战场）** —— `LocalBackupScreen`/`BackupAndMigrationScreen`
+   的 Gson 读写（`Gson().fromJson/toJson` + TypeToken）。⚠ 与 Android 文件 I/O（SAF 文档选择器/
+   FileProvider 分享/IO 线程）深度纠缠，且**写用户备份文件**。改法照 R2 导入通道模板
+   （ScheduleImportCodec.kt + round-trip 测试）：把纯解析/序列化抽 `:core` kotlinx，
+   **落盘格式保持可跨版本读**（compact 仍能被旧版 Gson 读，但建议保 pretty 以免备份文件外观变化）。
+   **必须真机做一次完整备份→恢复回归**（用用户已提供的两份真实备份）。
+   `EducationalImportScreen` 的 Gson（WebView 导入保存）同批。`performScheduleShare`/`fetchShare`
+   的 Gson 在 Android 宿主（网络/剪贴板），可最后迁或留。
+2. **设置链收尾** —— `TabletSettingsScreen`（1610 行，反向依赖降到约 5：About/BackupAndMigration/
+   LocalBackup 内嵌页 + `sendTestLiveNotification` + HttpURLConnection）；
+   `SettingsScreen`（1377 行）卡 `Activity/ContextWrapper`（findActivity 已删，剩 Calendar/UUID
+   → kotlinx-datetime/`randomUuidV4`）+ 嵌套 TabletSettingsScreen。R2 导入通道已迁走，
+   SettingsScreen 的 Gson 阻塞已解除。
+3. ~~ShiftScheduleScreen~~ ✅ 第二十二批已迁；~~HolidaySettingsScreen~~ ✅ 已迁；~~AiImportScreen~~ ✅ 已迁。
+4. **留守清单（不迁）**：`AboutScreen`（Intent/包管理器/App 图标）、`CourseReminderScreen`（闹钟/电池优化/
+   Settings intent）、`WebViewScreen`+`EducationalImport` WebView 分支（iOS 要 WKWebView 重写）、
+   `TodayAssistant`（天气栈）、`ClassEndEffects` 的震动/烟花、`ActivitySystemBars`/`ApiCompat`/
+   `UpdateChecker`/`UpdateInstaller`/`CrashLogHelper`、`MiuixVisualEffectsPolicy`、
+   `ScheduleAppearance` 本体（Bitmap/LruCache）、`AndroidScheduleEffects`、`NexioApplication`、
+   `MainActivity`/`AppNavHost`/`AppRouteContent`（宿主层，最后）。
 
 > ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
 > （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
@@ -215,6 +219,8 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `33154249` | R2 导入通道 Gson→kotlinx（ScheduleImportCodec）+ 真实备份 round-trip 回归 6 用例 | 10-11 |
+| `c4373883` | `AiImportScreen` 进 `:ui-shared`（剪贴板注入）+ 备份夹具入库 | 10-11 |
 | `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
 | `1e6b8bf3` | 第二十批：`SwitchScheduleScreen`/`TabletSwitchSchedulePane`/`TimeConfigEditScreen` 进 `:ui-shared`（并行子代理）；页内 crop 跨平台化 | 10-11 |
@@ -228,10 +234,6 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 | `53349ed` | 第十~十四批：资源迁移 + `AppreciateAuthor` / `AddCourseDialog` / `WidgetIntro` | 10-10 |
 | `28dfe8a` | 阶段 5 第二~九批 + 资源迁移起步：**`LocalConfiguration` 33 文件清零** | 10-10 |
 | `6d1972c` | 阶段 5 第一批：`:ui-shared` / `:desktopApp` 落地，桌面客户端真跑 | 10-10 |
-| `057d6ab` | 模块 `app/`→`androidApp/`；`:core` 测试与 iOS 实现入库 | 10-10 |
-| `b974cf2` | iOS 网络层实现（NSURLSession delegate 流式读），未引入 Ktor | 10-10 |
-| `ca95feb` | wasmJs 非 JVM 编译门禁（默认关，`-Pnexio.wasm=true`） | 10-10 |
-| `9d13813` | ⑫ `CourseRepository` 下沉 `:core` —— **数据层全部完成** | 10-09 |
 
 > 🔑 六条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
