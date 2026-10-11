@@ -20,7 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`b3713502`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`bf06b6f9`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
@@ -28,15 +28,15 @@
 `:ui-shared` 的 **`NexioShared.framework` 两个目标都链接成功**（`linkDebugFrameworkIos{Arm64,SimulatorArm64}`）。
 原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳/
-提醒设置页/更新设置页/本地备份页/课表导入导出备份页/设置页本体已迁**；`:ui-shared` 已迁入 97 文件 / 41.3k 行；
-`:androidApp` 剩 54 文件 / 27.5k 行（其中待迁 29 / 19.4k）。
-**应用代码完成度约 73%**（口径见 §3）。**设置链已整体贯通 commonMain**。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
+（含本体）/课表导入导出备份页/外观自定义页（壁纸+快照）已迁**；`:ui-shared` 已迁入 98 文件 / 43.3k 行；
+`:androidApp` 剩 53 文件 / 25.6k 行（其中待迁 28 / 17.5k）。
+**应用代码完成度约 76%**（口径见 §3）。**真正的「页面」只剩 2 个**。
 **R2 序列化全部完成**（读+写）——备份路径 Gson 清零。**能力注入抽象已建 8 个**：DiagnosticRecorder/
 ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/BackupFileController/
 **ScheduleFileController**（SAF 选文件读 / 另存为）。
-**androidPane 的 8 个留守 dest 已全部清零**，**设置页本体也已迁**（第二十四批）。
-下一步是 `CustomizeScheduleScreen`（壁纸/快照重灾区）。iOS target 默认关闭。
+**androidPane 的 8 个留守 dest 已全部清零**，**设置页本体与外观自定义页都已迁**。
+下一步是 `WebViewScreen` 外壳。iOS target 默认关闭。
 
 ### 本机环境（不看会白踩半天）
 
@@ -119,12 +119,12 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 | 模块 | 文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 105 (+28 测试) | 17.9k | common **50** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
+| `:core` | 107 (+28 测试) | 18.0k | common **52** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | **119** | 31k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
-| `:ui-shared` | **97** | **41.3k** | common **95** / android 1 / jvm 1 | 阶段 5 进行中（**只剩壁纸/WebView/宿主层**） |
+| `:ui-shared` | **98** | **43.3k** | common **96** / android 1 / jvm 1 | 阶段 5 进行中（**只剩 WebView 外壳 + 宿主层**） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **54** | **27.5k** | android | 待迁 **29 / 19.4k** + 留守 **25 / 8.1k**；单 Activity（Manifest 23→2） |
+| `:androidApp` | **53** | **25.6k** | android | 待迁 **28 / 17.5k** + 留守 **25 / 8.1k**；单 Activity（Manifest 23→2） |
 
 **`:core` 的 14 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -138,23 +138,23 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | 归属 | 文件 | 行数 | 说明 |
 |---|---:|---:|---|
 | **永不迁移** | **25** | **8.1k** | `reminder/` 10 · `widget/` 7 · `ui/web/` 3 · `shizuku/` 2 · `wearable/` 2 · `provider/` 1 |
-| **待迁** | **29** | **19.4k** | `ui/activities` 2 · `ui/screens` 5 · `ui/utils` 12 · 其余 10 |
+| **待迁** | **28** | **17.5k** | `ui/activities` 2 · `ui/screens` 4 · `ui/utils` 12 · 其余 10 |
 
 **完成度**（引用时注明口径）：
-- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 40.4k = 51.5k，
-  待迁 19.4k ⇒ **约 73%**
-- **含 `:miuix` + `:backdrop`**：86k / 105k ⇒ **约 82%**（那两层是第三方 fork，通常不计）
+- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 43.2k = 54.3k，
+  待迁 17.5k ⇒ **约 76%**
+- **含 `:miuix` + `:backdrop`**：89k / 106k ⇒ **约 84%**（那两层是第三方 fork，通常不计）
 
 ### 剩余工作量
 
 | 项 | 数量 | 备注 |
 |---|---|---|
-| `android.*` import | **281 处 / 53 文件** | 换口径重数（多在留守文件里：reminder 46 / widget 56 / ui-web 21 / provider 8 = 131 处本就永不迁） |
+| `android.*` import | **279 处 / 52 文件** | 换口径重数（多在留守文件里：reminder 46 / widget 56 / ui-web 21 / provider 8 = 131 处本就永不迁） |
 | `androidx.*`（不含 compose） | **26 类** | 同上口径 |
 | `androidx.compose.*` | — | 跨平台，**不算阻塞** |
 | ~~`java.time`~~ | ✅ 已完成 | 22 文件全换 |
 | **`LocalConfiguration`** | ✅ **0 处（已清零）** | 换成 `screenWidthDp()` / `isTabletWidth()` |
-| **`LocalContext`** | **47 处** | 仍是页面级阻塞之首，但已被 VM 解耦大幅削弱 |
+| **`LocalContext`** | **46 处** | 仍是页面级阻塞之首，但已被 VM 解耦大幅削弱 |
 | Gson（风险 **R2**） | **7 文件** | 清单见下 |
 | `java.io` | 29 处 / 12 文件 | 多为导入导出 |
 | `res` → `composeResources` | ✅ **26 个 drawable 已迁**；`R.drawable.*` 仍在少量页面 | 见 F 节 |
@@ -172,7 +172,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | 目录 | 处/文件 | 归属 |
 |---|---:|---|
 | `ui/activities` | 8 / 2 | **待迁** —— 只剩 `EducationalImportScreen` + `MainActivity`（宿主） |
-| `ui/screens` | 34 / 5 | **待迁** —— `CustomizeScheduleScreen` / `WebViewScreen` / `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
+| `ui/screens` | 32 / 4 | **待迁** —— `WebViewScreen` / `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
 | `ui/utils` | 69 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
 | `ui/components` | 8 / 3 | 待迁（薄） |
 | `ui/navigation` | 11 / 2 | 待迁（`AppNavHost` / `AppRouteContent`） |
@@ -205,21 +205,18 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 > 查跨模块同名同包冲突（只查跨模块；同模块不同源集 expect/actual 同名是正常模式）。
 > ⚠ 扫描器有已知误报（`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁**。
 
-**剩余待迁 29 文件 / 19.4k，其中真正的「页面」只剩 3 个**（其余是宿主层与平台专有实现体）。
+**剩余待迁 28 文件 / 17.5k，其中真正的「页面」只剩 2 个**（其余是宿主层与平台专有实现体）。
 迁移模式已成熟（页面上 commonMain + 能力 :core 接口注入 + Android 包装），剩余多为模板化。按顺序：
 
-1. **CustomizeScheduleScreen**（1895 行，壁纸/快照重灾区）—— 卡 `snapshot`/`wallpaperBitmap` 是
-   `android.graphics.Bitmap` + ScheduleAppearance 耦合。快照 crop 跨平台方案已定（见下「快照 crop」注），
-   壁纸存储走 `ScheduleAppearance`（留守能力，注入）。**剩余最大的一个。**
-2. **WebViewScreen 外壳**（1171 行）—— iOS 要 WKWebView 重写 webview 本体，但**页面外壳迁 + 槽位注入
+1. **WebViewScreen 外壳**（1171 行）—— iOS 要 WKWebView 重写 webview 本体，但**页面外壳迁 + 槽位注入
    webview 宿主**（同 todayAssistantCard 模式）。`EducationalImportScreen` 的 WebView 分支同理。
-3. **宿主层**（最后）—— `AppNavHost`（navigationevent 最后残留）/ `AppRouteContent` / `MainActivity` /
+2. **宿主层**（最后）—— `AppNavHost`（navigationevent 最后残留）/ `AppRouteContent` / `MainActivity` /
    `NexioApplication`。这些是宿主壳，iOS 会重写入口，Android 保留。
-4. **iOS 工程**（应用代码迁完后）—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
+3. **iOS 工程**（应用代码迁完后）—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
 
-> ✅ **已完成**：`BackupAndMigrationScreen`（第二十三批 `23a7a369`）、
-> `SettingsScreen` 本体（第二十四批 `b3713502`，androidPane 槽位改宿主装配）—— 见「里程碑」表。
+> ✅ **已完成**：`BackupAndMigrationScreen`（第二十三批 `23a7a369`）、`SettingsScreen` 本体
+> （第二十四批 `b3713502`）、`CustomizeScheduleScreen`（第二十五批 `bf06b6f9`）—— 见「里程碑」表。
 
 > ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
 > （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
@@ -260,6 +257,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `bf06b6f9` | **第二十五批**：`CustomizeScheduleScreen` 迁 `:ui-shared`（壁纸/快照重灾区）；`Bitmap`→`ImageBitmap` + `CombinationThumbnail` 投影；`ThemeMode` 下沉 :core；**补扫描器规则抓 `"…".format()` 盲区** | 10-11 |
 | `b3713502` | **第二十四批**：`SettingsScreen` 迁 `:ui-shared` —— **设置链贯通 commonMain**；androidPane 槽位改宿主装配（新增 `AndroidSettingsScreen`）；修 `String.format` 漏网 | 10-11 |
 | `73677f72` | **miuix 补成完整 fork**（119 文件自包含）→ 三处排除官方 `miuix-ui`；**iOS framework 两个目标链接成功**（R10 解）；顺带消掉 Android 侧两份 miuix-ui 混用的 NoSuchMethodError 隐患 | 10-11 |
 | `c4bb6bb9` | **首次真编 iOS**：`:ui-shared` 挂 `iosArm64`/`iosSimulatorArm64` + framework；四模块 iOS 编译全绿、模拟器跑 109 用例；修 4 处 JVM 专有 API；force `kotlinx-datetime` 0.6.2；**暴露 R10（link 阻塞）** | 10-11 |
@@ -303,10 +301,14 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 > 7. **KDoc 里别写「星号 + 斜杠 + 星号」**（例如描述 SAF 的通配 mime）：那正好是块注释结束符，
 >    会提前闭合注释，报一堆 `Expecting member declaration`，位置还指在下一行的正常代码上。
 >    要提就写「全匹配通配」（`23a7a369` 连踩两次）。
-> 8. **checkKmpPurity 抓不到「全限定名」的 java API**：它的规则是 `import java.*` 正则，
->    所以 `java.text.SimpleDateFormat` / `java.util.Date` 写成全限定名时一路绿灯
->    （android/jvm 目标都能编过），**真编 iOS 才炸**。大文件迁移时除了查 import，
->    还要 grep 一遍源码里的 `java.` 字面量（`23a7a369` 在 WebDavSettingsScreen 抓到一处）。
+> 8. **正则永远不如编译器完备** —— checkKmpPurity 是正则扫描，已知会漏两种写法，
+>    两次都是「页面迁进 commonMain 真编 iOS 才炸」：
+>    ① **全限定名**的 java API（规则是 `import java.*`）：`java.text.SimpleDateFormat` 一路绿灯
+>       （`23a7a369` 在 WebDavSettingsScreen 抓到一处）；
+>    ② **`String.format` 的扩展形式** `"%.1f".format(x)`（规则只认 `String.format(`）——
+>       `bf06b6f9` 抓到后已补规则 `"[^"]*"\s*\.\s*format\(`。
+>    ⇒ 大文件迁移时除了等门禁报，自己也要 grep `java.` 与 `"…".format(` 两类字面量；
+>      **最终裁决权在 iOS 编译**，门禁绿不等于跨平台干净。
 
 ---
 
