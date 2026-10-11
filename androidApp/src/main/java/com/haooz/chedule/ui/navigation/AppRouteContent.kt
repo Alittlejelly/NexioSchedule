@@ -103,6 +103,7 @@ import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
+import com.haooz.chedule.ui.utils.AndroidBackupFileController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -236,9 +237,13 @@ fun AppRouteContent(
             title = "本地备份",
             onBack = { router.popBack() },
         ) { scrollBehavior, backdrop ->
+            val context = LocalContext.current
             LocalBackupScreen(
                 scrollBehavior = scrollBehavior,
                 liquidGlassBackdrop = backdrop,
+                // Android 文件 I/O（SAF 选文件 + 备份目录扫描/读写）注入
+                backupFileController = remember { AndroidBackupFileController(context) },
+                onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
             )
         }
 

@@ -32,6 +32,7 @@ import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
+import com.haooz.chedule.ui.utils.AndroidBackupFileController
 import com.haooz.chedule.widget.WidgetUpdateCache
 import java.net.HttpURLConnection
 import java.net.URL
@@ -250,6 +251,9 @@ fun SettingsScreen(
                     TabletSettingsDest.LocalBackup -> LocalBackupScreen(
                         scrollBehavior = null,
                         liquidGlassBackdrop = liquidGlassBackdrop,
+                        // Android 文件 I/O（SAF + 备份目录）注入
+                        backupFileController = remember { AndroidBackupFileController(context) },
+                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
                     )
 
                     TabletSettingsDest.Preference -> PreferenceSettingsScreen(

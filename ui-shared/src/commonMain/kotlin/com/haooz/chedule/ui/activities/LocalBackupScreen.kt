@@ -1,13 +1,6 @@
-/** 本地备份页面 - Screen */
+/** 本地备份页面 - Screen（2026-10-11 自 :androidApp 迁入 :ui-shared；文件 I/O 走 BackupFileController） */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.app.Application
-import android.content.Context
-import android.net.Uri
-import android.os.Environment
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -43,37 +36,33 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.haooz.chedule.data.parseJsonObject
-import com.haooz.chedule.data.jsonToPlainValue
 import com.haooz.chedule.data.toJsonMap
 import com.haooz.chedule.data.encodeBackupJson
+import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.data.validateFullScheduleBackupStructure
-import com.haooz.chedule.data.validateSingleScheduleCourseData
 import com.haooz.chedule.data.parseBackupPayload
 import com.haooz.chedule.data.BackupPayload
-import com.haooz.chedule.data.SemesterSettings
-import com.haooz.chedule.reminder.CourseReminderHelper
+import com.haooz.chedule.data.BackupFileInfo
+import com.haooz.chedule.data.BackupFileController
+import com.haooz.chedule.data.NoopBackupFileController
+import com.haooz.chedule.data.formatCompactStamp
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.nowLocalDateTime
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
-import com.haooz.chedule.ui.utils.courseToShareMap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,81 +78,26 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-private const val BACKUP_DIR_NAME = "Neixo_Schedule"
-
-/** 解析单个备份文件前允许的最大体积，避免把超大/无关文件整个读进内存 */
-private const val MAX_BACKUP_PARSE_BYTES = 8L * 1024 * 1024
-
-// 备份体 / 学期设置 / 恢复门禁 parseBackupPayload 已迁 :core（kotlinx-serialization，
-// 原 Gson 走运行时反射、iOS 不存在）—— 见 com.haooz.chedule.data.BackupCodec.kt。
-
-private data class BackupFileInfo(
-    val file: File,
-    val fileName: String,
-    val type: String,
-    val scheduleName: String?,
-    val scheduleCount: Int,
-    val timestamp: String,
-    val size: String,
-    val isFullBackup: Boolean
-)
-
-/**
- * 备份目录。优先公共 Download（用户能在文件管理器里看到、方便拷走）；
- * 分区存储下该目录可能不可写（取决于系统策略与授权状态），此时降级到应用私有
- * Download 目录，避免整个备份功能失效。
- */
-private fun getBackupDir(context: Context): File {
-    val publicDir = File(
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-        BACKUP_DIR_NAME
-    )
-    if (isUsableDir(publicDir)) return publicDir
-    val privateDir = File(
-        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir,
-        BACKUP_DIR_NAME
-    )
-    privateDir.mkdirs()
-    return privateDir
-}
-
-private fun isUsableDir(dir: File): Boolean = try {
-    (dir.exists() || dir.mkdirs()) && dir.canWrite()
-} catch (_: Exception) {
-    false
-}
-
-/**
- * 扫描用的候选目录（公共 + 私有）。两个都扫，这样在两种存储环境之间切换时
- * 历史备份不会凭空"消失"。
- */
-private fun candidateBackupDirs(context: Context): List<File> {
-    val publicDir = File(
-        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-        BACKUP_DIR_NAME
-    )
-    val privateDir = File(
-        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir,
-        BACKUP_DIR_NAME
-    )
-    return listOf(publicDir, privateDir).filter { it.isDirectory }.distinctBy { it.absolutePath }
-}
+// 备份体 / 学期设置 / 恢复门禁 parseBackupPayload、写侧 encodeBackupJson 已迁 :core
+// （kotlinx-serialization，原 Gson 走运行时反射、iOS 不存在）—— 见 com.haooz.chedule.data.BackupCodec.kt。
+// 备份目录扫描 / SAF 选文件 / 文件读写删已抽成 :core 的 BackupFileController 接口
+// （见 data/BackupFileController.kt），Android 实现是 :androidApp 的 AndroidBackupFileController。
 
 /** 课表名可能含路径分隔符/非法字符，直接拼进文件名会写失败或写到意外位置 */
 private fun sanitizeFileName(name: String): String =
     name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifEmpty { "课表" }
 
+/**
+ * 备份文件名。原实现 `SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())` ——
+ * 该 pattern 只含数字与固定分隔符、不受 Locale 影响，commonMain 用 :core 的
+ * [formatCompactStamp] 手写零填充，行为逐字一致。
+ */
 private fun generateBackupFileName(mode: String, scheduleName: String?): String {
-    val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
-    val timestamp = sdf.format(Date())
+    val timestamp = nowLocalDateTime().formatCompactStamp()
     return if (mode == "all") {
         "全部备份_$timestamp.json"
     } else {
@@ -171,103 +105,48 @@ private fun generateBackupFileName(mode: String, scheduleName: String?): String 
     }
 }
 
-/** 文件名形如「<课表名>_yyyyMMdd_HHmmss」，用正则解析，不再依赖固定的后缀长度 */
-private val BACKUP_NAME_REGEX = Regex("^(.+)_(\\d{8}_\\d{6})$")
-
-private fun countSchedulesInBackup(file: File): Int {
-    return try {
-        if (file.length() > MAX_BACKUP_PARSE_BYTES) return 0
-        val json = file.readText(Charsets.UTF_8)
-        // kotlinx（R2）：只读统计，plain Map 类型与原 Gson 一致
-        @Suppress("UNCHECKED_CAST")
-        val data = jsonToPlainValue(parseJsonObject(json)) as Map<String, Any>
-        if (data.containsKey("schedule_name") && data.containsKey("courses")) {
-            1
-        } else {
-            val prefixes = mutableSetOf<String>()
-            for (key in data.keys) {
-                if (key.startsWith("schedule_") && key.contains("_courses")) {
-                    val name = key.removePrefix("schedule_").substringBeforeLast("_courses")
-                    prefixes.add(name)
-                }
-            }
-            prefixes.size
-        }
-    } catch (_: Exception) {
-        0
-    }
-}
-
-private fun scanBackupFiles(context: Context): List<BackupFileInfo> {
-    val displaySdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-    val parseSdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
-
-    return candidateBackupDirs(context)
-        .flatMap { dir -> dir.listFiles()?.asList() ?: emptyList() }
-        .filter { it.isFile && it.extension.equals("json", ignoreCase = true) }
-        .map { file ->
-            val name = file.nameWithoutExtension
-            val isFullBackup = name.startsWith("全部备份")
-            val type = if (isFullBackup) "全部备份" else "单独课表"
-
-            val match = BACKUP_NAME_REGEX.matchEntire(name)
-            val scheduleName = if (!isFullBackup) match?.groupValues?.get(1) ?: name else null
-
-            val scheduleCount = countSchedulesInBackup(file)
-
-            val timestamp = try {
-                match?.let { parseSdf.parse(it.groupValues[2]) }?.let { displaySdf.format(it) } ?: "未知时间"
-            } catch (_: Exception) {
-                "未知时间"
-            }
-
-            val sizeStr = if (file.length() < 1024) "${file.length()} B"
-            else if (file.length() < 1024 * 1024) "${file.length() / 1024} KB"
-            else "${file.length() / (1024 * 1024)} MB"
-
-            BackupFileInfo(file, file.name, type, scheduleName, scheduleCount, timestamp, sizeStr, isFullBackup)
-        }
-        .sortedByDescending { it.file.lastModified() }
-}
-
-// 恢复门禁 parseBackupPayload 已迁 :core（BackupCodec.kt），调用方 import com.haooz.chedule.data.parseBackupPayload。
-
-private fun readExternalBackupJson(context: Context, uri: Uri): String {
-    val inputStream = context.contentResolver.openInputStream(uri)
-        ?: throw IllegalArgumentException("无法读取所选文件")
-    return readBoundedBackupUtf8(inputStream)
-}
-
-internal fun readBoundedBackupUtf8(
-    inputStream: java.io.InputStream,
-    maxBytes: Long = MAX_BACKUP_PARSE_BYTES,
-): String {
-    require(maxBytes >= 0L) { "Invalid backup byte limit" }
-    return inputStream.use { input ->
-        val output = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(8 * 1024)
-        var totalBytes = 0L
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            totalBytes += count
-            require(totalBytes <= maxBytes) { "备份文件超过8 MB限制" }
-            output.write(buffer, 0, count)
-        }
-        String(output.toByteArray(), Charsets.UTF_8)
-    }
-}
+/**
+ * 单课表备份的课程字段序列化 —— 与 `:androidApp` 的 `ScheduleExport.courseToShareMap`
+ * **同一份字段清单**（颜色、周次模型保持一致；那份是分享/导出链路的 internal 函数，
+ * 仍在 Android 侧，commonMain 不可见，故这里保留一份同构副本；**两边改字段必须同步**）。
+ */
+private fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
+    "name" to course.name,
+    "classroom" to course.classroom,
+    "teacher" to course.teacher,
+    "dayOfWeek" to course.dayOfWeek,
+    "startSection" to course.startSection,
+    "endSection" to course.endSection,
+    "isCustomTime" to course.isCustomTime,
+    "customStartTime" to course.customStartTime,
+    "customEndTime" to course.customEndTime,
+    "colorRes" to course.colorRes,
+) + mapOf(
+    "startWeek" to course.startWeek,
+    "endWeek" to course.endWeek,
+    "weekType" to course.weekType,
+    "selectedWeeks" to course.selectedWeeks.sorted(),
+)
 
 private fun countFullBackupSchedules(data: Map<String, Any>): Int =
     data.keys.count { it.startsWith("schedule_") && it.endsWith("_courses") }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun LocalBackupScreen(
     scrollBehavior: SharedScrollBehavior? = null,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /**
+     * 备份文件能力控制器（Android = `AndroidBackupFileController`，构造时捕获 context、
+     * 包装目录扫描 / SAF 选文件 / 文件读写删；宿主用
+     * `remember { AndroidBackupFileController(context) }` 注入）。
+     * 桌面/iOS 没有对应能力，用默认的 [NoopBackupFileController]。
+     */
+    backupFileController: BackupFileController = NoopBackupFileController,
+    // 全量恢复成功后的平台副作用（重排提醒等）。
+    // 由 Android 宿主注入：CourseReminderHelper.onHolidayDataChanged(context)。
+    // 不直接调 reminder 模块 —— 那是 Android 专有的（内部要 Context，桌面/iOS 无此概念）。
+    onHolidayDataChanged: () -> Unit = {},
 ) {
-    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
     var listScrollY by remember { mutableIntStateOf(0) }
@@ -286,16 +165,14 @@ fun LocalBackupScreen(
     val settingsViewModel = viewModel<SettingsViewModel>()
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
 
-    // 扫描要读每个 json 并 Gson 全量解析，必须在 IO 线程做；初值留空，由 LaunchedEffect 填充
+    // 扫描要逐个读 json 解析统计课表数，必须在 IO 线程做；初值留空，由 LaunchedEffect 填充
     var backupHistory by remember { mutableStateOf<List<BackupFileInfo>>(emptyList()) }
     var isScanning by remember { mutableStateOf(true) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var restorePayload by remember { mutableStateOf<BackupPayload?>(null) }
     var restoreSourceLabel by remember { mutableStateOf("") }
-    var pendingRestoreFile by remember { mutableStateOf<File?>(null) }
-    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingDelete by remember { mutableStateOf<BackupFileInfo?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var pendingDeleteFile by remember { mutableStateOf<File?>(null) }
     var isBackingUp by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var deletingFileName by remember { mutableStateOf<String?>(null) }
@@ -303,7 +180,7 @@ fun LocalBackupScreen(
     fun refreshHistory() {
         coroutineScope.launch {
             isScanning = true
-            val scanned = withContext(Dispatchers.IO) { scanBackupFiles(context) }
+            val scanned = withContext(ioDispatcher) { backupFileController.listBackups() }
             backupHistory = scanned
             isScanning = false
         }
@@ -312,16 +189,21 @@ fun LocalBackupScreen(
     /**
      * 先解析校验，再弹确认框。
      * 这样非法文件在弹框前就被拦下，且弹框文案能按备份类型给出准确说明。
+     *
+     * @param backupId 列表项的备份文件句柄（[BackupFileInfo.id]）
+     * @param backupFileName 列表项的文件名（确认框来源文案）
+     * @param externalJson SAF 选中的外部文件内容（已由控制器读出）
      */
-    fun beginRestore(file: File? = null, uri: Uri? = null) {
+    fun beginRestore(backupId: String? = null, backupFileName: String? = null, externalJson: String? = null) {
         if (isRestoring || showRestoreDialog) return
         coroutineScope.launch {
             isRestoring = true
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(ioDispatcher) {
                 runCatching {
                     val json = when {
-                        file != null -> readBoundedBackupUtf8(java.io.FileInputStream(file))
-                        uri != null -> readExternalBackupJson(context, uri)
+                        backupId != null -> backupFileController.readBackupFile(backupId)
+                            ?: throw IllegalArgumentException("没有可恢复的文件")
+                        externalJson != null -> externalJson
                         else -> throw IllegalArgumentException("没有可恢复的文件")
                     }
                     parseBackupPayload(json)
@@ -331,9 +213,7 @@ fun LocalBackupScreen(
             result.fold(
                 onSuccess = { payload ->
                     restorePayload = payload
-                    pendingRestoreFile = file
-                    pendingRestoreUri = uri
-                    restoreSourceLabel = file?.name ?: "外部文件"
+                    restoreSourceLabel = backupFileName ?: "外部文件"
                     showRestoreDialog = true
                 },
                 onFailure = { e ->
@@ -347,11 +227,9 @@ fun LocalBackupScreen(
         val payload = restorePayload ?: return
         showRestoreDialog = false
         restorePayload = null
-        pendingRestoreFile = null
-        pendingRestoreUri = null
         isRestoring = true
         coroutineScope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(ioDispatcher) {
                 runCatching {
                     val repository = CourseRepository()
                     when (payload) {
@@ -379,7 +257,7 @@ fun LocalBackupScreen(
 
                         is BackupPayload.Full -> {
                             repository.importAllPreferences(payload.data)
-                            CourseReminderHelper.onHolidayDataChanged(context)
+                            onHolidayDataChanged()
                         }
                     }
                     // 等加载完成再提示成功，否则会先弹 Toast 再刷出数据
@@ -398,12 +276,6 @@ fun LocalBackupScreen(
                 }
             )
         }
-    }
-
-    val safLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { beginRestore(uri = it) }
     }
 
     LaunchedEffect(Unit) {
@@ -517,16 +389,11 @@ fun LocalBackupScreen(
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                                 isBackingUp = true
                                 coroutineScope.launch {
-                                    val result = withContext(Dispatchers.IO) {
+                                    val result = withContext(ioDispatcher) {
                                         try {
                                             val repository = CourseRepository()
-                                            val dir = getBackupDir(context)
-                                            if (!isUsableDir(dir)) {
-                                                throw IllegalStateException("备份目录不可写：${dir.absolutePath}")
-                                            }
 
                                             val fileName = generateBackupFileName(backupMode, selectedSchedule)
-                                            val file = File(dir, fileName)
 
                                             val data = if (backupMode == "all") {
                                                 repository.exportAllPreferences()
@@ -559,8 +426,11 @@ fun LocalBackupScreen(
                                             }
 
                                             val json = encodeBackupJson(data)
-                                            file.writeText(json, Charsets.UTF_8)
-                                            Result.success(file.name)
+                                            // 目录选择/可写校验/写盘全在控制器里（Android 包装保留原异常文案）
+                                            if (!backupFileController.saveBackupFile(fileName, json)) {
+                                                throw IllegalStateException("备份文件写入失败")
+                                            }
+                                            Result.success(fileName)
                                         } catch (e: Exception) {
                                             Result.failure(e)
                                         }
@@ -660,7 +530,7 @@ fun LocalBackupScreen(
                                                 hapticFeedback.performHapticFeedback(
                                                     HapticFeedbackType.VirtualKey
                                                 )
-                                                beginRestore(file = info.file)
+                                                beginRestore(backupId = info.id, backupFileName = info.fileName)
                                             }
                                             .padding(horizontal = 20.dp, vertical = 8.dp),
                                         contentAlignment = Alignment.Center
@@ -684,7 +554,7 @@ fun LocalBackupScreen(
                                                 hapticFeedback.performHapticFeedback(
                                                     HapticFeedbackType.VirtualKey
                                                 )
-                                                pendingDeleteFile = info.file
+                                                pendingDelete = info
                                                 showDeleteDialog = true
                                             }
                                             .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -718,11 +588,12 @@ fun LocalBackupScreen(
                             summary = "从其他位置选择备份文件进行恢复",
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                // 不限定 mime：各厂商文件管理器对 .json 上报的 mime 不一致
-                                // （text/plain / application/octet-stream 都有），
-                                // 限定 application/json 会让用户根本选不到文件。
-                                // 合法性由 parseBackupPayload 把关，放开 mime 是安全的。
-                                safLauncher.launch(arrayOf("*/*"))
+                                // mime 放开（*/*）与合法性把关（parseBackupPayload）的原因见 Android 包装的注释：
+                                // 各厂商文件管理器对 .json 上报的 mime 不一致，限定 application/json 会选不到文件。
+                                // 取消 / 读取失败由控制器回调 (null, null)（失败已由控制器按原文案 toast）。
+                                backupFileController.pickAndReadBackup { json, _ ->
+                                    if (json != null) beginRestore(externalJson = json)
+                                }
                             }
                         )
                     }
@@ -757,8 +628,6 @@ fun LocalBackupScreen(
         onDismissRequest = {
             showRestoreDialog = false
             restorePayload = null
-            pendingRestoreFile = null
-            pendingRestoreUri = null
         }
     ) {
         Column(
@@ -777,8 +646,6 @@ fun LocalBackupScreen(
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showRestoreDialog = false
                         restorePayload = null
-                        pendingRestoreFile = null
-                        pendingRestoreUri = null
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -795,15 +662,15 @@ fun LocalBackupScreen(
         }
     }
 
-    val deleteDialogFile = pendingDeleteFile
+    val deleteDialogInfo = pendingDelete
     OverlayDialog(
         title = "删除备份",
-        summary = if (deleteDialogFile != null) "确定要删除备份「${deleteDialogFile.name}」吗？\n此操作不可恢复" else "",
+        summary = if (deleteDialogInfo != null) "确定要删除备份「${deleteDialogInfo.fileName}」吗？\n此操作不可恢复" else "",
         show = showDeleteDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
             showDeleteDialog = false
-            pendingDeleteFile = null
+            pendingDelete = null
         }
     ) {
         Column(
@@ -821,7 +688,7 @@ fun LocalBackupScreen(
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showDeleteDialog = false
-                        pendingDeleteFile = null
+                        pendingDelete = null
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -830,16 +697,16 @@ fun LocalBackupScreen(
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         // 必须先把目标文件捕获成局部变量：删除动画有 300ms 延迟，
-                        // 期间若用户点了另一个文件的删除按钮，pendingDeleteFile 会被覆盖，
+                        // 期间若用户点了另一个文件的删除按钮，pendingDelete 会被覆盖，
                         // 原来的协程就会去删新选中的文件（旧版 bug：删错且原文件没删掉）
-                        val target = pendingDeleteFile ?: return@TextButton
+                        val target = pendingDelete ?: return@TextButton
                         showDeleteDialog = false
-                        pendingDeleteFile = null
-                        deletingFileName = target.name
+                        pendingDelete = null
+                        deletingFileName = target.fileName
                         coroutineScope.launch {
                             try {
                                 delay(300.milliseconds)
-                                if (target.delete()) {
+                                if (backupFileController.deleteBackupFile(target.id)) {
                                     showToast("删除成功")
                                 } else {
                                     showToast("删除失败：文件不存在或不可写")
