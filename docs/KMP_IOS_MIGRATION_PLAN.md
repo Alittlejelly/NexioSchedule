@@ -171,52 +171,54 @@ androidPane 槽位剩 **BackupAndMigration**（文件 I/O + WebDAV/ICS）；Sett
 
 ---
 
-## 4. 下一步
+## 4. 下一步（收尾路线，按顺序推进）
 
-> 🔧 **先用扫描器选批，别用「数 `android.*` import」的老办法** —— 那个口径漏三类：
-> `androidx.activity.ComponentActivity` 这类非 `android.*` 包、Kotlin **context receiver**、
-> 以及**同包引用**（不需要 import）。扫描器：`.workbuddy-ai/tmp/scan_ui3.py`（判据是「符号落在哪个模块」），
-> 每次迁移后还要跑 `.workbuddy-ai/tmp/dupscan.py` 查跨模块同名同包冲突（本会话重建过，只查跨模块）。
-> ⚠ 扫描器也会误报/漏报（已知误报：`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁一次再全信**。
+> 🔧 **先用扫描器选批**（`.workbuddy-ai/tmp/scan_ui3.py`），每次迁移后跑 `.workbuddy-ai/tmp/dupscan.py`
+> 查跨模块同名同包冲突（只查跨模块；同模块不同源集 expect/actual 同名是正常模式）。
+> ⚠ 扫描器有已知误报（`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁**。
 
-1. **R2 写侧（低优先）** —— LocalBackupScreen/BackupAndMigrationScreen 的「创建备份」Gson
-   （pretty-print toJson + TimeConfig 反射展开）。**暂留 androidApp**：这两个页面整体还在
-   androidApp（SAF/FileProvider/文件 I/O 未抽象），换 Gson 不带来 iOS 收益却改备份文件格式。
-   **时机 = 页面整体迁 commonMain 时**（届时文件 I/O 抽象 + 写侧一并 kotlinx，用
-   `TimeConfig.toJsonMap()` + skip-nulls pretty 序列化，round-trip 验证写→读一致）。
-   R2 **读侧**（导入/恢复门禁/扫描）已全部完成 + 真实备份回归通过。
-2. **设置链收尾** —— `SettingsScreen`（Calendar/UUID 已清，仅剩**嵌套 TabletSettingsScreen** 是迁移阻塞）；
-   `TabletSettingsScreen`（1610 行，反向依赖约 4：AboutScreen 已迁走，剩 BackupAndMigration/
-   LocalBackup 内嵌页 + `sendTestLiveNotification` + HttpURLConnection）。**两页互相嵌套**，需一并规划。
-3. ~~ShiftScheduleScreen / HolidaySettingsScreen / AiImportScreen / AboutScreen~~ ✅ 均已迁。
+**剩余待迁约 19 文件 / 26k**。迁移模式已成熟（页面上 commonMain + 能力 :core 接口注入 + Android 包装），
+剩余多为模板化。按顺序：
 
-### 🔑 迁移框架铁律（用户 10-11 拍板）
-
-**页面 UI 一律迁 `:ui-shared` commonMain**（否则 iOS/桌面要重写一遍）；**只有 Android 专有「能力」留
-androidApp，通过注入（回调/槽位/接口）解耦**。没有「页面留守」——之前的「留守清单」是错的框架。
-真正只留 androidApp 的只有三类：
-- **纯能力实现体**：`CrashLogHelper` + `AndroidDiagnosticRecorder`（:core 已有跨平台 DiagnosticRecorder 接口）、
-  `ApiCompat`/`ActivitySystemBars`/`MiuixVisualEffectsPolicy`/`UpdateChecker`/`UpdateInstaller`（内部封装
-  AlarmManager/窗口/电池/包管理器等）、`ScheduleAppearance` 本体（Bitmap/LruCache）、`AndroidScheduleEffects`、
-  `ClassEndEffects` 的震动/烟花实现（ClassEndEffectSettings 已在 :core）、`TodayAssistant` 的天气抓取器
-  （Geocoder/定位/网络）
-- **宿主层**：`MainActivity` / `AppNavHost` / `AppRouteContent` / `NexioApplication`
-- **WebView 内容宿主**：`WebViewScreen` 的 webview 本体（iOS 要 WKWebView；但页面外壳仍迁 + 槽位注入 webview 宿主）
-
-**这些「能力纠缠页」的 UI 仍要逐个迁**（各自注入能力）：~~`CourseReminderScreen`（ReminderController）~~ ✅、
-~~`UpdateSettingsScreen`（UpdateController）~~ ✅、`BackupAndMigrationScreen`/`LocalBackupScreen`（注入文件
-I/O/分享，R2 写侧，**下一批**）、`WebViewScreen` 外壳、`CustomizeScheduleScreen`（壁纸/快照）。
-TabletSettingsScreen 的 `androidPane` 槽位是**过渡**——外壳先迁，槽位页 UI 后续批次逐个迁 + 注入；
-剩余槽位页 = BackupAndMigration/LocalBackup（Preference/About/AiImport 三页本体早已迁，只是调用点内联 Android 代码）。
+1. **BackupAndMigrationScreen**（1146 行，androidPane **最后一个留守 dest**）—— 文件 I/O（复用
+   `BackupFileController`）+ WebDAV（`WebDavManager` 已在 :core）+ ICS 导入（`parseIcsFile` 还在
+   SettingsScreen.kt，纯文本解析可迁 :core）。照 LocalBackupScreen（`d6e31bec`）模板。
+   迁完 → SettingsScreen 的 androidPane 只剩 Preference/About/AiImport（三页本体早已迁，调用点内联 Android 代码）。
+2. **SettingsScreen 本体**（1377 行）—— 只剩「androidPane 渲染留守页」是阻塞；迁它时把 androidPane
+   的留守渲染上移到 MainActivity 注入（宿主层）。届时**整条设置链贯通 commonMain**。
+3. **CustomizeScheduleScreen**（1895 行，壁纸/快照重灾区）—— 卡 `snapshot`/`wallpaperBitmap` 是
+   `android.graphics.Bitmap` + ScheduleAppearance 耦合。快照 crop 跨平台方案已定（见下「快照 crop」注），
+   壁纸存储走 `ScheduleAppearance`（留守能力，注入）。
+4. **WebViewScreen 外壳**（1171 行）—— iOS 要 WKWebView 重写 webview 本体，但**页面外壳迁 + 槽位注入
+   webview 宿主**（同 todayAssistantCard 模式）。`EducationalImportScreen` 的 WebView 分支同理。
+5. **宿主层**（最后）—— `AppNavHost`（navigationevent 最后残留）/ `AppRouteContent` / `MainActivity` /
+   `NexioApplication`。这些是宿主壳，iOS 会重写入口，Android 保留。
+6. **iOS 工程**（应用代码迁完后）—— A0 三项（binaries.framework / Info.plist CADisableMinimumFrameDurationOnPhone /
+   shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
 
 > ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
 > （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
 > 页外快照走「宿主裁好 → 页面收 `ImageBitmap?`」。两种场景都有落地方案，后续页面照抄。
 
-**并行子代理流水线**（第二十/二十一批验证，2~3 路同时跑）：文件集不相交的批次可并行——
-每路改自己的页面+调用方；子代理不跑 gradle（锁冲突），合并后统一门禁。
-⚠ **纯数据类若声明在 android 专有文件里（如 AppearanceConfig 在 Gson 文件中），页面迁入后会
-Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bitmap 的工厂改 companion 扩展留宿主）。
+### 🔑 迁移框架铁律（用户 10-11 拍板）
+
+**页面 UI 一律迁 `:ui-shared` commonMain**（否则 iOS/桌面要重写一遍）；**只有 Android 专有「能力」留
+androidApp，通过注入（回调/槽位/接口）解耦**。没有「页面留守」。真正只留 androidApp 的三类：
+- **纯能力实现体**：`CrashLogHelper` + 7 个 Android 包装（DiagnosticRecorder/UpdateController/
+  ReminderController/BackupFileController/ScheduleEffects/PlatformToast 等）、`ApiCompat`/
+  `ActivitySystemBars`/`MiuixVisualEffectsPolicy`/`UpdateChecker`/`UpdateInstaller`、`ScheduleAppearance`
+  本体（Bitmap/LruCache）、`ClassEndEffects` 震动/烟花实现、`TodayAssistant` 天气抓取器、`AndroidScheduleEffects`
+- **宿主层**：`MainActivity` / `AppNavHost` / `AppRouteContent` / `NexioApplication`
+- **WebView 内容宿主**：webview 本体（iOS 要 WKWebView；页面外壳仍迁 + 槽位注入）
+
+**已建的能力注入抽象（:core 接口 + Android 包装，7 个）**：DiagnosticRecorder / ScheduleEffects /
+PlatformToast / FeatureLog / UpdateController / ReminderController / BackupFileController。
+新页面遇 Android 能力照这套模板抽接口。
+
+**并行子代理流水线**（多批验证，2~3 路同时跑）：文件集不相交的批次可并行——每路改自己的页面+调用方；
+**子代理不跑 gradle**（锁冲突），合并后统一门禁。父代理最后统一接线宿主调用点（避免多代理改同一文件）。
+⚠ **纯数据类若声明在 android 专有文件里（如 AppearanceConfig 曾在 Gson 文件中），页面迁入后会
+Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 companion 扩展留宿主）。
 
 每批结束必须：`:androidApp:assembleDebug` 过 + 门禁绿 + **真机过一遍受影响的界面**。
 （用户 10-11 拍板：安卓端回归已验证即放行；**桌面端实机点开推迟到全部迁移完毕后统一修**。）
