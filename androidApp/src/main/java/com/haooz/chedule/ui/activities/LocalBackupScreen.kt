@@ -49,9 +49,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.gson.Gson
 import com.haooz.chedule.data.parseJsonObject
 import com.haooz.chedule.data.jsonToPlainValue
+import com.haooz.chedule.data.toJsonMap
+import com.haooz.chedule.data.encodeBackupJson
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
@@ -551,16 +552,13 @@ fun LocalBackupScreen(
                                                         repository.getTeachingWeekReorganizations(selectedSchedule),
                                                     ),
                                                     "courses" to courses.map(::courseToShareMap),
-                                                    // 字段由 gson 自动展开成扁平 Map（含 routines）：
-                                                    // 以后 TimeConfig 加字段不用改这里，也保持旧版本 App 认识的形状
-                                                    "time_config" to Gson().fromJson(
-                                                        Gson().toJson(timeConfig),
-                                                        Map::class.java
-                                                    )
+                                                    // kotlinx（R2）：TimeConfig → 扁平 Map（25 字段，
+                                                    // :core 的 toJsonMap，等价原 Gson 反射展开；写侧再剔 null）
+                                                    "time_config" to timeConfig.toJsonMap()
                                                 )
                                             }
 
-                                            val json = com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(data)
+                                            val json = encodeBackupJson(data)
                                             file.writeText(json, Charsets.UTF_8)
                                             Result.success(file.name)
                                         } catch (e: Exception) {

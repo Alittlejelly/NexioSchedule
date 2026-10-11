@@ -62,4 +62,69 @@ class BackupCodecTest {
             parseBackupPayload("{\"settings\":{},\"courses\":[]}")
         }
     }
+
+    @Test
+    fun `encodeBackupJson 写出的单课表备份能被恢复门禁读回（写读 round-trip）`() {
+        // 构造单课表备份 Map（含 time_config 走 toJsonMap，含一个 null 值验证剔除）
+        val timeConfig = TimeConfig(morningSections = 5, afternoonSections = 4, eveningSections = 3)
+        val backup = mapOf<String, Any?>(
+            "schedule_name" to "测试表",
+            "semester_settings" to mapOf(
+                "class_start_time" to "2026/09/02",
+                "current_week" to 6,
+                "total_weeks" to 20,
+                "smart_weekend" to true,
+            ),
+            "courses" to listOf(
+                mapOf(
+                    "name" to "高等数学", "classroom" to "A101", "teacher" to "张三",
+                    "dayOfWeek" to 1, "startSection" to 1, "endSection" to 2,
+                    "startWeek" to 1, "endWeek" to 16, "weekType" to 0,
+                    "selectedWeeks" to listOf(1, 2, 3),
+                    "nullField" to null,   // 应被 skip-nulls 剔除
+                )
+            ),
+            "time_config" to timeConfig.toJsonMap(),
+        )
+
+        val json = encodeBackupJson(backup)
+        // skip-nulls：null 字段不出现在输出（等价 Gson 默认行为）
+        assertTrue(!json.contains("nullField"), "null 字段应被剔除：$json")
+
+        // 写出的 JSON 能被恢复门禁读回 → Single
+        val payload = parseBackupPayload(json)
+        assertTrue(payload is BackupPayload.Single, "写读 round-trip 后应为 Single，实际：$payload")
+        payload as BackupPayload.Single
+        assertEquals("测试表", payload.scheduleName)
+        assertEquals(1, payload.courses.size)
+        assertEquals("高等数学", payload.courses[0]["name"])
+        assertEquals(20, payload.semesterSettings?.totalWeeks)
+
+        // time_config 经 toJsonMap → 写 → parse → timeConfigFromJsonMap 应无损还原关键字段
+        @Suppress("UNCHECKED_CAST")
+        val writtenTc = payload.timeConfig as? Map<String, Any?>
+        assertNotNull(writtenTc, "time_config 应被写读保留")
+        val restored = timeConfigFromJsonMap(writtenTc!!)
+        assertEquals(5, restored.morningSections, "morningSections 应 round-trip 一致")
+        assertEquals(3, restored.eveningSections, "eveningSections 应 round-trip 一致")
+    }
+
+    @Test
+    fun `真实备份文件经 encodeBackupJson 重写后仍可被门禁读回`() {
+        // 真实单课表备份 → parse → 重新 encode → 再 parse，课程数稳定（证明写侧不破坏读侧）
+        val original = loadFixture("/backup_single_schedule.json")
+        val payload1 = parseBackupPayload(original)
+        assertTrue(payload1 is BackupPayload.Single)
+        payload1 as BackupPayload.Single
+        // 用原备份的结构重建 Map 再编码（简化：直接编码 courses + semester 字段）
+        val rebuilt = mapOf<String, Any?>(
+            "schedule_name" to payload1.scheduleName,
+            "semester_settings" to mapOf("total_weeks" to (payload1.semesterSettings?.totalWeeks ?: 20)),
+            "courses" to payload1.courses,
+        )
+        val json2 = encodeBackupJson(rebuilt)
+        val payload2 = parseBackupPayload(json2)
+        assertTrue(payload2 is BackupPayload.Single)
+        assertEquals(payload1.courses.size, (payload2 as BackupPayload.Single).courses.size, "重写后课程数不变")
+    }
 }

@@ -32,7 +32,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import com.google.gson.GsonBuilder
+import com.haooz.chedule.data.encodeBackupJson
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayCourseExclusion
@@ -1037,7 +1037,7 @@ private fun buildExportJson(
         showToast("「$scheduleName」课表为空，无法导出")
         return null
     }
-    return GsonBuilder().setPrettyPrinting().create().toJson(data)
+    return encodeBackupJson(data)
 }
 
 internal fun icsDatesForCourse(

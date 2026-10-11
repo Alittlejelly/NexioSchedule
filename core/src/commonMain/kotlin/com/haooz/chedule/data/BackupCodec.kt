@@ -1,5 +1,7 @@
 package com.haooz.chedule.data
 
+import kotlinx.serialization.json.Json
+
 /**
  * 本地备份「恢复门禁」—— 跨平台（kotlinx-serialization）实现。
  *
@@ -128,3 +130,21 @@ fun parseBackupPayload(json: String): BackupPayload {
     HolidayManager.decodeBackupData(data)
     return BackupPayload.Full(data)
 }
+
+// ── 备份 JSON 序列化（R2 写侧）──────────────────────────────────────
+
+/** pretty 备份编码：2 空格缩进（与 Gson setPrettyPrinting 一致）。 */
+private val prettyBackupJson = Json { prettyPrint = true }
+
+/**
+ * 备份 Map → JSON 文本（跳过 null + pretty）。**等价原 `GsonBuilder().setPrettyPrinting().toJson(data)`**。
+ *
+ * Gson 默认**跳过值为 null 的字段**，故这里用 [toJsonElementWithoutNulls] 递归剔除 null，
+ * 再 pretty 打印。落盘后仍是合法 JSON，能被 [parseBackupPayload]（恢复门禁，已 round-trip 回归）
+ * 与旧版 Gson 正确读回 —— 唯一差异是极少数空白/数组缩进的排版，跨版本读写兼容。
+ */
+fun encodeBackupJson(data: Map<String, Any?>): String =
+    prettyBackupJson.encodeToString(
+        kotlinx.serialization.json.JsonElement.serializer(),
+        toJsonElementWithoutNulls(data),
+    )
