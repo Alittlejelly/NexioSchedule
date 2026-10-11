@@ -20,16 +20,14 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`b35aeaa6`**（2026-10-11）。工作区**干净**，动手前 `git status` 对齐。
-🟡 冲刺期**多会话并发**改同一仓库。
+**代码状态**：`master` = **`7ce095fe`**（2026-10-11）。⚠ 工作区可能有**并发会话**改动，动手前 `git status --short` 逐文件核对归属。
+🟡 冲刺期**多会话并发**改同一仓库（本轮已遇到：另一会话在改 EducationalImportScreen 包名迁移）。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页已迁**；
-`:ui-shared` 已迁入 86 文件 / 34.2k 行；`:androidApp` 剩 55 文件 / 33.8k 行，其中 **25 文件永不迁移**，
-**真正待迁 29 文件 / 25.7k 行**。**应用代码完成度约 63%**。
-**`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**。
-🔴 **R2 读侧（导入/恢复门禁/扫描）已 Gson→kotlinx 完成 + 真实备份 round-trip 回归**；写侧留待页面迁 commonMain。
-新增平台抽象：`DiagnosticRecorder`（诊断录制，FeatureLog 同款注入模式）。
-iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳已迁**；
+`:ui-shared` 已迁入 88 文件 / 35.9k 行；`:androidApp` 剩 54 文件 / 32.2k 行。
+**应用代码完成度约 65%**。设置链：TabletSettingsScreen 外壳已迁（8 dest 用 androidPane 槽位过渡），
+SettingsScreen 待迁（仅剩嵌套）。**下一步 = 逐个迁 androidPane 槽位里的页面 UI + 能力注入**。
+**R2 读侧已完成**；写侧留待备份页迁 commonMain。iOS target 默认关闭，无 Xcode 工程。
 
 ### 本机环境（不看会白踩半天）
 
@@ -229,6 +227,7 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 |---|---|---|
 | `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
 | `b35aeaa6` | `AboutScreen` 进 `:ui-shared`；抽 `DiagnosticRecorder` 平台抽象；SettingsScreen 清 Calendar/UUID | 10-11 |
+| `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
 | `c4373883` | `AiImportScreen` 进 `:ui-shared`（剪贴板注入）+ 备份夹具入库 | 10-11 |
 | `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
