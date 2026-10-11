@@ -1,8 +1,6 @@
 /** 切换课程表页面 */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
@@ -57,10 +55,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -75,6 +75,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.CourseRepository
@@ -88,12 +90,10 @@ import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
-import com.haooz.chedule.ui.utils.ApiCompat
-import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.ui.utils.performScheduleShare
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -126,6 +126,7 @@ import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.abs
 import kotlin.math.sign
@@ -135,15 +136,14 @@ import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-@SuppressLint("ConfigurationScreenWidthHeight", "MutableCollectionMutableState")
 @Composable
 fun SwitchScheduleScreen(
-    onBack: (android.graphics.Bitmap?) -> Unit = { _ -> },
+    onBack: (androidx.compose.ui.graphics.ImageBitmap?) -> Unit = { _ -> },
     onScheduleChanged: () -> Unit = {},
     onCardClick: (androidx.compose.ui.geometry.Rect) -> Unit = { _ -> onBack(null) },
-    onCardSnapshot: (screenBitmap: android.graphics.Bitmap, cardBitmap: android.graphics.Bitmap, bounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _, _ -> },
+    onCardSnapshot: (screenBitmap: androidx.compose.ui.graphics.ImageBitmap, cardBitmap: androidx.compose.ui.graphics.ImageBitmap, bounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _, _ -> },
     onCurrentCardBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
-    onScreenReady: (screenBitmap: android.graphics.Bitmap?, cardBounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
+    onScreenReady: (screenBitmap: androidx.compose.ui.graphics.ImageBitmap?, cardBounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
     onContentOffset: (x: Float, y: Float) -> Unit = { _, _ -> },
     pageScale: Float = 1f,
     initialScheduleNames: List<String>? = null,
@@ -151,6 +151,10 @@ fun SwitchScheduleScreen(
     initialScheduleSummaries: Map<String, String>? = null,
     /** 平板左栏内嵌：无卡片形变、无返回关闭，标题由外层分栏绘制 */
     embedded: Boolean = false,
+    /** 分享执行：由 Android 宿主注入（ScheduleExport.performScheduleShare 是 Android 专有） */
+    onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
+    /** 分享前置检查（课表是否为空）：宿主注入（buildShareScheduleMap 依赖 Gson=R2，留在宿主） */
+    isScheduleShareable: (scheduleName: String) -> Boolean = { true },
     /** 内嵌时由外部指定内容顶距，替代按整屏状态栏+折叠标题推算 */
     contentTopPadding: androidx.compose.ui.unit.Dp? = null,
     /** 列表纵向滚动量回调，供内嵌顶栏遮罩使用 */
@@ -161,30 +165,29 @@ fun SwitchScheduleScreen(
     /** 内嵌编辑模式状态：外层标题栏可据此显示 Close 并退出编辑 */
     externalIsEditMode: androidx.compose.runtime.MutableState<Boolean>? = null,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val repository = remember { CourseRepository() }
     val scrollBehavior = rememberSharedScrollBehavior()
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val screenGraphicsLayer = rememberGraphicsLayer()
+    // 卡片快照裁剪层：把整屏快照按 bounds 重录成小图（跨平台，替代 Bitmap.createBitmap 区域拷贝）
+    val cardLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     // 页面快照「按需录制」：record() 会把整页（液态玻璃顶栏 + LazyColumn + backdrop 录制）再离屏
     // 完整画一遍，常驻每帧录制等于把每帧绘制成本翻倍，进/退动画期间必掉帧。
     // 只在真正要 toImageBitmap() 前录一帧，其余帧完全不录（与 MainActivity 主内容快照同一套做法）。
     val lastRecordedSnapshotToken = remember { intArrayOf(0) }
     var snapshotToken by remember { mutableIntStateOf(0) }
-    val capturePageBitmap: suspend () -> android.graphics.Bitmap? = {
+    val capturePageBitmap: suspend () -> androidx.compose.ui.graphics.ImageBitmap? = {
         snapshotToken++
         // 等一帧让 draw 阶段完成录制，再等一帧确保该帧已提交
         withFrameNanos { }
         withFrameNanos { }
         try {
-            screenGraphicsLayer.toImageBitmap().asAndroidBitmap()
+            screenGraphicsLayer.toImageBitmap()
         } catch (_: OutOfMemoryError) {
             // OOM 是 Error 不是 Exception：全屏读回在低端机上最容易触发
-            com.haooz.chedule.ui.utils.CrashLogHelper.trace(
-                "切换课表", "page_snapshot_oom"
-            )
+            com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("page_snapshot_oom")
             null
         } catch (_: Exception) {
             null
@@ -211,8 +214,8 @@ fun SwitchScheduleScreen(
         )
     }
     LaunchedEffect(Unit) {
-        com.haooz.chedule.ui.utils.CrashLogHelper.trace(
-            "切换课表", "screen_compose",
+        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule(
+            "screen_compose",
             "names=${scheduleNames.size} current=$currentScheduleId"
         )
         if (initialCurrentScheduleId == null) {
@@ -265,17 +268,12 @@ fun SwitchScheduleScreen(
 
     fun performShareSchedule(scheduleName: String) {
         if (isSharingSchedule) return
-        performScheduleShare(
-            context = context,
-            scope = scope,
-            scheduleName = scheduleName,
-            onSharingChanged = { isSharingSchedule = it }
-        )
+        onShareSchedule(scheduleName) { isSharingSchedule = it }
     }
 
     // 返回/点当前课表：保持当前选中，不重排列表，只关闭页面
     val dismissKeepCurrent = {
-        com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_current", currentScheduleId)
+        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("select_current", currentScheduleId)
         if (!embedded) {
             scope.launch {
                 onBack(capturePageBitmap())
@@ -289,7 +287,7 @@ fun SwitchScheduleScreen(
             dismissKeepCurrent()
             return
         }
-        com.haooz.chedule.ui.utils.CrashLogHelper.trace("切换课表", "select_other", scheduleName)
+        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("select_other", scheduleName)
         // 不重排列表，只切换当前课表
         repository.switchToSchedule(scheduleName)
         currentScheduleId = scheduleName
@@ -308,20 +306,28 @@ fun SwitchScheduleScreen(
                             .coerceIn(0, fullBitmap.height - 1)
                         val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
                         val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
-                        android.graphics.Bitmap.createBitmap(fullBitmap, x, y, w, h)
+                        // 跨平台裁剪：把全屏快照按 bounds 重录进一个小 layer
+                        //（等价原 Bitmap.createBitmap 区域拷贝）。
+                        // ⚠ record 的便捷重载只在 DrawScope 接收者内可见，协程里要显式传
+                        // density/layoutDirection（成员版）；纯像素拷贝与布局方向无关。
+                        cardLayer.record(
+                            density = density,
+                            layoutDirection = LayoutDirection.Ltr,
+                            size = IntSize(w, h),
+                        ) {
+                            drawImage(fullBitmap, topLeft = Offset(-x.toFloat(), -y.toFloat()))
+                        }
+                        cardLayer.toImageBitmap()
                     } catch (_: Exception) {
                         null
                     } catch (_: OutOfMemoryError) {
-                        com.haooz.chedule.ui.utils.CrashLogHelper.trace(
-                            "切换课表", "card_crop_oom"
-                        )
+                        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("card_crop_oom")
                         null
                     }
                     if (cardBitmap != null) {
                         onCardSnapshot(fullBitmap, cardBitmap, bounds)
                     } else {
-                        // 裁不出卡片快照：整屏素材没人消费，直接回收（宿主会走无快照退出）
-                        runCatching { if (!fullBitmap.isRecycled) fullBitmap.recycle() }
+                        // ImageBitmap 无 recycle：丢引用交给 GC（原 Bitmap.recycle() 已无意义）
                     }
                 }
                 onCardClick(bounds)
@@ -458,13 +464,17 @@ fun SwitchScheduleScreen(
         }
     }
 
-    BackHandler(enabled = isEditMode) {
-        exitEditMode()
-    }
+    NavigationBackHandlerFor(
+        enabled = isEditMode,
+        onBackCompleted = { exitEditMode() },
+        onBackCancelled = { }
+    )
 
-    BackHandler(enabled = !isEditMode && !embedded) {
-        dismissKeepCurrent()
-    }
+    NavigationBackHandlerFor(
+        enabled = !isEditMode && !embedded,
+        onBackCompleted = { dismissKeepCurrent() },
+        onBackCancelled = { }
+    )
 
     var displayTitle by remember { mutableStateOf("全部课表") }
     LaunchedEffect(isEditMode) {
@@ -608,9 +618,10 @@ fun SwitchScheduleScreen(
                             .fillMaxWidth()
                             .graphicsLayer {
                                 val r = bottombarBlur.value
-                                renderEffect = ApiCompat.blurRenderEffect(
-                                    if (r > 0.01f) r * density.density else 0f
-                                )
+                                val blurRadiusPx = if (r > 0.01f) r * density.density else 0f
+                                renderEffect = if (blurRadiusPx > 0f && isRenderEffectSupported()) {
+                                    BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
+                                } else null
                             }
                             .graphicsLayer {
                                 transformOrigin = TransformOrigin(0.5f, 1f)
@@ -748,7 +759,7 @@ fun SwitchScheduleScreen(
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
                                         val selected = selectedSchedules.firstOrNull()
                                         if (selected != null && !isSharingSchedule) {
-                                            if (buildShareScheduleMap(repository, selected) == null) {
+                                            if (!isScheduleShareable(selected)) {
                                                 showToast("「$selected」课表为空，无法分享")
                                             } else {
                                                 shareConfirmScheduleName = selected

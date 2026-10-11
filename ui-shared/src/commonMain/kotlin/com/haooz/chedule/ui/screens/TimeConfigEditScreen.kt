@@ -1,8 +1,6 @@
 /** 时间配置编辑页面 - Screen */
 package com.haooz.chedule.ui.screens
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -48,14 +46,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -65,10 +62,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.NavigationEventTransitionState
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.SpecialBlock
 import com.haooz.chedule.data.TimeConfig
@@ -85,11 +78,13 @@ import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -192,6 +187,10 @@ private fun parseTimeHm(time: String): Pair<Int, Int> {
     }
 }
 
+/** 格式化 (小时, 分钟) 为 "HH:mm"（跨平台替代 String.format("%02d:%02d")，见 checkKmpPurity） */
+private fun formatHhMm(hour: Int, minute: Int): String =
+    hour.toString().padStart(2, '0') + ":" + minute.toString().padStart(2, '0')
+
 /**
  * 保存前的时间冲突检查结果。
  *
@@ -250,7 +249,6 @@ private fun sortSpecialBlocksByTime(blocks: List<SpecialBlock>): List<SpecialBlo
     )
 }
 
-@SuppressLint("DefaultLocale", "AutoboxingStateValueProperty", "ConfigurationScreenWidthHeight")
 @Composable
 fun TimeConfigEditScreen(
     timeConfig: TimeConfig,
@@ -266,13 +264,13 @@ fun TimeConfigEditScreen(
     screenHeight: Float = 0f,
     screenCornerRadius: Float = 0f,
     cardStartCornerRadius: Float = 0f,
-    cardSnapshot: Bitmap? = null,
+    /** 课程卡快照：跨平台用 Compose 的 ImageBitmap（裁剪在 Android 宿主侧完成） */
+    cardSnapshot: ImageBitmap? = null,
     isFabCreation: Boolean = false,
     /** 删除当前作息并回到一级列表（宿主负责落库与刷新列表） */
     onDeleteRoutine: (Long) -> Unit = {},
     liquidGlassBackdrop: LayerBackdrop? = null
 ) {
-    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -378,17 +376,19 @@ fun TimeConfigEditScreen(
     // 预测性返回：手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
     // 预测返回期间围绕屏幕中心缩放（translation=0），位移/裁切保持全屏不动；
     // 取消回弹全屏、完成随关闭动画一起缩回卡片；
-    // 低版本 NavigationBackHandler 自动退化为立即播放完整退出动画
-    val navigationEventState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    // 低版本自动退化为立即播放完整退出动画（navigationevent 自身行为，Android actual 逐字保留）。
+    // 跨平台化：androidx.navigationevent 只有 Android artifact，改用 :miuix 的
+    // expect/actual 封装 rememberNavigationBack —— handler 与进度读取绑定同一份状态
+    // （拆开会导致跟手动画失效且编译无报错）。
+    val navigationBackState = rememberNavigationBack()
     // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
     val gestureBackProgress = remember { Animatable(0f) }
     val scaleProgress = remember { Animatable(0f) }
     // 手势是否正在推进：进行中裁切完全跟随页面缩放，松手/取消后进入平滑过渡
     var isGestureActive by remember { mutableStateOf(false) }
 
-    NavigationBackHandler(
-        state = navigationEventState,
-        isBackEnabled = true,
+    navigationBackState.handler(
+        enabled = true,
         onBackCancelled = {
             isGestureActive = false
             scope.launch {
@@ -459,18 +459,17 @@ fun TimeConfigEditScreen(
     // 缩放跟随行程为"卡片→全屏"全程的 200%（滑到底 scaleProgress=-1），
     // 松手后由 onBackCompleted 按正常关闭动画回到卡片（1 倍）
     LaunchedEffect(Unit) {
-        snapshotFlow { navigationEventState.transitionState }
-            .collect { transitionState ->
-                if (
-                    transitionState is NavigationEventTransitionState.InProgress &&
-                    transitionState.direction == NavigationEventTransitionState.TRANSITIONING_BACK
-                ) {
+        // backProgress() 已内含「转场进行中且方向为后退」判定（与迁移前的
+        // transitionState is InProgress && direction == TRANSITIONING_BACK 逐字等价），
+        // 非手势期间为 null —— 保持静止。
+        snapshotFlow { navigationBackState.backProgress() }
+            .collect { progress ->
+                if (progress != null) {
                     // 关闭动画进行中或无卡片边界时不驱动页面变形
                     if (!animating && hasCardBounds) {
                         // 预测性返回动画开关：关闭时不驱动跟随动画（返回仍被拦截，直接关闭）
                         if (PredictiveBackSettings.enabled) {
                             isGestureActive = true
-                            val progress = transitionState.latestEvent.progress
                             gestureBackProgress.snapTo(progress)
                             // 添加时间配置（右下角加号进入）退出时行程 20%，编辑模式为 200%
                             scaleProgress.snapTo(1f - progress * if (isFabCreation) 0.2f else 2f)
@@ -788,9 +787,8 @@ fun TimeConfigEditScreen(
                 )
         ) {
             if (cardSnapshot != null && s.snapshotAlpha > 0f) {
-                val imageBitmap = remember(cardSnapshot) { cardSnapshot.asImageBitmap() }
                 Image(
-                    bitmap = imageBitmap,
+                    bitmap = cardSnapshot,
                     contentDescription = null,
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1116,8 +1114,7 @@ fun TimeConfigEditScreen(
                                                         title = "上午开始时间",
                                                         endActions = {
                                                             Text(
-                                                                String.format(
-                                                                    "%02d:%02d",
+                                                                formatHhMm(
                                                                     morningStartHour,
                                                                     morningStartMinute
                                                                 ),
@@ -1138,8 +1135,7 @@ fun TimeConfigEditScreen(
                                                         title = "下午开始时间",
                                                         endActions = {
                                                             Text(
-                                                                String.format(
-                                                                    "%02d:%02d",
+                                                                formatHhMm(
                                                                     afternoonStartHour,
                                                                     afternoonStartMinute
                                                                 ),
@@ -1160,8 +1156,7 @@ fun TimeConfigEditScreen(
                                                         title = "晚上开始时间",
                                                         endActions = {
                                                             Text(
-                                                                String.format(
-                                                                    "%02d:%02d",
+                                                                formatHhMm(
                                                                     eveningStartHour,
                                                                     eveningStartMinute
                                                                 ),
@@ -1484,7 +1479,7 @@ fun TimeConfigEditScreen(
                                             },
                                             visibleItemCount = 3,
                                             itemHeight = 60.dp,
-                                            label = { String.format("%02d", it) },
+                                            label = { it.toString().padStart(2, '0') },
                                             wrapAround = true,
                                             textStyle = MiuixTheme.textStyles.title1,
                                             modifier = Modifier.weight(1f)
@@ -1504,7 +1499,7 @@ fun TimeConfigEditScreen(
                                             range = minuteValues.indices,
                                             visibleItemCount = 3,
                                             itemHeight = 60.dp,
-                                            label = { String.format("%02d", minuteValues[it]) },
+                                            label = { minuteValues[it].toString().padStart(2, '0') },
                                             wrapAround = true,
                                             textStyle = MiuixTheme.textStyles.title1,
                                             modifier = Modifier.weight(1f)
@@ -1672,7 +1667,7 @@ fun TimeConfigEditScreen(
                                         range = 0..23,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", it) },
+                                        label = { it.toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1691,7 +1686,7 @@ fun TimeConfigEditScreen(
                                         range = minuteValues.indices,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", minuteValues[it]) },
+                                        label = { minuteValues[it].toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1708,7 +1703,7 @@ fun TimeConfigEditScreen(
                                         range = 0..23,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", it) },
+                                        label = { it.toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1727,7 +1722,7 @@ fun TimeConfigEditScreen(
                                         range = minuteValues.indices,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", minuteValues[it]) },
+                                        label = { minuteValues[it].toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1777,10 +1772,10 @@ fun TimeConfigEditScreen(
                                                 showToast("结束时间需晚于开始时间")
                                                 return@TextButton
                                             }
-                                            val startStr = String.format("%02d:%02d", tempSpecialStartHour, tempSpecialStartMinute)
-                                            val endStr = String.format("%02d:%02d", tempSpecialEndHour, tempSpecialEndMinute)
+                                            val startStr = formatHhMm(tempSpecialStartHour, tempSpecialStartMinute)
+                                            val endStr = formatHhMm(tempSpecialEndHour, tempSpecialEndMinute)
                                             val block = SpecialBlock(
-                                                id = if (editingSpecialIndex == -1) System.currentTimeMillis() else specialBlocks[editingSpecialIndex].id,
+                                                id = if (editingSpecialIndex == -1) Clock.System.now().toEpochMilliseconds() else specialBlocks[editingSpecialIndex].id,
                                                 name = tempSpecialName,
                                                 startTime = startStr,
                                                 endTime = endStr,
@@ -1912,7 +1907,7 @@ fun TimeConfigEditScreen(
                                         range = 0..23,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", it) },
+                                        label = { it.toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1932,7 +1927,7 @@ fun TimeConfigEditScreen(
                                         range = minuteValues.indices,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", minuteValues[it]) },
+                                        label = { minuteValues[it].toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1949,7 +1944,7 @@ fun TimeConfigEditScreen(
                                         range = 0..23,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", it) },
+                                        label = { it.toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1969,7 +1964,7 @@ fun TimeConfigEditScreen(
                                         range = minuteValues.indices,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { String.format("%02d", minuteValues[it]) },
+                                        label = { minuteValues[it].toString().padStart(2, '0') },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1999,14 +1994,12 @@ fun TimeConfigEditScreen(
                                                 return@TextButton
                                             }
                                             val newTimeStr = "${
-                                                String.format(
-                                                    "%02d:%02d",
+                                                formatHhMm(
                                                     tempStartHour,
                                                     tempStartMinute
                                                 )
                                             }-${
-                                                String.format(
-                                                    "%02d:%02d",
+                                                formatHhMm(
                                                     tempEndHour,
                                                     tempEndMinute
                                                 )

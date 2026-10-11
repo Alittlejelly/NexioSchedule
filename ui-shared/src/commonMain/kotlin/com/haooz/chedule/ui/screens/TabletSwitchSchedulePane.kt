@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.ioDispatcher
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,7 +67,6 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -87,6 +87,11 @@ fun TabletSwitchSchedulePane(
     scheduleViewModel: ScheduleViewModel,
     settingsViewModel: SettingsViewModel,
     liquidGlassBackdrop: Backdrop?,
+    /** 分享执行：由 Android 宿主注入（ScheduleExport.performScheduleShare 是 Android 专有）；
+     *  内嵌编辑模式的底栏「分享」按钮会渲染，须转发给左栏 SwitchScheduleScreen */
+    onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
+    /** 分享前置检查（课表是否为空）：宿主注入（buildShareScheduleMap 依赖 Gson=R2，留在宿主） */
+    isScheduleShareable: (scheduleName: String) -> Boolean = { true },
 ) {
     val scope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
@@ -159,10 +164,12 @@ fun TabletSwitchSchedulePane(
                         onScheduleChanged = {
                             viewModel.reloadCourses()
                             settingsViewModel.refreshSettings()
-                            scope.launch(Dispatchers.IO) {
+                            scope.launch(ioDispatcher) {
                                 scheduleViewModel.refreshScheduleList()
                             }
                         },
+                        onShareSchedule = onShareSchedule,
+                        isScheduleShareable = isScheduleShareable,
                         contentTopPadding = chromeTop,
                         onScrollYChanged = { leftScrollPx = it.toFloat().coerceAtLeast(0f) },
                         externalShowAddDialog = showAddDialog,

@@ -121,6 +121,7 @@ import androidx.core.graphics.scale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.PrivacyConsent
 import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.StatsReporter
@@ -163,10 +164,12 @@ import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.applyNavigationBarIsDark
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
+import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
+import com.haooz.chedule.ui.utils.performScheduleShare
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -3979,11 +3982,25 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                     4 -> {
                                         // 切换课表同上，不预加载
                                         if (mainPagerState.currentPage == 4) {
+                                            // 分享回调由宿主注入（ScheduleExport/Gson 是 Android 专有）
+                                            val shareContext = LocalContext.current
+                                            val shareRepository = remember { CourseRepository() }
                                             TabletSwitchSchedulePane(
                                                 viewModel = viewModel,
                                                 scheduleViewModel = scheduleViewModel,
                                                 settingsViewModel = settingsViewModel,
                                                 liquidGlassBackdrop = liquidGlassBackdrop,
+                                                onShareSchedule = { name, changed ->
+                                                    performScheduleShare(
+                                                        context = shareContext,
+                                                        scope = coroutineScope,
+                                                        scheduleName = name,
+                                                        onSharingChanged = changed,
+                                                    )
+                                                },
+                                                isScheduleShareable = { name ->
+                                                    buildShareScheduleMap(shareRepository, name) != null
+                                                },
                                             )
                                         }
                                     }
@@ -5400,14 +5417,19 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         alpha = if (switchCapturingSnapshot) 0f else 1f
                     }
             ) {
+                // 分享回调由宿主注入（ScheduleExport/Gson 是 Android 专有）
+                val switchShareContext = LocalContext.current
+                val switchShareRepository = remember { CourseRepository() }
                 SwitchScheduleScreen(
                     onBack = { switchPageBitmap ->
+                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
+                        val switchPageBitmapBmp = switchPageBitmap?.asAndroidBitmap()
                         if (switchAnimRunning && !switchAnimForward) {
                             // 退出动画已在跑，这次回调没人消费。它带的整屏截图只用来裁卡片，
                             // 直接回收，否则每次快速连点返回都漏一张全屏位图
                             coroutineScope.launch {
                                 delay(32.milliseconds)
-                                recycleIndependentBitmap(switchPageBitmap, switchCardSnapshot)
+                                recycleIndependentBitmap(switchPageBitmapBmp, switchCardSnapshot)
                             }
                             return@SwitchScheduleScreen
                         }
@@ -5432,7 +5454,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 scheduleChanged = false
                             }
                             val currentBounds = switchCurrentCardBounds
-                            val screenBitmap = switchPageBitmap ?: mainContentSnapshot
+                            val screenBitmap = switchPageBitmapBmp ?: mainContentSnapshot
                             if (currentBounds != null && screenBitmap != null) {
                                 switchOverlayActive = true
                                 switchCardBounds = currentBounds
@@ -5484,7 +5506,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 )
                                 recycleIndependentBitmap(
                                     oldSwitchMain,
-                                    switchPageBitmap,
+                                    switchPageBitmapBmp,
                                     MainActivity.cachedWallpaperBitmap,
                                     wallpaperBitmap,
                                 )
@@ -5492,7 +5514,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 // 它和 mainContentSnapshot 是两个独立对象时（选中的是另一张
                                 // 课表 / 点了当前课表走 dismissKeepCurrent）才会走到这里。
                                 recycleIndependentBitmap(
-                                    switchPageBitmap,
+                                    switchPageBitmapBmp,
                                     oldSwitchCard,
                                     oldSwitchMain,
                                     MainActivity.cachedWallpaperBitmap,
@@ -5515,13 +5537,16 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         switchCardBounds = bounds
                     },
                     onCardSnapshot = { fullBitmap, cardBitmap, bounds ->
+                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
+                        val fullBitmapBmp = fullBitmap.asAndroidBitmap()
+                        val cardBitmapBmp = cardBitmap.asAndroidBitmap()
                         if (switchAnimJob?.isActive == true) {
                             // 退出动画已在跑：卡片快照和它裁自的整屏截图都无人消费。
                             // 互为 keep，裁剪区等于整图时两者同一对象，天然都不回收
                             coroutineScope.launch {
                                 delay(32.milliseconds)
-                                recycleIndependentBitmap(cardBitmap, fullBitmap)
-                                recycleIndependentBitmap(fullBitmap, cardBitmap)
+                                recycleIndependentBitmap(cardBitmapBmp, fullBitmapBmp)
+                                recycleIndependentBitmap(fullBitmapBmp, cardBitmapBmp)
                             }
                             return@SwitchScheduleScreen
                         }
@@ -5543,7 +5568,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 }
                             }
                             switchOverlayActive = true
-                            switchCardSnapshot = cardBitmap
+                            switchCardSnapshot = cardBitmapBmp
                             switchCardBounds = bounds
                             val currentProgress = switchAnimProgress.value
                             val remainingDuration =
@@ -5567,8 +5592,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             launch {
                                 delay(32.milliseconds)
                                 recycleIndependentBitmap(
-                                    fullBitmap,
-                                    cardBitmap,
+                                    fullBitmapBmp,
+                                    cardBitmapBmp,
                                     MainActivity.cachedWallpaperBitmap,
                                     wallpaperBitmap,
                                 )
@@ -5579,6 +5604,8 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         switchCurrentCardBounds = bounds
                     },
                     onScreenReady = { screenBitmap, cardBounds ->
+                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
+                        val screenBitmapBmp = screenBitmap?.asAndroidBitmap()
                         if (!switchPendingReverse) {
                             // 锚点 bounds 后续再变会重复回调（见 SwitchScheduleScreen 里的上闩），
                             // 走到这里说明动画早已启动：这张全屏截图没人要，直接回收
@@ -5587,7 +5614,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             )
                             coroutineScope.launch {
                                 delay(32.milliseconds)
-                                recycleIndependentBitmap(screenBitmap, switchCardSnapshot)
+                                recycleIndependentBitmap(screenBitmapBmp, switchCardSnapshot)
                             }
                         } else {
                             switchPendingReverse = false
@@ -5595,7 +5622,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             switchAnimRunning = true
                             com.haooz.chedule.ui.utils.CrashLogHelper.trace(
                                 "切换课表", "anim_enter_start",
-                                "bmp=${screenBitmap != null} bounds=$cardBounds"
+                                "bmp=${screenBitmapBmp != null} bounds=$cardBounds"
                             )
                             switchAnimJob?.cancel()
                             val cardBoundsInScreen = androidx.compose.ui.geometry.Rect(
@@ -5605,17 +5632,17 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                 bottom = switchContentRootY + cardBounds.bottom
                             )
                             // 截图失败时 cardSnap=null，动画照常跑，不能卡在 alpha=0
-                            val cardSnap = if (screenBitmap != null) {
+                            val cardSnap = if (screenBitmapBmp != null) {
                                 try {
-                                    val x =
-                                        cardBounds.left.toInt().coerceIn(0, screenBitmap.width - 1)
-                                    val y =
-                                        cardBounds.top.toInt().coerceIn(0, screenBitmap.height - 1)
-                                    val w =
-                                        cardBounds.width.toInt().coerceIn(1, screenBitmap.width - x)
+                                    val x = cardBounds.left.toInt()
+                                        .coerceIn(0, screenBitmapBmp.width - 1)
+                                    val y = cardBounds.top.toInt()
+                                        .coerceIn(0, screenBitmapBmp.height - 1)
+                                    val w = cardBounds.width.toInt()
+                                        .coerceIn(1, screenBitmapBmp.width - x)
                                     val h = cardBounds.height.toInt()
-                                        .coerceIn(1, screenBitmap.height - y)
-                                    android.graphics.Bitmap.createBitmap(screenBitmap, x, y, w, h)
+                                        .coerceIn(1, screenBitmapBmp.height - y)
+                                    android.graphics.Bitmap.createBitmap(screenBitmapBmp, x, y, w, h)
                                 } catch (_: Exception) {
                                     null
                                 } catch (_: OutOfMemoryError) {
@@ -5630,7 +5657,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                             // createBitmap 会原样返回 screenBitmap，此时它就是 cardSnap 本体。
                             coroutineScope.launch {
                                 delay(32.milliseconds)
-                                recycleIndependentBitmap(screenBitmap, cardSnap, switchCardSnapshot)
+                                recycleIndependentBitmap(screenBitmapBmp, cardSnap, switchCardSnapshot)
                             }
                             switchAnimJob = coroutineScope.launch {
                                 switchAnimProgress.snapTo(1f)
@@ -5673,6 +5700,17 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         switchContentRootY = y
                     },
                     pageScale = 1f,
+                    onShareSchedule = { name, changed ->
+                        performScheduleShare(
+                            context = switchShareContext,
+                            scope = coroutineScope,
+                            scheduleName = name,
+                            onSharingChanged = changed,
+                        )
+                    },
+                    isScheduleShareable = { name ->
+                        buildShareScheduleMap(switchShareRepository, name) != null
+                    },
                     initialScheduleNames = scheduleViewModel.scheduleNames.collectAsState().value,
                     initialCurrentScheduleId = scheduleViewModel.currentScheduleName.collectAsState().value,
                     initialScheduleSummaries = scheduleViewModel.scheduleSummaries.collectAsState().value

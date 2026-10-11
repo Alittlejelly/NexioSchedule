@@ -731,6 +731,9 @@ private fun CourseTimeSettingsRoute(router: AppRouter) {
         if (currentPage == "edit") {
             editingConfig?.let { config ->
                 val bounds = editingCardBounds
+                // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
+                // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
+                val timeConfigSnapshotImage = remember(cardSnapshot) { cardSnapshot?.asImageBitmap() }
                 TimeConfigEditScreen(
                     timeConfig = config,
                     routineId = editingRoutineId ?: 0L,
@@ -777,7 +780,7 @@ private fun CourseTimeSettingsRoute(router: AppRouter) {
                     screenHeight = screenHeight,
                     screenCornerRadius = screenCornerRadius,
                     cardStartCornerRadius = 20f,
-                    cardSnapshot = cardSnapshot,
+                    cardSnapshot = timeConfigSnapshotImage,
                     // 新建配置的 FAB 形态已随「快捷切换」一起移除，二级页永远从列表卡片展开
                     isFabCreation = false,
                     onDeleteRoutine = { routineId ->
