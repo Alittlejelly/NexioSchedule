@@ -14,5 +14,9 @@ DEVELOPMENT_TEAM =
 // Compose Multiplatform 要求的最低系统版本（UIKit + Skiko 渲染路径实测门槛）
 IPHONEOS_DEPLOYMENT_TARGET = 16.0
 
-// Kotlin framework 由 gradle 产出后放这里（KMP 的 embed 任务默认输出目录）
-FRAMEWORK_SEARCH_PATHS = $(SRCROOT)/../ui-shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+// Kotlin framework 的搜索路径。第一项是 build phase 脚本建的**固定软链**，
+// 指向 gradle 本次实际产出的 framework（见 project.pbxproj 的 \"Build Kotlin Framework\"）；
+// 第二项是 gradle 原始的按-SDK 分目录输出，留着做兜底。
+// ⚠ 不要只留第二项：换 destination（模拟器 ⇄ 真机、不同 iOS 版 SDK）目录名就变了，
+//   会报 "Unable to resolve module dependency 'NexioShared'"，且看不出是路径问题。
+FRAMEWORK_SEARCH_PATHS = $(SRCROOT)/Frameworks $(SRCROOT)/../ui-shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)

@@ -54,3 +54,6 @@ androidApp/src/main/assets/eduloader/school_index.pb
 iosApp/build/
 iosApp/DerivedData/
 *.xcuserdatad/
+
+# iOS 侧 build phase 生成的 framework 软链（见 project.pbxproj 的脚本）
+iosApp/Frameworks/

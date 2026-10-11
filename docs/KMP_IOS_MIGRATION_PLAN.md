@@ -37,7 +37,7 @@
 ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/BackupFileController/
 **ScheduleFileController**（SAF 选文件读 / 另存为）。
 **androidPane 的 8 个留守 dest 已全部清零**，设置页本体 / 外观自定义页 / 教务导入网页外壳都已迁。
-下一步只剩宿主层（`AppNavHost` / `AppRouteContent` / `MainActivity` / `NexioApplication`）。iOS target 默认关闭。
+下一步只剩宿主层（`AppNavHost` / `AppRouteContent` / `MainActivity` / `NexioApplication`）；iOS target 默认关闭。
 
 🔴 **待真机验证**：教务导入整条链是**整段搬运**，编译期验证不了 —— ① `WebViewScreen` 网页本体
 （PixelCopy 采样 / UA 切桌面版重取页 / 脚本注入 / Cookie 跨页保存）；② `EducationalImportScreen`
@@ -257,6 +257,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `a1f7897d` | **第三十批**：宿主层开工 —— `EducationalImportRoute` / `AboutRoute` 进 `:ui-shared`（Android 侧改 `Android*` 注入包装）；修 Xcode 脚本 phase 未声明 Output Files（改了 Kotlin 不重新链接）；暴露 R13 | 10-12 |
 | `1377acaf` | **第二十九批**：`iosApp/` Xcode 工程落地（bundle `com.haooz.iosschedule`）+ `IosAppEntry`（A4 启动注入三件套）—— **模拟器首跑成功**，首屏注入自检存储/文件全 OK；踩坑：Foundation 类方法要显式 import、顶层函数别用 `init` 开头、build phase 要带 `-Pnexio.ios=true` + `JAVA_HOME` | 10-11 |
 | `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
 | `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
@@ -269,7 +270,6 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
 | `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
 | `0b755b75` | **R2 写侧完成**：备份 JSON encodeBackupJson（skip-nulls+pretty），**备份路径 Gson 清零** | 10-11 |
-| `d6e31bec` | `LocalBackupScreen` 迁 `:ui-shared`；文件 I/O 能力注入首例（BackupFileController） | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
