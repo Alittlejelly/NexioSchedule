@@ -20,8 +20,13 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`23a7a369`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`c4bb6bb9`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
+
+**iOS 编译状态（2026-10-11 首次真编，macOS + Xcode 27）**：四个模块的 `iosArm64` +
+`iosSimulatorArm64` **全部编译通过**，`:core` 的跨平台测试在模拟器上 **109 用例 0 失败**。
+🔴 **唯一挡住 iOS 产物的是 link**：`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact
+同包同名 → 链接期 `IrPropertySymbolImpl is already bound`。**见风险 R10，需要拍板。**
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳/
 提醒设置页/更新设置页/本地备份页/课表导入导出备份页已迁**；`:ui-shared` 已迁入 93 文件 / 40.4k 行；
@@ -106,7 +111,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 ---
 
-## 3. 现状与进度（2026-10-11 晚按 `23a7a369` 实测，本表为准）
+## 3. 现状与进度（2026-10-11 晚按 `c4bb6bb9` 实测，本表为准）
 
 ### 模块现状
 
@@ -256,6 +261,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `c4bb6bb9` | **首次真编 iOS**：`:ui-shared` 挂 `iosArm64`/`iosSimulatorArm64` + framework；四模块 iOS 编译全绿、模拟器跑 109 用例；修 4 处 JVM 专有 API；force `kotlinx-datetime` 0.6.2；**暴露 R10（link 阻塞）** | 10-11 |
 | `23a7a369` | **第二十三批**：`BackupAndMigrationScreen` 迁 `:ui-shared` —— **androidPane 留守 dest 清零**；抽 `ScheduleFileController`；`parseIcsFile`→`:core`、`parseShare*`+`applyScheduleData`→`:ui-shared`；修 `WebDavSettingsScreen` 全限定名 `SimpleDateFormat` 漏报 | 10-11 |
 | `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
 | `b35aeaa6` | `AboutScreen` 进 `:ui-shared`；抽 `DiagnosticRecorder` 平台抽象；SettingsScreen 清 Calendar/UUID | 10-11 |
@@ -270,12 +276,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `2aa310e1` | 第十九批：`CourseDetail`/`CourseEdit`/`TabletCourseManagePane` 进 `:ui-shared`；navigationevent 4→2 文件 | 10-11 |
 | `465aec7e` | 桌面端补 `ViewModelStoreOwner` —— 修共享页 `viewModel()` 点开崩 | 10-11 |
 | `8f7992b1` | 第十八批：`WebDavSettingsScreen` 迁移 + 修扫描器同包反向依赖漏报 | 10-11 |
-| `820bd00` | 撤掉建错的 `SnapshotBitmap`：快照契约改用 Compose 的 `ImageBitmap` | 10-11 |
-| `167ac846` | `CourseManageScreen` + 加 `lifecycle-viewmodel-compose`；修扫描器同包盲区 | 10-11 |
 | `5cdf676` | **三个 ViewModel 全部去 Android 化**（窄接口 `ScheduleEffects`），进 `:ui-shared` | 10-11 |
-| `6c251907` | 提醒时刻算法抠进 `:core`（`DayScheduleResolver`）+ `SettingsViewModel` 去 Android 化 | 10-11 |
-| `6c251907` | 提醒时刻算法抠进 `:core`（`DayScheduleResolver`）+ `SettingsViewModel` 去 Android 化 | 10-11 |
-| `53349ed` | 第十~十四批：资源迁移 + `AppreciateAuthor` / `AddCourseDialog` / `WidgetIntro` | 10-10 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
@@ -309,19 +310,9 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 ### A0. ⚠ 三项工程配置 —— 不做则 App 起不来 / 调不到 Kotlin 代码
 
-**A0-1 `:core` 必须声明 `binaries.framework`**，否则 Swift 侧无法 `import Shared`
-（`compileKotlinIosArm64` 绿了**不代表能用**）：
-
-```kotlin
-// core/build.gradle.kts 的 kotlin { } 内
-val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
-if (enableIos) {
-    iosArm64(); iosSimulatorArm64()
-    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
-        target.binaries.framework { baseName = "Shared"; isStatic = true }
-    }
-}
-```
+**A0-1 `binaries.framework`** —— ✅ `:ui-shared` 已声明（`NexioShared`，`isStatic = true`，
+`iosArm64` + `iosSimulatorArm64`；App 的 Compose 界面全来自这里）。`:core` 若也要给 Swift 用，
+按同一写法补。**注意：`compileKotlinIos*` 绿了不代表能 link** —— 当前 link 卡在 R10。
 
 **A0-2 `Info.plist` 必须设 `CADisableMinimumFrameDurationOnPhone = true`**，否则 iOS 一启动就崩
 （CMP 1.7.3 起强制检查，`enforceStrictPlistSanityCheck` 默认开）：
@@ -350,8 +341,7 @@ if (enableIos) {
 | 自定义方法 | WebDAV 用到 `PROPFIND` / `MKCOL` |
 
 > 为什么是 delegate：`completionHandler` 要等整个响应体收完才回调，大响应会先吃满内存。
-> 实现走 `NSURLSessionDataDelegate` 三件套，`didReceiveResponse` 预检声明长度（超限直接 cancel、
-> 一个字节不收，**与 Android「声明超限 → 空字节 + truncated」逐字对齐**）。
+> `didReceiveResponse` 预检声明长度（超限直接 cancel、一个字节不收，与 Android 逐字对齐）。
 
 ### A2. `KeyValueStore` —— ✅ 已写好（`iosMain/UserDefaultsStore.kt`，待 macOS 验证）
 
@@ -416,10 +406,10 @@ AppFiles.init(
 
 ### C. 加 iOS target 的步骤
 
-1. ✅ 目标已声明（`iosArm64()` + `iosSimulatorArm64()`），但**默认关闭**，`-Pnexio.ios=true` 开启。
-   默认关的原因：声明后 `:core:check` 会去解析 iOS klib 变体，而门禁是 `--offline` → 直接失败，
-   把「Android 零回归」红线弄脏。macOS 上首次需联网：
-   `./gradlew -Pnexio.ios=true :core:compileKotlinIosArm64`
+1. ✅ 四个模块（`:core` / `:miuix` / `:backdrop` / `:ui-shared`）的 `iosArm64()` +
+   `iosSimulatorArm64()` 都已声明，但**默认关闭**，`-Pnexio.ios=true` 开启。
+   默认关的原因：声明后 `check` 会去解析 iOS klib 变体，而门禁是 `--offline` → 直接失败，
+   把「Android 零回归」红线弄脏。命令见 §2。
 2. ✅ `skikoMain` → `iosMain` 接线已做好，且**必须条件式**（target 默认关时源集不存在，
    无条件引用会配置失败）：
    ```kotlin
@@ -568,45 +558,32 @@ AppFiles.init(
 ### R10 详述 —— 当前唯一挡住 iOS 产物的东西
 
 2026-10-11 首次真链接 `:ui-shared` 的 iOS framework 时暴露：
+`e: Compilation failed: IrPropertySymbolImpl is already bound. Signature:
+top.yukonga.miuix.kmp.basic/top_yukonga_miuix_kmp_basic_ButtonDefaults$stableprop`
 
-```
-e: Compilation failed: IrPropertySymbolImpl is already bound. Signature:
-   top.yukonga.miuix.kmp.basic/top_yukonga_miuix_kmp_basic_ButtonDefaults$stableprop
-```
-
-**成因**：官方子库（`miuix-preference` 等）自己会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，
-而本仓库把 miuix-ui fork 成了 `:miuix` 模块 —— **同包同名**。两边的 klib 里都有
-`top.yukonga.miuix.kmp.basic.ButtonDefaults` 这类声明：
-
-| 平台 | 表现 |
-|---|---|
-| Android / JVM | 类路径按名去重，悄悄用其中一个 —— **所以一直没暴露** |
-| Kotlin/Native | 链接期**硬错误**（IR 符号重复绑定） |
+**成因**：官方子库（`miuix-preference` 等）自己会传递依赖 `miuix-ui`，而本仓库把它 fork 成了
+`:miuix` —— **同包同名**，两边 klib 里都有 `basic.ButtonDefaults` 这类声明。
+Android/JVM 类路径按名去重、悄悄用一个（**所以一直没暴露**）；Kotlin/Native 链接期是硬错误。
 
 **已实测排除的两条捷径**：
 
-1. ❌ `exclude(group="top.yukonga.miuix.kmp", module="miuix-ui")` —— fork 是**部分覆盖**，
-   缺 `window/*`（4 个）、`theme/DynamicColors`、`layout/BottomSheetContentLayout`、
-   `layout/CascadingListPopupLayout`、`utils/PagerGestureUtils` 等 **14 个 commonMain 文件**
-   + 1 个 androidMain + 2 个 skikoMain，全靠官方 artifact 兜着；排掉后 `:miuix` 自己编不过。
-2. ❌ 从 Maven 拉官方 `miuix-ui-0.9.4-sources.jar` 把这 14 个文件补进 fork —— fork 改过
-   内部 API（如 `DialogContentLayout` 去掉了 `maxWidth/largeScreen/cornerRadius` 参数），
-   官方那些文件按官方签名调用 → `Redeclaration` / `Conflicting declarations` / 参数不匹配。
+1. ❌ `exclude(module = "miuix-ui")` —— fork 是**部分覆盖**：缺 `window/*`(4)、
+   `theme/DynamicColors`、`layout/BottomSheetContentLayout`、`utils/PagerGestureUtils` 等
+   **14 个 commonMain + 1 个 androidMain + 2 个 skikoMain** 文件，全靠官方 artifact 兜着；
+   排掉后 `:miuix` 自己编不过。
+2. ❌ 拉官方 `miuix-ui-0.9.4-sources.jar` 补这 14 个文件 —— fork 改过内部 API
+   （如 `DialogContentLayout` 去掉 `maxWidth/largeScreen/cornerRadius`），官方文件按官方签名
+   调用 → `Redeclaration` / `Conflicting declarations` / 参数不匹配。
 
-**量化**（`miuix-ui` 0.9.4 官方源码 vs fork，commonMain）：
-重叠 85 文件、**30 个文件有改动、差异合计约 4414 行**（最大 `basic/ListPopup.kt` 1200 行）；
-fork 另有 21 个官方没有的文件。→ **这是深度分叉，不是轻量 patch**。
+**量化**（0.9.4 官方源码 vs fork，commonMain）：重叠 85 文件，其中 **30 个有改动、差异约 4414 行**
+（最大 `basic/ListPopup.kt` 1200 行）；fork 另有 21 个官方没有的文件。→ **深度分叉，不是轻量 patch。**
 
-**两条出路**（都改架构，需拍板）：
+**两条出路（都改架构，需拍板）**：A. 补成完整 fork（补 14 个文件 + 适配被改的内部 API，
+之后不再依赖官方 miuix-ui）；B. 放弃 fork，改用纯官方 miuix，把定制改成上游 PR / 覆盖层。
 
-| 方案 | 内容 | 代价 |
-|---|---|---|
-| A. 补成完整 fork | 补齐 14 个文件 + 逐个适配 fork 改过的内部 API；之后删掉对官方 miuix-ui 的依赖 | 一次性的适配工作；**同时消掉 Android 侧隐患**（见下） |
-| B. 放弃 fork | 用纯官方 miuix，把 fork 的定制改成上游 PR / 本地覆盖层 | 30 个文件的定制要重新找落点 |
-
-**顺带发现的 Android 隐患**（同一根因，暂未爆发）：官方 0.9.4 的 `WindowDialog` 调
-`DialogContentLayout(maxWidth=…)`，运行时被 fork 的旧签名覆盖 —— 走到那条路径会
-`NoSuchMethodError`。方案 A 能一并消掉。这也正是红线 §10.5「不要让 fork 变枷锁」说的情形。
+**顺带发现的 Android 隐患**（同根因，暂未爆发）：官方 0.9.4 的 `WindowDialog` 调
+`DialogContentLayout(maxWidth=…)`，运行时被 fork 的旧签名覆盖 → 走到那条路径会
+`NoSuchMethodError`。方案 A 能一并消掉。正是红线 §10.5「不要让 fork 变枷锁」说的情形。
 
 ---
 
