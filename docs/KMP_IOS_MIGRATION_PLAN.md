@@ -190,13 +190,24 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
    `TabletSettingsScreen`（1610 行，反向依赖约 4：AboutScreen 已迁走，剩 BackupAndMigration/
    LocalBackup 内嵌页 + `sendTestLiveNotification` + HttpURLConnection）。**两页互相嵌套**，需一并规划。
 3. ~~ShiftScheduleScreen / HolidaySettingsScreen / AiImportScreen / AboutScreen~~ ✅ 均已迁。
-4. **留守清单（不迁）**：`CourseReminderScreen`（闹钟/电池优化/Settings intent）、
-   `WebViewScreen`+`EducationalImport` WebView 分支（iOS 要 WKWebView 重写）、`TodayAssistant`（天气栈）、
-   `ClassEndEffects` 的震动/烟花、`ActivitySystemBars`/`ApiCompat`/`UpdateChecker`/`UpdateInstaller`、
-   `MiuixVisualEffectsPolicy`、`ScheduleAppearance` 本体（Bitmap/LruCache）、`AndroidScheduleEffects`、
-   `NexioApplication`、`AndroidDiagnosticRecorder`（:core 已有跨平台 DiagnosticRecorder 接口，
-   此为 Android 包装）、`CrashLogHelper`（同上，接口已在 :core）、
-   `MainActivity`/`AppNavHost`/`AppRouteContent`（宿主层，最后）。
+
+### 🔑 迁移框架铁律（用户 10-11 拍板）
+
+**页面 UI 一律迁 `:ui-shared` commonMain**（否则 iOS/桌面要重写一遍）；**只有 Android 专有「能力」留
+androidApp，通过注入（回调/槽位/接口）解耦**。没有「页面留守」——之前的「留守清单」是错的框架。
+真正只留 androidApp 的只有三类：
+- **纯能力实现体**：`CrashLogHelper` + `AndroidDiagnosticRecorder`（:core 已有跨平台 DiagnosticRecorder 接口）、
+  `ApiCompat`/`ActivitySystemBars`/`MiuixVisualEffectsPolicy`/`UpdateChecker`/`UpdateInstaller`（内部封装
+  AlarmManager/窗口/电池/包管理器等）、`ScheduleAppearance` 本体（Bitmap/LruCache）、`AndroidScheduleEffects`、
+  `ClassEndEffects` 的震动/烟花实现（ClassEndEffectSettings 已在 :core）、`TodayAssistant` 的天气抓取器
+  （Geocoder/定位/网络）
+- **宿主层**：`MainActivity` / `AppNavHost` / `AppRouteContent` / `NexioApplication`
+- **WebView 内容宿主**：`WebViewScreen` 的 webview 本体（iOS 要 WKWebView；但页面外壳仍迁 + 槽位注入 webview 宿主）
+
+**这些「能力纠缠页」的 UI 仍要逐个迁**（各自注入能力）：`CourseReminderScreen`（注入闹钟/电池/权限）、
+`BackupAndMigrationScreen`/`LocalBackupScreen`（注入文件 I/O/分享，R2 写侧）、`UpdateSettingsScreen`
+（注入更新安装）、`WebViewScreen` 外壳、`CustomizeScheduleScreen`（壁纸/快照）。
+TabletSettingsScreen 的 `androidPane` 槽位是**过渡**——外壳先迁，槽位页 UI 后续批次逐个迁 + 注入。
 
 > ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
 > （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；

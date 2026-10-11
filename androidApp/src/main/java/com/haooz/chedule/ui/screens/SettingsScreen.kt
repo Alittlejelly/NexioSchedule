@@ -9,7 +9,30 @@ import com.haooz.chedule.data.weeksBetween
 import kotlinx.datetime.isoDayNumber
 
 import android.annotation.SuppressLint
+import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.ContextCompat
+import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.reminder.CourseReminderHelper
+import com.haooz.chedule.reminder.IslandNotificationHelper
+import com.haooz.chedule.ui.activities.AboutScreen
+import com.haooz.chedule.ui.activities.AiImportScreen
+import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
+import com.haooz.chedule.ui.activities.CourseReminderScreen
+import com.haooz.chedule.ui.activities.LocalBackupScreen
+import com.haooz.chedule.ui.activities.MainActivity
+import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
+import com.haooz.chedule.ui.activities.ScheduleDataManageMode
+import com.haooz.chedule.ui.activities.UpdateSettingsScreen
+import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
+import com.haooz.chedule.widget.WidgetUpdateCache
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -139,6 +162,8 @@ fun SettingsScreen(
     val scheduleSummaries by scheduleViewModel.scheduleSummaries.collectAsState()
     val shiftSelectedSchedules by shiftViewModel.shiftSelectedSchedules.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 提醒页「测试通知」按钮文案需要超级岛开关（原平板页内联逻辑随迁到宿主注入）
+    val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val hapticFeedback = LocalHapticFeedback.current
     // LocalAppRouter.current 是 @Composable 调用，必须在组合层取（各入口共用）
     val settingsRouter = LocalAppRouter.current
@@ -174,6 +199,195 @@ fun SettingsScreen(
             onExitShiftMode = onExitShiftMode,
             onEnterShiftMode = onEnterShiftMode,
             liquidGlassBackdrop = liquidGlassBackdrop,
+            // —— 8 个平台专有 dest（提醒/口令导入/AI 导入/导出/本地备份/偏好/更新/关于）——
+            // 分支体自原平板页 when(selected) 逐字迁入，由宿主 androidPane 槽位渲染
+            androidPane = { dest ->
+                when (dest) {
+                    TabletSettingsDest.Reminder -> CourseReminderScreen(
+                        settingsViewModel = settingsViewModel,
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                    )
+
+                    TabletSettingsDest.ScheduleImport -> BackupAndMigrationScreen(
+                        courseViewModel = viewModel,
+                        scheduleViewModel = scheduleViewModel,
+                        settingsViewModel = settingsViewModel,
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        mode = ScheduleDataManageMode.Import,
+                        compactImport = true,
+                    )
+
+                    TabletSettingsDest.AiImport -> AiImportScreen(
+                        onBack = {},
+                        scrollBehavior = null,
+                        viewModel = viewModel,
+                        settingsViewModel = settingsViewModel,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        // 剪贴板是 Android 专有能力，宿主注入给已迁 :ui-shared 的页面
+                        onCopyToClipboard = { text ->
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("课表导入提示词", text)
+                            clipboard.setPrimaryClip(clip)
+                        },
+                    )
+
+                    TabletSettingsDest.ScheduleExport -> BackupAndMigrationScreen(
+                        courseViewModel = viewModel,
+                        scheduleViewModel = scheduleViewModel,
+                        settingsViewModel = settingsViewModel,
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        mode = ScheduleDataManageMode.Export,
+                    )
+
+                    TabletSettingsDest.LocalBackup -> LocalBackupScreen(
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                    )
+
+                    TabletSettingsDest.Preference -> PreferenceSettingsScreen(
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        // Android 宿主专有副作用：定位权限 / 天气缓存 / 最近任务卡片
+                        hasLocationPermission = {
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED ||
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+                        },
+                        onInvalidateWeatherCache = { invalidateWeatherCache() },
+                        onSetTaskExcludedFromRecents = { hidden ->
+                            MainActivity.setTaskExcludedFromRecents(context, hidden)
+                        },
+                    )
+
+                    TabletSettingsDest.Update -> UpdateSettingsScreen(
+                        scrollBehavior = null,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                    )
+
+                    TabletSettingsDest.About -> {
+                        val aboutBackdrop =
+                            com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+                        // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
+                        val appRouter = LocalAppRouter.current
+                        // 宿主能力注入：版本号 / 应用名 / 图标（drawable→Bitmap→裁透明边→ImageBitmap）/ 退出 / 诊断录制
+                        // （裁边逻辑原在 AboutScreen.cropBitmapToOpaque，随迁移到 ui-shared 已删除，宿主在此复刻）
+                        val aboutActivity = LocalActivity.current
+                        val aboutPackageInfo = remember {
+                            runCatching {
+                                context.packageManager.getPackageInfo(context.packageName, 0)
+                            }.getOrNull()
+                        }
+                        val aboutIcon = remember {
+                            runCatching { context.packageManager.getApplicationIcon(context.packageName) }
+                                .getOrNull()
+                                ?.let { drawable ->
+                                    val size = maxOf(drawable.intrinsicWidth, drawable.intrinsicHeight, 1)
+                                    val bitmap = androidx.core.graphics.createBitmap(size, size)
+                                    drawable.setBounds(0, 0, size, size)
+                                    drawable.draw(android.graphics.Canvas(bitmap))
+                                    val pixels = IntArray(size * size)
+                                    bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
+                                    var minX = size
+                                    var minY = size
+                                    var maxX = -1
+                                    var maxY = -1
+                                    for (y in 0 until size) {
+                                        for (x in 0 until size) {
+                                            if (pixels[y * size + x] ushr 24 != 0) {
+                                                if (x < minX) minX = x
+                                                if (x > maxX) maxX = x
+                                                if (y < minY) minY = y
+                                                if (y > maxY) maxY = y
+                                            }
+                                        }
+                                    }
+                                    val cropped = if (maxX >= minX && maxY >= minY &&
+                                        (maxX - minX + 1 != size || maxY - minY + 1 != size)
+                                    ) {
+                                        android.graphics.Bitmap.createBitmap(
+                                            bitmap, minX, minY, maxX - minX + 1, maxY - minY + 1
+                                        )
+                                    } else {
+                                        bitmap
+                                    }
+                                    cropped.asImageBitmap()
+                                }
+                        }
+                        AboutScreen(
+                            onBack = {},
+                            liquidGlassBackdrop = aboutBackdrop,
+                            embedded = true,
+                            // 弹窗采样全屏层，才能把左栏内容一起虚化
+                            dialogBackdrop = liquidGlassBackdrop,
+                            // 平板设置页还没路由化（它在 MainActivity 里），
+                            // 所以这三个子页仍以「开新宿主 + 指定初始路由」的方式打开 ——
+                            // 行为与改造前一致：全屏打开，返回回到这里。
+                            onNavigate = { route ->
+                                appRouter.navigate(route)
+                            },
+                            appVersion = remember { aboutPackageInfo?.versionName ?: "未知版本" },
+                            appName = remember {
+                                aboutPackageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
+                                    ?: context.applicationInfo?.nonLocalizedLabel?.toString()
+                                    ?: "Nexio课程表"
+                            },
+                            appIcon = aboutIcon,
+                            onExitApp = { aboutActivity?.finishAffinity() },
+                            diagnosticRecorder = remember { AndroidDiagnosticRecorder(context) },
+                        )
+                    }
+
+                    else -> {}
+                }
+            },
+            // 提醒页底部「测试通知」：原平板页覆盖层 onClick（FeatureLog + 超级岛/实时活动 + toast）逐字迁入
+            onSendTestNotification = {
+                val islandEnabled = islandNotification &&
+                    IslandNotificationHelper.isIslandSupported(context)
+                com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(
+                    "test_notification",
+                    if (islandEnabled) "island" else "live"
+                )
+                if (islandEnabled) {
+                    IslandNotificationHelper.sendTestIslandNotification(
+                        context
+                    )
+                    com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
+                    showToast("已发送超级岛测试通知")
+                } else {
+                    CourseReminderHelper.sendTestLiveNotification(
+                        context
+                    )
+                    com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
+                    showToast("已发送实时活动测试通知")
+                }
+            },
+            isIslandSupported = { IslandNotificationHelper.isIslandSupported(context) },
+            onRefreshWidgets = {
+                WidgetUpdateCache.clear()
+                WidgetUpdateCache.updateInstalledWidgets(context)
+            },
+            onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+            // 节假日 API 拉取：原平板页内联 HttpURLConnection（10s 超时）+ parseSourceResponse 逐字迁入
+            fetchHolidayEntries = { year ->
+                val conn = URL(
+                    HolidayManager.sourceUrlFor(year)
+                ).openConnection() as HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 10_000
+                val text = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                HolidayManager.parseSourceResponse(text)
+            },
         )
         return
     }
