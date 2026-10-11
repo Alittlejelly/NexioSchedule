@@ -23,10 +23,10 @@
 **代码状态**：`master` = **`c4bb6bb9`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
-**iOS 编译状态（2026-10-11 首次真编，macOS + Xcode 27）**：四个模块的 `iosArm64` +
-`iosSimulatorArm64` **全部编译通过**，`:core` 的跨平台测试在模拟器上 **109 用例 0 失败**。
-🔴 **唯一挡住 iOS 产物的是 link**：`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact
-同包同名 → 链接期 `IrPropertySymbolImpl is already bound`。**见风险 R10，需要拍板。**
+**iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
+`iosSimulatorArm64` **编译通过**；`:core` 跨平台测试在模拟器上 **109 用例 0 失败**；
+`:ui-shared` 的 **`NexioShared.framework` 两个目标都链接成功**（`linkDebugFrameworkIos{Arm64,SimulatorArm64}`）。
+原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳/
 提醒设置页/更新设置页/本地备份页/课表导入导出备份页已迁**；`:ui-shared` 已迁入 93 文件 / 40.4k 行；
@@ -93,12 +93,14 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 # 模拟器目标（日常开发真正跑的）：把上面的 IosArm64 换成 IosSimulatorArm64
 # 在 iOS 模拟器上真跑 :core 的跨平台测试（编译 + 链接 + 运行）
 ./gradlew -Pnexio.ios=true :core:iosSimulatorArm64Test
+# 出 framework（compile 绿 ≠ 能 link，这一条必须单独跑）
+./gradlew -Pnexio.ios=true :ui-shared:linkDebugFrameworkIosSimulatorArm64
 ```
 
 > ✅ 2026-10-11 实测（macOS 27 / Xcode 27 / Kotlin/Native 2.4.10）：
 > 四个模块的 `iosArm64` + `iosSimulatorArm64` **全部编译通过**；
-> `:core:iosSimulatorArm64Test` **109 个用例 0 失败**（在模拟器里真跑）。
-> 🔴 唯一过不去的是 **link**（`:ui-shared:linkDebugFramework*`）—— 见风险 **R10**。
+> `:core:iosSimulatorArm64Test` **109 个用例 0 失败**（在模拟器里真跑）；
+> `:ui-shared` 的 framework **两个目标都链接成功**（`NexioShared.framework`，静态，~267 MB）。
 
 > ⚠ **wasmJs 门禁与 `check` 互斥**：`-Pnexio.wasm=true` 期间 Kotlin/Wasm 插件会在配置阶段
 > 注册 Distributions 仓库，与 `FAIL_ON_PROJECT_REPOS` 冲突 → `check` 直接失败。
@@ -119,7 +121,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 |---|---:|---:|---|---|
 | `:core` | 105 (+28 测试) | 17.9k | common **50** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
-| `:miuix` | 108 | 28.2k | common **92** / android 9 / skiko 7 | KMP 化；公共组件全进 commonMain；官方子库 **0.9.4** |
+| `:miuix` | **119** | 31k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
 | `:ui-shared` | **95** | **40.4k** | common **93** / android 1 / jvm 1 | 阶段 5 进行中（**只剩设置链本体 + 壁纸/WebView/宿主层**） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
 | `:androidApp` | **54** | **28.3k** | android | 待迁 **29 / 20.2k** + 留守 **25 / 8.1k**；单 Activity（Manifest 23→2） |
@@ -261,6 +263,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `73677f72` | **miuix 补成完整 fork**（119 文件自包含）→ 三处排除官方 `miuix-ui`；**iOS framework 两个目标链接成功**（R10 解）；顺带消掉 Android 侧两份 miuix-ui 混用的 NoSuchMethodError 隐患 | 10-11 |
 | `c4bb6bb9` | **首次真编 iOS**：`:ui-shared` 挂 `iosArm64`/`iosSimulatorArm64` + framework；四模块 iOS 编译全绿、模拟器跑 109 用例；修 4 处 JVM 专有 API；force `kotlinx-datetime` 0.6.2；**暴露 R10（link 阻塞）** | 10-11 |
 | `23a7a369` | **第二十三批**：`BackupAndMigrationScreen` 迁 `:ui-shared` —— **androidPane 留守 dest 清零**；抽 `ScheduleFileController`；`parseIcsFile`→`:core`、`parseShare*`+`applyScheduleData`→`:ui-shared`；修 `WebDavSettingsScreen` 全限定名 `SimpleDateFormat` 漏报 | 10-11 |
 | `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
@@ -310,9 +313,10 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 ### A0. ⚠ 三项工程配置 —— 不做则 App 起不来 / 调不到 Kotlin 代码
 
-**A0-1 `binaries.framework`** —— ✅ `:ui-shared` 已声明（`NexioShared`，`isStatic = true`，
-`iosArm64` + `iosSimulatorArm64`；App 的 Compose 界面全来自这里）。`:core` 若也要给 Swift 用，
-按同一写法补。**注意：`compileKotlinIos*` 绿了不代表能 link** —— 当前 link 卡在 R10。
+**A0-1 `binaries.framework`** —— ✅ `:ui-shared` 已声明并**链接成功**（`NexioShared`，
+`isStatic = true`，`iosArm64` + `iosSimulatorArm64`；App 的 Compose 界面全来自这里）。
+`:core` 若也要给 Swift 用，按同一写法补。
+⚠ 教训：**`compileKotlinIos*` 绿了不代表能 link** —— klib 图的版本/重名冲突只在链接期合账。
 
 **A0-2 `Info.plist` 必须设 `CADisableMinimumFrameDurationOnPhone = true`**，否则 iOS 一启动就崩
 （CMP 1.7.3 起强制检查，`enforceStrictPlistSanityCheck` 默认开）：
@@ -551,39 +555,32 @@ AppFiles.init(
 | R7 | 云端分享白名单未同步 | 新字段静默丢弃 | 改客户端字段必须同改 `server/index.js` 并重新部署 |
 | R8 | UI 迁移周期过长，拖垮主线开发 | 项目停滞 | 严格按批次，每批次结束 `:androidApp` 仍可发版 |
 | R9 | ~~OkHttp 在 iOS 不可用~~ | 低 | 改法已修订：自建 `HttpService`，Android/JVM 复用 OkHttp，Native 已实现 |
-| **R10** | **`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名** | **iOS 无法链接**（编译能过）；**Android 侧已埋 NoSuchMethodError 隐患** | 见下方专条 |
+| ~~R10~~ | ~~`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名~~ | — | **已解**（`73677f72`）：补成完整 fork + 三处 exclude 官方 miuix-ui。机制见下方专条，**别再退回部分 fork** |
 | R11 | `kotlinx-datetime` 在 iOS 变体被 CMP material3 顶到 0.7.1 | 同一二进制两个版本 → 链接必炸 | ✅ 已在根 `build.gradle.kts` force 回 0.6.2；0.7 升级要**全项目一起做** |
 | R12 | checkKmpPurity 抓不到「全限定名」java API | iOS 编不过 | ✅ 已由 `:ui-shared` 的 iOS 编译兜住；大文件迁移时仍要 grep `java.` 字面量 |
 
-### R10 详述 —— 当前唯一挡住 iOS 产物的东西
+### R10 详述 —— 已解，但机制值得记住（**别让 fork 再变回「部分 fork」**）
 
-2026-10-11 首次真链接 `:ui-shared` 的 iOS framework 时暴露：
-`e: Compilation failed: IrPropertySymbolImpl is already bound. Signature:
-top.yukonga.miuix.kmp.basic/top_yukonga_miuix_kmp_basic_ButtonDefaults$stableprop`
+**症状**：首次真链接 `:ui-shared` 的 iOS framework 时报
+`IrPropertySymbolImpl is already bound. Signature: …basic/…_ButtonDefaults$stableprop`。
 
-**成因**：官方子库（`miuix-preference` 等）自己会传递依赖 `miuix-ui`，而本仓库把它 fork 成了
-`:miuix` —— **同包同名**，两边 klib 里都有 `basic.ButtonDefaults` 这类声明。
-Android/JVM 类路径按名去重、悄悄用一个（**所以一直没暴露**）；Kotlin/Native 链接期是硬错误。
+**成因**：官方子库（`miuix-preference` 等）会传递依赖 `miuix-ui`，而本仓库把它 fork 成了
+`:miuix` —— **同包同名**。Android/JVM 类路径按名去重、悄悄用一个（**所以一直没暴露**，
+还埋了「官方 WindowDialog 调到 fork 旧签名 → NoSuchMethodError」的隐患）；
+Kotlin/Native 链接期是硬错误。
 
-**已实测排除的两条捷径**：
+**解法（`73677f72`）**：把 fork 补成**完整 fork**（108 → 119 文件），再在 `:miuix` /
+`:ui-shared` / `:androidApp` 三处 `exclude(module = "miuix-ui")`。
 
-1. ❌ `exclude(module = "miuix-ui")` —— fork 是**部分覆盖**：缺 `window/*`(4)、
-   `theme/DynamicColors`、`layout/BottomSheetContentLayout`、`utils/PagerGestureUtils` 等
-   **14 个 commonMain + 1 个 androidMain + 2 个 skikoMain** 文件，全靠官方 artifact 兜着；
-   排掉后 `:miuix` 自己编不过。
-2. ❌ 拉官方 `miuix-ui-0.9.4-sources.jar` 补这 14 个文件 —— fork 改过内部 API
-   （如 `DialogContentLayout` 去掉 `maxWidth/largeScreen/cornerRadius`），官方文件按官方签名
-   调用 → `Redeclaration` / `Conflicting declarations` / 参数不匹配。
+**代价量化**（供以后再遇到同类问题估工）：官方 0.9.4 源码 vs fork，commonMain 重叠 85 文件，
+其中 **30 个有改动、差异约 4414 行**（最大 `basic/ListPopup.kt` 1200 行）；fork 另有 21 个
+官方没有的文件。补 11 个文件、4 处 API 适配即可自包含。
 
-**量化**（0.9.4 官方源码 vs fork，commonMain）：重叠 85 文件，其中 **30 个有改动、差异约 4414 行**
-（最大 `basic/ListPopup.kt` 1200 行）；fork 另有 21 个官方没有的文件。→ **深度分叉，不是轻量 patch。**
-
-**两条出路（都改架构，需拍板）**：A. 补成完整 fork（补 14 个文件 + 适配被改的内部 API，
-之后不再依赖官方 miuix-ui）；B. 放弃 fork，改用纯官方 miuix，把定制改成上游 PR / 覆盖层。
-
-**顺带发现的 Android 隐患**（同根因，暂未爆发）：官方 0.9.4 的 `WindowDialog` 调
-`DialogContentLayout(maxWidth=…)`，运行时被 fork 的旧签名覆盖 → 走到那条路径会
-`NoSuchMethodError`。方案 A 能一并消掉。正是红线 §10.5「不要让 fork 变枷锁」说的情形。
+> 🔴 **两条纪律**（否则会退回去）：
+> 1. **从上游同步 miuix-ui 时，必须把新文件一起搬进来** —— 自包含后缺文件会当场
+>    报 `Unresolved reference`（这是好事，别用「加回官方 artifact」来消错）。
+> 2. **不要在 fork 里改「别人会调的内部签名」**（这次是 `DialogContentLayout` 少了三个参数）——
+>    改了就必须连带把调用方一起适配，否则就是下一次 R10。
 
 ---
 
