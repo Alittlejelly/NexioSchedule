@@ -1,0 +1,130 @@
+package com.haooz.chedule.data
+
+/**
+ * 本地备份「恢复门禁」—— 跨平台（kotlinx-serialization）实现。
+ *
+ * 2026-10-11 从 `:androidApp` 的 `activities/LocalBackupScreen.kt` 拆到 `:core`：
+ * 原实现用 `Gson().fromJson(json, TypeToken<Map<String,Any>>)`，Gson 走运行时反射、
+ * Kotlin/Native（iOS）上不存在 —— 属 R2 序列化通道，换 `kotlinx-serialization`
+ * （`JsonSupport.parseJsonObject` + `jsonToPlainValue`，plain 值类型与 Gson 逐类一致）。
+ *
+ * ## 为什么这是「门禁」
+ * 全量恢复走 `CourseRepository.importAllPreferences`，它会**先清空现有全部课表数据再写入**。
+ * [parseBackupPayload] 是强制校验：必须能明确识别「这是本应用导出的备份」，否则抛异常，
+ * 防止用户随便选一个无关 JSON 就把课表全清掉。**数据兼容不可谈判** —— 见 round-trip 回归测试
+ * `core/src/jvmTest/.../BackupCodecTest.kt`（真实备份夹具）。
+ */
+
+/** 备份体：要么是单课表备份，要么是覆盖式全量备份 */
+sealed interface BackupPayload {
+    data class Single(
+        val scheduleName: String,
+        val courses: List<Map<String, Any>>,
+        val timeConfig: Any?,
+        val semesterSettings: SemesterSettings?,
+        val teachingWeekReorganizations: List<TeachingWeekReorganizationRule>?,
+    ) : BackupPayload
+
+    data class Full(val data: Map<String, Any>) : BackupPayload
+}
+
+data class SemesterSettings(
+    val classStartTime: String?,
+    val currentWeek: Int?,
+    val totalWeeks: Int?,
+    val smartWeekend: Boolean? = null,
+    val showNonCurrentWeek: Boolean? = null,
+)
+
+/**
+ * 解析并校验备份内容（恢复门禁）。
+ *
+ * @throws IllegalArgumentException 不是本应用导出的备份 / 结构非法时抛出。
+ */
+fun parseBackupPayload(json: String): BackupPayload {
+    // kotlinx：parseJsonObject 对非法 JSON 抛 SerializationException（被上层 try 捕获）；
+    // jsonToPlainValue 产出的 plain Map（String/Double/Boolean/LinkedHashMap/List）与
+    // 原 Gson TypeToken<Map<String,Any>> 逐类一致，下游 as? Number/String 判断不受影响。
+    @Suppress("UNCHECKED_CAST")
+    val data = (jsonToPlainValue(parseJsonObject(json)) as? Map<String, Any>)
+        ?: throw IllegalArgumentException("文件内容不是有效的 JSON 对象")
+
+    val scheduleName = data["schedule_name"]
+    val courses = data["courses"]
+    if (scheduleName is String && courses is List<*>) {
+        require(!data.containsKey("settings")) {
+            "这是普通课表 JSON，请使用课表 JSON 导入入口，不能按本地备份恢复"
+        }
+        val courseList = courses.map { rawCourse ->
+            val fields = rawCourse as? Map<*, *>
+                ?: throw IllegalArgumentException("单课表备份包含无效课程数据")
+            require(fields.keys.all { it is String }) { "单课表备份包含无效课程字段" }
+            @Suppress("UNCHECKED_CAST")
+            fields as Map<String, Any>
+        }
+        // 整份 JSON 字符串（现行格式）或早期备份的扁平 Map，两种都要能读
+        val timeConfig = data["time_config"]
+        val semesterSettings = if (!data.containsKey("semester_settings")) {
+            null
+        } else {
+            val rawSettings = data["semester_settings"] as? Map<*, *>
+                ?: throw IllegalArgumentException("单课表备份的学期设置无效")
+            fun exactInteger(key: String, positive: Boolean = false): Int? {
+                if (!rawSettings.containsKey(key)) return null
+                val number = (rawSettings[key] as? Number)?.toDouble()
+                    ?: throw IllegalArgumentException("单课表备份的${key}无效")
+                require(number.isFinite() && number % 1.0 == 0.0 &&
+                    number >= Int.MIN_VALUE.toDouble() && number <= Int.MAX_VALUE.toDouble()
+                ) { "单课表备份的${key}无效" }
+                val value = number.toInt()
+                require(!positive || value > 0) { "单课表备份的${key}无效" }
+                require(key != "total_weeks" || value <= CourseRepository.MAX_TOTAL_WEEKS) {
+                    "单课表备份的总周数超出支持范围"
+                }
+                return value
+            }
+            val classStartTime = if (rawSettings.containsKey("class_start_time")) {
+                val raw = rawSettings["class_start_time"] as? String
+                    ?: throw IllegalArgumentException("单课表备份的开学日期无效")
+                CourseRepository.normalizeClassStartDate(raw)
+                    ?: throw IllegalArgumentException("单课表备份的开学日期无效")
+            } else null
+            SemesterSettings(
+                classStartTime = classStartTime,
+                currentWeek = exactInteger("current_week"),
+                totalWeeks = exactInteger("total_weeks", positive = true),
+                smartWeekend = rawSettings["smart_weekend"] as? Boolean,
+                showNonCurrentWeek = rawSettings["show_non_current_week"] as? Boolean,
+            )
+        }
+        val reorganizationFieldPresent = data.containsKey("teaching_week_reorganizations")
+        validateSingleScheduleCourseData(courseList, CourseRepository.MAX_TOTAL_WEEKS)
+        val rules = TeachingWeekReorganization.fromBackupValue(
+            value = data["teaching_week_reorganizations"],
+            present = reorganizationFieldPresent,
+            totalWeeks = semesterSettings?.totalWeeks ?: 20,
+            preserveOutOfRangeRules = true,
+        ).takeIf { reorganizationFieldPresent }
+        if (reorganizationFieldPresent) {
+            require(semesterSettings?.classStartTime != null) {
+                "包含教学周重组的单课表备份必须有有效开学日期"
+            }
+        }
+        return BackupPayload.Single(
+            scheduleName = scheduleName,
+            courses = courseList,
+            timeConfig = timeConfig,
+            semesterSettings = semesterSettings,
+            teachingWeekReorganizations = rules,
+        )
+    }
+
+    val looksLikeFullBackup =
+        data.containsKey("schedule_names") || data.keys.any { it.startsWith("schedule_") }
+    if (!looksLikeFullBackup) {
+        throw IllegalArgumentException("不是本应用导出的备份文件")
+    }
+    validateFullScheduleBackupStructure(data)
+    HolidayManager.decodeBackupData(data)
+    return BackupPayload.Full(data)
+}
