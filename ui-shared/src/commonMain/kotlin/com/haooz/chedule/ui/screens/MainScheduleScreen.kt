@@ -8,9 +8,7 @@ import com.haooz.chedule.data.plusDays
 import com.haooz.chedule.data.plusWeeks
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
-import com.haooz.chedule.ui.utils.ApiCompat
 
-import android.annotation.SuppressLint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animate
@@ -68,8 +66,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,7 +82,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -92,10 +91,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import com.haooz.chedule.ui.components.DayColumn
@@ -187,7 +186,6 @@ data class ScheduleGridGeometry(
     val sectionTopDp: Map<Int, Float> = emptyMap(),
 )
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun MainScheduleScreen(
     viewModel: CourseViewModel,
@@ -195,7 +193,7 @@ fun MainScheduleScreen(
     pagerState: PagerState,
     hiddenCourseIds: Set<String> = emptySet(),
     draggingCourseIds: Set<String> = emptySet(),
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: android.graphics.Bitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: androidx.compose.ui.graphics.ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onPopupStateChange: (Boolean) -> Unit = {},
     // 空白格长按：返回 Root 绝对坐标供上层定位快捷菜单
     onEmptyLongPress: (
@@ -407,14 +405,13 @@ fun MainScheduleScreen(
         }
     }
 
-    val scheduleContext = LocalContext.current
-    val scheduleRepository = remember(scheduleContext) {
+    val scheduleRepository = remember {
         CourseRepository.getInstance()
     }
     val currentScheduleId = remember(scheduleRepository, dataVersion) {
         scheduleRepository.getCurrentScheduleId()
     }
-    val semesterStartDate = remember(scheduleContext, dataVersion, classStartTime) {
+    val semesterStartDate = remember(dataVersion, classStartTime) {
         runCatching {
             LocalDate.parse(classStartTime.replace("/", "-"))
         }.getOrNull() ?: todayLocalDate()
@@ -461,11 +458,10 @@ fun MainScheduleScreen(
     }
 
     // 记忆化版本号：假期编辑返回 bump dataVersion 时才重读 SP
-    val holidayVersion = remember(scheduleContext, dataVersion, holidayDataRevision) {
+    val holidayVersion = remember(dataVersion, holidayDataRevision) {
         HolidayManager.getVersion()
     }
     val holidayEntriesByYear = remember(
-        scheduleContext,
         dataVersion,
         holidayDataRevision,
         holidayVersion,
@@ -483,10 +479,10 @@ fun MainScheduleScreen(
             semesterLastDate.plusDays(1),
         )
     }
-    val holidayEndCourseExclusion = remember(scheduleContext, holidayVersion) {
+    val holidayEndCourseExclusion = remember(holidayVersion) {
         HolidayManager.loadEndCourseExclusion()
     }
-    val holidayBeforeCourseExclusion = remember(scheduleContext, holidayVersion) {
+    val holidayBeforeCourseExclusion = remember(holidayVersion) {
         HolidayManager.loadBeforeCourseExclusion()
     }
 
@@ -516,11 +512,13 @@ fun MainScheduleScreen(
             val result = HashMap<Int, Set<Int>>()
             for (week in 1..totalWeeks) {
                 if (teachingWeekReorganizations.isNotEmpty()) {
-                    result[week] = CourseReminderHelper.effectiveWeekendDays(
+                    result[week] = DayScheduleResolver.effectiveWeekendDays(
                         semesterStartDate, week, teachingWeekReorganizations,
                     ) { date ->
-                        CourseReminderHelper.resolveDaySchedule(
-                            scheduleContext, date, scheduleRepository, holidayEntriesByYear,
+                        DayScheduleResolver.resolveDaySchedule(
+                            date = date,
+                            repository = scheduleRepository,
+                            holidayEntriesByYear = holidayEntriesByYear,
                         ).courses.isNotEmpty()
                     }
                     continue
@@ -535,11 +533,10 @@ fun MainScheduleScreen(
                             holidayBeforeCourseExclusion,
                         )
                     ) {
-                        return CourseReminderHelper.resolveDaySchedule(
-                            scheduleContext,
-                            date,
-                            scheduleRepository,
-                            holidayEntriesByYear,
+                        return DayScheduleResolver.resolveDaySchedule(
+                            date = date,
+                            repository = scheduleRepository,
+                            holidayEntriesByYear = holidayEntriesByYear,
                         ).courses.isNotEmpty()
                     }
                     val hasWorkSwap = dateString?.let {
@@ -803,7 +800,10 @@ fun MainScheduleScreen(
                     } else null
                 }
                 val wallpaperBlurEffect = remember(wallpaperBlur) {
-                    ApiCompat.blurRenderEffect(12f * density.density)
+                    val blurRadiusPx = 12f * density.density
+                    if (blurRadiusPx > 0f && isRenderEffectSupported()) {
+                        BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
+                    } else null
                 }
                 androidx.compose.foundation.Image(
                     bitmap = wallpaperBitmap,
@@ -1292,9 +1292,12 @@ fun MainScheduleScreen(
                     val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
                     val dividerIsDark = scheduleIsDark
                     val dividerDensity = LocalDensity.current
-                    val dividerBlurPx = with(dividerDensity) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
-                    val dividerLensRadiusPx = with(dividerDensity) { remember(cardRefraction) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
-                    val dividerLensStrengthPx = with(dividerDensity) { remember(cardRefraction) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
+                    // ⚠ remember 放外层、with 放内层：with(density){remember{...}} 的双层
+                    // 接收者 lambda 在 commonMain 目标下类型推断失败（Cannot infer R/T），
+                    // 交换嵌套后语义与缓存行为完全等价
+                    val dividerBlurPx = remember(cardBlurRadius) { with(dividerDensity) { cardBlurRadius.dp.toPx() } }
+                    val dividerLensRadiusPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
+                    val dividerLensStrengthPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
                     val hasWallpaperDivider = wallpaperBitmap != null
                     val dividerBaseColor = if (hasWallpaperDivider) Color.Transparent else if (dividerIsDark) Color(0xFF121212) else Color(0xFFF0F0F0)
                     // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）

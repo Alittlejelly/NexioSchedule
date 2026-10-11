@@ -1,10 +1,6 @@
 /** 偏好设置页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.content.Context
-import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,13 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
@@ -53,7 +46,6 @@ import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.screens.ClassEndEffectSettings
-import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import top.yukonga.miuix.kmp.basic.Card
@@ -76,14 +68,18 @@ import com.haooz.chedule.uishared.resources.theme_preview_light
 import com.haooz.chedule.uishared.resources.theme_preview_night
 import org.jetbrains.compose.resources.DrawableResource
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun PreferenceSettingsScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /** 是否已授予定位权限（Android 宿主注入权限检查；桌面/iOS 恒 false） */
+    hasLocationPermission: () -> Boolean = { false },
+    /** 清空天气缓存（Android 宿主注入；桌面/iOS 空实现） */
+    onInvalidateWeatherCache: () -> Unit = {},
+    /** 隐藏最近任务卡片（Android 专有能力；宿主注入） */
+    onSetTaskExcludedFromRecents: (Boolean) -> Unit = {},
 ) {
     var listScrollY by remember { mutableIntStateOf(0) }
-    val context = LocalContext.current
 
     val eduPrefs = remember { AppStorage.store("edu_import_prefs") }
     var repoUrl by remember {
@@ -98,12 +94,7 @@ fun PreferenceSettingsScreen(
     var weatherSource by remember { mutableStateOf(weatherPrefs.getString("weather_source", "caiyun")) }
     // 天气定位摘要：有定位权限显示当前定位，否则回退显示上次定位
     val lastLocationName = weatherPrefs.getStringOrNull("last_location_name")
-    val weatherHasPermission = ContextCompat.checkSelfPermission(
-        context, Manifest.permission.ACCESS_FINE_LOCATION
-    ) == PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+    val weatherHasPermission = hasLocationPermission()
     val weatherLocationSummary = when {
         weatherHasPermission ->
             if (lastLocationName != null) "当前定位：$lastLocationName"
@@ -391,7 +382,7 @@ fun PreferenceSettingsScreen(
                                 checked = classEndFireworks,
                                 onCheckedChange = {
                                     classEndFireworks = it
-                                    ClassEndEffectSettings.setFireworks(context, it)
+                                    ClassEndEffectSettings.setFireworks(it)
                                 }
                             )
                             SwitchPreference(
@@ -401,7 +392,7 @@ fun PreferenceSettingsScreen(
                                 onCheckedChange = {
                                     hideBackground = it
                                     appPrefs.edit { putBoolean("hide_background", it) }
-                                    MainActivity.setTaskExcludedFromRecents(context, it)
+                                    onSetTaskExcludedFromRecents(it)
                                 }
                             )
                         }
@@ -463,7 +454,7 @@ fun PreferenceSettingsScreen(
                                         onClick = {
                                             weatherSource = "itboy"
                                             weatherPrefs.edit { putString("weather_source", "itboy") }
-                                            invalidateWeatherCache()
+                                            onInvalidateWeatherCache()
                                         }
                                     ),
                                     DropdownItem(
@@ -472,7 +463,7 @@ fun PreferenceSettingsScreen(
                                         onClick = {
                                             weatherSource = "caiyun"
                                             weatherPrefs.edit { putString("weather_source", "caiyun") }
-                                            invalidateWeatherCache()
+                                            onInvalidateWeatherCache()
                                         }
                                     ),
                                 )

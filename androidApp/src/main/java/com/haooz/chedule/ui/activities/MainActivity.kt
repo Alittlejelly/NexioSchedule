@@ -126,6 +126,7 @@ import com.haooz.chedule.data.PrivacyConsent
 import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.StatsReporter
 import com.haooz.chedule.data.ThemeMode
+import com.haooz.chedule.data.fromCombination
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
@@ -158,6 +159,7 @@ import com.haooz.chedule.ui.screens.SettingsScreen
 import com.haooz.chedule.ui.screens.ShiftScheduleScreen
 import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
+import com.haooz.chedule.ui.screens.TodayAssistantCard
 import com.haooz.chedule.ui.screens.TodayScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.ApiCompat
@@ -3509,6 +3511,21 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                             showClassroom = displayAppearance.showClassroom,
                                             showTeacher = displayAppearance.showTeacher,
                                             onListScrollInProgress = { todayListScrollInProgress.value = it },
+                                            // 今日助手卡留在 :androidApp（天气/定位/Geocoder），通过槽位注入
+                                            todayAssistantCard = { d ->
+                                                TodayAssistantCard(
+                                                    courses = d.courses,
+                                                    tomorrowCourses = d.tomorrowCourses,
+                                                    sectionTimes = d.sectionTimes,
+                                                    morningSections = d.morningSections,
+                                                    afternoonSections = d.afternoonSections,
+                                                    showClassroom = d.showClassroom,
+                                                    showTeacher = d.showTeacher,
+                                                    wallpaperBackdrop = d.wallpaperBackdrop,
+                                                    blurRadius = d.blurRadius,
+                                                    surfaceOpacity = d.surfaceOpacity,
+                                                )
+                                            },
                                         )
                                             }
                                         }

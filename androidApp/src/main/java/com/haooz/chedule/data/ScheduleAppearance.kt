@@ -150,50 +150,29 @@ data class Combination(
 )
 
 /**
- * 课表外观配置：全部可调参数收敛为不可变值对象。
+ * 课表外观配置 —— 本体已拆到 `:core`（`core/src/commonMain/.../AppearanceConfig.kt`），
+ * 因为 `MainScheduleScreen` 迁入 `:ui-shared` 后需要它作为页面参数类型。
  *
- * 取代原先分散的 N 个字段 × 4 份状态（cached/live/saved/original）的写法，
- * 避免手工同步遗漏导致的 bug。
+ * [fromCombination] 依赖 android 版 [Combination]（含 Bitmap），以 companion 扩展
+ * 留在本文件，调用方式 `AppearanceConfig.fromCombination(c)` 与迁移前一致。
  */
-data class AppearanceConfig(
-    val cardBlurRadius: Float = 4f,
-    /** 课程色着色程度（有无壁纸都可调） */
-    val cardAlpha: Float = 0.15f,
-    /** 有壁纸时卡片白/黑底不透明度 */
-    val cardSurfaceAlpha: Float = 0.15f,
-    val cardHeight: Float = 54f,
-    val cardCornerRadius: Float = 10f,
-    val wallpaperBrightness: Float = 0f,
-    val showBreakDividers: Boolean = true,
-    val cardContentAlignment: CardContentAlignment = CardContentAlignment.CENTER_CENTER,
-    val cardTextColor: CardTextColor = CardTextColor.COLORFUL,
-    /** 卡片文字缩放比例：作用于课程名称、教室、教师，0.5~2.0 */
-    val cardTextScale: Float = 1f,
-    val showClassroom: Boolean = true,
-    val showTeacher: Boolean = true,
-    val cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
-    val wallpaperBlur: Boolean = false
-) {
-    companion object {
-        fun fromCombination(c: Combination): AppearanceConfig = AppearanceConfig(
-            cardBlurRadius = c.cardBlurRadius,
-            cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
-            cardSurfaceAlpha = (c.cardSurfaceAlpha
-                ?: CombinationStyle.CARD_SURFACE_ALPHA_DEFAULT).coerceIn(0f, 1f),
-            cardHeight = c.cardHeight,
-            cardCornerRadius = c.cardCornerRadius,
-            wallpaperBrightness = c.wallpaperBrightness,
-            showBreakDividers = c.showBreakDividers,
-            cardContentAlignment = c.cardContentAlignment,
-            cardTextColor = c.cardTextColor,
-            cardTextScale = c.cardTextScale,
-            showClassroom = c.showClassroom,
-            showTeacher = c.showTeacher,
-            cardRefraction = c.cardRefraction,
-            wallpaperBlur = c.wallpaperBlur
-        )
-    }
-}
+fun AppearanceConfig.Companion.fromCombination(c: Combination): AppearanceConfig = AppearanceConfig(
+    cardBlurRadius = c.cardBlurRadius,
+    cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
+    cardSurfaceAlpha = (c.cardSurfaceAlpha
+        ?: CombinationStyle.CARD_SURFACE_ALPHA_DEFAULT).coerceIn(0f, 1f),
+    cardHeight = c.cardHeight,
+    cardCornerRadius = c.cardCornerRadius,
+    wallpaperBrightness = c.wallpaperBrightness,
+    showBreakDividers = c.showBreakDividers,
+    cardContentAlignment = c.cardContentAlignment,
+    cardTextColor = c.cardTextColor,
+    cardTextScale = c.cardTextScale,
+    showClassroom = c.showClassroom,
+    showTeacher = c.showTeacher,
+    cardRefraction = c.cardRefraction,
+    wallpaperBlur = c.wallpaperBlur
+)
 
 /**
  * 外观存储：单例，持有 prefs、壁纸位图缓存与全部读写方法。

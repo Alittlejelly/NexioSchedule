@@ -21,42 +21,20 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.core.content.edit
-import com.haooz.chedule.data.AppStorage
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/**
- * 下课烟花 / 爆炸震动偏好。随烟花爆炸的短促 tick。
- */
-object ClassEndEffectSettings {
-    const val PREFS_NAME = "app_preferences"
-    const val KEY_FIREWORKS = "class_end_fireworks"
-
-    fun fireworksEnabled(context: Context): Boolean =
-        AppStorage.store(PREFS_NAME)
-            .getBoolean(KEY_FIREWORKS, true)
-
-    /** 爆炸震动跟随全局触感开关，无单独开关 */
-    fun vibrateEnabled(context: Context): Boolean {
-        val prefs = AppStorage.store(PREFS_NAME)
-        return prefs.getBoolean(com.haooz.chedule.ui.theme.KEY_HAPTIC_FEEDBACK, true)
-    }
-
-    fun setFireworks(context: Context, enabled: Boolean) {
-        AppStorage.store(PREFS_NAME).edit {
-            putBoolean(KEY_FIREWORKS, enabled)
-        }
-    }
-}
+// ClassEndEffectSettings（烟花 / 震动偏好）已迁到 :ui-shared 的同包同名文件
+// （ui-shared/src/commonMain/.../ClassEndEffectSettings.kt）：它只走 :core 的全局存储，
+// 原 Context 参数从未使用。本文件只留 Android 专有的震动与烟花绘制。
 
 /**
  * 烟花爆炸瞬间的短促震动。
  * 优先系统触感（清脆）；Vibrator one-shot 只作兜底。
  */
 fun pulseClassEndHaptic(context: Context, haptic: HapticFeedback? = null) {
-    if (!ClassEndEffectSettings.vibrateEnabled(context)) return
+    if (!ClassEndEffectSettings.vibrateEnabled()) return
 
     if (haptic != null) {
         runCatching { haptic.performHapticFeedback(HapticFeedbackType.VirtualKey) }
@@ -334,7 +312,7 @@ fun FireworksOverlay(
     var canvasUnit by remember { mutableStateOf(320f) }
 
     LaunchedEffect(trigger) {
-        if (!ClassEndEffectSettings.fireworksEnabled(context)) return@LaunchedEffect
+        if (!ClassEndEffectSettings.fireworksEnabled()) return@LaunchedEffect
         val random = Random(System.nanoTime() xor trigger.toLong())
         val scale = canvasUnit / 320f
         var stage = 0

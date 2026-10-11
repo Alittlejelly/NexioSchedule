@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import com.haooz.chedule.data.todayLocalDate
 
 import androidx.compose.animation.core.Animatable
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
@@ -77,6 +80,7 @@ import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.HolidaySettingsScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
+import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
@@ -752,6 +756,21 @@ fun TabletSettingsScreen(
                                 TabletSettingsDest.Preference -> PreferenceSettingsScreen(
                                     scrollBehavior = null,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
+                                    // Android 宿主专有副作用：定位权限 / 天气缓存 / 最近任务卡片
+                                    hasLocationPermission = {
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.ACCESS_FINE_LOCATION
+                                        ) == PackageManager.PERMISSION_GRANTED ||
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                    },
+                                    onInvalidateWeatherCache = { invalidateWeatherCache() },
+                                    onSetTaskExcludedFromRecents = { hidden ->
+                                        MainActivity.setTaskExcludedFromRecents(context, hidden)
+                                    },
                                 )
 
                                 TabletSettingsDest.Update -> UpdateSettingsScreen(

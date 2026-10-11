@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.navigation
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
@@ -93,6 +96,7 @@ import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.screens.EduImportUpdater
 import com.haooz.chedule.ui.screens.EducationalImportScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
+import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -177,6 +181,8 @@ fun AppRouteContent(
         ) { scrollBehavior, backdrop ->
             // 偏好设置页可能改主题 → 系统栏要跟着刷新（原来在 Activity 的 setContent 里）
             val activity = LocalActivity.current
+            // 权限检查 / 天气缓存 / 隐藏最近任务卡片都是 Android 专有能力，由宿主注入
+            val context = LocalContext.current
             val isDark = isAppDarkTheme()
             LaunchedEffect(isDark) {
                 activity?.applyThemeAwareSystemBars()
@@ -184,6 +190,19 @@ fun AppRouteContent(
             PreferenceSettingsScreen(
                 scrollBehavior = scrollBehavior,
                 liquidGlassBackdrop = backdrop,
+                // Android 宿主专有副作用：定位权限 / 天气缓存 / 最近任务卡片
+                hasLocationPermission = {
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+                },
+                onInvalidateWeatherCache = { invalidateWeatherCache() },
+                onSetTaskExcludedFromRecents = { hidden ->
+                    MainActivity.setTaskExcludedFromRecents(context, hidden)
+                },
             )
         }
 

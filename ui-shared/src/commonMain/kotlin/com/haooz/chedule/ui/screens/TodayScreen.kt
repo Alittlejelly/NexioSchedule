@@ -12,8 +12,6 @@ import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
 
-import com.haooz.chedule.ui.utils.ApiCompat
-import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,15 +46,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +66,7 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseScheduleDateBounds
+import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCountdown
 import com.haooz.chedule.data.HolidayManager
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
@@ -85,6 +84,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
@@ -99,9 +99,11 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
@@ -109,11 +111,30 @@ import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
 
 // 有壁纸 backdrop 才走毛玻璃半透明路径，与模糊半径无关（blur=0 仍采样壁纸）
-// 原 TIME_FORMATTER("HH:mm") / DATE_FORMATTER("yyyy年M月d日") 是 java.time 的 DateTimeFormatter，
+// 原 TIME_FORMATTER("HH:mm") / DATE_FORMATTER("yyyy年M月d日") 是 JVM 侧的 DateTimeFormatter，
 // 已换成 :core 的 parseHourMinute() / formatChineseDate()；localDateTimeAt() 也改用 :core 的同名函数。
 
 // 由 BlurCard 统一应用折射档位
 val LocalCardRefraction = staticCompositionLocalOf { CardRefractionLevel.DEFAULT }
+
+/**
+ * [TodayScreen.todayAssistantCard] 槽位的数据载体（页面算好传给宿主渲染）。
+ *
+ * 今日助手卡依赖 Android 天气栈（Gson / 定位 / Geocoder），留在 `:androidApp`
+ * 的 `TodayAssistant.kt`；本页只负责把它需要的数据打包好，由宿主注入渲染 lambda。
+ */
+class TodayAssistantCardData(
+    val courses: List<Course>,
+    val tomorrowCourses: List<Course>,
+    val sectionTimes: Map<Int, String>,
+    val morningSections: Int,
+    val afternoonSections: Int,
+    val showClassroom: Boolean,
+    val showTeacher: Boolean,
+    val wallpaperBackdrop: Backdrop?,
+    val blurRadius: Float,
+    val surfaceOpacity: Float,
+)
 
 @Composable
 fun BlurCard(
@@ -122,7 +143,7 @@ fun BlurCard(
     blurRadius: Float = 0f,
     surfaceOpacity: Float,
     showEdgeLight: Boolean = false,
-    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val hasBackdrop = wallpaperBackdrop != null
@@ -325,13 +346,12 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
     }
 }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun TodayScreen(
     viewModel: CourseViewModel,
     settingsViewModel: SettingsViewModel,
     hiddenCourseIds: Set<String> = emptySet(),
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: android.graphics.Bitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     pagerState: androidx.compose.foundation.pager.PagerState,
     navBarStyle: String = "standard",
     onScrollYChanged: (Int) -> Unit = {},
@@ -360,6 +380,8 @@ fun TodayScreen(
     showTeacher: Boolean = true,
     /** 主界面 resume/节假日版本变化时递增，强制今日页重读 HolidayManager */
     holidayDataTick: Int = 0,
+    /** 今日助手卡（天气+智能提示）槽位：Android 宿主注入 TodayAssistantCard；null 不渲染 */
+    todayAssistantCard: (@Composable (TodayAssistantCardData) -> Unit)? = null,
 ) {
     val courses by viewModel.courses.collectAsState()
     val classStartTime by viewModel.classStartTime.collectAsState()
@@ -373,7 +395,9 @@ fun TodayScreen(
     val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
 
     val density = LocalDensity.current
-    val appContext = LocalContext.current.applicationContext
+    // 当日/次日课表解析用（原提醒侧解析内部 new 的就是 CourseRepository()，
+    // 而 CourseRepository() 返回单例，语义等价）
+    val resolveRepository = remember { CourseRepository() }
     val screenWidthPx = with(density) { screenWidthDp().dp.toPx() }
     val screenHeightPx = with(density) { screenHeightDp().dp.toPx() }
     val minWallpaperScale = remember(wallpaperBitmap, screenWidthPx, screenHeightPx) {
@@ -386,7 +410,7 @@ fun TodayScreen(
 
     val MAX_DATE_OFFSET = 1000
     var currentLocalDateTime by remember {
-        mutableStateOf(localDateTimeAt(System.currentTimeMillis()))
+        mutableStateOf(localDateTimeAt(Clock.System.now().toEpochMilliseconds()))
     }
     val currentLocalDate = currentLocalDateTime.date
     val initialDaysOffset = pagerState.currentPage - MAX_DATE_OFFSET
@@ -420,7 +444,7 @@ fun TodayScreen(
     LaunchedEffect(pagerState.currentPage, holidayDataTick) {
         var lastReportedDate: LocalDate? = null
         while (true) {
-            val sampledAtMillis = System.currentTimeMillis()
+            val sampledAtMillis = Clock.System.now().toEpochMilliseconds()
             val sampledNow = localDateTimeAt(sampledAtMillis)
             val today = sampledNow.date
             currentLocalDateTime = sampledNow
@@ -517,7 +541,11 @@ fun TodayScreen(
                         )
                     } else null
                     val todayWallpaperBlurEffect = remember(wallpaperBlur) {
-                        ApiCompat.blurRenderEffect(24f * density.density)
+                        // 跨平台模糊模板：半径表达式与原实现逐字一致
+                        val blurRadiusPx = 24f * density.density
+                        if (blurRadiusPx > 0f && isRenderEffectSupported()) {
+                            BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
+                        } else null
                     }
                     androidx.compose.foundation.Image(
                         bitmap = wallpaperBitmap,
@@ -592,7 +620,10 @@ fun TodayScreen(
                     afternoonSections,
                     eveningSections,
                 ) {
-                    com.haooz.chedule.reminder.CourseReminderHelper.resolveDaySchedule(appContext, pageDate)
+                    DayScheduleResolver.resolveDaySchedule(
+                        date = pageDate,
+                        repository = resolveRepository,
+                    )
                 }
                 val displayWeek = pageResolution.displayWeek
                 val pageCourses = remember(pageResolution, smartWeekend, dataVersion) {
@@ -681,9 +712,8 @@ fun TodayScreen(
                                 if (!hasPotentialCourse) {
                                     null
                                 } else {
-                                    val resolution = com.haooz.chedule.reminder.CourseReminderHelper
+                                    val resolution = DayScheduleResolver
                                         .resolveDaySchedule(
-                                            appContext,
                                             date,
                                             repository,
                                             registeredEntriesByYear,
@@ -721,8 +751,13 @@ fun TodayScreen(
                     totalWeeks, sectionTimes, morningSections, afternoonSections, eveningSections,
                 ) {
                     if (!isPageToday) emptyList()
-                    else com.haooz.chedule.reminder.CourseReminderHelper
-                        .resolveDaySchedule(appContext, forTomorrow = true).courses
+                    else {
+                        // 原 forTomorrow = true 就是「今天 + 1 天」
+                        val tomorrow = todayLocalDate().plusDays(1)
+                        DayScheduleResolver
+                            .resolveDaySchedule(date = tomorrow, repository = resolveRepository)
+                            .courses
+                    }
                 }
 
                 val dateText = pageDate.formatChineseDate()
@@ -776,17 +811,19 @@ fun TodayScreen(
                             )
                             if (isPageToday) {
                                 Spacer(modifier = Modifier.height(12.dp))
-                                TodayAssistantCard(
-                                    courses = pageCourses,
-                                    tomorrowCourses = tomorrowCourses,
-                                    sectionTimes = sectionTimes,
-                                    morningSections = morningSections,
-                                    afternoonSections = afternoonSections,
-                                    showClassroom = showClassroom,
-                                    showTeacher = showTeacher,
-                                    wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
-                                    blurRadius = cardBlurRadius,
-                                    surfaceOpacity = highlightCardOpacity
+                                todayAssistantCard?.invoke(
+                                    TodayAssistantCardData(
+                                        courses = pageCourses,
+                                        tomorrowCourses = tomorrowCourses,
+                                        sectionTimes = sectionTimes,
+                                        morningSections = morningSections,
+                                        afternoonSections = afternoonSections,
+                                        showClassroom = showClassroom,
+                                        showTeacher = showTeacher,
+                                        wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                        blurRadius = cardBlurRadius,
+                                        surfaceOpacity = highlightCardOpacity,
+                                    )
                                 )
                             }
                         }
@@ -870,17 +907,19 @@ fun TodayScreen(
                         }
                         if (isPageToday) {
                             item {
-                                TodayAssistantCard(
-                                    courses = pageCourses,
-                                    tomorrowCourses = tomorrowCourses,
-                                    sectionTimes = sectionTimes,
-                                    morningSections = morningSections,
-                                    afternoonSections = afternoonSections,
-                                    showClassroom = showClassroom,
-                                    showTeacher = showTeacher,
-                                    wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
-                                    blurRadius = cardBlurRadius,
-                                    surfaceOpacity = highlightCardOpacity
+                                todayAssistantCard?.invoke(
+                                    TodayAssistantCardData(
+                                        courses = pageCourses,
+                                        tomorrowCourses = tomorrowCourses,
+                                        sectionTimes = sectionTimes,
+                                        morningSections = morningSections,
+                                        afternoonSections = afternoonSections,
+                                        showClassroom = showClassroom,
+                                        showTeacher = showTeacher,
+                                        wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                        blurRadius = cardBlurRadius,
+                                        surfaceOpacity = highlightCardOpacity,
+                                    )
                                 )
                             }
                         }
@@ -1492,6 +1531,10 @@ private fun quotePoolFor(scene: QuoteScene, hour: Int): List<String> {
     return (base + extras).filter { seen.add(it) }
 }
 
+// 原来取的是平台的进程 id；top-level val 每进程只初始化一次，
+// 语义等价于「进程 id」，且 Android / Desktop / iOS 通用
+private val quoteProcessId: Long = Random.nextLong()
+
 @Composable
 private fun QuoteCard(
     isPageToday: Boolean,
@@ -1520,7 +1563,7 @@ private fun QuoteCard(
     }
 
     val pool = quotePoolFor(scene, hour)
-    val processId = android.os.Process.myPid().toLong()
+    val processId = quoteProcessId
     // 同一进程同场景同时段固定一条；整点变化会自然换一条
     val quoteIndex = remember(scene, hour, processId, pool.size) {
         val seed = processId xor (scene.ordinal * 31L) xor (hour * 17L)
@@ -1643,7 +1686,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
     courses: List<Course>,
     hiddenCourseIds: Set<String>,
     sectionTimes: Map<Int, String>,
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: android.graphics.Bitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
     wallpaperBackdrop: Backdrop? = null,
     blurRadius: Float = 0f,
     surfaceOpacity: Float,
@@ -1744,7 +1787,7 @@ private fun CourseItemWithClick(
     sectionTimes: Map<Int, String>,
     pageDate: LocalDate,
     pageWeek: Int,
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: android.graphics.Bitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
     hasWallpaper: Boolean = false,
     showClassroom: Boolean = true,
     showTeacher: Boolean = true
