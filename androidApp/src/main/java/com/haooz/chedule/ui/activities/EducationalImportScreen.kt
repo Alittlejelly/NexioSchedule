@@ -9,10 +9,11 @@
  *    返回 = `router.popBack()`，多窗状态 = MainActivity 的 `isInFreeformWindow`，
  *    系统栏 = 宿主全局处理。
  *
- * 仍在 Android 侧的部分（WebView 分支的注入、Toast、Gson 保存）
+ * 仍在 Android 侧的部分
+ * （WebView 分支的注入、Toast、Gson 保存）
  * 按用户决定**暂留本文件**，注入细节后置处理。
  */
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -51,7 +52,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -193,7 +193,7 @@ fun EducationalImportScreen(
                                 Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
                             )
                         ) {
-                            SchoolSelectionScreen(
+                            com.haooz.chedule.ui.screens.SchoolSelectionScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 isUpdating = isUpdating,
                                 dataVersion = dataVersion,
@@ -358,7 +358,7 @@ fun EducationalImportScreen(
                     val webContentBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
 
                     Box(modifier = Modifier.fillMaxSize()) {
-                        WebViewScreen(
+                        com.haooz.chedule.ui.screens.WebViewScreen(
                             school = school,
                             adapterId = adapter.adapterId,
                             importUrl = adapter.importUrl,
@@ -366,8 +366,8 @@ fun EducationalImportScreen(
                             webContentBackdrop = webContentBackdrop,
                             // 与选择页同构：Scaffold padding + 顶栏高度，内容贴在顶栏下
                             contentTopPadding = (
-                                paddingValues.calculateTopPadding() + topBarHeightDp + 12.dp
-                            ).coerceAtLeast(0.dp),
+                                    paddingValues.calculateTopPadding() + topBarHeightDp + 12.dp
+                                    ).coerceAtLeast(0.dp),
                             scheduleNames = scheduleNames,
                             currentScheduleName = currentScheduleName,
                             onBack = {
@@ -376,9 +376,13 @@ fun EducationalImportScreen(
                             },
                             onImportComplete = { courses ->
                                 // AndroidBridge 已为导入课程设置 scheduleId（目标课表，空为当前课表）
-                                val targetScheduleId = courses.firstOrNull()?.scheduleId?.takeIf { it.isNotEmpty() }
+                                val targetScheduleId =
+                                    courses.firstOrNull()?.scheduleId?.takeIf { it.isNotEmpty() }
                                 if (targetScheduleId != null && targetScheduleId != currentScheduleName) {
-                                    scheduleViewModel.saveCoursesToSchedule(targetScheduleId, courses)
+                                    scheduleViewModel.saveCoursesToSchedule(
+                                        targetScheduleId,
+                                        courses
+                                    )
                                 } else {
                                     courseViewModel.replaceCourses(courses)
                                 }
@@ -387,23 +391,37 @@ fun EducationalImportScreen(
                             },
                             onTaskCompleted = {
                                 val prefs = AppStorage.store("edu_import_prefs")
-                                val hasPresetTimeSlots = prefs.getStringOrNull("preset_time_slots") != null
+                                val hasPresetTimeSlots =
+                                    prefs.getStringOrNull("preset_time_slots") != null
                                 val targetScheduleId = prefs.getStringOrNull("target_schedule_id")
 
                                 if (hasPresetTimeSlots) {
-                                    applyPresetTimeSlots(settingsViewModel, scheduleViewModel, targetScheduleId)
+                                    applyPresetTimeSlots(
+                                        settingsViewModel,
+                                        scheduleViewModel,
+                                        targetScheduleId
+                                    )
                                 }
-                                val hasStartDate = prefs.getStringOrNull("semester_start_date") != null
+                                val hasStartDate =
+                                    prefs.getStringOrNull("semester_start_date") != null
                                 val hasTotalWeeks = prefs.getInt("semester_total_weeks", -1) > 0
-                                val hasClassDuration = prefs.getInt("default_class_duration", -1) > 0
-                                val hasBreakDuration = prefs.getInt("default_break_duration", -1) > 0
+                                val hasClassDuration =
+                                    prefs.getInt("default_class_duration", -1) > 0
+                                val hasBreakDuration =
+                                    prefs.getInt("default_break_duration", -1) > 0
                                 val hasFirstDayOfWeek = prefs.getInt("first_day_of_week", -1) > 0
                                 if (hasStartDate || hasTotalWeeks || hasClassDuration || hasBreakDuration || hasFirstDayOfWeek) {
                                     applyImportedScheduleConfig(courseViewModel, scheduleViewModel)
                                 }
-                                val hasComboSchedule = prefs.getStringOrNull("combo_schedule") != null
+                                val hasComboSchedule =
+                                    prefs.getStringOrNull("combo_schedule") != null
                                 if (hasComboSchedule) {
-                                    applyComboSchedule(settingsViewModel, courseViewModel, scheduleViewModel, targetScheduleId)
+                                    applyComboSchedule(
+                                        settingsViewModel,
+                                        courseViewModel,
+                                        scheduleViewModel,
+                                        targetScheduleId
+                                    )
                                 }
                             },
                             onPageTitleChanged = { webPageTitle = it },
@@ -487,7 +505,7 @@ private fun applyPresetTimeSlots(
     try {
         val timeSlots = Gson().fromJson<List<Map<String, Any>>>(
             timeSlotsJson,
-            object : TypeToken<List<Map<String, Any>>>() {}.type
+            object : com.google.gson.reflect.TypeToken<List<Map<String, Any>>>() {}.type
         ) ?: return
         if (timeSlots.isEmpty()) return
 

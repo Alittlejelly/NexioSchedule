@@ -1,11 +1,14 @@
-/** 应用更新设置页面 - Screen */
+/** 应用更新设置页面 - Screen（已迁入 :ui-shared commonMain；更新能力全部改经 :core 的 UpdateController 注入） */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.NoopUpdateController
+import com.haooz.chedule.data.UpdateController
+import com.haooz.chedule.data.UpdateRelease
 import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.todayLocalDate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,21 +36,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
-import com.haooz.chedule.ui.utils.UpdateChecker
-import com.haooz.chedule.ui.utils.UpdateInstaller
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
@@ -67,26 +65,35 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.io.File
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-private fun checkForUpdate(
-    context: Context,
-    source: String = "gitee",
-    channel: String = "stable"
-): Pair<Boolean, UpdateChecker.GiteeRelease?> = UpdateChecker.checkForUpdate(context, source, channel)
+/**
+ * 今日日期 `yyyy-MM-dd`。原实现是平台默认语言环境下的固定 pattern 日期格式化：
+ * 纯数字 + 固定分隔符的 pattern 不受语言环境影响，commonMain 手写零填充，
+ * 行为逐字一致（同 HolidaySettingsScreen.isoDate 的处理）。
+ */
+private fun todayIsoDate(): String {
+    val date = todayLocalDate()
+    return "${date.year.toString().padStart(4, '0')}" +
+        "-${date.monthNumber.toString().padStart(2, '0')}" +
+        "-${date.dayOfMonth.toString().padStart(2, '0')}"
+}
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun UpdateSettingsScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /**
+     * 更新能力控制器（Android = `AndroidUpdateController`，构造时捕获 context、包装平台侧
+     * 检查/下载/安装单例与版本号查询；宿主用 `remember { AndroidUpdateController(context) }` 注入）。
+     * 桌面/iOS 没有 APK 更新能力，用默认的 [NoopUpdateController]。
+     */
+    updateController: UpdateController = NoopUpdateController,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     var listScrollY by remember { mutableIntStateOf(0) }
-    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val prefs = remember { AppStorage.store("update_settings") }
     // 液态玻璃效果的透明下拉颜色
@@ -109,13 +116,8 @@ fun UpdateSettingsScreen(
     }
     val effectiveDownloadSource = if (updateChannel == "beta") "gitee" else downloadSource
 
-    val currentVersion = remember {
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "未知"
-        } catch (_: Exception) {
-            "未知"
-        }
-    }
+    // 原实现：宿主 context 的包信息查询，取不到显示「未知」
+    val currentVersion = remember { updateController.currentVersion }
 
     var isChecking by remember { mutableStateOf(false) }
     var hasUpdate by remember { mutableStateOf(prefs.getBoolean("has_update", false)) }
@@ -128,7 +130,7 @@ fun UpdateSettingsScreen(
         val savedBody = prefs.getStringOrNull("latest_body")
         val savedDate = prefs.getStringOrNull("latest_date")
         mutableStateOf(
-            if (savedUrl != null && savedTag != null) UpdateChecker.GiteeRelease(
+            if (savedUrl != null && savedTag != null) UpdateRelease(
                 savedTag,
                 savedName ?: "",
                 savedBody ?: "",
@@ -136,8 +138,8 @@ fun UpdateSettingsScreen(
                 savedApkUrl ?: "",
                 savedDate ?: "",
                 // 期望值统一存在 update_settings 里，这里按 tag 回读
-                UpdateChecker.rememberedApkSha256(context, savedTag),
-                UpdateChecker.rememberedApkSize(context, savedTag)
+                updateController.rememberedApkSha256(savedTag),
+                updateController.rememberedApkSize(savedTag)
             )
             else null
         )
@@ -150,17 +152,17 @@ fun UpdateSettingsScreen(
     var downloadProgress by remember { mutableFloatStateOf(0f) }
     var downloadComplete by remember { mutableStateOf(false) }
     var isInstalling by remember { mutableStateOf(false) }
-    var downloadedFile by remember { mutableStateOf<File?>(null) }
+    /** 已下载安装包的句柄（绝对路径；commonMain 无平台文件类型，经 UpdateController 以 String 传递） */
+    var downloadedFile by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (autoCheckUpdate) {
             val lastCheckDate = prefs.getString("last_check_date", "")
-            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                .format(java.util.Date())
+            val today = todayIsoDate()
             if (lastCheckDate != today) {
                 isChecking = true
-                val (update, release) = withContext(Dispatchers.IO) {
-                    checkForUpdate(context, effectiveDownloadSource, updateChannel)
+                val (update, release) = withContext(ioDispatcher) {
+                    updateController.checkForUpdate(effectiveDownloadSource, updateChannel)
                 }
                 hasUpdate = update
                 latestRelease = release
@@ -172,8 +174,8 @@ fun UpdateSettingsScreen(
                     putBoolean("has_update", update)
                 }
                 if (update && release != null) {
-                    UpdateChecker.persistRelease(context, release)
-                    UpdateChecker.rememberApkDigest(context, release.tagName, release.apkSha256, release.apkSize)
+                    updateController.persistRelease(release)
+                    updateController.rememberApkDigest(release.tagName, release.apkSha256, release.apkSize)
                 }
             }
         }
@@ -311,10 +313,10 @@ fun UpdateSettingsScreen(
                                         val tag = latestRelease!!.tagName
                                         coroutineScope.launch {
                                             // 校验需解析 APK，放 IO 线程
-                                            val valid = withContext(Dispatchers.IO) {
-                                                UpdateInstaller.hasValidApk(context, tag)
+                                            val valid = withContext(ioDispatcher) {
+                                                updateController.hasValidApk(tag)
                                             }
-                                            downloadedFile = if (valid) UpdateInstaller.apkFile(context, tag) else null
+                                            downloadedFile = if (valid) updateController.localApkPath(tag) else null
                                             downloadComplete = valid
                                             downloadProgress = if (valid) 1f else 0f
                                             showDownloadDialog = true
@@ -324,8 +326,8 @@ fun UpdateSettingsScreen(
                                     } else if (!isChecking) {
                                         isChecking = true
                                         coroutineScope.launch {
-                                            val (update, release) = withContext(Dispatchers.IO) {
-                                                checkForUpdate(context, effectiveDownloadSource, updateChannel)
+                                            val (update, release) = withContext(ioDispatcher) {
+                                                updateController.checkForUpdate(effectiveDownloadSource, updateChannel)
                                             }
                                             hasUpdate = update
                                             latestRelease = release
@@ -333,23 +335,17 @@ fun UpdateSettingsScreen(
                                             prefs.edit {
                                                 // 同上：KeyValueEditor 不可链式，逐条写
                                                 putBoolean("has_update", update)
-                                                putString(
-                                                    "last_check_date",
-                                                    java.text.SimpleDateFormat(
-                                                        "yyyy-MM-dd",
-                                                        java.util.Locale.getDefault()
-                                                    ).format(java.util.Date())
-                                                )
+                                                putString("last_check_date", todayIsoDate())
                                             }
                                             if (update && release != null) {
-                                                UpdateChecker.persistRelease(context, release)
+                                                updateController.persistRelease(release)
                                                 val tag = release.tagName
-                                                UpdateChecker.rememberApkDigest(context, tag, release.apkSha256, release.apkSize)
+                                                updateController.rememberApkDigest(tag, release.apkSha256, release.apkSize)
                                                 // 校验需解析 APK，放 IO 线程
-                                                val valid = withContext(Dispatchers.IO) {
-                                                    UpdateInstaller.hasValidApk(context, tag)
+                                                val valid = withContext(ioDispatcher) {
+                                                    updateController.hasValidApk(tag)
                                                 }
-                                                downloadedFile = if (valid) UpdateInstaller.apkFile(context, tag) else null
+                                                downloadedFile = if (valid) updateController.localApkPath(tag) else null
                                                 downloadComplete = valid
                                                 downloadProgress = if (valid) 1f else 0f
                                                 showDownloadDialog = true
@@ -546,9 +542,8 @@ fun UpdateSettingsScreen(
                                 onClick = {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                     val file = downloadedFile ?: return@Button
-                                    UpdateInstaller.installApk(
-                                        context = context,
-                                        file = file,
+                                    updateController.installApk(
+                                        apkPath = file,
                                         onInstallingChanged = { isInstalling = it },
                                         onFinished = {
                                             // 安装流程已交棒（静默成功 / 系统安装器已拉起）：
@@ -586,9 +581,8 @@ fun UpdateSettingsScreen(
                                     coroutineScope.launch {
                                         // 与启动弹窗走同一套解析逻辑：缓存为空时回源重查，
                                         // 避免本页能下、弹窗却提示「未找到下载链接」
-                                        val apkUrl = withContext(Dispatchers.IO) {
-                                            UpdateChecker.resolveApkUrl(
-                                                context,
+                                        val apkUrl = withContext(ioDispatcher) {
+                                            updateController.resolveApkUrl(
                                                 tag,
                                                 effectiveDownloadSource,
                                                 updateChannel
@@ -602,7 +596,7 @@ fun UpdateSettingsScreen(
                                             return@launch
                                         }
                                         try {
-                                            val file = UpdateInstaller.downloadApk(context, apkUrl, tag) { p ->
+                                            val file = updateController.downloadApk(apkUrl, tag) { p ->
                                                 downloadProgress = p
                                             }
                                             downloadedFile = file
@@ -643,4 +637,3 @@ fun UpdateSettingsScreen(
         }
     }
 }
-

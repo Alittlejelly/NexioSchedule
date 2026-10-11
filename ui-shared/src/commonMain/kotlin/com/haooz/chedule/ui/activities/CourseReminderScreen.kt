@@ -1,13 +1,6 @@
 /** 课程提醒设置页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.PowerManager
-import android.provider.Settings
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -36,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,20 +41,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
-import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.reminder.ClassDndHelper
-import com.haooz.chedule.reminder.CourseReminderHelper
-import com.haooz.chedule.reminder.IslandNotificationHelper
-import com.haooz.chedule.shizuku.ShizukuManager
+import com.haooz.chedule.data.NoopReminderController
+import com.haooz.chedule.data.ReminderController
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -87,7 +76,7 @@ private fun rlog(event: String, detail: String = "") {
 }
 
 /**
- * lambda 版：未录制时 detail 不求值，用于带 String.format 的埋点。
+ * lambda 版：未录制时 detail 不求值，用于带补零格式化参数的埋点。
  *
  * ⚠ 不能是 `inline`：FeatureLog.reminderFlow 已改为非 inline（本模块 android 变体 target 与
  * :androidApp 不一致，跨模块 inline 编不过），inline 参数无法继续往下传。
@@ -96,12 +85,19 @@ private fun rlog(event: String, detail: () -> String) {
     com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(event, detail)
 }
 
-@SuppressLint("InlinedApi", "ConfigurationScreenWidthHeight", "DefaultLocale")
+/** 两位补零（原 `%02d`；commonMain 没有字符串格式化器，用 padStart 等价实现） */
+private fun pad2(n: Int): String = n.toString().padStart(2, '0')
+
+/** `HH:mm` 两位补零（原 `%02d:%02d`） */
+private fun pad2(hour: Int, minute: Int): String = "${pad2(hour)}:${pad2(minute)}"
+
 @Composable
 fun CourseReminderScreen(
     settingsViewModel: SettingsViewModel = viewModel(),
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /** 提醒控制器（Android = AndroidReminderController 包装）；桌面/iOS 用 NoopReminderController */
+    reminderController: ReminderController = NoopReminderController,
 ) {
     val preClassReminder by settingsViewModel.preClassReminder.collectAsState()
     val preClassReminderMinutes by settingsViewModel.preClassReminderMinutes.collectAsState()
@@ -111,7 +107,6 @@ fun CourseReminderScreen(
     val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val classDndEnabled by settingsViewModel.classDndEnabled.collectAsState()
     val classDndMode by settingsViewModel.classDndMode.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
     val reminderPrefs = remember { AppStorage.store("course_reminder_prefs") }
     var isIgnoringBattery by remember { mutableStateOf(true) }
     val hapticFeedback = LocalHapticFeedback.current
@@ -140,14 +135,14 @@ fun CourseReminderScreen(
     }
     // 课中提醒：超级岛 / 原生实况共用同一开关
     var inClassEnabled by remember {
-        mutableStateOf(CourseReminderHelper.isInClassEnabled(context))
+        mutableStateOf(reminderController.isInClassEnabled())
     }
     // 提醒时机：0=全程，1=距下课
     var inClassTimingMode by remember {
-        mutableIntStateOf(CourseReminderHelper.getInClassTimingMode(context))
+        mutableIntStateOf(reminderController.getInClassTimingMode())
     }
     var inClassLeadMinutes by remember {
-        mutableIntStateOf(CourseReminderHelper.getInClassLeadMinutes(context))
+        mutableIntStateOf(reminderController.getInClassLeadMinutes())
     }
     var showInClassTimingDialog by remember { mutableStateOf(false) }
     var tempInClassTimingMode by remember { mutableIntStateOf(inClassTimingMode) }
@@ -158,51 +153,42 @@ fun CourseReminderScreen(
     val disableMasterDependentSwitches = {
         settingsViewModel.setClassDndEnabled(false)
         inClassEnabled = false
-        reminderPrefs.edit { putBoolean(CourseReminderHelper.KEY_IN_CLASS, false) }
+        reminderPrefs.edit { putBoolean(ReminderController.KEY_IN_CLASS, false) }
     }
     var permissionRefreshKey by remember { mutableIntStateOf(0) }
-    val batteryOptLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
-        isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
-        permissionRefreshKey++
-    }
-    val autoStartLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
-        isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
+    // 电池优化 / 自启动设置页返回：重读「已忽略电池优化」并触发权限刷新
+    // （原 batteryOptLauncher 与 autoStartLauncher 的回调逐字相同，合并为一个）
+    val onBatterySettingsResult: () -> Unit = {
+        isIgnoringBattery = reminderController.isIgnoringBatteryOptimizations()
         permissionRefreshKey++
     }
     var canPostPromoted by remember { mutableStateOf(false) }
     var canScheduleExactAlarms by remember { mutableStateOf(true) }
     var dndPermissionGranted by remember { mutableStateOf(false) }
     var notificationGranted by remember { mutableStateOf(false) }
-    val dndPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        dndPermissionGranted = ClassDndHelper.isDndPermissionGranted(context)
+    // 勿扰授权页返回：重读勿扰权限 → 触发权限刷新 → 已授权且总开关开着则重启提醒服务。
+    // rememberUpdatedState：回调在从系统设置返回时才触发，保证拿到最新组合的 masterEnabled
+    // （对齐原 rememberLauncherForActivityResult 的 rememberUpdatedState 回调语义；
+    //  调用点必须传 { onDndPermissionResult() }，让读取发生在结果返回时）
+    val onDndPermissionResult by rememberUpdatedState<() -> Unit> {
+        dndPermissionGranted = reminderController.isDndPermissionGranted()
         rlog("permission_dnd_result", "granted=$dndPermissionGranted")
         permissionRefreshKey++
         if (dndPermissionGranted && masterEnabled) {
-            CourseReminderHelper.startReminderService(context)
+            reminderController.startReminderService()
             rlog("reminder_service", "start_after_dnd_grant")
         }
     }
-    val promotedSettingsLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        canPostPromoted = CourseReminderHelper.canPostPromotedNotifications(context)
+    // 实况通知设置页返回：重读能否发布实况通知
+    val onPromotedSettingsResult: () -> Unit = {
+        canPostPromoted = reminderController.canPostPromotedNotifications()
     }
-    val exactAlarmLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-        canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
+    // 精确闹钟授权页返回：重读精确闹钟权限 → 已授权且总开关开着则重启提醒服务（同上 rememberUpdatedState）
+    val onExactAlarmResult by rememberUpdatedState<() -> Unit> {
+        canScheduleExactAlarms = reminderController.canScheduleExactAlarms()
         rlog("permission_exact_alarm_result", "granted=$canScheduleExactAlarms")
         if (canScheduleExactAlarms && masterEnabled) {
-            CourseReminderHelper.startReminderService(context)
+            reminderController.startReminderService()
             rlog("reminder_service", "start_after_exact_alarm_grant")
         }
     }
@@ -212,21 +198,17 @@ fun CourseReminderScreen(
             "master=$masterEnabled pre=$preClassReminder next=$nextDayReminder " +
                 "inClass=$inClassEnabled dnd=$classDndEnabled dndMode=$classDndMode " +
                 "island=$islandNotification preMin=$preClassReminderMinutes " +
-                "nextTime=${String.format("%02d:%02d", nextDayReminderHour, nextDayReminderMinute)}"
+                "nextTime=${pad2(nextDayReminderHour, nextDayReminderMinute)}"
         }
         if (masterEnabled) {
-            val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
-            isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
-            canPostPromoted = CourseReminderHelper.canPostPromotedNotifications(context)
-            val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
-            shizukuRunning = ShizukuManager.isShizukuRunning()
-            shizukuAuthorized = ShizukuManager.checkSelfPermission()
-            isIslandSupported = IslandNotificationHelper.isIslandSupported(context)
-            dndPermissionGranted = ClassDndHelper.isDndPermissionGranted(context)
-            notificationGranted = context.checkSelfPermission(
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            isIgnoringBattery = reminderController.isIgnoringBatteryOptimizations()
+            canPostPromoted = reminderController.canPostPromotedNotifications()
+            canScheduleExactAlarms = reminderController.canScheduleExactAlarms()
+            shizukuRunning = reminderController.isShizukuRunning()
+            shizukuAuthorized = reminderController.isShizukuAuthorized()
+            isIslandSupported = reminderController.isIslandSupported()
+            dndPermissionGranted = reminderController.isDndPermissionGranted()
+            notificationGranted = reminderController.hasNotificationPermission()
             // 非 HyperOS 设备不支持超级岛，若存在残留开关则自动关闭，避免隐藏入口又残留脏数据
             if (!isIslandSupported && islandNotification) {
                 settingsViewModel.setIslandNotification(false)
@@ -236,28 +218,23 @@ fun CourseReminderScreen(
 
     LaunchedEffect(permissionRefreshKey) {
         if (permissionRefreshKey > 0) {
-            val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
-            isIgnoringBattery = pm.isIgnoringBatteryOptimizations(context.packageName)
-            canPostPromoted = CourseReminderHelper.canPostPromotedNotifications(context)
-            val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            canScheduleExactAlarms = ApiCompat.canScheduleExactAlarms(alarmManager)
-            dndPermissionGranted = ClassDndHelper.isDndPermissionGranted(context)
-            notificationGranted = context.checkSelfPermission(
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            isIgnoringBattery = reminderController.isIgnoringBatteryOptimizations()
+            canPostPromoted = reminderController.canPostPromotedNotifications()
+            canScheduleExactAlarms = reminderController.canScheduleExactAlarms()
+            dndPermissionGranted = reminderController.isDndPermissionGranted()
+            notificationGranted = reminderController.hasNotificationPermission()
             // 授权状态变化后重新对账，保证开关与系统勿扰状态一致
-            CourseReminderHelper.startReminderService(context)
+            reminderController.startReminderService()
         }
     }
 
     var pendingPermissionAction by remember { mutableStateOf<Boolean?>(null) }
-    val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    // 通知权限弹窗返回（body 只读状态持有者，逐字保留原 launcher 回调逻辑）
+    val onNotificationPermissionResult: (Boolean) -> Unit = { granted ->
         rlog("permission_notification_result", "granted=$granted pending=$pendingPermissionAction")
         notificationGranted = granted
         if (granted) {
-            CourseReminderHelper.startReminderService(context)
+            reminderController.startReminderService()
             pendingPermissionAction?.let { enable ->
                 rlog("permission_notification_apply_pending", "enable=$enable")
                 settingsViewModel.setPreClassReminder(enable)
@@ -266,10 +243,10 @@ fun CourseReminderScreen(
                     disableMasterDependentSwitches()
                 }
                 if (enable) {
-                    CourseReminderHelper.startReminderService(context)
+                    reminderController.startReminderService()
                     rlog("reminder_service", "start_after_notif_grant")
                 } else {
-                    CourseReminderHelper.stopReminderService(context)
+                    reminderController.stopReminderService()
                     rlog("reminder_service", "stop_after_notif_grant")
                 }
             }
@@ -334,13 +311,11 @@ fun CourseReminderScreen(
                                 title = "开启提醒",
                                 checked = masterEnabled,
                                 onCheckedChange = {
-                                    val hasPermission = context.checkSelfPermission(
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    ) == PackageManager.PERMISSION_GRANTED
+                                    val hasPermission = reminderController.hasNotificationPermission()
                                     if (!hasPermission) {
                                         rlog("master_switch_permission_blocked", "want=$it")
                                         pendingPermissionAction = it
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        reminderController.requestNotificationPermission(onNotificationPermissionResult)
                                         return@SwitchPreference
                                     }
                                     rlog("master_switch", "on=$it")
@@ -350,10 +325,10 @@ fun CourseReminderScreen(
                                         disableMasterDependentSwitches()
                                     }
                                     if (it) {
-                                        CourseReminderHelper.startReminderService(context)
+                                        reminderController.startReminderService()
                                         rlog("reminder_service", "start")
                                     } else {
-                                        CourseReminderHelper.stopReminderService(context)
+                                        reminderController.stopReminderService()
                                         rlog("reminder_service", "stop")
                                     }
                                 }
@@ -374,18 +349,16 @@ fun CourseReminderScreen(
                                 checked = preClassReminder,
                                 enabled = masterEnabled,
                                 onCheckedChange = {
-                                    val hasPermission = context.checkSelfPermission(
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    ) == PackageManager.PERMISSION_GRANTED
+                                    val hasPermission = reminderController.hasNotificationPermission()
                                     if (!hasPermission) {
                                         rlog("preclass_permission_blocked", "want=$it")
                                         pendingPermissionAction = it
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        reminderController.requestNotificationPermission(onNotificationPermissionResult)
                                         return@SwitchPreference
                                     }
                                     rlog("preclass_switch", "on=$it")
                                     settingsViewModel.setPreClassReminder(it)
-                                    CourseReminderHelper.startReminderService(context)
+                                    reminderController.startReminderService()
                                     rlog("reminder_service", "start_after_preclass")
                                 }
                             )
@@ -417,18 +390,16 @@ fun CourseReminderScreen(
                                 checked = nextDayReminder,
                                 enabled = masterEnabled,
                                 onCheckedChange = {
-                                    val hasPermission = context.checkSelfPermission(
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    ) == PackageManager.PERMISSION_GRANTED
+                                    val hasPermission = reminderController.hasNotificationPermission()
                                     if (!hasPermission) {
                                         rlog("nextday_permission_blocked", "want=$it")
                                         pendingPermissionAction = it
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        reminderController.requestNotificationPermission(onNotificationPermissionResult)
                                         return@SwitchPreference
                                     }
                                     rlog("nextday_switch", "on=$it")
                                     settingsViewModel.setNextDayReminder(it)
-                                    CourseReminderHelper.startReminderService(context)
+                                    reminderController.startReminderService()
                                     rlog("reminder_service", "start_after_nextday")
                                 }
                             )
@@ -441,7 +412,7 @@ fun CourseReminderScreen(
                                     title = "提醒时间",
                                     endActions = {
                                         Text(
-                                            text = String.format("%02d:%02d", nextDayReminderHour, nextDayReminderMinute),
+                                            text = pad2(nextDayReminderHour, nextDayReminderMinute),
                                             fontSize = 14.5.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
@@ -449,11 +420,7 @@ fun CourseReminderScreen(
                                     holdDownState = showTimeDialog,
                                     onClick = {
                                         rlog("nextday_time_dialog_open") {
-                                            String.format(
-                                                "cur=%02d:%02d",
-                                                nextDayReminderHour,
-                                                nextDayReminderMinute
-                                            )
+                                            "cur=${pad2(nextDayReminderHour, nextDayReminderMinute)}"
                                         }
                                         tempHour = nextDayReminderHour
                                         tempMinute = nextDayReminderMinute
@@ -469,7 +436,7 @@ fun CourseReminderScreen(
                                 onCheckedChange = {
                                     rlog("inclass_switch", "on=$it")
                                     inClassEnabled = it
-                                    reminderPrefs.edit { putBoolean(CourseReminderHelper.KEY_IN_CLASS, it) }
+                                    reminderPrefs.edit { putBoolean(ReminderController.KEY_IN_CLASS, it) }
                                 }
                             )
                             AnimatedVisibility(
@@ -481,7 +448,7 @@ fun CourseReminderScreen(
                                     title = "提醒时机",
                                     endActions = {
                                         Text(
-                                            text = if (inClassTimingMode == CourseReminderHelper.IN_CLASS_TIMING_FULL) {
+                                            text = if (inClassTimingMode == ReminderController.IN_CLASS_TIMING_FULL) {
                                                 "全程"
                                             } else {
                                                 "距下课 ${inClassLeadMinutes} 分钟"
@@ -515,13 +482,11 @@ fun CourseReminderScreen(
                                 onCheckedChange = { enable ->
                                     rlog("dnd_switch", "on=$enable perm=$dndPermissionGranted")
                                     settingsViewModel.setClassDndEnabled(enable)
-                                    if (enable && !ClassDndHelper.isDndPermissionGranted(context)) {
+                                    if (enable && !reminderController.isDndPermissionGranted()) {
                                         rlog("dnd_permission_launch")
-                                        dndPermissionLauncher.launch(
-                                            Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                        )
+                                        reminderController.openNotificationAccessSettings { onDndPermissionResult() }
                                     }
-                                    CourseReminderHelper.startReminderService(context)
+                                    reminderController.startReminderService()
                                     rlog("reminder_service", "start_after_dnd")
                                 }
                             )
@@ -532,14 +497,12 @@ fun CourseReminderScreen(
                                 settingsViewModel.setClassDndMode(mode)
                                 // 三个档位都要「免打扰访问权限」：静音档走 setRingerMode，
                                 // Android N 起同样被判定为切换勿扰，未授权会直接抛异常
-                                if (!ClassDndHelper.isDndPermissionGranted(context)) {
+                                if (!reminderController.isDndPermissionGranted()) {
                                     rlog("dnd_mode_permission_needed", "mode=$mode")
                                     showToast("该档位需要勿扰权限，已为你打开授权页")
-                                    dndPermissionLauncher.launch(
-                                        Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                    )
+                                    reminderController.openNotificationAccessSettings { onDndPermissionResult() }
                                 }
-                                CourseReminderHelper.startReminderService(context)
+                                reminderController.startReminderService()
                                 rlog("reminder_service", "start_after_dnd_mode")
                             }
                             val modeEntry = remember(classDndMode) {
@@ -548,20 +511,20 @@ fun CourseReminderScreen(
                                         DropdownItem(
                                             text = "完全勿扰 (DND)",
                                             summary = "屏蔽全部通知与铃声",
-                                            selected = classDndMode == ClassDndHelper.MODE_DND,
-                                            onClick = { selectMode(ClassDndHelper.MODE_DND) }
+                                            selected = classDndMode == ReminderController.MODE_DND,
+                                            onClick = { selectMode(ReminderController.MODE_DND) }
                                         ),
                                         DropdownItem(
                                             text = "静音模式 (SILENT)",
                                             summary = "关闭铃声与振动",
-                                            selected = classDndMode == ClassDndHelper.MODE_SILENT,
-                                            onClick = { selectMode(ClassDndHelper.MODE_SILENT) }
+                                            selected = classDndMode == ReminderController.MODE_SILENT,
+                                            onClick = { selectMode(ReminderController.MODE_SILENT) }
                                         ),
                                         DropdownItem(
                                             text = "勿扰模式 (PRIORITY)",
                                             summary = "只放行优先通知",
-                                            selected = classDndMode == ClassDndHelper.MODE_PRIORITY,
-                                            onClick = { selectMode(ClassDndHelper.MODE_PRIORITY) }
+                                            selected = classDndMode == ReminderController.MODE_PRIORITY,
+                                            onClick = { selectMode(ReminderController.MODE_PRIORITY) }
                                         )
                                     )
                                 )
@@ -653,7 +616,7 @@ fun CourseReminderScreen(
                                                 text = "授权 Shizuku",
                                                 onClick = {
                                                     rlog("shizuku_authorize_request")
-                                                    IslandNotificationHelper.requestShizukuPermission { granted ->
+                                                    reminderController.requestShizukuPermission { granted ->
                                                         rlog("shizuku_authorize_result", "granted=$granted")
                                                         shizukuAuthorized = granted
                                                         if (!granted) {
@@ -893,11 +856,11 @@ fun CourseReminderScreen(
                                         rlog("permission_notification_click", "granted=$notificationGranted")
                                         if (!notificationGranted) {
                                             rlog("permission_notification_launch")
-                                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            reminderController.requestNotificationPermission(onNotificationPermissionResult)
                                         }
                                     }
                                 )
-                                if (android.os.Build.VERSION.SDK_INT >= 36) {
+                                if (reminderController.supportsPromotedNotifications) {
                                     ArrowPreference(
                                         title = "实况通知权限",
                                         summary = "在状态栏和锁屏实时显示课程倒计时",
@@ -916,17 +879,8 @@ fun CourseReminderScreen(
                                             rlog("permission_promoted_click", "granted=$canPostPromoted")
                                             if (!canPostPromoted) {
                                                 rlog("permission_promoted_launch")
-                                                try {
-                                                    val intent = Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS").apply {
-                                                        data = "package:${context.packageName}".toUri()
-                                                    }
-                                                    promotedSettingsLauncher.launch(intent)
-                                                } catch (_: Exception) {
-                                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                                    }
-                                                    promotedSettingsLauncher.launch(intent)
-                                                }
+                                                // 首选「实况通知管理页」、失败退回「应用通知设置」的兜底在 Android 包装层内逐字保留
+                                                reminderController.openPromotedNotificationSettings(onPromotedSettingsResult)
                                             }
                                         }
                                     )
@@ -949,10 +903,7 @@ fun CourseReminderScreen(
                                         rlog("permission_exact_alarm_click", "granted=$canScheduleExactAlarms")
                                         if (!canScheduleExactAlarms) {
                                             rlog("permission_exact_alarm_launch")
-                                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                                                data = "package:${context.packageName}".toUri()
-                                            }
-                                            exactAlarmLauncher.launch(intent)
+                                            reminderController.openExactAlarmSettings { onExactAlarmResult() }
                                         }
                                     }
                                 )
@@ -974,15 +925,8 @@ fun CourseReminderScreen(
                                         rlog("permission_battery_click", "ignoring=$isIgnoringBattery")
                                         if (!isIgnoringBattery) {
                                             rlog("permission_battery_launch")
-                                            try {
-                                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                                    data = "package:${context.packageName}".toUri()
-                                                }
-                                                batteryOptLauncher.launch(intent)
-                                            } catch (_: Exception) {
-                                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                                batteryOptLauncher.launch(intent)
-                                            }
+                                            // 首选「请求忽略电池优化」、失败退回「白名单列表」的兜底在 Android 包装层内逐字保留
+                                            reminderController.openBatteryOptimizationSettings(onBatterySettingsResult)
                                         }
                                     }
                                 )
@@ -1005,9 +949,7 @@ fun CourseReminderScreen(
                                         if (!dndPermissionGranted) {
                                             rlog("permission_dnd_launch")
                                             try {
-                                                dndPermissionLauncher.launch(
-                                                    Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                                )
+                                                reminderController.openNotificationAccessSettings { onDndPermissionResult() }
                                             } catch (_: Exception) {
                                                 showToast("请手动在系统设置中授予勿扰权限")
                                             }
@@ -1026,10 +968,7 @@ fun CourseReminderScreen(
                                     },
                                     onClick = {
                                         rlog("permission_autostart_click")
-                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                            data = "package:${context.packageName}".toUri()
-                                        }
-                                        autoStartLauncher.launch(intent)
+                                        reminderController.openAppDetailsSettings(onBatterySettingsResult)
                                     }
                                 )
                             }
@@ -1061,11 +1000,11 @@ fun CourseReminderScreen(
                             onValueChange = {
                                 tempInClassTimingMode = it
                             },
-                            range = CourseReminderHelper.IN_CLASS_TIMING_FULL..CourseReminderHelper.IN_CLASS_TIMING_BEFORE_END,
+                            range = ReminderController.IN_CLASS_TIMING_FULL..ReminderController.IN_CLASS_TIMING_BEFORE_END,
                             visibleItemCount = 3,
                             itemHeight = 48.dp,
                             label = { mode ->
-                                if (mode == CourseReminderHelper.IN_CLASS_TIMING_FULL) "全程" else "距下课"
+                                if (mode == ReminderController.IN_CLASS_TIMING_FULL) "全程" else "距下课"
                             },
                             textStyle = MiuixTheme.textStyles.title2,
                             modifier = Modifier.weight(1f)
@@ -1073,7 +1012,7 @@ fun CourseReminderScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         // 右侧滚轮：距下课分钟数，全程时禁用
                         val minutesEnabled =
-                            tempInClassTimingMode == CourseReminderHelper.IN_CLASS_TIMING_BEFORE_END
+                            tempInClassTimingMode == ReminderController.IN_CLASS_TIMING_BEFORE_END
                         NumberPicker(
                             value = tempInClassLeadMinutes,
                             onValueChange = { if (minutesEnabled) tempInClassLeadMinutes = it },
@@ -1088,7 +1027,7 @@ fun CourseReminderScreen(
                         )
                     }
                     Text(
-                        text = if (tempInClassTimingMode == CourseReminderHelper.IN_CLASS_TIMING_FULL) {
+                        text = if (tempInClassTimingMode == ReminderController.IN_CLASS_TIMING_FULL) {
                             "全程显示课中进度"
                         } else {
                             "距下课 ${tempInClassLeadMinutes} 分钟开始显示"
@@ -1124,8 +1063,8 @@ fun CourseReminderScreen(
                                 inClassTimingMode = tempInClassTimingMode
                                 inClassLeadMinutes = tempInClassLeadMinutes
                                 reminderPrefs.edit {
-                                    putInt(CourseReminderHelper.KEY_IN_CLASS_TIMING_MODE, tempInClassTimingMode)
-                                    putInt(CourseReminderHelper.KEY_IN_CLASS_LEAD_MINUTES, tempInClassLeadMinutes)
+                                    putInt(ReminderController.KEY_IN_CLASS_TIMING_MODE, tempInClassTimingMode)
+                                    putInt(ReminderController.KEY_IN_CLASS_LEAD_MINUTES, tempInClassLeadMinutes)
                                 }
                                 showInClassTimingDialog = false
                             },
@@ -1179,7 +1118,7 @@ fun CourseReminderScreen(
                                 rlog("preclass_minutes_dialog_ok", "minutes=$tempMinutes")
                                 settingsViewModel.setPreClassReminderMinutes(tempMinutes)
                                 showMinutesDialog = false
-                                CourseReminderHelper.startReminderService(context)
+                                reminderController.startReminderService()
                                 rlog("reminder_service", "start_after_preclass_minutes")
                             },
                             colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -1211,7 +1150,7 @@ fun CourseReminderScreen(
                             range = 0..23,
                             visibleItemCount = 3,
                             itemHeight = 60.dp,
-                            label = { String.format("%02d", it) },
+                            label = { pad2(it) },
                             wrapAround = true,
                             modifier = Modifier.weight(1f)
                         )
@@ -1228,7 +1167,7 @@ fun CourseReminderScreen(
                             range = 0..59,
                             visibleItemCount = 3,
                             itemHeight = 60.dp,
-                            label = { String.format("%02d", it) },
+                            label = { pad2(it) },
                             wrapAround = true,
                             modifier = Modifier.weight(1f)
                         )
@@ -1251,12 +1190,12 @@ fun CourseReminderScreen(
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 rlog("nextday_time_dialog_ok") {
-                                    String.format("%02d:%02d", tempHour, tempMinute)
+                                    pad2(tempHour, tempMinute)
                                 }
                                 settingsViewModel.setNextDayReminderHour(tempHour)
                                 settingsViewModel.setNextDayReminderMinute(tempMinute)
                                 showTimeDialog = false
-                                CourseReminderHelper.startReminderService(context)
+                                reminderController.startReminderService()
                                 rlog("reminder_service", "start_after_nextday_time")
                             },
                             colors = ButtonDefaults.textButtonColorsPrimary(),

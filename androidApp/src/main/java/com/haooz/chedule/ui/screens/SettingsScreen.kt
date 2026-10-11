@@ -30,6 +30,8 @@ import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
+import com.haooz.chedule.ui.utils.AndroidReminderController
+import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.widget.WidgetUpdateCache
 import java.net.HttpURLConnection
 import java.net.URL
@@ -207,6 +209,8 @@ fun SettingsScreen(
                         settingsViewModel = settingsViewModel,
                         scrollBehavior = null,
                         liquidGlassBackdrop = liquidGlassBackdrop,
+                        // Android 提醒能力（闹钟/电池/权限/设置页跳转）注入
+                        reminderController = remember { AndroidReminderController(context) },
                     )
 
                     TabletSettingsDest.ScheduleImport -> BackupAndMigrationScreen(
@@ -271,6 +275,8 @@ fun SettingsScreen(
                     TabletSettingsDest.Update -> UpdateSettingsScreen(
                         scrollBehavior = null,
                         liquidGlassBackdrop = liquidGlassBackdrop,
+                        // Android 更新能力（检查/下载/APK 安装）注入
+                        updateController = remember { AndroidUpdateController(context) },
                     )
 
                     TabletSettingsDest.About -> {

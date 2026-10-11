@@ -96,12 +96,14 @@ import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
-import com.haooz.chedule.ui.screens.EduImportUpdater
-import com.haooz.chedule.ui.screens.EducationalImportScreen
+import com.haooz.chedule.ui.activities.EduImportUpdater
+import com.haooz.chedule.ui.activities.EducationalImportScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
+import com.haooz.chedule.ui.utils.AndroidReminderController
+import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -214,9 +216,12 @@ fun AppRouteContent(
             title = "更新设置",
             onBack = { router.popBack() },
         ) { scrollBehavior, backdrop ->
+            val context = LocalContext.current
             UpdateSettingsScreen(
                 scrollBehavior = scrollBehavior,
                 liquidGlassBackdrop = backdrop,
+                // Android 更新能力（检查/下载/APK 安装）注入
+                updateController = remember { AndroidUpdateController(context) },
             )
         }
 
@@ -406,9 +411,12 @@ private fun CourseReminderRoute(router: AppRouter) {
             )
         },
     ) { scrollBehavior, backdrop ->
+        val context = LocalContext.current
         CourseReminderScreen(
             scrollBehavior = scrollBehavior,
             liquidGlassBackdrop = backdrop,
+            // Android 提醒能力（闹钟/电池/权限/设置页跳转）注入
+            reminderController = remember { AndroidReminderController(context) },
         )
     }
 }
