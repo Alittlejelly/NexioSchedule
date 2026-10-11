@@ -192,6 +192,30 @@ subprojects {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// kotlinx-datetime 版本钉死 —— 全应用只允许一个版本
+//
+// 背景（2026-10-11 首次真编 iOS 时发现）：Compose Multiplatform 的 material3
+// 1.12.0-alpha03 在 **iOS 变体**上依赖 `kotlinx-datetime:0.7.1`，冲突解析后把
+// 本项目锁定的 0.6.2 顶掉 —— 而 Android / JVM 侧走的是 AndroidX material3
+// （不拉 kotlinx-datetime），仍是 0.6.2。结果是同一个 iOS 二进制里
+// `:core` 按 0.6.2 编译、`:ui-shared` 按 0.7.1 编译：
+//   - `:core` 的公开签名里到处都是 `LocalDate`（Course / HolidayEntry /
+//     TeachingWeekReorganization…）—— 两个版本 = 两个不同的类，链接期必炸
+//   - 直接症状是 `Clock.System` 在 Native 上 `Unresolved reference 'System'`
+//     （0.7 把 Clock 换成了 `kotlin.time.Clock`）
+//
+// 所以这里 force 回 0.6.2，与 Android 侧保持一致。**不是**「先绕过」：
+// 版本混用本身就是错的，等真要做 0.7 升级（catalog 注释里说的「阶段 2」）时
+// 是**全项目一起升**，连同 `monthNumber` → `month`、`Clock` → `kotlin.time.Clock`
+// 一起改，然后删掉这条 force。
+// ─────────────────────────────────────────────────────────────────────────────
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Kotlin/Wasm：不要从 nodejs.org 下载 Node 发行版，用本机已装的
 //
 // 背景：`:backdrop` / `:miuix` 挂了 wasmJs 编译门禁（见各自 build.gradle.kts）。

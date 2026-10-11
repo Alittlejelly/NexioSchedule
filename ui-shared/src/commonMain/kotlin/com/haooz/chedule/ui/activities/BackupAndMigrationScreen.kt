@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
+import kotlinx.datetime.isoDayNumber
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
@@ -960,7 +961,10 @@ internal fun icsEffectiveDatesForCourse(
         }
         val weekday = followPosition?.weekday
             ?: swap?.followWeekday?.takeIf { it in 1..7 }
-            ?: followDate?.dayOfWeek?.value
+            // ⚠ `dayOfWeek.value` 是 JVM 专有：JVM 上 DayOfWeek 是 java.time 的枚举（有 value），
+            // Native 上 kotlinx-datetime 自带枚举只有 isoDayNumber 扩展。
+            // 两者语义相同（1=周一…7=周日），但只有 isoDayNumber 跨平台。
+            ?: followDate?.dayOfWeek?.isoDayNumber
             ?: position.weekday
         val week = (followPosition?.week
             ?: swap?.followWeek?.takeIf { it > 0 }?.toLong()

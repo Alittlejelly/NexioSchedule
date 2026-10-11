@@ -113,7 +113,10 @@ fun ShiftDayColumn(
             (morningSections + afternoonSections + 1).takeIf { eveningSections > 0 }
         )
 
-        val cuts = sortedSetOf(1)
+        // ⚠ 不能用 `sortedSetOf`：它是 JVM 专有（kotlin.collections 里只有 JVM 有实现），
+        // 在 commonMain 里能编过 Android/JVM、编 iOS 才炸（2026-10-11 实测）。
+        // 用普通 Set 收集、最后统一排序，语义一致。
+        val cuts = mutableSetOf(1)
         for ((_, course) in allCourses) {
             val s = course.startSection
             val e = course.endSection
@@ -131,7 +134,7 @@ fun ShiftDayColumn(
             val items: List<Pair<String, Course>>
         )
 
-        val cutList = cuts.toList()
+        val cutList = cuts.sorted()
         val blockSlots = buildList {
             for (i in cutList.indices) {
                 val segStart = cutList[i]

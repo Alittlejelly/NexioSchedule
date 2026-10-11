@@ -168,7 +168,9 @@ fun CourseDetailScreen(
             weeks.map { week -> week to course }
         }
         // 先按周次升序分组，组内再按星期几、起始节次排序
-        weekEntries.groupBy { it.first }.toSortedMap().toList()
+        // ⚠ `toSortedMap()` 是 JVM 专有（返回 java.util.SortedMap），commonMain 里
+        // Android/JVM 能编过、编 iOS 才炸。等价写法：toList() 后按 key 排序。
+        weekEntries.groupBy { it.first }.toList().sortedBy { it.first }
             .map { (week, entries) ->
                 week to entries.sortedWith(compareBy({ it.second.dayOfWeek }, { it.second.startSection }))
             }

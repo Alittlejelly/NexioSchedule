@@ -44,6 +44,42 @@ kotlin {
         androidResources.enable = true
     }
     jvm()
+    // ── iOS target：**默认关闭**，用 -Pnexio.ios=true 显式开启（同 :core / :miuix / :backdrop）──
+    //
+    // 为什么默认关：一旦声明 iOS target，`:ui-shared:check` 就会去解析 iOS 的 klib 依赖，
+    // 而第八节门禁是 `--offline` 跑的 —— 本地没有这些变体的缓存，`:ui-shared:check`
+    // 直接失败，把「Android 零回归」这条红线弄脏（与 :core 完全同因）。
+    //
+    // 2026-10-11 首次开启并实测通过（macOS + Xcode 27）：
+    //   ./gradlew -Pnexio.ios=true :ui-shared:compileKotlinIosArm64
+    // 这一条是**整个迁移的终检** —— 23 批页面的「iOS 能不能编」此前全靠
+    // checkKmpPurity 静态扫描 + :core 的 linuxX64 目标间接保证，本模块从未被
+    // Kotlin/Native 真正编译过。
+    //
+    val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
+    if (enableIos) {
+        iosArm64()
+        // 模拟器变体：日常开发真正跑的是模拟器（arm64 Mac 上就是 iosSimulatorArm64）。
+        // 三个上游模块（:core / :miuix / :backdrop）同步声明，否则解析不到模拟器 klib。
+        iosSimulatorArm64()
+
+        // ── framework 产物（交接清单 §6 A0 第 1 项）──────────────────────────
+        // 目的有二：
+        //  1. 让 Xcode 侧有东西可嵌（iOS App 的 Compose 界面全部来自本模块）
+        //  2. **编译 ≠ 链接**：klib 图的版本冲突（如 kotlinx-datetime 0.6 vs 0.7）
+        //     只有在链接期才真正合账。声明 framework 才有 link 任务可跑，
+        //     否则「编过了」永远差最后一步验证。
+        // isStatic = true：与 JetBrains 的 CMP 模板一致（静态链接把整张图拉进来，
+        // 验证最彻底，也不会在 iOS 侧多出一个要签名的 dylib）。
+        // ⚠ baseName 是**暂定**的：iOS App 工程落地时按实际 Xcode target 命名再定。
+        //
+        // 🔴 **当前链接会失败**（2026-10-11 实测）：`:miuix` 是 miuix-ui 的「部分 fork」，
+        // 与官方 artifact 同包同名，两份 klib 进链接期报
+        // `IrPropertySymbolImpl is already bound`。`compileKotlinIos*` 全绿，
+        // 只有 link 这一步过不去 —— 卡点与解法见 miuix/build.gradle.kts 的注释（风险 R7）。
+        iosArm64 { binaries.framework { baseName = "NexioShared"; isStatic = true } }
+        iosSimulatorArm64 { binaries.framework { baseName = "NexioShared"; isStatic = true } }
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -68,6 +104,10 @@ kotlin {
             // import 它们（ArrowPreference / MiuixIcons / layerBackdrop）就各欠各的。
             // 用**不带 -android 后缀的根坐标** —— KMP 模块由 Gradle 按目标解析变体，
             // 写死 -android 会让 jvm 目标编不过（同 miuix/build.gradle.kts 的注释）。
+            // ⚠ 这三个官方子库传递依赖的官方 `miuix-ui` 与本仓库的 `:miuix` fork 同包同名，
+            // 两份 klib 一起进 iOS 链接期会报 `IrPropertySymbolImpl is already bound` ——
+            // 已知阻塞，不能靠 exclude 绕过。完整分析见 miuix/build.gradle.kts 的注释
+            // 与文档风险 R7。
             implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}")
             implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}")

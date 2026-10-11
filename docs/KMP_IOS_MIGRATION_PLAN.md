@@ -78,7 +78,22 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 # 动了 commonMain / skikoMain 时额外跑（需联网 + PATH 有 Node）
 ./gradlew -Pnexio.wasm=true checkKmpWasmJs
+
+# ── iOS（需 macOS + Xcode；首次会联网拉 iOS klib，**不能加 --offline**）──────
+# ⚠ 与默认态 check **分开跑**：声明 iOS target 后 check 会去解析 iOS klib 变体，
+#   离线门禁会失败（这也是 iOS target 默认关闭的原因）。
+./gradlew -Pnexio.ios=true \
+  :core:compileKotlinIosArm64 :miuix:compileKotlinIosArm64 \
+  :backdrop:compileKotlinIosArm64 :ui-shared:compileKotlinIosArm64
+# 模拟器目标（日常开发真正跑的）：把上面的 IosArm64 换成 IosSimulatorArm64
+# 在 iOS 模拟器上真跑 :core 的跨平台测试（编译 + 链接 + 运行）
+./gradlew -Pnexio.ios=true :core:iosSimulatorArm64Test
 ```
+
+> ✅ 2026-10-11 实测（macOS 27 / Xcode 27 / Kotlin/Native 2.4.10）：
+> 四个模块的 `iosArm64` + `iosSimulatorArm64` **全部编译通过**；
+> `:core:iosSimulatorArm64Test` **109 个用例 0 失败**（在模拟器里真跑）。
+> 🔴 唯一过不去的是 **link**（`:ui-shared:linkDebugFramework*`）—— 见风险 **R10**。
 
 > ⚠ **wasmJs 门禁与 `check` 互斥**：`-Pnexio.wasm=true` 期间 Kotlin/Wasm 插件会在配置阶段
 > 注册 Distributions 仓库，与 `FAIL_ON_PROJECT_REPOS` 冲突 → `check` 直接失败。
@@ -510,7 +525,7 @@ AppFiles.init(
 | 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
 | 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
 | 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | 🟡 A1 A2 已实现，**A3 待写**；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**，42 文件待迁（应用代码约 40%） |
+| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：`:ui-shared` 已挂 iOS 目标并编译通过（2026-10-11）；**链接卡在 R10** |
 | 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。
@@ -523,7 +538,7 @@ AppFiles.init(
   commonMain/  领域模型 · 时间计算 · 节假日 · 课程仓储 · 备份序列化 + 平台接口
   androidMain/ actual：SharedPreferences / java.io.File / OkHttp
   iosMain/     actual：NSUserDefaults / NSFileManager / NSURLSession
-:ui-shared     CMP 共享 UI（commonMain 62 / android 1 / jvm 1）
+:ui-shared     CMP 共享 UI（commonMain 93 / android 1 / jvm 1 / ios 1）
 :androidApp    Android 壳（保留 reminder / widget / shizuku / wearable）
 :iosApp        Xcode 工程（待建）
 ```
@@ -540,12 +555,58 @@ AppFiles.init(
 | R4 | Kotlin/Native 线程模型撞全局单例 | 崩溃 / 状态错乱 | 阶段 4 专项验证，**要等真机** |
 | R5 | `SimpleDateFormat` → kotlinx-datetime 行为偏移 | 日期静默算错 | ✅ 已用逐点对照用例验证语义等价 |
 | ~~R6~~ | ~~Miuix 是 fork 的 `-android` 变体~~ | — | **已排除**：官方 5 个 artifact 都有 `-iosarm64` 变体 |
-| R6b | fork 的 `miuix-ui` 在 iOS 侧缺 actual | iOS 编不过 | `skikoMain` 已接 `iosMain`，接线已在 wasmJs 上闭环验证；仍需 macOS 首次编译确认 |
+| ~~R6b~~ | ~~fork 的 `miuix-ui` 在 iOS 侧缺 actual~~ | — | **已排除**（2026-10-11 真编确认）：`:miuix` 的 `iosArm64` / `iosSimulatorArm64` 编译通过 |
 | R6c | wasmJs 门禁与 `check` 互斥 | 门禁漏跑 | 已知限制，**必须分两次跑** |
 | R6d | iOS 首启即崩（`Info.plist` 缺键） | 白屏 / crash | CMP 1.7.3 起强制检查，建 Xcode 工程时一并补 |
 | R7 | 云端分享白名单未同步 | 新字段静默丢弃 | 改客户端字段必须同改 `server/index.js` 并重新部署 |
 | R8 | UI 迁移周期过长，拖垮主线开发 | 项目停滞 | 严格按批次，每批次结束 `:androidApp` 仍可发版 |
 | R9 | ~~OkHttp 在 iOS 不可用~~ | 低 | 改法已修订：自建 `HttpService`，Android/JVM 复用 OkHttp，Native 已实现 |
+| **R10** | **`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名** | **iOS 无法链接**（编译能过）；**Android 侧已埋 NoSuchMethodError 隐患** | 见下方专条 |
+| R11 | `kotlinx-datetime` 在 iOS 变体被 CMP material3 顶到 0.7.1 | 同一二进制两个版本 → 链接必炸 | ✅ 已在根 `build.gradle.kts` force 回 0.6.2；0.7 升级要**全项目一起做** |
+| R12 | checkKmpPurity 抓不到「全限定名」java API | iOS 编不过 | ✅ 已由 `:ui-shared` 的 iOS 编译兜住；大文件迁移时仍要 grep `java.` 字面量 |
+
+### R10 详述 —— 当前唯一挡住 iOS 产物的东西
+
+2026-10-11 首次真链接 `:ui-shared` 的 iOS framework 时暴露：
+
+```
+e: Compilation failed: IrPropertySymbolImpl is already bound. Signature:
+   top.yukonga.miuix.kmp.basic/top_yukonga_miuix_kmp_basic_ButtonDefaults$stableprop
+```
+
+**成因**：官方子库（`miuix-preference` 等）自己会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，
+而本仓库把 miuix-ui fork 成了 `:miuix` 模块 —— **同包同名**。两边的 klib 里都有
+`top.yukonga.miuix.kmp.basic.ButtonDefaults` 这类声明：
+
+| 平台 | 表现 |
+|---|---|
+| Android / JVM | 类路径按名去重，悄悄用其中一个 —— **所以一直没暴露** |
+| Kotlin/Native | 链接期**硬错误**（IR 符号重复绑定） |
+
+**已实测排除的两条捷径**：
+
+1. ❌ `exclude(group="top.yukonga.miuix.kmp", module="miuix-ui")` —— fork 是**部分覆盖**，
+   缺 `window/*`（4 个）、`theme/DynamicColors`、`layout/BottomSheetContentLayout`、
+   `layout/CascadingListPopupLayout`、`utils/PagerGestureUtils` 等 **14 个 commonMain 文件**
+   + 1 个 androidMain + 2 个 skikoMain，全靠官方 artifact 兜着；排掉后 `:miuix` 自己编不过。
+2. ❌ 从 Maven 拉官方 `miuix-ui-0.9.4-sources.jar` 把这 14 个文件补进 fork —— fork 改过
+   内部 API（如 `DialogContentLayout` 去掉了 `maxWidth/largeScreen/cornerRadius` 参数），
+   官方那些文件按官方签名调用 → `Redeclaration` / `Conflicting declarations` / 参数不匹配。
+
+**量化**（`miuix-ui` 0.9.4 官方源码 vs fork，commonMain）：
+重叠 85 文件、**30 个文件有改动、差异合计约 4414 行**（最大 `basic/ListPopup.kt` 1200 行）；
+fork 另有 21 个官方没有的文件。→ **这是深度分叉，不是轻量 patch**。
+
+**两条出路**（都改架构，需拍板）：
+
+| 方案 | 内容 | 代价 |
+|---|---|---|
+| A. 补成完整 fork | 补齐 14 个文件 + 逐个适配 fork 改过的内部 API；之后删掉对官方 miuix-ui 的依赖 | 一次性的适配工作；**同时消掉 Android 侧隐患**（见下） |
+| B. 放弃 fork | 用纯官方 miuix，把 fork 的定制改成上游 PR / 本地覆盖层 | 30 个文件的定制要重新找落点 |
+
+**顺带发现的 Android 隐患**（同一根因，暂未爆发）：官方 0.9.4 的 `WindowDialog` 调
+`DialogContentLayout(maxWidth=…)`，运行时被 fork 的旧签名覆盖 —— 走到那条路径会
+`NoSuchMethodError`。方案 A 能一并消掉。这也正是红线 §10.5「不要让 fork 变枷锁」说的情形。
 
 ---
 

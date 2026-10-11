@@ -72,6 +72,8 @@ kotlin {
     val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
     if (enableIos) {
         iosArm64()
+        // 模拟器变体：理由同 :miuix（日常开发跑模拟器，只声明 iosArm64 会让下游解析不到）。
+        iosSimulatorArm64()
     }
 
     sourceSets {
