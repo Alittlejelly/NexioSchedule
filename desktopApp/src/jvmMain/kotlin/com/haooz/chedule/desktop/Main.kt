@@ -46,10 +46,13 @@ import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.screens.AddCourseDialog
+import com.haooz.chedule.ui.screens.CourseDetailScreen
+import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.AppMaterialSettings
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.io.File
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -124,6 +127,8 @@ private enum class DesktopPage(val title: String) {
     AddCourse("添加课程（弹窗）"),
     WidgetIntro("桌面小部件介绍"),
     WebDavSettings("WebDAV 云备份"),
+    CourseDetail("课程详情（转场页）"),
+    CourseEdit("课程编辑（转场页）"),
 }
 
 @Composable
@@ -188,6 +193,40 @@ private fun DesktopShell() {
                         DesktopPage.WidgetIntro -> WidgetIntroScreen(
                             scrollBehavior = scrollBehavior,
                             onRequestWidgetRefresh = { },
+                        )
+                        // 第十九批迁入：课程详情页（morph 转场页，自带全屏 Box 脚手架）。
+                        // 快照为 null 时页面只渲染内容层；空课程列表即空列表页。
+                        DesktopPage.CourseDetail -> CourseDetailScreen(
+                            courses = emptyList(),
+                            cardLeft = 0f,
+                            cardTop = 0f,
+                            cardWidth = 480f,
+                            cardHeight = 120f,
+                            screenWidth = 1200f,
+                            screenHeight = 800f,
+                            screenCornerRadius = 20f,
+                            cardSnapshot = null,
+                            sectionTimes = emptyMap(),
+                            classStartTime = "2026/3/2",
+                            teachingWeekReorganizations = emptyList(),
+                            onBackStart = { },
+                            onBack = { page = DesktopPage.Home },
+                        )
+                        // 第十九批迁入：课程编辑页（同为 morph 转场页）。
+                        // liquidGlassBackdrop 必须非空（页面内 `!!`），桌面端自建采样层。
+                        DesktopPage.CourseEdit -> CourseEditScreen(
+                            courses = emptyList(),
+                            cardLeft = 0f,
+                            cardTop = 0f,
+                            cardWidth = 480f,
+                            cardHeight = 120f,
+                            screenWidth = 1200f,
+                            screenHeight = 800f,
+                            screenCornerRadius = 20f,
+                            cardSnapshot = null,
+                            onBackStart = { },
+                            onBack = { page = DesktopPage.Home },
+                            liquidGlassBackdrop = rememberLayerBackdrop(),
                         )
                     }
                 }

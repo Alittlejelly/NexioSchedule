@@ -5328,6 +5328,9 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
             val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
             val classStartTime by viewModel.classStartTime.collectAsState()
+            // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
+            // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
+            val detailSnapshotImage = remember(detailSnapshot) { detailSnapshot?.asImageBitmap() }
             CourseDetailScreen(
                 courses = detailCourses,
                 cardLeft = detailCardLeft,
@@ -5337,7 +5340,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                 screenWidth = windowInfo.containerSize.width.toFloat(),
                 screenHeight = windowInfo.containerSize.height.toFloat(),
                 screenCornerRadius = screenCornerRadius,
-                cardSnapshot = detailSnapshot,
+                cardSnapshot = detailSnapshotImage,
                 sectionTimes = sectionTimes,
                 classStartTime = classStartTime,
                 teachingWeekReorganizations = teachingWeekRules,

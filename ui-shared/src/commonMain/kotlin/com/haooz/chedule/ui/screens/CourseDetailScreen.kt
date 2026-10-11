@@ -6,8 +6,6 @@ import com.haooz.chedule.data.formatMonthDayShort
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.LocalDate
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -40,8 +38,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -51,10 +49,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.NavigationEventTransitionState
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.data.Course
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -81,6 +75,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
@@ -134,7 +129,6 @@ private class AnimClipShape(
     }
 }
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun CourseDetailScreen(
     courses: List<Course>,
@@ -145,7 +139,8 @@ fun CourseDetailScreen(
     screenWidth: Float,
     screenHeight: Float,
     screenCornerRadius: Float,
-    cardSnapshot: Bitmap?,
+    /** 课程卡快照：跨平台用 Compose 的 ImageBitmap（裁剪在 Android 宿主侧完成） */
+    cardSnapshot: ImageBitmap?,
     sectionTimes: Map<Int, String>,
     classStartTime: String,
     teachingWeekReorganizations: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
@@ -210,17 +205,19 @@ fun CourseDetailScreen(
     // 预测性返回：手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片），
     // 预测返回期间围绕屏幕中心缩放（translation=0），位移/裁切保持全屏不动；
     // 取消回弹全屏、完成随关闭动画一起缩回卡片；
-    // 低版本 NavigationBackHandler 自动退化为立即播放完整退出动画
-    val navigationEventState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    // 低版本自动退化为立即播放完整退出动画（navigationevent 自身行为，Android actual 逐字保留）。
+    // 跨平台化：androidx.navigationevent 只有 Android artifact，改用 :miuix 的
+    // expect/actual 封装 rememberNavigationBack —— handler 与进度读取绑定同一份状态
+    // （拆开会导致跟手动画失效且编译无报错）。
+    val navigationBackState = rememberNavigationBack()
     // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
     val gestureBackProgress = remember { Animatable(0f) }
     val scaleProgress = remember { Animatable(0f) }
     // 手势是否正在推进：进行中裁切完全跟随页面缩放，松手/取消后进入平滑过渡
     var isGestureActive by remember { mutableStateOf(false) }
 
-    NavigationBackHandler(
-        state = navigationEventState,
-        isBackEnabled = true,
+    navigationBackState.handler(
+        enabled = true,
         onBackCancelled = {
             isGestureActive = false
             scope.launch {
@@ -274,16 +271,15 @@ fun CourseDetailScreen(
     // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
     // 手势只把缩放位置退到"卡片→全屏"范围的 75%，位移/裁切由 onBackCompleted 接管
     LaunchedEffect(Unit) {
-        snapshotFlow { navigationEventState.transitionState }
-            .collect { transitionState ->
-                if (
-                    transitionState is NavigationEventTransitionState.InProgress &&
-                    transitionState.direction == NavigationEventTransitionState.TRANSITIONING_BACK
-                ) {
+        // backProgress() 已内含「转场进行中且方向为后退」判定（与迁移前的
+        // transitionState is InProgress && direction == TRANSITIONING_BACK 逐字等价），
+        // 非手势期间为 null —— 保持静止。
+        snapshotFlow { navigationBackState.backProgress() }
+            .collect { progress ->
+                if (progress != null) {
                     // 预测性返回动画开关：关闭时不驱动跟随动画（返回仍被拦截，直接关闭）
                     if (PredictiveBackSettings.enabled) {
                         isGestureActive = true
-                        val progress = transitionState.latestEvent.progress
                         gestureBackProgress.snapTo(progress)
                         scaleProgress.snapTo(1f - progress * 2f)
                     }
@@ -389,7 +385,7 @@ fun CourseDetailScreen(
         ) {
             if (cardSnapshot != null && s.snapshotAlpha > 0f) {
                 Image(
-                    bitmap = cardSnapshot.asImageBitmap(),
+                    bitmap = cardSnapshot,
                     contentDescription = null,
                     modifier = Modifier
                         .align(Alignment.TopStart)

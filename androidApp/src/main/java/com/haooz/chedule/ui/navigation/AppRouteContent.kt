@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -1043,6 +1044,9 @@ private fun CourseManageRoute(router: AppRouter) {
 
         // Edit screen (above blur layer)
         if (showEditScreen) {
+            // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
+            // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
+            val cardSnapshotImage = remember(cardSnapshot) { cardSnapshot?.asImageBitmap() }
             CourseEditScreen(
                 courses = selectedCourses,
                 cardLeft = cardLeft,
@@ -1052,7 +1056,7 @@ private fun CourseManageRoute(router: AppRouter) {
                 screenWidth = windowInfo.containerSize.width.toFloat(),
                 screenHeight = windowInfo.containerSize.height.toFloat(),
                 screenCornerRadius = screenCornerRadius,
-                cardSnapshot = cardSnapshot,
+                cardSnapshot = cardSnapshotImage,
                 cardColor = cardColor,
                 cardAlpha = cardAlpha,
                 onBackStart = {
