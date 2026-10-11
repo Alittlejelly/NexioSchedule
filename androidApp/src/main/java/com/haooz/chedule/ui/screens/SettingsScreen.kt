@@ -33,6 +33,12 @@ import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.ui.utils.AndroidBackupFileController
+import com.haooz.chedule.ui.utils.AndroidScheduleFileController
+import com.haooz.chedule.ui.utils.ShareCodeApi
+import com.haooz.chedule.ui.utils.ShareCodeFetchResult
+import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
+import com.haooz.chedule.ui.utils.performScheduleShare
+import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.widget.WidgetUpdateCache
 import java.net.HttpURLConnection
 import java.net.URL
@@ -222,6 +228,32 @@ fun SettingsScreen(
                         liquidGlassBackdrop = liquidGlassBackdrop,
                         mode = ScheduleDataManageMode.Import,
                         compactImport = true,
+                        // Android 专有能力注入（同 AppRouteContent 的 BackupAndMigrationRoute）
+                        scheduleFileController = remember { AndroidScheduleFileController(context) },
+                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+                        onFetchShareCode = { code ->
+                            ShareCodeApi.fetchShare(code).map {
+                                ShareCodeFetchResult(
+                                    code = it.code,
+                                    scheduleName = it.scheduleName,
+                                    scheduleData = it.scheduleData,
+                                )
+                            }
+                        },
+                        onImportThirdParty = { source, code ->
+                            ThirdPartyShareImporter.import(context, source, code)
+                        },
+                        onShareSchedule = { name, onSharingChanged ->
+                            performScheduleShare(
+                                context = context,
+                                scope = coroutineScope,
+                                scheduleName = name,
+                                onSharingChanged = onSharingChanged,
+                            )
+                        },
+                        onExportToWearable = { name ->
+                            WearableScheduleSync.exportToWearable(context, name)
+                        },
                     )
 
                     TabletSettingsDest.AiImport -> AiImportScreen(
@@ -246,6 +278,31 @@ fun SettingsScreen(
                         scrollBehavior = null,
                         liquidGlassBackdrop = liquidGlassBackdrop,
                         mode = ScheduleDataManageMode.Export,
+                        scheduleFileController = remember { AndroidScheduleFileController(context) },
+                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+                        onFetchShareCode = { code ->
+                            ShareCodeApi.fetchShare(code).map {
+                                ShareCodeFetchResult(
+                                    code = it.code,
+                                    scheduleName = it.scheduleName,
+                                    scheduleData = it.scheduleData,
+                                )
+                            }
+                        },
+                        onImportThirdParty = { source, code ->
+                            ThirdPartyShareImporter.import(context, source, code)
+                        },
+                        onShareSchedule = { name, onSharingChanged ->
+                            performScheduleShare(
+                                context = context,
+                                scope = coroutineScope,
+                                scheduleName = name,
+                                onSharingChanged = onSharingChanged,
+                            )
+                        },
+                        onExportToWearable = { name ->
+                            WearableScheduleSync.exportToWearable(context, name)
+                        },
                     )
 
                     TabletSettingsDest.LocalBackup -> LocalBackupScreen(
@@ -1038,541 +1095,10 @@ fun SettingsScreen(
     }
 }
 
+
 // 「导入课表」JSON 解析（parseFullScheduleJson / 拾光格式）已迁 :core（kotlinx-serialization，
 // 原 Gson 走运行时反射、iOS 不存在）—— 见 com.haooz.chedule.data.ScheduleImportCodec.kt。
-
-internal fun parseIcsFile(text: String): Triple<Boolean, String, Map<String, Any>?> {
-    return try {
-        // 同名课在同星期同时段时合并周次
-        val courseGroups = mutableMapOf<String, MutableList<Map<String, Any>>>()
-        val lines = text.lines()
-
-        var currentEvent = mutableMapOf<String, String>()
-        var inEvent = false
-
-        for (line in lines) {
-            val trimmed = line.trim().trimEnd('\r', '\n')
-            when {
-                trimmed == "BEGIN:VEVENT" -> {
-                    inEvent = true
-                    currentEvent = mutableMapOf()
-                }
-                trimmed == "END:VEVENT" -> {
-                    inEvent = false
-                    if (currentEvent.isNotEmpty()) {
-                        val parsed = parseIcsEvent(currentEvent)
-                        if (parsed != null) {
-                            // 键含教室/教师，避免不同地点的同名课被误合并
-                            val mergeKey = "${parsed["name"]}_${parsed["dayOfWeek"]}_${parsed["startTotalMinutes"]}_${parsed["classroom"]}_${parsed["teacher"]}"
-                            courseGroups.getOrPut(mergeKey) { mutableListOf() }.add(parsed)
-                        }
-                    }
-                }
-                inEvent -> {
-                    val colonIndex = trimmed.indexOf(':')
-                    if (colonIndex > 0) {
-                        var key = trimmed.substring(0, colonIndex)
-                        val value = trimmed.substring(colonIndex + 1)
-                        key = key.substringBefore(';')
-                        currentEvent[key] = value
-                    }
-                }
-            }
-        }
-
-        if (courseGroups.isEmpty()) {
-            return Triple(false, "未找到课程事件", null)
-        }
-
-        // List<List<String>> 承载日期对，避免 Pair 序列化问题
-        val mergedCourses = mutableListOf<Map<String, Any>>()
-        for ((_, courseEvents) in courseGroups) {
-            val firstEvent = courseEvents.first()
-            val datePairs = mutableListOf<List<String>>()
-            for (event in courseEvents) {
-                val sd = event["startDate"] as? String
-                val ud = event["untilDate"] as? String
-                if (!sd.isNullOrEmpty()) {
-                    datePairs.add(listOf(sd, ud ?: ""))
-                }
-            }
-            mergedCourses.add(firstEvent + mapOf("datePairs" to datePairs))
-        }
-
-        val data = mapOf(
-            "schedule_name" to "ICS导入课表",
-            "courses" to mergedCourses,
-            "settings" to emptyMap<String, Any>()
-        )
-        Triple(true, "成功", data)
-    } catch (e: Exception) {
-        Triple(false, "ICS解析失败: ${e.message}", null)
-    }
-}
-
-private fun parseIcsEvent(event: Map<String, String>): Map<String, Any>? {
-    val summary = event["SUMMARY"] ?: return null
-    val location = event["LOCATION"] ?: ""
-
-    val dtstart = event["DTSTART"] ?: return null
-    val dtend = event["DTEND"] ?: return null
-
-    // ICS: YYYYMMDDTHHMMSS[.Z]，全天事件仅 YYYYMMDD
-    val startRaw = dtstart.substringAfter(":")
-    val endRaw = dtend.substringAfter(":")
-
-    val isAllDay = startRaw.length == 8 && !startRaw.contains('T')
-
-    val startDateStr = startRaw.take(8)
-    val startTimeStr = if (isAllDay) "080000" else startRaw.drop(9).take(6)
-    val endTimeStr = if (isAllDay) "090000" else endRaw.drop(9).take(6)
-
-    val startYear = startDateStr.substring(0, 4).toIntOrNull() ?: return null
-    val startMonth = startDateStr.substring(4, 6).toIntOrNull() ?: return null
-    val startDay = startDateStr.substring(6, 8).toIntOrNull() ?: return null
-
-    val startHour = startTimeStr.substring(0, 2).toIntOrNull() ?: 8
-    val startMinute = startTimeStr.substring(2, 4).toIntOrNull() ?: 0
-    val endHour = endTimeStr.substring(0, 2).toIntOrNull() ?: (startHour + 1)
-    val endMinute = endTimeStr.substring(2, 4).toIntOrNull() ?: 0
-
-    // 只返回分钟数，节次映射由 applyScheduleData 用用户配置完成
-    val startTotalMinutes = startHour * 60 + startMinute
-    val endTotalMinutes = endHour * 60 + endMinute
-
-    val startDate = LocalDate(startYear, startMonth, startDay)
-    val dayOfWeek = startDate.dayOfWeek.isoDayNumber
-
-    val rrule = event["RRULE"] ?: ""
-    var untilStr = ""
-    var countStr = ""
-    var byDayStr = ""
-
-    for (part in rrule.split(";")) {
-        when {
-            part.startsWith("UNTIL=") -> untilStr = part.substringAfter("UNTIL=").take(8)
-            part.startsWith("COUNT=") -> countStr = part.substringAfter("COUNT=")
-            part.startsWith("BYDAY=") -> byDayStr = part.substringAfter("BYDAY=")
-        }
-    }
-
-    if (byDayStr.isNotEmpty()) {
-        val dayMap = mapOf("MO" to 1, "TU" to 2, "WE" to 3, "TH" to 4, "FR" to 5, "SA" to 6, "SU" to 7)
-        val byDays = byDayStr.split(",").mapNotNull { dayMap[it.trim()] }
-        if (byDays.isNotEmpty() && dayOfWeek !in byDays) {
-            return null
-        }
-    }
-
-    // LOCATION 约定：前导空格=仅教师；尾随/无空格=仅教室；中间空格分隔两者
-    val classroom: String
-    val teacher: String
-    when {
-        location.startsWith(" ") -> {
-            classroom = ""
-            teacher = location.trim()
-        }
-        location.trimEnd().endsWith(" ") || !location.contains(" ") -> {
-            classroom = location.trim()
-            teacher = ""
-        }
-        else -> {
-            val spaceIndex = location.indexOf(' ')
-            classroom = location.substring(0, spaceIndex).trim()
-            teacher = location.substring(spaceIndex + 1).trim()
-        }
-    }
-
-    return mapOf(
-        "name" to summary,
-        "classroom" to classroom,
-        "teacher" to teacher,
-        "dayOfWeek" to dayOfWeek,
-        "startTotalMinutes" to startTotalMinutes,
-        "endTotalMinutes" to endTotalMinutes,
-        "selectedWeeks" to emptyList<Int>(),
-        "startDate" to startDateStr,
-        "untilDate" to untilStr,
-        "count" to countStr,
-        "isAllDay" to isAllDay
-    )
-}
-
-internal fun applyScheduleData(
-    @Suppress("UNUSED_PARAMETER") context: Context,
-    viewModel: CourseViewModel,
-    scheduleViewModel: ScheduleViewModel,
-    settingsViewModel: SettingsViewModel,
-    scheduleName: String,
-    data: Map<String, Any>
-): Pair<Boolean, String> {
-    try {
-        if (scheduleName in scheduleViewModel.scheduleNames.value) {
-            return Pair(false, "课表「$scheduleName」已存在")
-        }
-
-        val settings = parseShareSettings(data)
-        val reorganizationFieldPresent = settings?.containsKey("teaching_week_reorganizations") == true
-        if (reorganizationFieldPresent) {
-            val importedStartDate = settings["class_start_time"] as? String
-            require(CourseRepository.normalizeClassStartDate(importedStartDate) != null) {
-                "包含教学周重组的分享课表必须有有效开学日期"
-            }
-        }
-        val importTotalWeeks = parseShareTotalWeeks(settings)
-        val importedReorganizations = TeachingWeekReorganization.fromBackupValue(
-            value = settings?.get("teaching_week_reorganizations"),
-            present = reorganizationFieldPresent,
-            totalWeeks = importTotalWeeks,
-            preserveOutOfRangeRules = true,
-        )
-        val coursesData = parseShareCourses(data)
-        // Keep stored course selections intact when the source semester was shortened later.
-        val courseWeekHorizon = CourseRepository.MAX_TOTAL_WEEKS
-        val shareCourseWeekModels = coursesData.map {
-            parseShareCourseWeekModel(it, maxWeeks = courseWeekHorizon)
-        }
-        val selectedWeeksByCourse = coursesData.map {
-            parseShareSelectedWeeks(it, maxWeeks = courseWeekHorizon)
-        }
-        val courses = mutableListOf<Course>()
-        val courseNameColorMap = mutableMapOf<String, Long>()
-        var colorIndex = 0
-
-        val classStartTime = viewModel.classStartTime.value
-        val defaultClassStartDate = try {
-            LocalDate.parse(classStartTime.replace("/", "-"))
-        } catch (_: Exception) {
-            val today = todayLocalDate()
-            today.minusDays((today.dayOfWeek.isoDayNumber - 1).toLong()).minusWeeks(16)
-        }
-
-        // ICS 无开学日设置时，用最早课程所在周的周一反推
-        var icsClassStartDate: LocalDate? = null
-        coursesData.forEach { courseMap ->
-            val startDateStr = courseMap["startDate"] as? String
-            if (startDateStr != null && startDateStr.length == 8) {
-                val date = try {
-                    LocalDate(
-                        startDateStr.substring(0, 4).toInt(),
-                        startDateStr.substring(4, 6).toInt(),
-                        startDateStr.substring(6, 8).toInt()
-                    )
-                } catch (_: Exception) { null }
-                if (date != null) {
-                    val monday = date.minusDays((date.dayOfWeek.isoDayNumber - 1).toLong())
-                    if (icsClassStartDate == null || monday < icsClassStartDate) {
-                        icsClassStartDate = monday
-                    }
-                }
-            }
-        }
-        val classStartDate = icsClassStartDate ?: defaultClassStartDate
-
-        val classStartMonday = classStartDate.minusDays((classStartDate.dayOfWeek.isoDayNumber - 1).toLong())
-
-        val userSectionTimes = settingsViewModel.sectionTimes.value
-        fun findSectionByTime(startMinutes: Int, endMinutes: Int): Pair<Int, Int>? {
-            var foundStart: Int? = null
-            var foundEnd: Int? = null
-            for ((section, timeRange) in userSectionTimes) {
-                val parts = timeRange.split("-")
-                if (parts.size != 2) continue
-                val rangeStartParts = parts[0].split(":")
-                val rangeEndParts = parts[1].split(":")
-                if (rangeStartParts.size != 2 || rangeEndParts.size != 2) continue
-                val rangeStart = (rangeStartParts[0].toIntOrNull() ?: continue) * 60 + (rangeStartParts[1].toIntOrNull() ?: continue)
-                val rangeEnd = (rangeEndParts[0].toIntOrNull() ?: continue) * 60 + (rangeEndParts[1].toIntOrNull() ?: continue)
-                if (startMinutes in rangeStart until rangeEnd) {
-                    foundStart = section
-                }
-                // 结束时间允许落在节次末尾
-                if (endMinutes in (rangeStart + 1)..rangeEnd) {
-                    foundEnd = section
-                }
-            }
-            if (foundStart != null && foundEnd != null) {
-                return Pair(foundStart, foundEnd)
-            }
-            // 无精确匹配时退回起始节次
-            if (foundStart != null) {
-                return Pair(foundStart, foundStart)
-            }
-            return null
-        }
-
-        coursesData.forEachIndexed { courseIndex, courseMap ->
-            val name = courseMap["name"] as? String ?: return@forEachIndexed
-            val classroom = courseMap["classroom"] as? String ?: ""
-            val teacher = courseMap["teacher"] as? String ?: ""
-            val dayOfWeek = (courseMap["dayOfWeek"] as? Number)?.toInt() ?: return@forEachIndexed
-            var selectedWeeks = selectedWeeksByCourse[courseIndex]
-            val explicitWeekModel = shareCourseWeekModels[courseIndex]
-            val hasExplicitWeekModel = explicitWeekModel != null
-
-            // JSON 导出有 startSection；ICS 需按时间映射节次
-            val directStartSection = (courseMap["startSection"] as? Number)?.toInt()
-            val directEndSection = (courseMap["endSection"] as? Number)?.toInt()
-            val sectionPair = if (directStartSection != null && directEndSection != null) {
-                Pair(directStartSection, directEndSection)
-            } else {
-                val startTotalMinutes = (courseMap["startTotalMinutes"] as? Number)?.toInt()
-                val endTotalMinutes = (courseMap["endTotalMinutes"] as? Number)?.toInt()
-                if (startTotalMinutes != null && endTotalMinutes != null) {
-                    findSectionByTime(startTotalMinutes, endTotalMinutes)
-                } else null
-            }
-
-            if (sectionPair == null) return@forEachIndexed
-            val (startSection, endSection) = sectionPair
-
-            if (selectedWeeks.isEmpty() && !hasExplicitWeekModel) {
-                @Suppress("UNCHECKED_CAST")
-                val datePairs = courseMap["datePairs"] as? List<List<String>>
-                if (!datePairs.isNullOrEmpty()) {
-                    val allWeeks = mutableSetOf<Int>()
-                    for (pair in datePairs) {
-                        if (pair.isEmpty()) continue
-                        val sd = pair[0]
-                        val ud = if (pair.size > 1) pair[1] else ""
-                        if (sd.length == 8) {
-                            val courseStartDate = try {
-                                LocalDate(
-                                    sd.substring(0, 4).toInt(),
-                                    sd.substring(4, 6).toInt(),
-                                    sd.substring(6, 8).toInt()
-                                )
-                            } catch (_: Exception) { null }
-
-                            if (courseStartDate != null) {
-                                val courseMonday = courseStartDate.minusDays((courseStartDate.dayOfWeek.isoDayNumber - 1).toLong())
-                                val startWeek = weeksBetween(classStartMonday, courseMonday) + 1
-
-                                val endWeek = if (ud.length == 8) {
-                                    val untilDate = try {
-                                        LocalDate(
-                                            ud.substring(0, 4).toInt(),
-                                            ud.substring(4, 6).toInt(),
-                                            ud.substring(6, 8).toInt()
-                                        )
-                                    } catch (_: Exception) { null }
-                                    if (untilDate != null) {
-                                        val daysDiff = (untilDate.dayOfWeek.isoDayNumber - dayOfWeek + 7) % 7
-                                        val lastCourseDate = untilDate.minusDays(daysDiff.toLong())
-                                        val lastCourseMonday = lastCourseDate.minusDays((lastCourseDate.dayOfWeek.isoDayNumber - 1).toLong())
-                                        weeksBetween(classStartMonday, lastCourseMonday) + 1
-                                    } else {
-                                        startWeek
-                                    }
-                                } else {
-                                    startWeek
-                                }
-
-                                allWeeks.addAll(startWeek..endWeek)
-                            }
-                        }
-                    }
-                    selectedWeeks = allWeeks.sorted()
-                }
-            }
-
-            if (selectedWeeks.isEmpty() && !hasExplicitWeekModel) {
-                val countStr = courseMap["count"] as? String
-                val startDateStr = courseMap["startDate"] as? String
-                if (!countStr.isNullOrEmpty() && !startDateStr.isNullOrEmpty() && startDateStr.length == 8) {
-                    val count = countStr.toIntOrNull()
-                    if (count != null && count > 0) {
-                        val courseStartDate = try {
-                            LocalDate(
-                                startDateStr.substring(0, 4).toInt(),
-                                startDateStr.substring(4, 6).toInt(),
-                                startDateStr.substring(6, 8).toInt()
-                            )
-                        } catch (_: Exception) { null }
-                        if (courseStartDate != null) {
-                            val courseMonday = courseStartDate.minusDays((courseStartDate.dayOfWeek.isoDayNumber - 1).toLong())
-                            val startWeek = weeksBetween(classStartMonday, courseMonday) + 1
-                            selectedWeeks = (startWeek until startWeek + count).toList()
-                        }
-                    }
-                }
-            }
-
-            if (selectedWeeks.isNotEmpty() || hasExplicitWeekModel) {
-                // 导出带 colorRes 时原样还原；旧分享包没有则按课名轮询调色板
-                val exportedColor = (courseMap["colorRes"] as? Number)?.toLong()
-                val colorRes = exportedColor ?: courseNameColorMap.getOrPut(name) {
-                    val color = Course.courseColors[colorIndex % Course.courseColors.size]
-                    colorIndex++
-                    color
-                }
-                courses.add(
-                    Course(
-                        id = randomUuidV4(),
-                        name = name,
-                        classroom = classroom,
-                        teacher = teacher,
-                        dayOfWeek = dayOfWeek,
-                        startSection = startSection,
-                        endSection = endSection,
-                        isCustomTime = (courseMap["isCustomTime"] as? Boolean) ?: false,
-                        customStartTime = courseMap["customStartTime"] as? String,
-                        customEndTime = courseMap["customEndTime"] as? String,
-                        startWeek = explicitWeekModel?.startWeek ?: selectedWeeks.min(),
-                        endWeek = explicitWeekModel?.endWeek ?: selectedWeeks.max(),
-                        weekType = explicitWeekModel?.weekType ?: Course.WEEK_TYPE_ALL,
-                        selectedWeeks = selectedWeeks,
-                        colorRes = colorRes
-                    )
-                )
-            }
-        }
-
-        require(courses.size == coursesData.size) {
-            "分享课表中的课程数据无法完整导入"
-        }
-        scheduleViewModel.addSchedule(scheduleName)
-        scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
-
-        // 先刷摘要再继续，否则切换页课程数会短暂错
-        scheduleViewModel.refreshScheduleList()
-
-        @Suppress("UNCHECKED_CAST")
-        val times = data["times"] as? Map<String, Any>
-        // 全套作息（夏令时/冬令时）。旧版本分享的没有这个字段 —— 留空，
-        // 由 addTimeConfig 播种单作息，并走下面那段「按 times 写时间」的兼容路径
-        val importedRoutines = (data["routines"] as? List<*>)
-            ?.mapIndexedNotNull { index, raw ->
-                com.haooz.chedule.data.TimeRoutine.fromRaw(raw, fallbackId = index + 1L)
-            }
-            // 一律按顺序重排 id：payload 自带的 id 可能和 fallback 撞上（A 的 id=2、B 缺 id 落在
-            // index=1 就都是 2），重复 id 会让按 id 查找/删除的逻辑行为不确定。这里是全新配置、
-            // 没有任何外部引用指向这些 id，重排是安全的。
-            ?.mapIndexed { index, routine -> routine.copy(id = (index + 1).toLong()) }
-            ?: emptyList()
-        val importedMorningSections = (settings?.get("morning_sections") as? Number)?.toInt()
-        val importedAfternoonSections = (settings?.get("afternoon_sections") as? Number)?.toInt()
-        val importedEveningSections = (settings?.get("evening_sections") as? Number)?.toInt()
-        val importedClassDuration = (settings?.get("class_duration") as? Number)?.toInt()?.takeIf { it > 0 }
-        val importedBreakDuration = (settings?.get("break_duration") as? Number)?.toInt()?.takeIf { it > 0 }
-
-        if (importedMorningSections != null || importedAfternoonSections != null || importedEveningSections != null || times != null) {
-            val sectionTimesMap = mutableMapOf<String, String>()
-            if (times != null) {
-                @Suppress("UNCHECKED_CAST")
-                (times["morning"] as? Map<String, String>)?.forEach { (k, v) -> sectionTimesMap["morning_$k"] = v }
-                @Suppress("UNCHECKED_CAST")
-                (times["afternoon"] as? Map<String, String>)?.forEach { (k, v) -> sectionTimesMap["afternoon_$k"] = v }
-                @Suppress("UNCHECKED_CAST")
-                (times["evening"] as? Map<String, String>)?.forEach { (k, v) -> sectionTimesMap["evening_$k"] = v }
-            }
-            @Suppress("UNCHECKED_CAST")
-            val importedSectionNames = (times?.get("section_names") as? Map<String, String>) ?: emptyMap()
-
-            val newConfig = TimeConfig(
-                name = scheduleName,
-                morningSections = importedMorningSections ?: 4,
-                afternoonSections = importedAfternoonSections ?: 4,
-                eveningSections = importedEveningSections ?: 4,
-                classDuration = importedClassDuration ?: 45,
-                shortBreak = importedBreakDuration ?: 10,
-                sectionTimes = sectionTimesMap,
-                sectionNames = importedSectionNames,
-                routines = importedRoutines
-            )
-            val newConfigId = scheduleViewModel.addTimeConfig(newConfig)
-            scheduleViewModel.setScheduleTimeConfigId(scheduleName, newConfigId)
-        } else {
-            val currentScheduleTimeConfigId = scheduleViewModel.getCurrentScheduleTimeConfigId()
-            if (currentScheduleTimeConfigId != 0L) {
-                scheduleViewModel.setScheduleTimeConfigId(scheduleName, currentScheduleTimeConfigId)
-            }
-        }
-
-        if (settings != null) {
-            scheduleViewModel.switchToSchedule(scheduleName)
-
-            (settings["class_start_time"] as? String)?.let { viewModel.setClassStartTime(it) }
-            (settings["current_week"] as? Number)?.toInt()?.let { viewModel.setCurrentWeek(it) }
-            (settings["total_weeks"] as? Number)?.toInt()?.let { viewModel.setTotalWeeks(it) }
-            if (reorganizationFieldPresent && !CourseRepository.getInstance()
-                    .setTeachingWeekReorganizations(
-                        rules = importedReorganizations,
-                        scheduleId = scheduleName,
-                        preserveOutOfRangeRules = true,
-                    )
-            ) {
-                throw IllegalArgumentException("教学周重组规则与课表总周数冲突")
-            }
-            (settings["smart_weekend"] as? Boolean)?.let {
-                settingsViewModel.setSmartWeekend(it)
-            }
-            @Suppress("UNCHECKED_CAST")
-            (settings["show_weekend_days"] as? List<Number>)?.let {
-                if (it.isNotEmpty()) settingsViewModel.setSmartWeekend(true)
-            }
-            (settings["show_non_current_week"] as? Boolean)?.let {
-                settingsViewModel.setShowNonCurrentWeek(it)
-            }
-            (settings["morning_sections"] as? Number)?.toInt()?.let { settingsViewModel.setMorningSections(it) }
-            (settings["afternoon_sections"] as? Number)?.toInt()?.let { settingsViewModel.setAfternoonSections(it) }
-            (settings["evening_sections"] as? Number)?.toInt()?.let { settingsViewModel.setEveningSections(it) }
-
-            // 官方文档 config：firstDayOfWeek（1=周一…7=周日，默认 1）。App 表格固定周一起始，
-            // 学校以其它日为周起始时课程 day 相对该周起始，换算回绝对星期防落列错位（与教务导入一致）。
-            (settings["first_day_of_week"] as? Number)?.toInt()?.takeIf { it in 2..7 }?.let { firstDay ->
-                val repository = CourseRepository.getInstance()
-                val currentCourses = repository.getAllCourses()
-                if (currentCourses.isNotEmpty()) {
-                    val remapped = currentCourses.map { course ->
-                        val day = course.dayOfWeek
-                        if (day in 1..7) {
-                            val absolute = (day - 1 + (firstDay - 1)) % 7 + 1
-                            if (absolute != day) course.copy(dayOfWeek = absolute) else course
-                        } else {
-                            course
-                        }
-                    }
-                    if (remapped.indices.any { remapped[it].dayOfWeek != currentCourses[it].dayOfWeek }) {
-                        viewModel.replaceCourses(remapped)
-                    }
-                }
-            }
-
-            @Suppress("UNCHECKED_CAST")
-            val times = data["times"] as? Map<String, Any>
-            // 带了全套作息时不再按 times 回写：times 是「分享方导出当天生效那套」，
-            // 接收方此刻生效的可能是另一套（跨季节导入），回写会把那套覆盖掉
-            if (times != null && importedRoutines.isEmpty()) {
-                val morningTimes = mutableMapOf<Int, String>()
-                val afternoonTimes = mutableMapOf<Int, String>()
-                val eveningTimes = mutableMapOf<Int, String>()
-
-                @Suppress("UNCHECKED_CAST")
-                (times["morning"] as? Map<String, String>)?.forEach { (k, v) ->
-                    k.toIntOrNull()?.let { morningTimes[it] = v }
-                }
-                @Suppress("UNCHECKED_CAST")
-                (times["afternoon"] as? Map<String, String>)?.forEach { (k, v) ->
-                    k.toIntOrNull()?.let { afternoonTimes[it] = v }
-                }
-                @Suppress("UNCHECKED_CAST")
-                (times["evening"] as? Map<String, String>)?.forEach { (k, v) ->
-                    k.toIntOrNull()?.let { eveningTimes[it] = v }
-                }
-
-                if (morningTimes.isNotEmpty()) settingsViewModel.saveMorningTimes(morningTimes)
-                if (afternoonTimes.isNotEmpty()) settingsViewModel.saveAfternoonTimes(afternoonTimes)
-                if (eveningTimes.isNotEmpty()) settingsViewModel.saveEveningTimes(eveningTimes)
-            }
-        }
-
-        viewModel.reloadCourses()
-        settingsViewModel.refreshSettings()
-        scheduleViewModel.refreshScheduleList()
-
-        return Pair(true, "成功导入课表「$scheduleName」\n共${courses.size}门课程")
-    } catch (e: Exception) {
-        return Pair(false, "导入失败: ${e.message}")
-    }
-}
+//
+// ICS 解析（parseIcsFile）2026-10-11 也迁 :core —— 见 com.haooz.chedule.data.IcsCodec.kt。
+// 落库逻辑（applyScheduleData）随「课表导入/导出」页迁 :ui-shared ——
+// 见 com.haooz.chedule.ui.screens.ScheduleImportApply.kt。

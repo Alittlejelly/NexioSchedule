@@ -171,6 +171,25 @@ fun LocalDateTime.formatDisplayDateTime(): String =
     "${year.toString().padStart(4, '0')}-${pad2(monthNumber)}-${pad2(dayOfMonth)} " +
         "${pad2(hour)}:${pad2(minute)}:${pad2(second)}"
 
+/**
+ * `yyyy-MM-dd HH:mm`（**不带秒**）。对应 `SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())`。
+ *
+ * 设置页「上次操作: …」文案用这个；只含数字与固定分隔符，不受 Locale 影响，手写即可。
+ */
+fun LocalDateTime.formatDateTimeMinute(): String =
+    "${year.toString().padStart(4, '0')}-${pad2(monthNumber)}-${pad2(dayOfMonth)} " +
+        "${pad2(hour)}:${pad2(minute)}"
+
+/**
+ * ICS（`text/calendar`）的 `DTSTART` / `DTEND` 值：`yyyyMMdd'T'HHmmss`。
+ *
+ * 对应 `SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault())`。
+ * ⚠ 分隔符是**字面量** `T`，不是 `DateTimeFormatter` 的 pattern 字符 —— 手写时别被转义。
+ */
+fun LocalDateTime.formatIcsTimestamp(): String =
+    "${year.toString().padStart(4, '0')}${pad2(monthNumber)}${pad2(dayOfMonth)}" +
+        "T${pad2(hour)}${pad2(minute)}${pad2(second)}"
+
 /** 解析 `yyyyMMdd_HHmmss`；长度或数字不合法时返回 null（对应 `SimpleDateFormat.parse` 抛异常那条路）。 */
 fun parseCompactStamp(value: String): LocalDateTime? {
     if (value.length != 15 || value[8] != '_') return null

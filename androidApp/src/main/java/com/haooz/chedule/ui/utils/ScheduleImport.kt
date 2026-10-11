@@ -50,127 +50,10 @@ import kotlin.coroutines.resumeWithException
 // ════════════════════════════════════════════════════════════════════════
 
 // ── 1. 分享数据解析（分享 JSON → 课表结构）────────────────────
-/** Returns null for legacy share payloads that had no explicit week model. */
-internal fun parseShareCourseWeekModel(
-    data: Map<String, Any?>,
-    maxWeeks: Int? = null,
-): ShareCourseWeekModel? {
-    val fields = listOf("startWeek", "endWeek", "weekType")
-    if (fields.none(data::containsKey)) return null
-
-    fun exactInteger(key: String): Int? {
-        val number = (data[key] as? Number)?.toDouble() ?: return null
-        if (!number.isFinite() || number % 1.0 != 0.0 ||
-            number < Int.MIN_VALUE.toDouble() || number > Int.MAX_VALUE.toDouble()
-        ) return null
-        return number.toInt()
-    }
-
-    val model = ShareCourseWeekModel(
-        startWeek = exactInteger("startWeek") ?: throw IllegalArgumentException("分享课表的startWeek无效"),
-        endWeek = exactInteger("endWeek") ?: throw IllegalArgumentException("分享课表的endWeek无效"),
-        weekType = exactInteger("weekType") ?: throw IllegalArgumentException("分享课表的weekType无效"),
-    )
-    require(model.startWeek > 0 && model.endWeek >= model.startWeek) {
-        "分享课表的课程周次范围无效"
-    }
-    require(maxWeeks == null || maxWeeks in 1..CourseRepository.MAX_TOTAL_WEEKS) {
-        "分享课表的学期总周数无效"
-    }
-    require(maxWeeks == null || model.endWeek <= maxWeeks) {
-        "分享课表的课程周次超出支持范围"
-    }
-    require(model.weekType in setOf(Course.WEEK_TYPE_ALL, Course.WEEK_TYPE_ODD, Course.WEEK_TYPE_EVEN)) {
-        "分享课表的课程单双周类型无效"
-    }
-    return model
-}
-
-/** Validate sparse week selections before callers persist any part of an imported schedule. */
-internal fun parseShareSelectedWeeks(
-    data: Map<String, Any?>,
-    maxWeeks: Int? = null,
-): List<Int> {
-    if (!data.containsKey("selectedWeeks")) return emptyList()
-    val rawWeeks = data["selectedWeeks"] as? List<*>
-        ?: throw IllegalArgumentException("分享课表的selectedWeeks无效")
-    val weeks = rawWeeks.map { value ->
-        val number = (value as? Number)?.toDouble()
-            ?: throw IllegalArgumentException("分享课表的selectedWeeks无效")
-        require(number.isFinite() && number % 1.0 == 0.0 &&
-            number in 1.0..Int.MAX_VALUE.toDouble()
-        ) { "分享课表的selectedWeeks无效" }
-        number.toInt()
-    }
-    require(weeks.distinct().size == weeks.size) { "分享课表的selectedWeeks重复" }
-    require(maxWeeks == null || maxWeeks in 1..CourseRepository.MAX_TOTAL_WEEKS) {
-        "分享课表的学期总周数无效"
-    }
-    require(maxWeeks == null || weeks.all { it <= maxWeeks }) {
-        "分享课表的selectedWeeks超出支持范围"
-    }
-    return weeks
-}
-
-/** Distinguish a legacy missing settings object from an explicit malformed/null value. */
-internal fun parseShareSettings(data: Map<String, Any>): Map<String, Any?>? {
-    if (!data.containsKey("settings")) return null
-    val rawSettings = data["settings"] as? Map<*, *>
-        ?: throw IllegalArgumentException("分享课表的设置数据无效")
-    require(rawSettings.keys.all { it is String }) { "分享课表的设置字段无效" }
-    return rawSettings.entries.associate { (key, value) -> (key as String) to value }
-}
-
-internal fun parseShareTotalWeeks(settings: Map<String, Any?>?): Int {
-    if (settings == null || !settings.containsKey("total_weeks")) return 20
-    val number = (settings["total_weeks"] as? Number)?.toDouble()
-        ?: throw IllegalArgumentException("分享课表的总周数无效")
-    require(
-        number.isFinite() && number % 1.0 == 0.0 &&
-            number in 1.0..CourseRepository.MAX_TOTAL_WEEKS.toDouble(),
-    ) { "分享课表的总周数无效" }
-    return number.toInt()
-}
-
-/** Fully parse course records before the caller creates or persists an imported timetable. */
-internal fun parseShareCourses(data: Map<String, Any>): List<Map<String, Any?>> {
-    val rawCourses = data["courses"] as? List<*>
-        ?: throw IllegalArgumentException("分享课表缺少课程数据")
-    require(rawCourses.isNotEmpty()) { "分享课表没有课程" }
-    return rawCourses.map { rawCourse ->
-        val fields = rawCourse as? Map<*, *>
-            ?: throw IllegalArgumentException("分享课表中的课程数据无效")
-        require(fields.keys.all { it is String }) { "分享课表中的课程字段无效" }
-        val course = fields.entries.associate { (key, value) -> (key as String) to value }
-        require((course["name"] as? String)?.isNotBlank() == true) {
-            "分享课表中的课程缺少有效名称"
-        }
-        val day = (course["dayOfWeek"] as? Number)?.toDouble()
-            ?: throw IllegalArgumentException("分享课表中的星期无效")
-        require(day.isFinite() && day % 1.0 == 0.0 && day in 1.0..7.0) {
-            "分享课表中的星期无效"
-        }
-        val hasDirectSections = course.containsKey("startSection") || course.containsKey("endSection")
-        if (hasDirectSections) {
-            val startSection = (course["startSection"] as? Number)?.toDouble()
-                ?: throw IllegalArgumentException("分享课表中的开始节次无效")
-            val endSection = (course["endSection"] as? Number)?.toDouble()
-                ?: throw IllegalArgumentException("分享课表中的结束节次无效")
-            require(startSection.isFinite() && startSection % 1.0 == 0.0 && startSection >= 1.0 &&
-                endSection.isFinite() && endSection % 1.0 == 0.0 && endSection >= startSection
-            ) { "分享课表中的节次范围无效" }
-        } else {
-            val startMinutes = (course["startTotalMinutes"] as? Number)?.toDouble()
-                ?: throw IllegalArgumentException("分享课表中的开始时间无效")
-            val endMinutes = (course["endTotalMinutes"] as? Number)?.toDouble()
-                ?: throw IllegalArgumentException("分享课表中的结束时间无效")
-            require(startMinutes.isFinite() && startMinutes % 1.0 == 0.0 && startMinutes >= 0.0 &&
-                endMinutes.isFinite() && endMinutes % 1.0 == 0.0 && endMinutes > startMinutes
-            ) { "分享课表中的时间范围无效" }
-        }
-        course
-    }
-}
+//
+// parseShare* 全家 2026-10-11 已迁 :ui-shared（同包名，本文件直接可见，无需 import）
+// —— 见 ui/utils/ShareScheduleCodec.kt。它们是纯 `Map<String, Any>` 校验，
+//   留在本文件会让「课表导入」页反向依赖 WebView/Gson，进不了 commonMain。
 
 /** 将分享口令写入系统剪贴板 */
 internal fun copyShareCodeToClipboard(context: Context, code: String) {
@@ -188,66 +71,13 @@ internal fun copyShareCodeToClipboard(context: Context, code: String) {
 
 private const val TAG = "ThirdPartyShareImport"
 
+// 数据契约（ThirdPartyShareSource / Payload / Course / TimeSlot）2026-10-11 已迁
+// :ui-shared（同包名，本文件直接可见，无需 import）—— 见 ui/utils/ThirdPartyShare.kt。
+// 抓取器本体要无头 WebView + OkHttp + Gson，只能留在 Android 侧，由宿主注入给共享页。
+
 // ExtractedShareTools 已抽成独立文件并迁入 :ui-shared（同包名，这里直接可见，无需 import）。
 // 它只是一组常量，原先跟 WebView/Gson/Handler 挤在同一个文件里，
 // 会让平台中立的学校/适配器选择页反向依赖整个 Android 导入模块。
-
-enum class ThirdPartyShareSource(val displayName: String, val inputLabel: String) {
-    WakeUp("WakeUp课程表口令导入", "分享口令"),
-    StarLink("星链课表分享码导入", "分享码"),
-}
-
-/** 第三方口令解析结果：课程 + 可选时间段/学期配置 */
-data class ThirdPartySharePayload(
-    val source: ThirdPartyShareSource,
-    val courses: List<ThirdPartyCourse>,
-    val timeSlots: List<ThirdPartyTimeSlot> = emptyList(),
-    val semesterStartDate: String? = null,
-    val semesterTotalWeeks: Int? = null,
-) {
-    val courseCount: Int get() = courses.size
-}
-
-data class ThirdPartyCourse(
-    val name: String,
-    val teacher: String = "",
-    val position: String = "",
-    val day: Int,
-    val startSection: Int,
-    val endSection: Int,
-    val weeks: List<Int> = emptyList(),
-    val isCustomTime: Boolean = false,
-    val customStartTime: String? = null,
-    val customEndTime: String? = null,
-) {
-    fun toCourse(scheduleId: String, color: Long): Course {
-        val sortedWeeks = weeks.sorted().ifEmpty { listOf(1) }
-        return Course(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            classroom = position,
-            teacher = teacher,
-            dayOfWeek = day.coerceIn(1, 7),
-            startSection = startSection.coerceAtLeast(1),
-            endSection = endSection.coerceAtLeast(startSection),
-            startWeek = sortedWeeks.first(),
-            endWeek = sortedWeeks.last(),
-            weekType = Course.WEEK_TYPE_ALL,
-            selectedWeeks = sortedWeeks,
-            colorRes = color,
-            scheduleId = scheduleId,
-            isCustomTime = isCustomTime,
-            customStartTime = customStartTime,
-            customEndTime = customEndTime,
-        )
-    }
-}
-
-data class ThirdPartyTimeSlot(
-    val number: Int,
-    val startTime: String,
-    val endTime: String,
-)
 
 /**
  * WakeUp 无界面导入桥。

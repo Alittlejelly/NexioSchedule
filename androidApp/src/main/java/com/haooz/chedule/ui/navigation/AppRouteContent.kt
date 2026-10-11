@@ -104,9 +104,15 @@ import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
 import com.haooz.chedule.ui.utils.AndroidBackupFileController
+import com.haooz.chedule.ui.utils.AndroidScheduleFileController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
+import com.haooz.chedule.ui.utils.ShareCodeApi
+import com.haooz.chedule.ui.utils.ShareCodeFetchResult
+import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.performScheduleShare
+import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -606,6 +612,9 @@ private fun BackupAndMigrationRoute(router: AppRouter, mode: ScheduleDataManageM
         ScheduleDataManageMode.Export -> "课表导出"
         ScheduleDataManageMode.Backup -> "课表备份"
     }
+    // 页面已迁 :ui-shared，只剩 Android 专有能力要宿主注入
+    val context = LocalContext.current
+    val shareScope = rememberCoroutineScope()
     DocumentPageScaffold(
         title = title,
         onBack = { router.popBack() },
@@ -621,6 +630,37 @@ private fun BackupAndMigrationRoute(router: AppRouter, mode: ScheduleDataManageM
             settingsViewModel = settingsViewModel,
             liquidGlassBackdrop = backdrop,
             mode = mode,
+            // 文件选择器（导入选文件 / 导出另存为）
+            scheduleFileController = remember { AndroidScheduleFileController(context) },
+            // WebDAV 恢复后的提醒重排
+            onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+            // 分享口令取回（OkHttp + Gson）
+            onFetchShareCode = { code ->
+                ShareCodeApi.fetchShare(code).map {
+                    ShareCodeFetchResult(
+                        code = it.code,
+                        scheduleName = it.scheduleName,
+                        scheduleData = it.scheduleData,
+                    )
+                }
+            },
+            // 第三方口令抓取（无头 WebView + OkHttp + Gson）
+            onImportThirdParty = { source, code ->
+                ThirdPartyShareImporter.import(context, source, code)
+            },
+            // 口令分享（上传 + 出图 + 系统分享）
+            onShareSchedule = { name, onSharingChanged ->
+                performScheduleShare(
+                    context = context,
+                    scope = shareScope,
+                    scheduleName = name,
+                    onSharingChanged = onSharingChanged,
+                )
+            },
+            // 手环推送
+            onExportToWearable = { name ->
+                WearableScheduleSync.exportToWearable(context, name)
+            },
         )
     }
 }

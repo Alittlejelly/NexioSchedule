@@ -20,7 +20,7 @@ import com.haooz.chedule.ui.activities.MainActivity
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
 import com.haooz.chedule.ui.screens.applyScheduleData
 import com.haooz.chedule.data.parseFullScheduleJson
-import com.haooz.chedule.ui.screens.parseIcsFile
+import com.haooz.chedule.data.parseIcsFile
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -132,13 +132,13 @@ internal fun ShareImportDialog(
                     text = "确定导入",
                     onClick = {
                         if (shareImportScheduleName.isNotBlank() && shareImportData != null) {
+                            // applyScheduleData 已迁 :ui-shared；context 形参从未被函数体使用，去掉
                             val (_, importMessage) = applyScheduleData(
-                                context,
-                                courseViewModel,
-                                scheduleViewModel,
-                                settingsViewModel,
-                                shareImportScheduleName,
-                                shareImportData!!
+                                viewModel = courseViewModel,
+                                scheduleViewModel = scheduleViewModel,
+                                settingsViewModel = settingsViewModel,
+                                scheduleName = shareImportScheduleName,
+                                data = shareImportData!!,
                             )
                             showToast(importMessage, longDuration = true)
                         }

@@ -133,7 +133,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
     override fun readBackupFile(id: String): String? {
         val file = File(id)
         if (!file.exists()) return null
-        return readBoundedBackupUtf8(FileInputStream(file))
+        return readBoundedUtf8(FileInputStream(file))
     }
 
     override fun deleteBackupFile(id: String): Boolean = File(id).delete()
@@ -235,27 +235,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
     private fun readExternalBackupJson(context: Context, uri: Uri): String {
         val inputStream = context.contentResolver.openInputStream(uri)
             ?: throw IllegalArgumentException("无法读取所选文件")
-        return readBoundedBackupUtf8(inputStream)
-    }
-
-    internal fun readBoundedBackupUtf8(
-        inputStream: InputStream,
-        maxBytes: Long = MAX_BACKUP_PARSE_BYTES,
-    ): String {
-        require(maxBytes >= 0L) { "Invalid backup byte limit" }
-        return inputStream.use { input ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8 * 1024)
-            var totalBytes = 0L
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                totalBytes += count
-                require(totalBytes <= maxBytes) { "备份文件超过8 MB限制" }
-                output.write(buffer, 0, count)
-            }
-            String(output.toByteArray(), Charsets.UTF_8)
-        }
+        return readBoundedUtf8(inputStream)
     }
 
     private companion object {
@@ -264,7 +244,40 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
     }
 }
 
-/** 从任意 Context 向外层找到宿主 Activity（同 AndroidReminderController 的 findActivity 套路） */
+/**
+ * 有界读 UTF-8 文本（8 MB 上限）。
+ *
+ * 原来是 [AndroidBackupFileController] 的成员方法，2026-10-11 提到文件级：
+ * 导入通道（`AndroidScheduleFileController`）也要读用户选的文件，
+ * 同一个「超过 8 MB 直接失败」的约束不能一人写一份。
+ */
+internal fun readBoundedUtf8(
+    inputStream: InputStream,
+    maxBytes: Long = MAX_BACKUP_PARSE_BYTES,
+): String {
+    require(maxBytes >= 0L) { "Invalid backup byte limit" }
+    return inputStream.use { input ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var totalBytes = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            totalBytes += count
+            require(totalBytes <= maxBytes) { "备份文件超过8 MB限制" }
+            output.write(buffer, 0, count)
+        }
+        String(output.toByteArray(), Charsets.UTF_8)
+    }
+}
+
+/**
+ * 从任意 Context 向外层找到宿主 Activity（同 AndroidReminderController 的 findActivity 套路）。
+ *
+ * ⚠ 保持 `private`（文件级）：`AndroidReminderController.kt` 里也有一份同名扩展，
+ * 改成 `internal` 会直接撞成 `Conflicting overloads` —— 这个包里的每个控制器
+ * 各带一份自己的私有副本，是既定做法，别去「统一」它们。
+ */
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()

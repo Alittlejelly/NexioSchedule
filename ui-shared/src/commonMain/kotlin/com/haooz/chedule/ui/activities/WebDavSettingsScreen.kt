@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.SyncManager
 import com.haooz.chedule.data.WebDavManager
+import com.haooz.chedule.data.formatDateTimeMinute
+import com.haooz.chedule.data.localDateTimeAt
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -107,10 +109,12 @@ fun WebDavSettingsScreen(
     }
 
     var lastSyncTimeMs by remember { mutableLongStateOf(webDavManager.lastSyncTime) }
+    // 2026-10-11：原实现是**全限定名**的 java.text.SimpleDateFormat + java.util.Date ——
+    // checkKmpPurity 的 `import java.*` 规则抓不到这种写法，于是这行在 commonMain 里
+    // 一路绿灯（android/jvm 目标都能编过），真编 iOS 时才炸。换 :core 的手写格式化。
     val lastSyncText = remember(lastSyncTimeMs) {
         if (lastSyncTimeMs > 0L) {
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-            "上次操作: ${sdf.format(java.util.Date(lastSyncTimeMs))}"
+            "上次操作: ${localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute()}"
         } else ""
     }
 

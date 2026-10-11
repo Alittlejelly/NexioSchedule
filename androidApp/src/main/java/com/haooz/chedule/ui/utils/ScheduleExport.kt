@@ -54,108 +54,12 @@ import com.haooz.chedule.data.showToast
 // ════════════════════════════════════════════════════════════════════════
 
 // ── 1. 分享数据组装（读取课表 → JSON）─────────────────────────
-
-/**
- * 由 [CourseRepository] 组装分享/导出用的完整课表 JSON 对象。
- * 全部字段按 [scheduleName] 对应的课表/时间配置读取，避免与当前课表错配。
- */
-fun buildShareScheduleMap(
-    repository: CourseRepository,
-    scheduleName: String,
-): Map<String, Any>? {
-    val courses = repository.getCoursesForSchedule(scheduleName)
-    if (courses.isEmpty()) return null
-
-    // 必须绑定被分享课表的 TimeConfig：getCurrentTimeConfig 可能指向另一张表
-    // effective()：导出当天生效的那套作息时间（夏令时/冬令时）
-    val timeConfig = repository.getTimeConfig(
-        repository.getScheduleTimeConfigId(scheduleName)
-    ).effective()
-    val morning = repository.getPeriodTimes("morning", scheduleName)
-        .mapKeys { it.key.toString() }
-    val afternoon = repository.getPeriodTimes("afternoon", scheduleName)
-        .mapKeys { it.key.toString() }
-    val evening = repository.getPeriodTimes("evening", scheduleName)
-        .mapKeys { it.key.toString() }
-
-    val settings = shareScheduleSettings(
-        baseSettings = mapOf(
-            "class_start_time" to repository.getClassStartTime(scheduleName),
-            "current_week" to repository.getCurrentWeek(scheduleName),
-            "total_weeks" to repository.getTotalWeeks(scheduleName),
-            "smart_weekend" to repository.getSmartWeekend(scheduleName),
-            "show_non_current_week" to repository.getShowNonCurrentWeek(scheduleName),
-            "morning_sections" to timeConfig.morningSections,
-            "afternoon_sections" to timeConfig.afternoonSections,
-            "evening_sections" to timeConfig.eveningSections,
-        ),
-        reorganizationRules = repository.getTeachingWeekReorganizations(scheduleName),
-    )
-    val times = mapOf(
-        "morning" to morning,
-        "afternoon" to afternoon,
-        "evening" to evening,
-        "section_names" to timeConfig.sectionNames,
-    )
-    // times 只带当天生效那套（旧版本靠它渲染）；routines 带全部作息，导入后按日期自动切换
-    return buildShareSchedulePayload(
-        scheduleName = scheduleName,
-        settings = settings,
-        times = times,
-        courses = courses,
-        routines = timeConfig.safeRoutines,
-    )
-}
-
-/** 单课表/分享共用的课程字段序列化；导出与单课表备份必须走同一份字段清单 */
-internal fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
-    "name" to course.name,
-    "classroom" to course.classroom,
-    "teacher" to course.teacher,
-    "dayOfWeek" to course.dayOfWeek,
-    "startSection" to course.startSection,
-    "endSection" to course.endSection,
-    "isCustomTime" to course.isCustomTime,
-    "customStartTime" to course.customStartTime,
-    "customEndTime" to course.customEndTime,
-    "colorRes" to course.colorRes,
-) + shareCourseWeekFields(course)
-
-internal fun buildShareSchedulePayload(
-    scheduleName: String,
-    settings: Map<String, Any>,
-    times: Map<String, Any>,
-    courses: List<Course>,
-    routines: List<TimeRoutine> = emptyList(),
-): Map<String, Any> = mapOf(
-    "schedule_name" to scheduleName,
-    "settings" to settings,
-    "times" to times,
-    "courses" to courses.map(::courseToShareMap),
-    // 全套作息（夏令时/冬令时）。旧版本忽略这个字段，仍按 times 建单作息，向后兼容
-    "routines" to routines,
-)
-
-internal fun shareScheduleSettings(
-    baseSettings: Map<String, Any>,
-    reorganizationRules: List<TeachingWeekReorganizationRule>,
-): Map<String, Any> = baseSettings + (
-    "teaching_week_reorganizations" to TeachingWeekReorganization.toBackupValue(reorganizationRules)
-)
-
-internal data class ShareCourseWeekModel(
-    val startWeek: Int,
-    val endWeek: Int,
-    val weekType: Int,
-)
-
-/** Keep parity and sparse selections distinguishable in shared schedules. */
-internal fun shareCourseWeekFields(course: Course): Map<String, Any> = mapOf(
-    "startWeek" to course.startWeek,
-    "endWeek" to course.endWeek,
-    "weekType" to course.weekType,
-    "selectedWeeks" to course.selectedWeeks.sorted(),
-)
+//
+// buildShareScheduleMap / courseToShareMap / ShareCourseWeekModel 等 2026-10-11
+// 已迁 :ui-shared（同包名，本文件直接可见，无需 import）
+// —— 见 ui/utils/ShareScheduleCodec.kt。
+// 它们只碰 CourseRepository + Map<String, Any>；留在本文件会让共享页反向依赖
+// 本文件的 OkHttp / Gson / Bitmap（口令接口与出图都在这里）。
 
 // ── 2 & 3. 口令接口 + 分享卡片图片 ────────────────────────────
 

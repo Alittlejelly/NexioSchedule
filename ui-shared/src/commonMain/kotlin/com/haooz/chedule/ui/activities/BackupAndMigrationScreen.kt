@@ -1,11 +1,21 @@
-/** 备份与迁移页面 - Screen */
+/**
+ * 备份与迁移页面 - Screen
+ *
+ * 2026-10-11 自 `:androidApp` 迁入 `:ui-shared`（第二十三批，androidPane 最后一个留守 dest）。
+ *
+ * 迁移时拆出去的 Android 专有能力（全部改宿主注入，见各参数注释）：
+ * - 文件选择/另存为（SAF）→ `ScheduleFileController`
+ * - 口令分享（OkHttp + Gson + Bitmap 出图 + 系统分享）→ `onShareSchedule`
+ * - 第三方口令抓取（WebView + OkHttp + Gson）→ `onImportThirdParty`
+ * - 分享口令取回（OkHttp + Gson）→ `onFetchShareCode`
+ * - 手环推送 → `onExportToWearable`
+ * - 节假日变更后的提醒重排 → `onHolidayDataChanged`
+ *
+ * 跟着一起进 commonMain 的纯逻辑：`parseIcsFile`（→ `:core` 的 `IcsCodec.kt`）、
+ * `applyScheduleData` / `applyThirdPartySharePayload`（→ `ui/screens/ScheduleImportApply.kt`）。
+ */
 package com.haooz.chedule.ui.activities
 
-import com.haooz.chedule.data.HolidayEntry
-
-import android.annotation.SuppressLint
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,40 +39,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.encodeBackupJson
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayCourseExclusion
+import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayBeforeCourseExclusion
-import com.haooz.chedule.ui.navigation.AppRoute
-import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayEndCourseExclusion
+import com.haooz.chedule.data.HolidayEntry
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.ui.utils.ShareCodeApi
+import com.haooz.chedule.data.NoopScheduleFileController
+import com.haooz.chedule.data.ScheduleFileController
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
+import com.haooz.chedule.data.encodeBackupJson
+import com.haooz.chedule.data.formatDateTimeMinute
+import com.haooz.chedule.data.formatIcsTimestamp
+import com.haooz.chedule.data.localDateTimeAt
+import com.haooz.chedule.data.parseFullScheduleJson
+import com.haooz.chedule.data.parseIcsFile
+import com.haooz.chedule.data.WebDavManager
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.basic.OverlayDropdownMenu
+import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.ui.screens.applyScheduleData
+import com.haooz.chedule.ui.screens.applyThirdPartySharePayload
+import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
-import com.haooz.chedule.data.WebDavManager
-import com.haooz.chedule.reminder.CourseReminderHelper
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
-import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
-import com.haooz.chedule.ui.screens.applyScheduleData
-import com.haooz.chedule.data.parseFullScheduleJson
-import com.haooz.chedule.ui.screens.parseIcsFile
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.ui.utils.performScheduleShare
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
@@ -73,17 +88,15 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.text.SimpleDateFormat
-import kotlinx.datetime.LocalDate
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /** 数据管理：课表导入 / 导出 / 备份 三种页面模式 */
 enum class ScheduleDataManageMode {
@@ -96,19 +109,50 @@ enum class ScheduleDataManageMode {
  * 课表导入 / 导出 / 备份页面 - Screen
  * 由 mode 决定展示内容，入口页共用同一实现。
  */
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun BackupAndMigrationScreen(
     scrollBehavior: SharedScrollBehavior? = null,
-    courseViewModel: CourseViewModel,
-    scheduleViewModel: ScheduleViewModel,
-    settingsViewModel: SettingsViewModel,
+    courseViewModel: CourseViewModel = viewModel(),
+    scheduleViewModel: ScheduleViewModel = viewModel(),
+    settingsViewModel: SettingsViewModel = viewModel(),
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     mode: ScheduleDataManageMode = ScheduleDataManageMode.Import,
     /** pad 设置右栏：导入页去掉「导入方式」，并把口令/文件拆成两个小标题 */
     compactImport: Boolean = false,
+    /**
+     * 课表文件的「选文件读 / 另存为」能力（Android = `AndroidScheduleFileController`，
+     * 宿主用 `remember { AndroidScheduleFileController(context) }` 注入）。
+     * 桌面/iOS 没有系统文件选择器，用默认的 [NoopScheduleFileController]。
+     */
+    scheduleFileController: ScheduleFileController = NoopScheduleFileController,
+    /**
+     * 节假日/调休数据变更后的平台副作用（重排提醒）。
+     * Android 宿主注入：`CourseReminderHelper.onHolidayDataChanged(context)`。
+     * 不直接调 reminder 模块 —— 那是 Android 专有的（内部要 Context）。
+     */
+    onHolidayDataChanged: () -> Unit = {},
+    /**
+     * 分享口令取回（网络 + Gson，Android 专有）。
+     * Android 宿主注入：`{ ShareCodeApi.fetchShare(it).map { r -> ShareCodeFetchResult(...) } }`。
+     * 不注入时口令导入按「取回失败」处理。
+     */
+    onFetchShareCode: suspend (code: String) -> Result<ShareCodeFetchResult> =
+        { Result.failure(IllegalStateException("当前平台不支持口令导入")) },
+    /**
+     * 第三方（WakeUp / 星链）口令抓取（无头 WebView + OkHttp + Gson，Android 专有）。
+     * Android 宿主注入：`{ source, code -> ThirdPartyShareImporter.import(context, source, code) }`。
+     */
+    onImportThirdParty: suspend (source: ThirdPartyShareSource, code: String)
+        -> Result<ThirdPartySharePayload> =
+        { source, _ -> Result.failure(IllegalStateException("当前平台不支持${source.displayName}")) },
+    /**
+     * 口令分享导出（上传 + 出图 + 唤起系统分享，Android 专有）。
+     * Android 宿主注入：`{ name, onChanged -> performScheduleShare(context, scope, name, onChanged) }`。
+     */
+    onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
+    /** 导出到手环（Android 专有；未连接/不支持时返回 null） */
+    onExportToWearable: suspend (scheduleName: String) -> String? = { null },
 ) {
-    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     // 液态玻璃效果的透明下拉颜色
@@ -120,13 +164,14 @@ fun BackupAndMigrationScreen(
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
-    val webDavManager = remember { WebDavManager { com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(context) } }
+    // WebDavManager 已在 :core；恢复成功后的提醒重排是平台副作用，走注入
+    val webDavManager = remember { WebDavManager { onHolidayDataChanged() } }
     val lastSyncTimeMs = webDavManager.lastSyncTime
     val lastSyncSummary = remember(lastSyncTimeMs) {
-        if (lastSyncTimeMs > 0L) {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-            "上次操作: ${sdf.format(Date(lastSyncTimeMs))}"
-        } else "未操作"
+        // 原实现 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) ——
+        // pattern 只含数字与固定分隔符、不受 Locale 影响，:core 手写等价格式化。
+        if (lastSyncTimeMs > 0L) "上次操作: ${localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute()}"
+        else "未操作"
     }
 
     var showImportConfirmDialog by remember { mutableStateOf(false) }
@@ -149,101 +194,43 @@ fun BackupAndMigrationScreen(
     val currentScheduleName by scheduleViewModel.currentScheduleName.collectAsState()
     var selectedExportSchedule by remember { mutableStateOf(currentScheduleName) }
 
-    var pendingExportJson by remember { mutableStateOf<String?>(null) }
-    var pendingExportIcs by remember { mutableStateOf<String?>(null) }
     var showShareExportConfirmDialog by remember { mutableStateOf(false) }
     var isSharingExport by remember { mutableStateOf(false) }
 
-    val jsonExportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        uri?.let {
-            try {
-                pendingExportJson?.let { json ->
-                    context.contentResolver.openOutputStream(it)?.use { os ->
-                        os.write(json.toByteArray(Charsets.UTF_8))
-                    }
-                    showToast("导出成功")
-                }
-            } catch (e: Exception) {
-                showToast("导出失败: ${e.message}")
-            } finally {
-                pendingExportJson = null
+    /** 选一个 JSON 备份/课表文件读入；控制器已按原文案处理取消与读取失败 */
+    fun pickJsonFile() {
+        scheduleFileController.openTextFile(listOf("application/json", "*/*")) { text ->
+            if (text == null) return@openTextFile
+            if (text.isBlank()) {
+                showToast("文件读取失败")
+                return@openTextFile
+            }
+            val (success, message, data) = parseFullScheduleJson(text)
+            if (success && data != null) {
+                pendingImportData = data
+                pendingImportScheduleName = (data["schedule_name"] as? String) ?: "导入的课表"
+                showImportConfirmDialog = true
+            } else {
+                showToast(message)
             }
         }
     }
 
-    val icsExportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/calendar")
-    ) { uri ->
-        uri?.let {
-            try {
-                pendingExportIcs?.let { ics ->
-                    context.contentResolver.openOutputStream(it)?.use { os ->
-                        os.write(ics.toByteArray(Charsets.UTF_8))
-                    }
-                    showToast("导出成功")
-                }
-            } catch (e: Exception) {
-                showToast("导出失败: ${e.message}")
-            } finally {
-                pendingExportIcs = null
+    /** 选一个 ICS 日程文件读入 */
+    fun pickIcsFile() {
+        scheduleFileController.openTextFile(listOf("text/calendar", "*/*")) { text ->
+            if (text == null) return@openTextFile
+            if (text.isBlank()) {
+                showToast("文件读取失败")
+                return@openTextFile
             }
-        }
-    }
-
-    val jsonFilePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            try {
-                val inputStream = context.contentResolver.openInputStream(it)
-                val text = inputStream?.bufferedReader()?.use { reader -> reader.readText() } ?: ""
-                inputStream?.close()
-
-                if (text.isNotBlank()) {
-                    val (success, message, data) = parseFullScheduleJson(text)
-                    if (success && data != null) {
-                        val scheduleName = (data["schedule_name"] as? String) ?: "导入的课表"
-                        pendingImportData = data
-                        pendingImportScheduleName = scheduleName
-                        showImportConfirmDialog = true
-                    } else {
-                        showToast(message)
-                    }
-                } else {
-                    showToast("文件读取失败")
-                }
-            } catch (e: Exception) {
-                showToast("导入失败: ${e.message}")
-            }
-        }
-    }
-
-    val icsFilePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            try {
-                val inputStream = context.contentResolver.openInputStream(it)
-                val text = inputStream?.bufferedReader()?.use { reader -> reader.readText() } ?: ""
-                inputStream?.close()
-
-                if (text.isNotBlank()) {
-                    val (success, message, data) = parseIcsFile(text)
-                    if (success && data != null) {
-                        val scheduleName = "ICS导入课表"
-                        pendingImportData = data
-                        pendingImportScheduleName = scheduleName
-                        showImportConfirmDialog = true
-                    } else {
-                        showToast(message)
-                    }
-                } else {
-                    showToast("文件读取失败")
-                }
-            } catch (e: Exception) {
-                showToast("导入失败: ${e.message}")
+            val (success, message, data) = parseIcsFile(text)
+            if (success && data != null) {
+                pendingImportData = data
+                pendingImportScheduleName = "ICS导入课表"
+                showImportConfirmDialog = true
+            } else {
+                showToast(message)
             }
         }
     }
@@ -257,7 +244,6 @@ fun BackupAndMigrationScreen(
             snapshotFlow { listState.firstVisibleItemScrollOffset }
                 .collect { offset -> listScrollY = offset }
         }
-        val density = androidx.compose.ui.platform.LocalDensity.current
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize()
@@ -364,20 +350,12 @@ fun BackupAndMigrationScreen(
                             ArrowPreference(
                                 title = "JSON 文件导入",
                                 summary = "支持拾光课程表/Neixo课程表",
-                                onClick = {
-                                    jsonFilePickerLauncher.launch(
-                                        arrayOf("application/json", "*/*")
-                                    )
-                                }
+                                onClick = { pickJsonFile() }
                             )
                             ArrowPreference(
                                 title = "ICS 文件导入",
                                 summary = "从日程文件导入课程",
-                                onClick = {
-                                    icsFilePickerLauncher.launch(
-                                        arrayOf("text/calendar", "*/*")
-                                    )
-                                }
+                                onClick = { pickIcsFile() }
                             )
                         }
                     }
@@ -426,30 +404,23 @@ fun BackupAndMigrationScreen(
                 }
                 item {
                     Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(0.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        ArrowPreference(
-                            title = "JSON 文件导入",
-                            summary = "支持拾光课程表/Neixo课程表",
-                            onClick = {
-                                jsonFilePickerLauncher.launch(
-                                    arrayOf("application/json", "*/*")
-                                )
-                            }
-                        )
-                        ArrowPreference(
-                            title = "ICS 文件导入",
-                            summary = "从日程文件导入课程",
-                            onClick = {
-                                icsFilePickerLauncher.launch(
-                                    arrayOf("text/calendar", "*/*")
-                                )
-                            }
-                        )
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(0.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            ArrowPreference(
+                                title = "JSON 文件导入",
+                                summary = "支持拾光课程表/Neixo课程表",
+                                onClick = { pickJsonFile() }
+                            )
+                            ArrowPreference(
+                                title = "ICS 文件导入",
+                                summary = "从日程文件导入课程",
+                                onClick = { pickIcsFile() }
+                            )
+                        }
                     }
-                } }
+                }
             }
 
             if (mode == ScheduleDataManageMode.Export) {
@@ -506,10 +477,13 @@ fun BackupAndMigrationScreen(
                                 title = "JSON 格式导出",
                                 summary = "导出课表为JSON格式",
                                 onClick = {
-                                    val json = buildExportJson(courseViewModel, selectedExportSchedule)
+                                    val json = buildExportJson(selectedExportSchedule)
                                     if (json != null) {
-                                        pendingExportJson = json
-                                        jsonExportLauncher.launch("${selectedExportSchedule}.json")
+                                        scheduleFileController.saveTextFile(
+                                            fileName = "${selectedExportSchedule}.json",
+                                            mimeType = "application/json",
+                                            content = json,
+                                        )
                                     }
                                 }
                             )
@@ -517,11 +491,13 @@ fun BackupAndMigrationScreen(
                                 title = "ICS 格式导出",
                                 summary = "导出课表为日程格式",
                                 onClick = {
-                                    val ics = buildExportIcs(courseViewModel,
-                                        settingsViewModel, selectedExportSchedule)
+                                    val ics = buildExportIcs(selectedExportSchedule)
                                     if (ics != null) {
-                                        pendingExportIcs = ics
-                                        icsExportLauncher.launch("${selectedExportSchedule}.ics")
+                                        scheduleFileController.saveTextFile(
+                                            fileName = "${selectedExportSchedule}.ics",
+                                            mimeType = "text/calendar",
+                                            content = ics,
+                                        )
                                     }
                                 }
                             )
@@ -551,8 +527,7 @@ fun BackupAndMigrationScreen(
                                 summary = "打包JSON并推送到手表/手环",
                                 onClick = {
                                     scope.launch {
-                                        val path = com.haooz.chedule.wearable.WearableScheduleSync
-                                            .exportToWearable(context, selectedExportSchedule)
+                                        val path = onExportToWearable(selectedExportSchedule)
                                         if (path != null) {
                                             showToast("已导出并推送手环\n$path", longDuration = true)
                                         } else {
@@ -644,12 +619,11 @@ fun BackupAndMigrationScreen(
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             if (pendingImportScheduleName.isNotBlank() && pendingImportData != null) {
                                 val (_, message) = applyScheduleData(
-                                    context,
-                                    courseViewModel,
-                                    scheduleViewModel,
-                                    settingsViewModel,
-                                    pendingImportScheduleName,
-                                    pendingImportData!!
+                                    viewModel = courseViewModel,
+                                    scheduleViewModel = scheduleViewModel,
+                                    settingsViewModel = settingsViewModel,
+                                    scheduleName = pendingImportScheduleName,
+                                    data = pendingImportData!!,
                                 )
                                 showToast(message, longDuration = true)
                             }
@@ -698,12 +672,8 @@ fun BackupAndMigrationScreen(
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                     val name = selectedExportSchedule
                     showShareExportConfirmDialog = false
-                    performScheduleShare(
-                        context = context,
-                        scope = scope,
-                        scheduleName = name,
-                        onSharingChanged = { isSharingExport = it }
-                    )
+                    // 上传 + 出图 + 系统分享全是 Android 专有能力，宿主注入
+                    onShareSchedule(name) { isSharingExport = it }
                 },
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 modifier = Modifier.weight(1f)
@@ -723,71 +693,70 @@ fun BackupAndMigrationScreen(
             }
         }
     ) {
-            Column(
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            NativeMiuixTextField(
+                value = shareCodeInput,
+                onValueChange = { shareCodeInput = it },
+                label = "分享口令",
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                requestFocus = showShareCodeDialog
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                NativeMiuixTextField(
-                    value = shareCodeInput,
-                    onValueChange = { shareCodeInput = it },
-                    label = "分享口令",
-                    modifier = Modifier.fillMaxWidth(),
-                    requestFocus = showShareCodeDialog
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    TextButton(
-                        text = "取消",
-                        onClick = {
-                            if (!isImportingShareCode) {
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                showShareCodeDialog = false
-                                shareCodeInput = ""
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(
-                        text = if (isImportingShareCode) "导入中…" else "获取课表",
-                        onClick = {
-                            if (isImportingShareCode) return@TextButton
-                            val code = shareCodeInput.trim()
-                            if (code.isBlank()) {
-                                showToast("请输入口令")
-                                return@TextButton
-                            }
+                TextButton(
+                    text = "取消",
+                    onClick = {
+                        if (!isImportingShareCode) {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            isImportingShareCode = true
-                            scope.launch {
-                                try {
-                                    val result = ShareCodeApi.fetchShare(code)
-                                    result.fold(
-                                        onSuccess = { fetched ->
-                                            showShareCodeDialog = false
-                                            shareCodeInput = ""
-                                            pendingImportData = fetched.scheduleData
-                                            pendingImportScheduleName = fetched.scheduleName
-                                            showImportConfirmDialog = true
-                                        },
-                                        onFailure = { e ->
-                                            showToast(e.message ?: "口令不存在或已过期")
-                                        }
-                                    )
-                                } finally {
-                                    isImportingShareCode = false
-                                }
+                            showShareCodeDialog = false
+                            shareCodeInput = ""
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    text = if (isImportingShareCode) "导入中…" else "获取课表",
+                    onClick = {
+                        if (isImportingShareCode) return@TextButton
+                        val code = shareCodeInput.trim()
+                        if (code.isBlank()) {
+                            showToast("请输入口令")
+                            return@TextButton
+                        }
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        isImportingShareCode = true
+                        scope.launch {
+                            try {
+                                onFetchShareCode(code).fold(
+                                    onSuccess = { fetched ->
+                                        showShareCodeDialog = false
+                                        shareCodeInput = ""
+                                        pendingImportData = fetched.scheduleData
+                                        pendingImportScheduleName = fetched.scheduleName
+                                        showImportConfirmDialog = true
+                                    },
+                                    onFailure = { e ->
+                                        showToast(e.message ?: "口令不存在或已过期")
+                                    }
+                                )
+                            } finally {
+                                isImportingShareCode = false
                             }
-                        },
-                        colors = ButtonDefaults.textButtonColorsPrimary(),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
+    }
 
     // WakeUp / 星链口令输入（始终挂载，靠 show 驱动退出动画）
     OverlayDialog(
@@ -844,8 +813,7 @@ fun BackupAndMigrationScreen(
                         isImportingThirdParty = true
                         scope.launch {
                             try {
-                                val result = ThirdPartyShareImporter.import(context, source, code)
-                                result.fold(
+                                onImportThirdParty(source, code).fold(
                                     onSuccess = { payload ->
                                         showThirdPartyCodeDialog = false
                                         thirdPartyCodeInput = ""
@@ -924,7 +892,6 @@ fun BackupAndMigrationScreen(
                         val name = pendingImportScheduleName.trim()
                         if (payload != null && name.isNotBlank()) {
                             val (_, message) = applyThirdPartySharePayload(
-                                context = context,
                                 courseViewModel = courseViewModel,
                                 scheduleViewModel = scheduleViewModel,
                                 settingsViewModel = settingsViewModel,
@@ -943,94 +910,7 @@ fun BackupAndMigrationScreen(
     }
 }
 
-/** 将 WakeUp / 星链解析结果写入新建课表（课程 + 可选时间段/学期配置） */
-private fun applyThirdPartySharePayload(
-    context: android.content.Context,
-    courseViewModel: CourseViewModel,
-    scheduleViewModel: ScheduleViewModel,
-    settingsViewModel: SettingsViewModel,
-    scheduleName: String,
-    payload: ThirdPartySharePayload,
-): Pair<Boolean, String> {
-    return try {
-        if (scheduleName in scheduleViewModel.scheduleNames.value) {
-            return false to "课表「$scheduleName」已存在"
-        }
-        scheduleViewModel.addSchedule(scheduleName)
-
-        val colorMap = mutableMapOf<String, Long>()
-        var colorIndex = 0
-        val courses = payload.courses.map { item ->
-            val color = colorMap.getOrPut(item.name) {
-                Course.courseColors[colorIndex % Course.courseColors.size].also { colorIndex++ }
-            }
-            item.toCourse(scheduleName, color)
-        }
-        if (courses.isEmpty()) {
-            return false to "未解析到课程数据"
-        }
-        scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
-
-        if (payload.timeSlots.isNotEmpty()) {
-            val repository = CourseRepository()
-            val maxSlot = payload.timeSlots.maxOf { it.number }
-            val morningSections = settingsViewModel.morningSections.value.coerceAtLeast(1)
-            val afternoonSections = settingsViewModel.afternoonSections.value.coerceAtLeast(1)
-            var eveningSections = settingsViewModel.eveningSections.value.coerceAtLeast(1)
-            val capacity = morningSections + afternoonSections + eveningSections
-            if (maxSlot > capacity) {
-                eveningSections = (maxSlot - morningSections - afternoonSections).coerceAtLeast(1)
-            }
-            val morningTimes = mutableMapOf<Int, String>()
-            val afternoonTimes = mutableMapOf<Int, String>()
-            val eveningTimes = mutableMapOf<Int, String>()
-            for (slot in payload.timeSlots) {
-                val timeStr = "${slot.startTime}-${slot.endTime}"
-                when {
-                    slot.number <= morningSections -> morningTimes[slot.number] = timeStr
-                    slot.number <= morningSections + afternoonSections ->
-                        afternoonTimes[slot.number - morningSections] = timeStr
-                    else -> eveningTimes[slot.number - morningSections - afternoonSections] = timeStr
-                }
-            }
-            repository.applyTimeImportToSchedule(
-                scheduleName,
-                morningSections,
-                afternoonSections,
-                eveningSections,
-                morningTimes,
-                afternoonTimes,
-                eveningTimes,
-            )
-        } else {
-            // 无时间段时复用当前课表的时间配置
-            val currentConfigId = scheduleViewModel.getCurrentScheduleTimeConfigId()
-            if (currentConfigId != 0L) {
-                scheduleViewModel.setScheduleTimeConfigId(scheduleName, currentConfigId)
-            }
-        }
-
-        scheduleViewModel.switchToSchedule(scheduleName)
-        payload.semesterStartDate?.takeIf { it.isNotBlank() }?.let {
-            courseViewModel.setClassStartTime(it)
-        }
-        payload.semesterTotalWeeks?.takeIf { it > 0 }?.let {
-            courseViewModel.setTotalWeeks(it)
-        }
-
-        courseViewModel.reloadCourses()
-        settingsViewModel.refreshSettings()
-        scheduleViewModel.refreshScheduleList()
-        true to "成功导入课表「$scheduleName」\n共 ${courses.size} 门课程"
-    } catch (e: Exception) {
-        false to "导入失败: ${e.message}"
-    }
-}
-
-private fun buildExportJson(
-    viewModel: CourseViewModel,
-    scheduleName: String
-): String? {
+private fun buildExportJson(scheduleName: String): String? {
     val repository = CourseRepository()
     val data = buildShareScheduleMap(repository, scheduleName)
     if (data == null) {
@@ -1086,7 +966,7 @@ internal fun icsEffectiveDatesForCourse(
             ?: swap?.followWeek?.takeIf { it > 0 }?.toLong()
             ?: position.week)
             .takeIf { it in 1L..Int.MAX_VALUE.toLong() }?.toInt() ?: return@mapNotNull null
-        val allowed = CourseReminderHelper.canResolveCourseCandidates(
+        val allowed = DayScheduleResolver.canResolveCourseCandidates(
             position, swap, week, totalWeeks, lastWeekWithCourses,
         ) && weekday == course.dayOfWeek && course.isActiveInWeek(week)
         val resolution = HolidayCourseExclusion.resolveDayCourses(
@@ -1105,11 +985,17 @@ internal fun icsEffectiveDatesForCourse(
 internal fun icsEventUid(courseId: String, teachingWeek: Int, date: LocalDate): String =
     "$courseId-$teachingWeek-${date.toString().replace("-", "")}@nexio-schedule"
 
-private fun buildExportIcs(
-    viewModel: CourseViewModel,
-    settingsViewModel: SettingsViewModel,
-    scheduleName: String
-): String? {
+/**
+ * 组装 ICS 文本。
+ *
+ * 原实现用 `Calendar` + `SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault())` 拼
+ * `DTSTART/DTEND`。这两个都是 java 专有（`java.*` 在 Kotlin/Native 上不存在），
+ * 换成 kotlinx-datetime 的 [LocalDateTime] + `:core` 的 [formatIcsTimestamp]。
+ *
+ * ⚠ 节次时间来自用户配置，理论上可能写出 `24:00` 这类越界值 —— 原 `Calendar.set`
+ * 会静默进位到次日，这里改成夹取到 23:59（`LocalTime` 不接受越界入参会抛异常）。
+ */
+private fun buildExportIcs(scheduleName: String): String? {
     val repository = CourseRepository()
     val courses = repository.getCoursesForSchedule(scheduleName)
     if (courses.isEmpty()) {
@@ -1129,7 +1015,6 @@ private fun buildExportIcs(
     val lastWeekWithCourses = courses.maxOfOrNull {
         it.selectedWeeks.maxOrNull() ?: it.endWeek
     } ?: 0
-    val dtStartSdf = SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault())
 
     return buildString {
         appendLine("BEGIN:VCALENDAR")
@@ -1153,26 +1038,21 @@ private fun buildExportIcs(
                 sectionTimes, sectionCount, repository.getTotalWeeks(scheduleName), lastWeekWithCourses,
                 holidayBeforeExclusion,
             )) {
-                val targetDate = Calendar.getInstance().apply {
-                    clear()
-                    set(actualDate.year, actualDate.monthNumber - 1, actualDate.dayOfMonth)
-                }
-
-                targetDate.set(Calendar.HOUR_OF_DAY, startHour)
-                targetDate.set(Calendar.MINUTE, startMinute)
-                targetDate.set(Calendar.SECOND, 0)
-                val eventStart = targetDate.time
-
-                targetDate.set(Calendar.HOUR_OF_DAY, endHour)
-                targetDate.set(Calendar.MINUTE, endMinute)
-                val eventEnd = targetDate.time
+                val eventStart = LocalDateTime(
+                    actualDate,
+                    LocalTime(startHour.coerceIn(0, 23), startMinute.coerceIn(0, 59), 0),
+                )
+                val eventEnd = LocalDateTime(
+                    actualDate,
+                    LocalTime(endHour.coerceIn(0, 23), endMinute.coerceIn(0, 59), 0),
+                )
 
                 val uid = icsEventUid(course.id, week, actualDate)
 
                 appendLine("BEGIN:VEVENT")
                 appendLine("UID:$uid")
-                appendLine("DTSTART:${dtStartSdf.format(eventStart)}")
-                appendLine("DTEND:${dtStartSdf.format(eventEnd)}")
+                appendLine("DTSTART:${eventStart.formatIcsTimestamp()}")
+                appendLine("DTEND:${eventEnd.formatIcsTimestamp()}")
                 appendLine("RRULE:FREQ=WEEKLY;COUNT=1")
                 appendLine("SUMMARY:${course.name}")
                 if (course.classroom.isNotBlank() || course.teacher.isNotBlank()) {
