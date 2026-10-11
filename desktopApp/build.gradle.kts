@@ -32,6 +32,12 @@ kotlin {
             implementation(project(":backdrop"))
             // 桌面 Compose 运行时（Window / application）
             implementation(compose.desktop.currentOs)
+            // 共享页面普遍用 `viewModel()` 自取 ViewModel（如 WebDavSettingsScreen），
+            // 桌面端没有 Android 的 Activity/Fragment 提供 ViewModelStoreOwner，
+            // 宿主必须自己补 —— 否则点开就崩 "Factory.create(String, CreationExtras) is not implemented"。
+            // :ui-shared 用的是 implementation，不传递到桌面端，所以这里要显式声明。
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.9.6")
+            implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
             // ⚠ 必须显式声明：:core 虽用 `api(libs.kotlinx.datetime)`，但**没有传到桌面端的运行时
             // classpath** —— 打开用了它的页面（AddEditCourseBottomSheet / CourseTimeSettingsScreen 等）
             // 会直接崩：

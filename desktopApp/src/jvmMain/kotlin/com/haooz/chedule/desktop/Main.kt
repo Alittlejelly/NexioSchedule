@@ -19,7 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -238,10 +244,25 @@ private fun PageContainer(
     onBack: () -> Unit,
     content: @Composable (SharedScrollBehavior?) -> Unit,
 ) {
-    DocumentPageScaffold(
-        title = title,
-        onBack = onBack,
-    ) { scrollBehavior, _ ->
-        content(scrollBehavior)
+    // 共享页面普遍用 `viewModel()` 自取 ViewModel，而桌面端没有 Android 的
+    // Activity/Fragment 提供 ViewModelStoreOwner —— 不补一个会直接崩：
+    //   UnsupportedOperationException: `Factory.create(String, CreationExtras)` is not implemented
+    // 这里给每个页面发一个独立 store，离开页面时 clear（等价于页面销毁）。
+    val owner = remember { DesktopViewModelStoreOwner() }
+    DisposableEffect(Unit) {
+        onDispose { owner.viewModelStore.clear() }
     }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+        DocumentPageScaffold(
+            title = title,
+            onBack = onBack,
+        ) { scrollBehavior, _ ->
+            content(scrollBehavior)
+        }
+    }
+}
+
+/** 桌面端最小的 [ViewModelStoreOwner]：一个页面一个 store，不做跨页面共享。 */
+private class DesktopViewModelStoreOwner : ViewModelStoreOwner {
+    override val viewModelStore: ViewModelStore = ViewModelStore()
 }
