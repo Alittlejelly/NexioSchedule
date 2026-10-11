@@ -98,6 +98,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.web.rememberAndroidWebHost
 
 /**
  * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。
@@ -430,7 +431,12 @@ fun EducationalImportScreen(
                             onAssetJsPathChanged = { currentAssetJsPath = it },
                             onExecuteImportRef = { action -> executeImportAction = action },
                             onToggleDesktopModeRef = { action -> toggleDesktopModeAction = action },
-                            onReloadRef = { action -> reloadWebViewAction = action }
+                            onReloadRef = { action -> reloadWebViewAction = action },
+                            // 网页本体（WebView / JS 桥 / PixelCopy 采色）留在 Android 侧：
+                            // 页面外壳已迁 :ui-shared，这里只把宿主造出来注入进去。
+                            webHostFactory = { config, events ->
+                                rememberAndroidWebHost(config, events)
+                            },
                         )
 
                         ProgressiveBlurTopBar(

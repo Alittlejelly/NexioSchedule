@@ -1,27 +1,20 @@
 /** WebView 页面 - 用于加载教务系统网页 */
 package com.haooz.chedule.ui.screens
 
-import android.annotation.SuppressLint
-import android.app.Activity
-import android.content.ContextWrapper
-import android.graphics.Bitmap
-import android.graphics.Rect
-import android.net.http.SslError
-import android.os.Handler
-import android.os.Looper
+// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十六批）。
+//
+// 切法（全仓唯一一处「网页本体」）：
+//  · **外壳进 commonMain**：顶栏采样带 / 进度条 / 底部胶囊 / alert·prompt·单选三个对话框 /
+//    目标课表选择 / 返回处理 —— 纯 Compose，约 600 行，iOS 直接复用。
+//  · **网页本体留宿主**：WebView 创建与配置、UA/视口策略、JS 桥（AndroidBridge /
+//    WebPostBridge / WebCompatDelegate）、PixelCopy 逐帧采色 —— 约 400 行，
+//    iOS 要整体换成 WKWebView，一行都复用不了。见 androidApp/ui/web/AndroidWebHost.kt。
+//  · 中间是 ui/web/WebHost.kt 的契约（7 个方法 + 8 个事件回调）。
+//
+// 因此本文件里**不应出现任何 android.* / androidx.activity / androidx.core**；
+// 需要新能力就往 WebHost 上加方法，而不是把平台类型带进来。
+
 import com.haooz.chedule.data.NexioLog
-import android.view.Choreographer
-import android.view.PixelCopy
-import android.view.ViewGroup
-import android.webkit.ConsoleMessage
-import android.webkit.SslErrorHandler
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -60,13 +53,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import org.jetbrains.compose.resources.painterResource
@@ -76,21 +67,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.net.toUri
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.ic_phone_pc
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.school.SchoolData
+import com.haooz.chedule.ui.web.NoopWebHost
+import com.haooz.chedule.ui.web.WebHost
+import com.haooz.chedule.ui.web.WebHostConfig
+import com.haooz.chedule.ui.web.WebHostEvents
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.data.school.ScriptRepository
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.web.AndroidBridge
-import com.haooz.chedule.ui.web.WebCompatDelegate
-import com.haooz.chedule.ui.web.WebPostBridge
 import com.kyant.backdrop.BackdropEffectScope
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -111,19 +102,12 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.util.concurrent.atomic.AtomicBoolean
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 
-private const val DESKTOP_USER_AGENT =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-/** 顶栏色条采样高度：只取页面最顶部几行，用来统计主导底色 */
-private const val TOP_MIRROR_SAMPLE_HEIGHT_PX = 12
-
-/** 主导色与上一帧接近时的通道阈值，低于此视为同一颜色 */
-private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
+// 三个「网页实现细节」常量（DESKTOP_USER_AGENT / TOP_MIRROR_*）随网页本体搬到宿主：
+// androidApp/.../ui/web/AndroidWebHost.kt。页面不再采样像素，也就不需要它们。
 
 /**
  * 在 [src] 全图里取出现次数最多的颜色。
@@ -134,116 +118,6 @@ private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
  * （新众数明显更多，或上一帧色已几乎消失）才切换，避免左右对半来回闪；
  * 同时也不会像「占比不足 55% 就锁死」那样，把加载时的白色一直粘住。
  */
-private fun pickDominantColor(src: Bitmap, prevColor: Int): Int {
-    val width = src.width
-    val height = src.height
-    if (width <= 0 || height <= 0) {
-        return if (prevColor != -1) prevColor else 0xFF808080.toInt()
-    }
-
-    val pixels = IntArray(width * height)
-    src.getPixels(pixels, 0, width, 0, 0, width, height)
-    val total = pixels.size
-
-    // 4bit/通道量化：key = 0..4095
-    val counts = IntArray(4096)
-    val sumR = IntArray(4096)
-    val sumG = IntArray(4096)
-    val sumB = IntArray(4096)
-    val touched = IntArray(total.coerceAtMost(4096))
-    var touchedN = 0
-
-    val pr = if (prevColor != -1) (prevColor ushr 16) and 0xFF else -1
-    val pg = if (prevColor != -1) (prevColor ushr 8) and 0xFF else -1
-    val pb = if (prevColor != -1) prevColor and 0xFF else -1
-    var prevNearCount = 0
-
-    for (i in pixels.indices) {
-        val c = pixels[i]
-        val r = (c ushr 16) and 0xFF
-        val g = (c ushr 8) and 0xFF
-        val b = c and 0xFF
-        if (pr >= 0 &&
-            abs(r - pr) <= TOP_MIRROR_COLOR_CLOSE_DELTA &&
-            abs(g - pg) <= TOP_MIRROR_COLOR_CLOSE_DELTA &&
-            abs(b - pb) <= TOP_MIRROR_COLOR_CLOSE_DELTA
-        ) {
-            prevNearCount++
-        }
-        val key = ((r ushr 4) shl 8) or ((g ushr 4) shl 4) or (b ushr 4)
-        if (counts[key] == 0) {
-            if (touchedN < touched.size) {
-                touched[touchedN] = key
-                touchedN++
-            }
-        }
-        counts[key]++
-        sumR[key] += r
-        sumG[key] += g
-        sumB[key] += b
-    }
-
-    if (touchedN == 0) {
-        return if (prevColor != -1) prevColor else 0xFF808080.toInt()
-    }
-
-    var bestKey = touched[0]
-    var bestCount = counts[bestKey]
-    var t = 1
-    while (t < touchedN) {
-        val k = touched[t]
-        val cnt = counts[k]
-        if (cnt > bestCount) {
-            bestCount = cnt
-            bestKey = k
-        }
-        t++
-    }
-
-    val n = bestCount.coerceAtLeast(1)
-    val avgR = (sumR[bestKey] / n).coerceIn(0, 255)
-    val avgG = (sumG[bestKey] / n).coerceIn(0, 255)
-    val avgB = (sumB[bestKey] / n).coerceIn(0, 255)
-    val color = (0xFF shl 24) or (avgR shl 16) or (avgG shl 8) or avgB
-
-    if (prevColor == -1) return color
-
-    val close = abs(pr - avgR) <= TOP_MIRROR_COLOR_CLOSE_DELTA &&
-        abs(pg - avgG) <= TOP_MIRROR_COLOR_CLOSE_DELTA &&
-        abs(pb - avgB) <= TOP_MIRROR_COLOR_CLOSE_DELTA
-    if (close) return color
-
-    // 上一帧色已几乎不在采样里，或新众数比「接近上一帧的像素」多 5% 以上 → 切换
-    // 对半开时两边接近，维持上一帧；页面真变色时 prevNearCount 会掉下去，能切走
-    if (prevNearCount * 20 < total || bestCount * 100 > prevNearCount * 105) {
-        return color
-    }
-    return prevColor
-}
-
-private fun dominantColorBitmap(color: Int): Bitmap {
-    val out = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-    out.setPixel(0, 0, color)
-    return out
-}
-
-/** 顶栏色切换时的每帧插值系数：越小越慢、越绵 */
-private const val TOP_MIRROR_COLOR_LERP = 0.16f
-
-private fun lerpArgb(from: Int, to: Int, t: Float): Int {
-    if (from == to) return to
-    val fr = (from ushr 16) and 0xFF
-    val fg = (from ushr 8) and 0xFF
-    val fb = from and 0xFF
-    val tr = (to ushr 16) and 0xFF
-    val tg = (to ushr 8) and 0xFF
-    val tb = to and 0xFF
-    val r = (fr + (tr - fr) * t).toInt().coerceIn(0, 255)
-    val g = (fg + (tg - fg) * t).toInt().coerceIn(0, 255)
-    val b = (fb + (tb - fb) * t).toInt().coerceIn(0, 255)
-    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-}
-
 private data class AlertData(
     val title: String,
     val content: String,
@@ -265,9 +139,6 @@ private data class SelectionData(
     val onResult: (Int?) -> Unit
 )
 
-@SuppressLint("JavascriptInterfaceRedundantCheck", "JavascriptInterface",
-    "ConfigurationScreenWidthHeight"
-)
 @Composable
 fun WebViewScreen(
     school: SchoolData,
@@ -288,16 +159,21 @@ fun WebViewScreen(
     onTopColorChanged: (Color) -> Unit = {},
     onExecuteImportRef: ((() -> Unit) -> Unit)? = null,
     onToggleDesktopModeRef: ((() -> Unit) -> Unit)? = null,
-    onReloadRef: ((() -> Unit) -> Unit)? = null
+    onReloadRef: ((() -> Unit) -> Unit)? = null,
+    /**
+     * 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 尚未提供时用 [NoopWebHost]
+     * （内容区留白、控制方法空转）。
+     */
+    webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
 ) {
-    val context = LocalContext.current
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) {
         val widthDp = screenWidthDp()
         ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
     } else 0.dp
-    var currentUrl by remember { mutableStateOf(importUrl ?: "about:blank") }
     var loadingProgress by remember { mutableFloatStateOf(0f) }
+    // 顶栏采样色：宿主逐帧上报（Android = PixelCopy）；null = 该平台没有这个能力，不画色带
+    var topColor by remember { mutableStateOf<Color?>(null) }
 var pageTitle by remember { mutableStateOf("加载中...") }
     // 平板默认桌面版，手机默认手机版（UA 与视口策略都跟着走，见 WebCompatDelegate）
     var isDesktopMode by remember { mutableStateOf(isTablet) }
@@ -319,125 +195,6 @@ var pageTitle by remember { mutableStateOf("加载中...") }
     var promptData by remember { mutableStateOf<PromptData?>(null) }
     var selectionData by remember { mutableStateOf<SelectionData?>(null) }
     var showCourseTablePicker by remember { mutableStateOf(false) }
-
-    val webView = remember {
-        WebView(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(Color.Transparent.toArgb())
-            // 与 SleepDown 一致：硬件层 + 后面 AndroidView 的 Offscreen，页面像素才能被 layerBackdrop 录进去
-            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-        }
-    }
-
-    // WebView 内容层由 Activity 创建并传入：顶栏 ProgressiveBlurTopBar 与底部胶囊共用
-    // 顶栏空白区：采样页面顶部一小段，取全图众数色做成 1×1，FillBounds 铺满 contentTopPadding。
-    // 大面积底色压倒文字笔画；整条纯色填充，没有拉伸字形问题。
-    var webTopMirrorBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    // 上一帧主导色（滞回用）与当前已上屏颜色（插值用）
-    val lastTopMirrorColor = remember { intArrayOf(-1) }
-    val lastAppliedMirrorColor = remember { intArrayOf(-1) }
-    val edgeSampleHandler = remember { Handler(Looper.getMainLooper()) }
-    val density = LocalDensity.current
-    val topMirrorVisiblePx = with(density) { contentTopPadding.roundToPx() }
-    val pixelCopyInFlight = remember { AtomicBoolean(false) }
-    val mirrorFrameRunning = remember { AtomicBoolean(false) }
-
-    val captureWebTopMirror: (WebView) -> Unit = remember(topMirrorVisiblePx) {
-        { target ->
-            if (topMirrorVisiblePx <= 0) return@remember
-            // 上一帧还没回来就跳过，避免 PixelCopy 排队打满
-            if (!pixelCopyInFlight.compareAndSet(false, true)) return@remember
-            try {
-                val activity = target.context.findActivity()
-                val window = activity?.window
-                val width = target.width
-                val height = target.height
-                if (window != null && width > 0 && height > 0) {
-                    // 只采样固定高度的一小段：足够判断色块/文字，又比整条 top padding 便宜
-                    val strip = TOP_MIRROR_SAMPLE_HEIGHT_PX.coerceAtMost(height)
-                    val location = IntArray(2)
-                    target.getLocationInWindow(location)
-                    val src = Rect(
-                        location[0],
-                        location[1],
-                        location[0] + width,
-                        location[1] + strip
-                    )
-                    val raw = Bitmap.createBitmap(width, strip, Bitmap.Config.ARGB_8888)
-                    PixelCopy.request(
-                        window,
-                        src,
-                        raw,
-                        { result ->
-                            if (result == PixelCopy.SUCCESS) {
-                                val target = pickDominantColor(raw, lastTopMirrorColor[0])
-                                raw.recycle()
-                                lastTopMirrorColor[0] = target
-
-                                val prevApplied = lastAppliedMirrorColor[0]
-                                val color = if (prevApplied == -1) {
-                                    target
-                                } else {
-                                    val lerped = lerpArgb(prevApplied, target, TOP_MIRROR_COLOR_LERP)
-                                    // 已非常接近目标时贴齐，避免长期停在中间色
-                                    val dr = abs(((lerped ushr 16) and 0xFF) - ((target ushr 16) and 0xFF))
-                                    val dg = abs(((lerped ushr 8) and 0xFF) - ((target ushr 8) and 0xFF))
-                                    val db = abs((lerped and 0xFF) - (target and 0xFF))
-                                    if (dr <= 1 && dg <= 1 && db <= 1) target else lerped
-                                }
-                                lastAppliedMirrorColor[0] = color
-
-                                val prevBmp = webTopMirrorBitmap
-                                if (prevBmp == null || prevBmp.isRecycled || prevBmp.getPixel(0, 0) != color) {
-                                    prevBmp?.takeIf { !it.isRecycled }?.recycle()
-                                    webTopMirrorBitmap = dominantColorBitmap(color)
-                                    currentOnTopColorChanged(
-                                        Color(
-                                            red = ((color ushr 16) and 0xFF) / 255f,
-                                            green = ((color ushr 8) and 0xFF) / 255f,
-                                            blue = (color and 0xFF) / 255f,
-                                            alpha = 1f
-                                        )
-                                    )
-                                }
-                            } else {
-                                raw.recycle()
-                            }
-                            pixelCopyInFlight.set(false)
-                        },
-                        edgeSampleHandler
-                    )
-                } else {
-                    pixelCopyInFlight.set(false)
-                }
-            } catch (_: Throwable) {
-                pixelCopyInFlight.set(false)
-            }
-        }
-    }
-
-    DisposableEffect(webView, captureWebTopMirror) {
-        val choreographer = Choreographer.getInstance()
-        val frameCallback = object : Choreographer.FrameCallback {
-            override fun doFrame(frameTimeNanos: Long) {
-                if (!mirrorFrameRunning.get()) return
-                captureWebTopMirror(webView)
-                choreographer.postFrameCallback(this)
-            }
-        }
-        mirrorFrameRunning.set(true)
-        choreographer.postFrameCallback(frameCallback)
-        onDispose {
-            mirrorFrameRunning.set(false)
-            choreographer.removeFrameCallback(frameCallback)
-            webTopMirrorBitmap?.takeIf { !it.isRecycled }?.recycle()
-            webTopMirrorBitmap = null
-        }
-    }
-
     val webDockShapeBlock: () -> Shape = remember { { ContinuousCapsule() } }
     // 与 LiquidBottomTabs 可见层同一套玻璃参数
     val webDockEffects: BackdropEffectScope.() -> Unit = remember {
@@ -459,10 +216,6 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         }
     }
     val webDockEdgeLight = rememberDefaultEdgeLight(baseColor = webDockSurfaceColor)
-
-    // 委托实例要跨桌面模式切换复用：document-start 脚本的句柄挂在它身上，每次重建会丢掉旧句柄
-    val compatDelegate = remember(webView) { WebCompatDelegate(webView) }
-
     var importCompleted by remember { mutableStateOf(false) }
 
     val currentOnImportComplete by rememberUpdatedState(onImportComplete)
@@ -479,11 +232,32 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         selectionData = SelectionData(title, items, defaultIndex, onResult)
     }
 
-    val androidBridge = remember {
-        AndroidBridge(
-            context = context,
-            webView = webView,
-            onCourseImported = { courses ->
+
+    // ── 网页宿主 ────────────────────────────────────────────────────────────
+    // 网页本体（WebView / JS 桥 / PixelCopy 采色）在平台侧，页面只通过这个契约驱动它。
+    // 见 ui/web/WebHost.kt 的注释：iOS 侧换一份 IosWebHost 即可，本页不用动。
+    //
+    // events 用 remember 建一次：宿主内部用 rememberUpdatedState 持有它（WebView 的回调是
+    // 长生命周期对象），而这里的闭包读的都是上面那些 rememberUpdatedState / MutableState，
+    // 天然取到最新值。
+    val webHostEvents = remember {
+        WebHostEvents(
+            onTitle = { pageTitle = it },
+            onProgress = { loadingProgress = it },
+            onTopColor = { color ->
+                topColor = color
+                currentOnTopColorChanged(color)
+            },
+            onAlert = { title, content, confirmText, onResult ->
+                alertData = AlertData(title, content, confirmText, onResult)
+            },
+            onPrompt = { title, tip, defaultText, validatorJs, onResult ->
+                promptData = PromptData(title, tip, defaultText, onResult)
+            },
+            onSingleSelection = { title, items, defaultIndex, onResult ->
+                selectionData = SelectionData(title, items, defaultIndex, onResult)
+            },
+            onCoursesImported = { courses ->
                 importCompleted = true
                 currentOnImportComplete(courses)
             },
@@ -494,18 +268,18 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                 }
                 currentOnBack()
             },
-            onShowAlert = { title, content, confirmText, onResult ->
-                showAlertCallback(title, content, confirmText, onResult)
-            },
-            onShowPrompt = { title, tip, defaultText, validatorJs, onResult ->
-                showPromptCallback(title, tip, defaultText, validatorJs, onResult)
-            },
-            onShowSingleSelection = { title, items, defaultIndex, onResult ->
-                showSelectionCallback(title, items, defaultIndex, onResult)
-            }
         )
     }
-
+    val webHost = webHostFactory(
+        WebHostConfig(
+            importUrl = importUrl,
+            assetJsPath = assetJsPath,
+            resourceFolder = school.resourceFolder,
+            isDesktopMode = isDesktopMode,
+            contentTopPadding = contentTopPadding,
+        ),
+        webHostEvents,
+    )
     // Alert 对话框
     alertData?.let { data ->
         WebAlertDialog(
@@ -559,9 +333,9 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                     .ensureScript(school.resourceFolder, path)
                 if (scriptFile != null) {
                     val jsCode = scriptFile.readText()
-                    androidBridge.setImportTableId(tableId)
+                    webHost.setImportTableId(tableId)
                     val fullJsCode = "window.currentTableId = '$tableId';\n$jsCode"
-                    webView.evaluateJavascript(fullJsCode, null)
+                    webHost.evaluateJavascript(fullJsCode)
                     showToast("正在执行导入脚本...")
                 } else {
                     showToast("脚本下载失败: $path", longDuration = true)
@@ -602,132 +376,18 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         )
     }
 
-    LaunchedEffect(Unit) {
-        webView.addJavascriptInterface(androidBridge, "AndroidBridge")
-        webView.addJavascriptInterface(WebPostBridge(), "WebPostService")
-    }
 
-    BackHandler {
-        if (webView.canGoBack()) webView.goBack() else onBack()
-    }
-
-    LaunchedEffect(isDesktopMode) {
-        compatDelegate.enhanceSettings(isDesktopMode)
-        // 视口覆盖必须赶在页面自身脚本之前注册，晚了站点就把像素尺寸写死了（登录弹窗会留在屏外）
-        compatDelegate.applyDesktopViewportOverride(isDesktopMode)
-        webView.settings.userAgentString = if (isDesktopMode) DESKTOP_USER_AGENT
-        else WebSettings.getDefaultUserAgent(context)
-
-        webView.webViewClient = compatDelegate.wrapWebViewClient(
-            object : WebViewClient() {
-                @Deprecated("Deprecated in Java")
-                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                    if (url.isNullOrBlank()) return false
-                    val scheme = url.toUri().scheme?.lowercase() ?: return false
-                    if (scheme == "http" || scheme == "https") return false
-                    // 自定义 scheme（intent://, market://, tel:// 等）交给外部处理
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                            url.toUri())
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        view?.context?.startActivity(intent)
-                    } catch (_: Exception) { }
-                    return true
-                }
-
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
-                    val url = request.url.toString()
-                    val scheme = request.url.scheme?.lowercase() ?: return false
-                    if (scheme == "http" || scheme == "https") return false
-                    // 自定义 scheme（intent://, market://, tel:// 等）交给外部处理
-                    try {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        view?.context?.startActivity(intent)
-                    } catch (_: Exception) { }
-                    return true
-                }
-
-                @SuppressLint("WebViewClientOnReceivedSslError")
-                override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                    handler.proceed()
-                }
-
-                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                    val urlScheme = request.url.scheme?.lowercase() ?: ""
-                    val isCustomScheme = urlScheme.isNotEmpty() && urlScheme != "http" && urlScheme != "https"
-                    if (request.isForMainFrame) {
-                        if (isCustomScheme) {
-                            // 自定义 scheme 加载失败，回到之前的页面
-                            view.post {
-                                if (view.canGoBack()) view.goBack() else view.loadUrl("about:blank")
-                            }
-                        } else {
-                            view.post {
-                                showToast("加载失败: ${error.description}", longDuration = true)
-                            }
-                        }
-                    }
-                }
-            },
-            isDesktopMode
-        )
-
-        webView.webChromeClient = compatDelegate.wrapWebChromeClient(
-            object : WebChromeClient() {
-                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    loadingProgress = newProgress / 100f
-                }
-                override fun onReceivedTitle(view: WebView?, title: String?) {
-                    if (title != null) pageTitle = title
-                }
-                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                    consoleMessage?.let {
-                        NexioLog.d("EduImport", "JS [${it.messageLevel()}]: ${it.message()} (${it.sourceId()}:${it.lineNumber()})")
-                    }
-                    return true
-                }
-            }
-        ) { }
-
-        // 切换 UA 后必须带新 UA 重新取页才生效（document-start 脚本只对新的文档起作用）。
-        // 且不能只 reload 当前地址：部分站点识别出手机端后会把页面重定向到手机专属地址
-        //（如 m.xxx.com），此时 reload 仍是手机版页面；需带新 UA 重新访问导入入口，
-        // 让站点按新 UA 重新解析。同域（未被重定向到其它主机）则 reload 保持当前流程位置。
-        if (webView.url != null) {
-            val currentHost = webView.url?.toUri()?.host?.lowercase()?.removePrefix("www.")
-            val importHost = importUrl?.toUri()?.host?.lowercase()?.removePrefix("www.")
-            if (!currentHost.isNullOrBlank() && !importHost.isNullOrBlank() && currentHost != importHost) {
-                webView.loadUrl(importUrl)
-            } else {
-                webView.reload()
-            }
-        }
-    }
-
-    LaunchedEffect(currentUrl) {
-        if (currentUrl.isNotBlank() && currentUrl != "about:blank") {
-            val url = if (currentUrl.startsWith("http")) currentUrl else "https://$currentUrl"
-            webView.loadUrl(url)
-        }
-    }
-
-    DisposableEffect(webView) {
-        onDispose {
-            com.haooz.chedule.ui.web.WebViewRequestInterceptor.clearPostData()
-            webView.stopLoading()
-            webView.clearCache(true)
-            webView.clearHistory()
-            webView.removeAllViews()
-            webView.destroy()
-            // 不清除 Cookie 与 localStorage：教务系统登录态跨页面保存，下次进入免登录。
-            // 两者都按域名隔离，不同学校互不影响；如需换账号，请在教务页面内退出登录。
-        }
-    }
+    NavigationBackHandlerFor(
+        enabled = true,
+        onBackCompleted = {
+            if (webHost.canGoBack()) webHost.goBack() else onBack()
+        },
+        onBackCancelled = {},
+    )
 
     LaunchedEffect(onExecuteImportRef) { onExecuteImportRef?.invoke(onExecuteImport) }
     LaunchedEffect(onToggleDesktopModeRef) { onToggleDesktopModeRef?.invoke { isDesktopMode = !isDesktopMode } }
-    LaunchedEffect(onReloadRef) { onReloadRef?.invoke { webView.reload() } }
+    LaunchedEffect(onReloadRef) { onReloadRef?.invoke { webHost.reload() } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 生产者包住 WebView：底部玻璃从这里实时采样页面像素
@@ -738,15 +398,15 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                 .background(MiuixTheme.colorScheme.surface)
                 .layerBackdrop(webContentBackdrop)
         ) {
-            // 顶栏区域：主导色 1×1 竖直铺开，供 ProgressiveBlurTopBar / 顶栏空白区采样
-            webTopMirrorBitmap?.let { edge ->
-                Image(
-                    bitmap = edge.asImageBitmap(),
-                    contentDescription = null,
+            // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding，供 ProgressiveBlurTopBar /
+            // 顶栏空白区采样。原实现是把采到的颜色做成 1×1 Bitmap 再 FillBounds 铺开 ——
+            // 等价于直接填一块纯色，只是不再需要 Bitmap（跨平台侧也没有 Bitmap）。
+            topColor?.let { color ->
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(contentTopPadding),
-                    contentScale = ContentScale.FillBounds
+                        .height(contentTopPadding)
+                        .background(color)
                 )
             }
             Box(
@@ -754,14 +414,12 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                     .padding(top = contentTopPadding)
                     .fillMaxSize()
             ) {
-                AndroidView(
-                    modifier = Modifier
+                webHost.Content(
+                    Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             compositingStrategy = CompositingStrategy.Offscreen
-                        },
-                    factory = { webView },
-                    update = {}
+                        }
                 )
 
                 AnimatedVisibility(
@@ -1232,10 +890,4 @@ private fun CourseTablePickerDialog(
             }
         }
     }
-}
-
-private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }
