@@ -20,15 +20,15 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`0b755b75`**（2026-10-11）。工作区**可能有子代理在改**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`d6e31bec`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置宿主外壳/
-提醒设置页/更新设置页已迁**；`:ui-shared` 已迁入 92 文件 / 38.8k 行；`:androidApp` 剩 52 文件 / 29.6k 行。
-**应用代码完成度约 71%**。
-**R2 序列化全部完成**（读：导入/恢复门禁/扫描；写：encodeBackupJson skip-nulls+pretty）——**备份路径 Gson 清零**，全部真实备份 round-trip 回归。
-能力注入抽象已建 6 个（DiagnosticRecorder/ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController）。
-androidPane 槽位剩 BackupAndMigration（LocalBackup 迁移中）；SettingsScreen 待迁。iOS target 默认关闭。
+提醒设置页/更新设置页/本地备份页已迁**；`:ui-shared` 已迁入 91 文件 / 38.5k 行；`:androidApp` 剩 54 文件 / 30.0k 行。
+**应用代码完成度约 72%**。
+**R2 序列化全部完成**（读+写）——备份路径 Gson 清零。**能力注入抽象已建 7 个**：DiagnosticRecorder/
+ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/BackupFileController。
+androidPane 槽位剩 **BackupAndMigration**（文件 I/O + WebDAV/ICS）；SettingsScreen 待迁。iOS target 默认关闭。
 
 ### 本机环境（不看会白踩半天）
 
@@ -232,6 +232,7 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 | `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
 | `d6790c6b` | 槽位页 UI 迁移首批：`UpdateSettingsScreen`/`CourseReminderScreen` 迁 `:ui-shared`；抽 UpdateController/ReminderController 接口 | 10-11 |
 | `0b755b75` | **R2 写侧完成**：备份 JSON encodeBackupJson（skip-nulls+pretty），**备份路径 Gson 清零** | 10-11 |
+| `d6e31bec` | `LocalBackupScreen` 迁 `:ui-shared`；文件 I/O 能力注入首例（BackupFileController） | 10-11 |
 | `c4373883` | `AiImportScreen` 进 `:ui-shared`（剪贴板注入）+ 备份夹具入库 | 10-11 |
 | `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
