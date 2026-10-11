@@ -256,6 +256,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `1377acaf` | **第二十九批**：`iosApp/` Xcode 工程落地（bundle `com.haooz.iosschedule`）+ `IosAppEntry`（A4 启动注入三件套）—— **模拟器首跑成功**，首屏注入自检存储/文件全 OK；踩坑：Foundation 类方法要显式 import、顶层函数别用 `init` 开头、build phase 要带 `-Pnexio.ios=true` + `JAVA_HOME` | 10-11 |
 | `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
 | `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
 | `231c74bc` | **第二十六批**：`WebViewScreen` 外壳迁 `:ui-shared`（1241→893 行）+ 新增 `ui/web/WebHost.kt` 契约 + `AndroidWebHost`（494 行，网页本体）；复核时修回写丢的 `findActivity` 的 `ContextWrapper` 分支 | 10-11 |
@@ -268,8 +269,6 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
 | `0b755b75` | **R2 写侧完成**：备份 JSON encodeBackupJson（skip-nulls+pretty），**备份路径 Gson 清零** | 10-11 |
 | `d6e31bec` | `LocalBackupScreen` 迁 `:ui-shared`；文件 I/O 能力注入首例（BackupFileController） | 10-11 |
-| `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
-| `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
@@ -316,7 +315,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 `:core` 若也要给 Swift 用，按同一写法补。
 ⚠ 教训：**`compileKotlinIos*` 绿了不代表能 link** —— klib 图的版本/重名冲突只在链接期合账。
 
-**A0-2 `Info.plist` 必须设 `CADisableMinimumFrameDurationOnPhone = true`**，否则 iOS 一启动就崩
+**A0-2 `Info.plist` 必须设 `CADisableMinimumFrameDurationOnPhone = true`** —— ✅ `iosApp/iosApp/Info.plist` 已设；否则 iOS 一启动就崩
 （CMP 1.7.3 起强制检查，`enforceStrictPlistSanityCheck` 默认开）：
 
 ```xml
@@ -324,7 +323,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 <true/>
 ```
 
-**A0-3 Xcode 的 shared scheme 要提交**，否则 CI 报 `does not contain a scheme named YourApp`
+**A0-3 Xcode 的 shared scheme 要提交** —— ✅ `iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme` 已入库；否则 CI 报 `does not contain a scheme named YourApp`
 （自动生成的在 `xcuserdata`，通常被 gitignore）。手动提交
 `YourApp.xcodeproj/xcshareddata/xcschemes/`。
 
@@ -372,12 +371,13 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 ### A3. `AppFile`（`NSFileManager`）—— ✅ 已实现且**运行时已验证**（`iosMain/NsFileAppFile.kt` + `iosTest/NsFileAppFileTest.kt`）
 
 `AppFiles.init(root = NsFileAppFile(defaultDocumentsDir()), readAsset = { … })`。
-契约：`writeBytes` **自动创建父目录**；`resolve(relative)` 以 `/` 分隔；读缺失文件**抛**（不返回空）；
-`defaultDocumentsDir()` 取 **Documents**（对应 `filesDir`；⚠ 别用 Caches / tmp，系统会在空间不足时清空）。
+契约：`writeBytes` **自动创建父目录**；`resolve(relative)` 以 `/` 分隔；读缺失文件**抛**（不返回空）；`defaultDocumentsDir()` 取
+**Documents**（对应 `filesDir`；⚠ 别用 Caches / tmp，系统会在空间不足时清空）。
 **落盘路径必须逐字保持**：`repo/index/school_index.pb`、`repo/schools/resources`（抄错 = 学校索引引导失效）。
 配套 `FoundationBytes.kt` 提供 `NSData ⇄ ByteArray`（⚠ 空数组不能取 `addressOf(0)`，走 `null + 0` 分支）。
 
-### A4. 启动注入（3 个 `init`，缺任何一个都会在首次使用时抛异常）
+### A4. 启动注入 —— ✅ 已接线并验证（`ui-shared/iosMain/IosAppEntry.kt` 的 `bootstrapNexioIos()`）
+> ⚠ 顶层函数名**别以 `init` 开头**：Kotlin/Native 导出时按构造器处理，Swift 侧 `has no member`。
 
 ```kotlin
 // iOS 入口（AppDelegate / @main，越早越好；对应 NexioApplication.onCreate）
@@ -441,7 +441,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | ❌ **无 Xcode 工程**；A0-1 / A0-2 未做（A1~A3 代码已齐） |
+| iOS 已可用 | ✅ **模拟器首跑成功**（第二十九批，`iosApp/` 工程 + 注入自检全 OK）；完整导航待宿主层迁移 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
