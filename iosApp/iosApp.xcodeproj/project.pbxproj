@@ -155,6 +155,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/../ui-shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)/NexioShared.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

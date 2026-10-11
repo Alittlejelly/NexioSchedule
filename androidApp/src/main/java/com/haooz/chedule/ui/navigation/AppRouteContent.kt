@@ -166,7 +166,7 @@ fun AppRouteContent(
     route: AppRoute,
 ) {
     when (route) {
-        AppRoute.About -> AboutRoute(router)
+        AppRoute.About -> AndroidAboutRoute(router)
 
         AppRoute.Changelog -> DocumentPageScaffold(
             title = "更新日志",
@@ -274,7 +274,7 @@ fun AppRouteContent(
         AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
-        AppRoute.EducationalImport -> EducationalImportRoute(router)
+        AppRoute.EducationalImport -> AndroidEducationalImportRoute(router)
     }
 }
 
@@ -1320,9 +1320,15 @@ private fun CourseManageRoute(router: AppRouter) {
     }
 }
 
-/** 关于页（原来内联在 AboutActivity 的 1200 行，已抽到 `:ui-shared` commonMain 的 `AboutScreen.kt`）。 */
+/**
+ * 关于页（原来内联在 AboutActivity 的 1200 行，已抽到 `:ui-shared` commonMain 的 `AboutScreen.kt`）。
+ *
+ * 平台专有的一半留在宿主：版本号 / 应用名 / **裁边后的应用图标**（`packageManager` +
+ * AdaptiveIcon 透明边裁剪，Compose 没有跨平台等价物）/ `finishAffinity` / 诊断录制器。
+ * 其余（路由跳转、子页面导航）走 `:ui-shared` 的 [com.haooz.chedule.ui.navigation.AboutRoute]。
+ */
 @Composable
-private fun AboutRoute(router: AppRouter) {
+private fun AndroidAboutRoute(router: AppRouter) {
     val context = LocalContext.current
     val activity = LocalActivity.current
     val packageInfo = remember {
@@ -1364,10 +1370,8 @@ private fun AboutRoute(router: AppRouter) {
                 cropped.asImageBitmap()
             }
     }
-    AboutScreen(
-        onBack = { router.popBack() },
-        liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(),
-        onNavigate = { router.navigate(it) },
+    com.haooz.chedule.ui.navigation.AboutRoute(
+        router = router,
         appVersion = remember { packageInfo?.versionName ?: "未知版本" },
         appName = remember {
             packageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
@@ -1391,17 +1395,11 @@ private fun AboutRoute(router: AppRouter) {
  * - 系统栏 / adjustResize / configChanges：MainActivity 的 Manifest 条目已覆盖（与原条目逐项同款）
  */
 @Composable
-private fun EducationalImportRoute(router: AppRouter) {
-    LaunchedEffect(Unit) { EduImportUpdater.startUpdateIfNeeded() }
-    val isUpdating by EduImportUpdater.isUpdating.collectAsState()
-    val dataVersion by EduImportUpdater.dataVersion.collectAsState()
-
-    EducationalImportScreen(
+private fun AndroidEducationalImportRoute(router: AppRouter) {
+    // 只有网页宿主与自由窗口判定是 Android 专有，其余在 :ui-shared
+    com.haooz.chedule.ui.navigation.EducationalImportRoute(
+        router = router,
         webHostFactory = { config, events -> rememberAndroidWebHost(config, events) },
         isInFreeformWindow = isInFreeformWindow(),
-        isUpdating = isUpdating,
-        dataVersion = dataVersion,
-        onForceUpdate = { EduImportUpdater.forceUpdate() },
-        onFinish = { router.popBack() },
     )
 }

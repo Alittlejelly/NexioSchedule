@@ -70,9 +70,9 @@ fun bootstrapNexioIos() {
 /**
  * iOS 的 Compose 根容器 —— Swift 侧用 `UIViewControllerRepresentable` 包它。
  *
- * ⚠ 当前是**最小可跑根**，不是完整 App：它只渲染三件套的注入自检结果。
- * 真实导航（`AppNavHost` / `AppRouteContent`）还在 `:androidApp`，属于「宿主层」，
- * 迁过来之后这里换成真正的界面入口。先跑通工具链，再接业务。
+ * ⚠ 当前是**过渡根**：注入自检 + 一个「关于页」入口（第三十批迁过来的
+ * `AboutRoute`，用来验证「`:ui-shared` 的 Route 在 iOS 上真能用」）。
+ * 完整导航（`AppNavHost`）还在 `:androidApp`，迁过来之后这里换成真正的入口。
  */
 fun MainViewController(): UIViewController = ComposeUIViewController {
     MaterialTheme {
@@ -93,6 +93,11 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
 private fun NexioIosSmokeRoot() {
     var storeProbe by remember { mutableStateOf("检查中…") }
     var fileProbe by remember { mutableStateOf("检查中…") }
+    // 关于页是第三十批从 :androidApp 迁过来的跨平台 Route，这里直接拿来用
+    // ⚠ 别在这里引用 AboutRoute 之类的真实页面：它们会牵出 miuix 官方子库
+    //（`miuix-preference` 的 ArrowPreference），iOS 链接期报
+    // `Undefined symbols … preference#ArrowPreference`（风险 R13，见迁移计划 §9）。
+    // 那个坑解决之前，iOS 入口只跑注入自检。
 
     LaunchedEffect(Unit) {
         storeProbe = runCatching {
