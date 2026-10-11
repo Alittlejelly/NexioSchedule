@@ -387,6 +387,8 @@ fun TabletSettingsScreen(
     val groups = remember { TabletSettingsDest.entries.groupBy { it.group } }
     val context = LocalContext.current
     val paneHorizontal = 20.dp
+    // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入给页面
+    val ctx = LocalContext.current
     // 顶栏折叠标题高度：左右内容都从这条线下方开始，避免被 MainActivity 叠层标题压住
     val chromeTop = mainWindowTopInset() +
             top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight +
@@ -741,6 +743,9 @@ fun TabletSettingsScreen(
                                     onBusyStateChange = { b, r ->
                                         webDavBackingUp = b
                                         webDavRestoring = r
+                                    },
+                                    onHolidayDataChanged = {
+                                        com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(ctx)
                                     },
                                 )
 

@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.haooz.chedule.data.CourseRepository
@@ -383,11 +384,10 @@ fun LocalBackupScreen(
     var backupMode by remember { mutableStateOf("all") }
     var selectedSchedule by remember { mutableStateOf("") }
 
-    // 三个 VM 都已去掉 Application（平台副作用走 :core 的 ScheduleEffects 出口）
-    val courseViewModel = remember { CourseViewModel() }
-    val scheduleViewModel = remember { ScheduleViewModel() }
-    // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context）
-    val settingsViewModel = remember { SettingsViewModel() }
+    // 三个 VM 都已去掉 Application（平台副作用走 :core 的 ScheduleEffects 出口），统一走 viewModel() 进 ViewModelStore
+    val courseViewModel = viewModel<CourseViewModel>()
+    val scheduleViewModel = viewModel<ScheduleViewModel>()
+    val settingsViewModel = viewModel<SettingsViewModel>()
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
 
     // 扫描要读每个 json 并 Gson 全量解析，必须在 IO 线程做；初值留空，由 LaunchedEffect 填充

@@ -37,11 +37,13 @@ import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
+import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.screens.AddCourseDialog
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
+import com.haooz.chedule.ui.utils.AppMaterialSettings
 import java.io.File
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -56,7 +58,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 直接证据。全部页面迁完后，本壳由正式的路由（AppRouter）替换。
  */
 fun main() {
-    // ── 启动注入（对应 Android 的 NexioApplication.onCreate 三个 init）──────────
+    // ── 启动注入（对应 Android 的 NexioApplication.onCreate 的四个 init）──────────
     // 1. 存储：按名字分文件（17 个偏好名，绝不合并），JSON + 类型标签持久化
     val dataDir = File(
         System.getProperty("user.home"),
@@ -79,6 +81,10 @@ fun main() {
         },
     )
 
+    // 4. 材质档位：与 Android（NexioApplication）同步从 app_preferences 载入，
+    //    不调的话玻璃/模糊材质永远停在默认档，桌面验证看到的材质效果会失真
+    AppMaterialSettings.load()
+
     application {
         Window(
             onCloseRequest = ::exitApplication,
@@ -92,7 +98,14 @@ fun main() {
     }
 }
 
-/** 页面栈（极简：首页 + 若干详情页，够当前验证阶段用）。 */
+/** 页面栈（极简：首页 + 若干详情页，够当前验证阶段用）。
+ *
+ *  ⚠ 与 `:ui-shared` 的 `AppRoute` 是**两份路由知识**：这里没包 AppRoute，是因为
+ *  SchoolSelection（桌面无 WebView 导入，直接暴露选校页）与 AddCourse（弹窗演示）
+ *  本就没有对应路由，且路由→内容映射在 AppRouteContent 里带着 Android 触点搬不动。
+ *  代价：Android 侧新增/改名路由时这里不会告警 —— 每迁一批页面记得回来补入口，
+ *  本壳由正式路由替换后这条注释随之删除。
+ */
 private enum class DesktopPage(val title: String) {
     Home("Nexio 课程表 · 桌面验证"),
     Changelog("更新日志"),
@@ -104,6 +117,7 @@ private enum class DesktopPage(val title: String) {
     AppreciateAuthor("赞赏作者"),
     AddCourse("添加课程（弹窗）"),
     WidgetIntro("桌面小部件介绍"),
+    WebDavSettings("WebDAV 云备份"),
 }
 
 @Composable
@@ -145,6 +159,10 @@ private fun DesktopShell() {
                             scrollBehavior = scrollBehavior,
                         )
                         DesktopPage.Home -> Unit // 上面已分流，不可达
+                        // 第十八批迁入：WebDAV 云备份（节假日副作用回调桌面端给空实现）
+                        DesktopPage.WebDavSettings -> WebDavSettingsScreen(
+                            scrollBehavior = scrollBehavior,
+                        )
                         // 第十批迁入：赞赏作者（捐赠明细，走 :core 的 AppreciationFetcher）
                         DesktopPage.AppreciateAuthor -> AppreciateAuthorScreen(
                             scrollBehavior = scrollBehavior,

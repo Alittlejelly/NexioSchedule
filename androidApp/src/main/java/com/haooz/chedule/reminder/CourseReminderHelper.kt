@@ -1009,13 +1009,6 @@ object CourseReminderHelper {
     fun alignedStoredWeekForDate(repository: CourseRepository, date: LocalDate): Int =
         DayScheduleResolver.alignedStoredWeekForDate(repository, date)
 
-    internal fun liveTeachingWeek(
-        semesterStartDate: LocalDate,
-        date: LocalDate,
-        rules: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
-    ): Int = com.haooz.chedule.data.TeachingWeekReorganization.mapDate(semesterStartDate, date, rules)
-        .week.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
-
     fun effectiveWeekendDays(
         semesterStartDate: LocalDate,
         week: Int,

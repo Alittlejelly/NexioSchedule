@@ -126,17 +126,20 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
  * 这是**唯一**需要知道「哪个路由对应哪个 Screen」的地方 —— 宿主只负责创建
  * [AppRouter]、渲染 [AppNavHost]，不关心具体有哪些页面。
  *
- * 这样拆的用意：阶段 5 把 UI 搬进共享模块时，**这个文件整体搬过去**即可，
- * 宿主（Android Activity / iOS UIViewController）不用跟着改。
+ * ## 迁移注意（阶段 5+，别照旧注释理解）
  *
- * ## 本批已迁移 vs 仍是 Activity
+ * 「路由 → composable」的映射形状是可搬的，但**这个文件当前不能整体搬进
+ * `:ui-shared`**：里面还压着一批 Android 专有触点，整体搬会直接编不过。
+ * 搬家前先把下列触点上收（注入或拆进 androidMain 宿主），让本文件只剩
+ * 纯映射 + DocumentPageScaffold：
+ *  - `isInFreeformWindow()` 的 `LocalActivity.current as? MainActivity` 强转；
+ *  - CourseManageRoute / CourseTimeSettingsRoute 持有的 Bitmap 卡片快照 + ApiCompat 模糊；
+ *  - HolidaySettingsRoute 的 HttpURLConnection 直连；
+ *  - CourseReminderHelper / IslandNotificationHelper 等平台副作用调用。
  *
- * 已迁移（9 条路由）：About / Changelog / License / PrivacyPolicy /
- * PreferenceSettings / UpdateSettings / Communication / LocalBackup / AppreciateAuthor
- *
- * 仍是 Activity（各有 Activity 级状态或平台依赖，下一批处理）：
- * CourseManage（571 行业务逻辑）/ SwitchSchedule（1928 行）/
- * EducationalImport（WebView，平台页按决定保留）
+ * 已迁走的页面本体在 `:ui-shared` 的 `com.haooz.chedule.ui.activities/screens`，
+ * 未迁的在 androidApp 同包下 —— 两模块**共享包名**，靠「无同名顶层符号」维持，
+ * 新增页面时先确认另一侧没有同名文件。以两侧源码树实际清单为准，本注释不做枚举。
  */
 @Composable
 fun AppRouteContent(
@@ -467,6 +470,8 @@ private fun HolidaySettingsRoute(router: AppRouter) {
  */
 @Composable
 private fun WebDavSettingsRoute(router: AppRouter) {
+    // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入给页面
+    val ctx = LocalContext.current
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var connected by remember { mutableStateOf(false) }
@@ -530,6 +535,9 @@ private fun WebDavSettingsRoute(router: AppRouter) {
             onBusyStateChange = { b, r ->
                 backingUp = b
                 restoring = r
+            },
+            onHolidayDataChanged = {
+                com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(ctx)
             },
         )
     }

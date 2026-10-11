@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
@@ -121,8 +122,8 @@ fun PreferenceSettingsScreen(
         else -> systemDark
     }
 
-    // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context）
-    val settingsViewModel = remember { SettingsViewModel() }
+    // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context），统一走 viewModel() 进 ViewModelStore
+    val settingsViewModel = viewModel<SettingsViewModel>()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val reminderPrefs = remember { AppStorage.store("course_reminder_prefs") }

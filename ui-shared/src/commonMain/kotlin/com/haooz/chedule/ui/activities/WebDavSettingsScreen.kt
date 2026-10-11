@@ -1,7 +1,6 @@
 /** WebDAV 备份/恢复设置页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,17 +58,19 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import androidx.compose.ui.graphics.Color as ComposeColor
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun WebDavSettingsScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     onConnectedChange: (Boolean) -> Unit = {},
     onTestConnectionReady: (() -> Unit) -> Unit = {},
     onBackupRestoreReady: (onBackup: () -> Unit, onRestore: () -> Unit) -> Unit = { _, _ -> },
-    onBusyStateChange: (backingUp: Boolean, restoring: Boolean) -> Unit = { _, _ -> }
+    onBusyStateChange: (backingUp: Boolean, restoring: Boolean) -> Unit = { _, _ -> },
+    // 节假日/调休数据变更后的平台副作用（重排提醒 + 勿扰 + 小组件）。
+    // 由 Android 宿主注入：CourseReminderHelper.onHolidayDataChanged(context)。
+    // 不直接调 reminder 模块 —— 那是 Android 专有的（见 :core 的 ScheduleEffects 注释）。
+    onHolidayDataChanged: () -> Unit = {},
 ) {
-    val context = LocalContext.current
-    val webDavManager = remember { WebDavManager { com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(context) } }
+    val webDavManager = remember { WebDavManager { onHolidayDataChanged() } }
     val coroutineScope = rememberCoroutineScope()
     var listScrollY by remember { mutableIntStateOf(0) }
 
