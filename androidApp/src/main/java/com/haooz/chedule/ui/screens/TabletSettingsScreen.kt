@@ -1,6 +1,9 @@
 package com.haooz.chedule.ui.screens
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import com.haooz.chedule.data.todayLocalDate
 
@@ -720,6 +723,13 @@ fun TabletSettingsScreen(
                                     viewModel = viewModel,
                                     settingsViewModel = settingsViewModel,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
+                                    // 剪贴板是 Android 专有能力，宿主注入给已迁 :ui-shared 的页面
+                                    onCopyToClipboard = { text ->
+                                        val clipboard =
+                                            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val clip = ClipData.newPlainText("课表导入提示词", text)
+                                        clipboard.setPrimaryClip(clip)
+                                    },
                                 )
 
                                 TabletSettingsDest.ScheduleExport -> BackupAndMigrationScreen(

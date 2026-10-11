@@ -1,6 +1,9 @@
 package com.haooz.chedule.ui.navigation
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
@@ -264,6 +267,8 @@ fun AppRouteContent(
  */
 @Composable
 private fun AiImportRoute(router: AppRouter) {
+    // 剪贴板是 Android 专有能力，宿主注入给已迁 :ui-shared 的页面
+    val context = LocalContext.current
     DocumentPageScaffold(
         title = "AI 文本导入",
         onBack = { router.popBack() },
@@ -272,6 +277,12 @@ private fun AiImportRoute(router: AppRouter) {
             onBack = { router.popBack() },
             scrollBehavior = scrollBehavior,
             liquidGlassBackdrop = backdrop,
+            onCopyToClipboard = { text ->
+                val clipboard =
+                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("课表导入提示词", text)
+                clipboard.setPrimaryClip(clip)
+            },
         )
     }
 }

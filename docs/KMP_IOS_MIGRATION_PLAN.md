@@ -20,15 +20,15 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`5fb7c04d`**（2026-10-11 第二十一批）。工作区**干净**（全部已提交）。
-🟡 冲刺期可能有**多会话并发**改同一仓库，动手前先 `git status` 对齐。
+**代码状态**：`master` = **`6ca87004`**（2026-10-11 第二十二批）。工作区**可能有并行子代理在改**（R2 序列化 + AiImportScreen 进行中），动手前先 `git status` 对齐。
+🟡 冲刺期**多会话并发**改同一仓库。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏（课程表页/今日页）+ 偏好设置已迁**
-（三 ViewModel + 快照/转场大页全部在 `:ui-shared`）；`:ui-shared` 已迁入 82 文件 / 29.8k 行；
-`:androidApp` 剩 58 文件 / 38.4k 行，其中 **25 文件 8.1k 行永不迁移**（Android 专有），
-**真正待迁 32 文件 / 30.3k 行**。**应用代码完成度约 57%**。
-**`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**（页面侧已全部换 `rememberNavigationBack`）。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏 + 排班页 + 节假日设置 + 偏好设置已迁**；
+`:ui-shared` 已迁入 84 文件 / 32.2k 行；`:androidApp` 剩 56 文件 / 35.9k 行，其中 **25 文件 8.1k 行永不迁移**，
+**真正待迁 31 文件 / 27.8k 行**。**应用代码完成度约 59%**。
+**`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**。
 iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
+🔴 **当前主战场 = R2 批次**（Gson 备份/分享/导入序列化 → kotlinx，用户真实备份 round-trip 回归中）。
 
 ### 本机环境（不看会白踩半天）
 
@@ -97,9 +97,9 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 | `:core` | 95 (+26 测试) | 16.5k | common **42** / android 9 / ios 2 / jvm 9 / jvmShared 2 / native 8 / **linuxX64 1（门禁）** | **数据层 100%**；13 套跨平台能力 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | 108 | 28.2k | common **92** / android 9 / skiko 7 | KMP 化；公共组件全进 commonMain；官方子库 **0.9.4** |
-| `:ui-shared` | **82** | **29.8k** | common **80** / android 1 / jvm 1 | 阶段 5 进行中（主页双屏已入，仅剩设置链/备份链/工具层） |
+| `:ui-shared` | **84** | **32.2k** | common **82** / android 1 / jvm 1 | 阶段 5 进行中（主页双屏/排班/节假日/偏好已入，剩设置链 R2 + 工具层） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **58** | **38.4k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
+| `:androidApp` | **56** | **35.9k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
 
 **`:core` 的 13 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -215,6 +215,7 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
 | `1e6b8bf3` | 第二十批：`SwitchScheduleScreen`/`TabletSwitchSchedulePane`/`TimeConfigEditScreen` 进 `:ui-shared`（并行子代理）；页内 crop 跨平台化 | 10-11 |
 | `2aa310e1` | 第十九批：`CourseDetail`/`CourseEdit`/`TabletCourseManagePane` 进 `:ui-shared`；navigationevent 4→2 文件 | 10-11 |

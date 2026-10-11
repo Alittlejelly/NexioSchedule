@@ -1,10 +1,6 @@
 /** AI 文本导入页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -49,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
@@ -79,11 +74,10 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import java.util.UUID
+import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun AiImportScreen(
     onBack: () -> Unit,
@@ -91,9 +85,10 @@ fun AiImportScreen(
     viewModel: CourseViewModel = viewModel(),
     settingsViewModel: SettingsViewModel = viewModel(),
     backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop? = null,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    // 平台宿主注入：复制提示词到系统剪切板（由宿主实现，桌面/iOS 默认空实现）
+    onCopyToClipboard: (String) -> Unit = {}
 ) {
-    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
 
     val morningSections by settingsViewModel.morningSections.collectAsState()
@@ -412,10 +407,7 @@ fun AiImportScreen(
                             text = "复制提示词",
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                val clipboard =
-                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("课表导入提示词", promptText)
-                                clipboard.setPrimaryClip(clip)
+                                onCopyToClipboard(promptText)
                                 showToast("提示词已复制到剪切板")
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -795,7 +787,7 @@ internal fun parseImportedCourses(text: String, maxSection: Int = 12): Pair<List
 
         courses.add(
             Course(
-                id = UUID.randomUUID().toString(),
+                id = randomUuidV4(),
                 name = meta.name,
                 classroom = meta.classroom,
                 teacher = meta.teacher,
