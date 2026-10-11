@@ -20,13 +20,13 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`1e6b8bf3`**（2026-10-11 第二十批）。工作区**干净**（全部已提交）。
+**代码状态**：`master` = **`5fb7c04d`**（2026-10-11 第二十一批）。工作区**干净**（全部已提交）。
 🟡 冲刺期可能有**多会话并发**改同一仓库，动手前先 `git status` 对齐。
 
-**一句话现状**：数据层与 UI 框架层已 100% 跨平台；页面迁移推进到**切换课表/时间配置编辑**
-（三个 ViewModel 早已在 `:ui-shared`）；`:ui-shared` 已迁入 78 文件 / 25.4k 行；
-`:androidApp` 剩 61 文件 / 42.7k 行，其中 **25 文件 8.1k 行永不迁移**（Android 专有），
-**真正待迁 35 文件 / 34.5k 行**。**应用代码完成度约 48%**。
+**一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏（课程表页/今日页）+ 偏好设置已迁**
+（三 ViewModel + 快照/转场大页全部在 `:ui-shared`）；`:ui-shared` 已迁入 82 文件 / 29.8k 行；
+`:androidApp` 剩 58 文件 / 38.4k 行，其中 **25 文件 8.1k 行永不迁移**（Android 专有），
+**真正待迁 32 文件 / 30.3k 行**。**应用代码完成度约 57%**。
 **`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**（页面侧已全部换 `rememberNavigationBack`）。
 iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 
@@ -94,12 +94,12 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 
 | 模块 | 文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 68 (+26 测试) | 16.5k | common **41** / android 9 / ios 2 / jvm 9 / jvmShared 2 / native 8 / **linuxX64 1（门禁）** | **数据层 100%**；13 套跨平台能力 |
+| `:core` | 95 (+26 测试) | 16.5k | common **42** / android 9 / ios 2 / jvm 9 / jvmShared 2 / native 8 / **linuxX64 1（门禁）** | **数据层 100%**；13 套跨平台能力 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | 108 | 28.2k | common **92** / android 9 / skiko 7 | KMP 化；公共组件全进 commonMain；官方子库 **0.9.4** |
-| `:ui-shared` | **78** | **25.4k** | common **76** / android 1 / jvm 1 | 阶段 5 进行中（页面 + 三个 ViewModel + 转场大页） |
+| `:ui-shared` | **82** | **29.8k** | common **80** / android 1 / jvm 1 | 阶段 5 进行中（主页双屏已入，仅剩设置链/备份链/工具层） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **61** | **42.7k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
+| `:androidApp` | **58** | **38.4k** | android | 剩余迁移主体；单 Activity（Manifest 23→2） |
 
 **`:core` 的 13 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -107,16 +107,16 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 `FeatureLog`（⚠ 别加 `inline`，跨模块 JVM target 21 vs 17 不一致会炸）/ `compareByChineseCollator` /
 **`DayScheduleResolver`**（提醒时刻算法，第十五批）/ **`ScheduleEffects`**（课程变更的平台副作用出口，第十六批）。
 
-### `androidApp` 61 文件的归属拆分
+### `androidApp` 58 文件的归属拆分
 
 | 归属 | 文件 | 行数 | 说明 |
 |---|---:|---:|---|
 | **永不迁移** | **25** | **8.1k** | `reminder/` 10 · `widget/` 7 · `ui/web/` 3 · `shizuku/` 2 · `wearable/` 2 · `provider/` 1 |
-| **待迁** | **36** | **34.5k** | `ui/screens` 9 · `ui/activities` 8 · `ui/utils` 7 · 其余 12 |
+| **待迁** | **33** | **30.3k** | `ui/activities` 6 · `ui/screens` 7 · `ui/utils` 7 · 其余 13 |
 
 **完成度**（引用时注明口径）：
-- **只算应用代码**：已迁 `:core` commonMain 10.0k + `:ui-shared` 25.4k = 35.4k，待迁 34.5k ⇒ **约 51%**（半程已过）
-- **含 `:miuix` + `:backdrop`**：69.9k / 104.4k ⇒ **约 67%**（那两层是第三方 fork，通常不计）
+- **只算应用代码**：已迁 `:core` commonMain 10.0k + `:ui-shared` 29.8k = 39.8k，待迁 30.3k ⇒ **约 57%**
+- **含 `:miuix` + `:backdrop`**：74.3k / 104.6k ⇒ **约 71%**（那两层是第三方 fork，通常不计）
 
 ### 剩余工作量
 
@@ -179,28 +179,32 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 > 每次迁移后还要跑 `.workbuddy-ai/tmp/dupscan.py` 查跨模块同名同包冲突（本会话重建过，只查跨模块）。
 > ⚠ 扫描器也会误报/漏报（已知误报：`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁一次再全信**。
 
-1. **主页三件套** —— `MainScheduleScreen`(1818) / `TodayScreen`(1739)：卡 `LocalContext` +
-   `CourseReminderHelper`（Android 专有模块，用第十八批的**回调注入**解法）+ `ApiCompat.blurRenderEffect`
-   （第二十批已有跨平台模板：`BlurEffect` + `isRenderEffectSupported()`）+ `DrawScope`。
-   `CourseManageScreen` 已迁。
-2. **`TabletSettingsScreen`（1554 行，反向依赖 14）** —— 设置链总闸。反向依赖里 `AboutScreen`/
-   `BackupAndMigrationScreen`/`EducationalImportScreen` 等是它**内嵌转发的页面**，先把被引用的
-   小页迁走或同样回调注入，它自然降阻。
-3. **硬骨头（按难度降序）**：
-   1. 备份三页 —— 撞 **Gson 4 条通道 = R2**，最高风险，必须有真实备份 round-trip 回归
-   2. 设置链 —— `SettingsScreen` / `TabletSettingsScreen` / `PreferenceSettingsScreen`
-      （`ClassEndEffectSettings`/`invalidateWeatherCache`/`MainActivity.setTaskExcludedFromRecents`
-      三个反向依赖，前两个可抽 `:core`，最后一个是 Android 专有能力→回调注入）
-   3. `AppNavHost`（导航骨架）—— navigationevent 最后残留；`LocalContext`/Window 相关，属宿主层，
-      可最后处理
-   4. `ui/utils` 41 处 —— `ActivitySystemBars`/`ApiCompat`/`UpdateChecker`/`UpdateInstaller`/
-      `CrashLogHelper` 判定**平台专有留守**；`ScheduleExport`/`ScheduleImport` 归 R2 批次
-4. ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
-   （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
-   页外快照走「宿主裁好 → 页面收 `ImageBitmap?`」。两种场景都有落地方案，后续页面照抄。
+1. **设置链收尾** —— `TabletSettingsScreen`（1554 行，反向依赖 14→约 8：About/AiImport/
+   BackupAndMigration 三个内嵌页 + `CourseReminderHelper.onHolidayDataChanged`/`sendTestLiveNotification`
+   （回调注入，第十八批模板）+ `java.net.HttpURLConnection`（看用途，可能是检查更新，抽 `HttpService`）。
+   `SettingsScreen`（1471 行）卡 `Activity/ContextWrapper`（找 Activity 用，需解耦）+ Gson ×1
+   （`parseFullScheduleJson` = **R2 导入通道**，与备份三页同批做 round-trip 回归）+ `Calendar/UUID`
+   （→ kotlinx-datetime/`randomUuidV4`）。
+2. **ShiftScheduleScreen**（303 行，4 项：LocalContext/androidx.activity/全限定 MainActivity）
+   —— 排班页，MainActivity 全限定引用可用回调注入拆掉；`androidx.activity` 是 BackHandler
+   （NavigationBackHandlerFor 模板已有）。
+3. **备份三页（Gson R2，最高风险）** —— `BackupAndMigrationScreen`/`LocalBackupScreen`/
+   `EducationalImportScreen` + `SettingsScreen` 的导入通道，**必须有真实备份 round-trip 回归**。
+   `ScheduleAppearance`（Gson 文件）本体留 androidApp（Bitmap/LruCache 专有），纯数据类已拆走。
+4. **`ui/utils` 清尾** —— `ActivitySystemBars`/`ApiCompat`/`UpdateChecker`/`UpdateInstaller`/
+   `CrashLogHelper` 判定**平台专有留守**；`ScheduleExport`/`ScheduleImport` 归 R2 批次。
+   `MiuixVisualEffectsPolicy`（HyperOS 探测）判定**留守**。
+5. **`AppNavHost`**（导航骨架）—— navigationevent 最后残留；宿主层，最后处理。
+6. **`TodayAssistant.kt`** —— 天气栈（Gson/定位/Geocoder）**留守**；卡片已通过槽位注入解耦。
 
-**并行子代理流水线**（第二十批验证有效，两批同时跑）：文件集不相交的批次可并行——
-A 改页面+其调用方，B 改另一组页面+MainActivity；子代理不跑 gradle（锁冲突），合并后统一门禁。
+> ✅ **快照 crop 跨平台化已解决**（第二十批）：页内裁剪用 `GraphicsLayer.record + drawImage`
+> （⚠ record 便捷重载只在 DrawScope 内可见，协程里要显式传 `density`/`layoutDirection` 成员版）；
+> 页外快照走「宿主裁好 → 页面收 `ImageBitmap?`」。两种场景都有落地方案，后续页面照抄。
+
+**并行子代理流水线**（第二十/二十一批验证，2~3 路同时跑）：文件集不相交的批次可并行——
+每路改自己的页面+调用方；子代理不跑 gradle（锁冲突），合并后统一门禁。
+⚠ **纯数据类若声明在 android 专有文件里（如 AppearanceConfig 在 Gson 文件中），页面迁入后会
+Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bitmap 的工厂改 companion 扩展留宿主）。
 
 每批结束必须：`:androidApp:assembleDebug` 过 + 门禁绿 + **真机过一遍受影响的界面**。
 （用户 10-11 拍板：安卓端回归已验证即放行；**桌面端实机点开推迟到全部迁移完毕后统一修**。）
@@ -211,6 +215,7 @@ A 改页面+其调用方，B 改另一组页面+MainActivity；子代理不跑 g
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
 | `1e6b8bf3` | 第二十批：`SwitchScheduleScreen`/`TabletSwitchSchedulePane`/`TimeConfigEditScreen` 进 `:ui-shared`（并行子代理）；页内 crop 跨平台化 | 10-11 |
 | `2aa310e1` | 第十九批：`CourseDetail`/`CourseEdit`/`TabletCourseManagePane` 进 `:ui-shared`；navigationevent 4→2 文件 | 10-11 |
 | `465aec7e` | 桌面端补 `ViewModelStoreOwner` —— 修共享页 `viewModel()` 点开崩 | 10-11 |
@@ -225,7 +230,6 @@ A 改页面+其调用方，B 改另一组页面+MainActivity；子代理不跑 g
 | `057d6ab` | 模块 `app/`→`androidApp/`；`:core` 测试与 iOS 实现入库 | 10-10 |
 | `b974cf2` | iOS 网络层实现（NSURLSession delegate 流式读），未引入 Ktor | 10-10 |
 | `ca95feb` | wasmJs 非 JVM 编译门禁（默认关，`-Pnexio.wasm=true`） | 10-10 |
-| `15a6d03` | `:backdrop`/`:miuix` 挂 wasmJs 门禁，skikoMain 首次经非 JVM 目标验证 | 10-10 |
 | `9d13813` | ⑫ `CourseRepository` 下沉 `:core` —— **数据层全部完成** | 10-09 |
 
 > 🔑 六条**仍在生效**的经验（踩过才有的，别重蹈）：
