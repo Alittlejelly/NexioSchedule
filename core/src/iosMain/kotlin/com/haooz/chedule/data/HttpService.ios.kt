@@ -2,9 +2,6 @@
 
 package com.haooz.chedule.data
 
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSData
@@ -22,13 +19,11 @@ import platform.Foundation.NSURLSessionResponseAllow
 import platform.Foundation.NSURLSessionResponseCancel
 import platform.Foundation.NSURLSessionResponseDisposition
 import platform.Foundation.NSURLSessionTask
-import platform.Foundation.dataWithBytes
 import platform.Foundation.dataTaskWithRequest
 import platform.Foundation.setHTTPBody
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
 import platform.darwin.NSObject
-import platform.posix.memcpy
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -279,21 +274,6 @@ private class DataTaskDelegate(
         return out
     }
 }
-
-private fun NSData.toByteArray(): ByteArray {
-    val size = length.toInt()
-    if (size == 0) return ByteArray(0)
-    val out = ByteArray(size)
-    out.usePinned { pinned ->
-        memcpy(pinned.addressOf(0), bytes, size.convert())
-    }
-    return out
-}
-
-private fun ByteArray.toNSData(): NSData {
-    // 空数组不能走 addressOf(0)（零长数组取指针会抛），显式走 null + 0 分支
-    if (isEmpty()) return NSData.dataWithBytes(null, 0u)
-    usePinned { pinned ->
-        return NSData.dataWithBytes(pinned.addressOf(0), size.toULong())
-    }
-}
+// `NSData ⇄ ByteArray` 的两个转换原先是这里的 private 扩展，
+// `NsFileAppFile` 也要用，已抽到同目录的 `FoundationBytes.kt`（internal 顶层扩展，
+// 同包直接可见，调用点一行不用改）。
