@@ -87,37 +87,46 @@ kotlin {
             // 注意这里用**不带 -android 后缀的根坐标**：KMP 模块由 Gradle 按目标解析变体，
             // 写死 -android 会让 commonMain 编不过（app 模块那边才是 -android）。
             //
-            // ⚠⚠ 已知结构性阻塞（2026-10-11 首次链接 iOS framework 时发现，见文档风险 R7）：
-            //
-            // 官方子库自己会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，而本模块是它的
-            // **同包同名 fork**（108 文件 vs 官方 87 文件，其中 30 个文件、约 4400 行有本地改动，
-            // 另有 21 个 fork 独有的新文件；反过来官方有 14 个文件 fork 没有）。
-            // 两个 klib 里都存在 `top.yukonga.miuix.kmp.basic.ButtonDefaults` 这类声明：
-            //   - Android/JVM：类路径按名去重，悄悄用其中一个 —— 所以一直没暴露
+            // 🔑 官方子库会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，而本模块就是它的
+            // **同包同名 fork** —— 必须把官方那份 exclude 掉，否则两份 klib 里都有
+            // `top.yukonga.miuix.kmp.basic.ButtonDefaults` 这类声明：
+            //   - Android/JVM：类路径按名去重，悄悄用其中一个（所以一直没暴露）
             //   - **Kotlin/Native：链接期硬错误**
             //       `IrPropertySymbolImpl is already bound. Signature:
             //        top.yukonga.miuix.kmp.basic/..._ButtonDefaults$stableprop`
             //
-            // 试过 `exclude(group="top.yukonga.miuix.kmp", module="miuix-ui")` 把官方那份排掉，
-            // **不行**：fork 是「部分覆盖」，缺 `window/*`、`theme/DynamicColors`、
-            // `layout/BottomSheetContentLayout` 等 14 个文件，全靠官方 artifact 兜着；
-            // 排掉之后 `:miuix` 自己就编不过。
+            // 2026-10-11 之前这里是「部分 fork」（108 文件，缺 14 个上游文件靠官方 artifact 兜着），
+            // 所以不能 exclude；现已补齐到 **119 文件**，本模块**自包含**，不再依赖官方 miuix-ui。
             //
-            // 从 Maven 拉官方 0.9.4 源码补全这 14 个文件也**不行**：fork 改过内部 API
-            // （例如 `DialogContentLayout` 去掉了 `maxWidth/largeScreen/cornerRadius` 参数），
-            // 官方那些文件调的是官方签名 → Redeclaration / 参数不匹配。
+            // 补进来的 11 个文件（取自官方 `miuix-ui-0.9.4-sources.jar` + `-android-sources.jar`）：
+            //   commonMain/ icon/basic/Sidebar.kt · layout/BottomSheetContentLayout.kt ·
+            //                overlay/OverlayBottomSheet.kt · theme/DynamicColors.kt ·
+            //                utils/WindowNavigationEventScope.kt · window/{WindowDialog,WindowBottomSheet,WindowListPopup}.kt
+            //   androidMain/ utils/WindowNavigationEventScope.android.kt
+            //   skikoMain/   theme/DynamicColors.skiko.kt · utils/WindowNavigationEventScope.skiko.kt
+            // 其中 4 处按 fork 的既有取舍做了适配（都留了行内注释）：
+            //   · 预测性返回 navigationevent → fork 的 `utils/NavigationBack.kt`（BottomSheetContentLayout）
+            //   · `ListPopupDefaults.DropdownPositionProvider` → `liquidDropdownPositionProvider()`（WindowListPopup）
+            //   · `WindowDialog` 去掉上游的 maxWidth/largeScreen/cornerRadius（fork 的 DialogContentLayout 没有）
+            //   · `DynamicColors.android.kt` 补 `actual` 关键字
+            // 另外 fork 早已主动删除的上游文件（CascadingListPopupLayout / OverlayCascadingListPopup /
+            // WindowCascadingListPopup / BreadcrumbBar / TextField / PagerGestureUtils）**没有搬回来** ——
+            // 它们在本仓库零引用，搬回来只会与 fork 的 CascadingConstants.kt 撞名。
             //
-            // ⇒ 要打通 iOS 链接，必须先把 fork 补成**完整 fork**（补 14 个文件 + 逐个适配
-            //    fork 改过的内部 API），或者反过来放弃 fork 改用纯官方 miuix。
-            //    两条路都改架构，留待决定，别在这里偷偷加 exclude 绕过。
-            //
-            // 顺带：Android 侧其实已经埋了同源隐患 —— 官方 0.9.4 的 `WindowDialog` 调
-            // `DialogContentLayout(maxWidth=…)`，而运行时被 fork 的旧签名覆盖，走到那条路径会
-            // NoSuchMethodError。补全 fork 能一并消掉。
-            implementation("top.yukonga.miuix.kmp:miuix-squircle:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}")
+            // ⚠ 因此：**以后从上游同步 miuix-ui 时，必须把新文件一起搬进来**，
+            // 否则编译会以「Unresolved reference」的形式当场报出来（这正是自包含的好处）。
+            implementation("top.yukonga.miuix.kmp:miuix-squircle:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
             implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui:${libs.versions.miuixNavigation3.get()}")
         }
         androidMain.dependencies {

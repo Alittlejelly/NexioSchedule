@@ -1,5 +1,6 @@
 // Nexio课程表 - 应用模块构建配置
 
+import org.gradle.api.artifacts.ModuleDependency
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -110,17 +111,27 @@ dependencies {
     implementation(libs.androidx.webkit)
 
     // ===== Miuix UI =====
-    // miuix-ui 已 fork 到 :miuix 模块（KMP），不再使用 jar 依赖
+    // miuix-ui 已 fork 到 :miuix 模块（KMP），不再使用 jar 依赖。
+    //
+    // ⚠ 下面 5 个官方子库**每个都必须 exclude 官方 miuix-ui**（2026-10-11 补）：
+    // 它们各自会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，而本仓库把 miuix-ui fork 成了
+    // `:miuix` 模块 —— 同包同名。Android 上类路径按名去重、悄悄用一个（不报错，但
+    // 官方 0.9.4 的 `WindowDialog` 会调到 fork 的旧 `DialogContentLayout` 签名 →
+    // 走到那条路径 NoSuchMethodError）；Kotlin/Native 上更是链接期硬错误
+    // （`IrPropertySymbolImpl is already bound`）。详见 docs 风险 R10。
+    val excludeOfficialMiuixUi: ModuleDependency.() -> Unit = {
+        exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+    }
     // 偏好设置组件
-    implementation(libs.miuix.preference)
+    implementation(libs.miuix.preference) { excludeOfficialMiuixUi() }
     // 图标资源
-    implementation(libs.miuix.icons)
+    implementation(libs.miuix.icons) { excludeOfficialMiuixUi() }
     // Squircle形状支持
-    implementation(libs.miuix.squircle)
+    implementation(libs.miuix.squircle) { excludeOfficialMiuixUi() }
     // 模糊效果支持
-    implementation(libs.miuix.blur)
+    implementation(libs.miuix.blur) { excludeOfficialMiuixUi() }
     // Navigation3 导航组件
-    implementation(libs.miuix.navigation3)
+    implementation(libs.miuix.navigation3) { excludeOfficialMiuixUi() }
 
     // ===== NavigationEvent =====
     // :miuix 的 androidMain（SearchBar / BottomSheet 返回键处理）需要

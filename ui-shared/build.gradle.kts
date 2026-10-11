@@ -104,13 +104,24 @@ kotlin {
             // import 它们（ArrowPreference / MiuixIcons / layerBackdrop）就各欠各的。
             // 用**不带 -android 后缀的根坐标** —— KMP 模块由 Gradle 按目标解析变体，
             // 写死 -android 会让 jvm 目标编不过（同 miuix/build.gradle.kts 的注释）。
-            // ⚠ 这三个官方子库传递依赖的官方 `miuix-ui` 与本仓库的 `:miuix` fork 同包同名，
-            // 两份 klib 一起进 iOS 链接期会报 `IrPropertySymbolImpl is already bound` ——
-            // 已知阻塞，不能靠 exclude 绕过。完整分析见 miuix/build.gradle.kts 的注释
-            // 与文档风险 R7。
-            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}")
-            implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}")
+            // ⚠ 必须 exclude 官方 `miuix-ui`：`:miuix` 是它的同包同名 fork，
+            // 两份 klib 一起进 iOS 链接期会报 `IrPropertySymbolImpl is already bound`。
+            // 理由详见 miuix/build.gradle.kts 的注释。
+            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
+            // `top.yukonga.miuix.kmp.squircle.*`（squircleClip / squircleBorder / squircleSurface…）
+            // 是**独立 artifact**。原先靠官方 miuix-ui 传递进来，排除它之后就断了 ——
+            // 本模块自己直接用它，就该显式声明（:androidApp 早就显式声明了）。
+            implementation("top.yukonga.miuix.kmp:miuix-squircle:${libs.versions.miuix.get()}") {
+                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
+            }
             // KMP 版 lifecycle：ViewModel / viewModelScope 的跨平台实现（页面迁入本模块后要用）。
             //
             // 选 2.9.6（jetbrains 组）而不是 AndroidX 组直连：它转发到 androidx.lifecycle 2.9.4，
