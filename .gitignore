@@ -49,3 +49,8 @@ androidApp/src/main/assets/eduloader/school_index.pb
 .workbuddy/
 .workbuddy-ai/
 
+
+# --- iOS 构建输出 ---
+iosApp/build/
+iosApp/DerivedData/
+*.xcuserdatad/

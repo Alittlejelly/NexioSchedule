@@ -1,0 +1,18 @@
+// Nexio课程表 · iOS App 构建配置
+//
+// 改 bundle id / 显示名 / 开发团队只改这里，不要动 project.pbxproj。
+// ⚠ 本文件被 pbxproj 的 baseConfigurationReference 引用，删掉会导致构建失败。
+
+PRODUCT_NAME = NexioSchedule
+PRODUCT_BUNDLE_IDENTIFIER = com.haooz.iosschedule
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+// 真机签名用的团队；模拟器构建可以留空，上真机前填自己的 Apple Developer Team ID
+DEVELOPMENT_TEAM =
+
+// Compose Multiplatform 要求的最低系统版本（UIKit + Skiko 渲染路径实测门槛）
+IPHONEOS_DEPLOYMENT_TARGET = 16.0
+
+// Kotlin framework 由 gradle 产出后放这里（KMP 的 embed 任务默认输出目录）
+FRAMEWORK_SEARCH_PATHS = $(SRCROOT)/../ui-shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
