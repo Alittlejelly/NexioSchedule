@@ -29,27 +29,10 @@ import java.io.FileOutputStream
 
 /** 卡片内容对齐方式 / 文字配色 / 透镜折射强度：已下沉 :core（同包名 CardTextColor.kt） */
 
-/**
- * 课表外观自定义页「默认主题」下拉的取值。
- *
- * ⚠️ 与全局应用主题（`app_theme_prefs` 的 `theme_mode`，值域 system/light/dark）
- * **刻意隔离**：这里只决定今日页/课程表页跟随谁，全局主题开关不受影响。
- * 故 [FOLLOW_APP] 的 prefsValue 复用 "system" 字面量但落在不同的键上。
- */
-enum class ThemeMode(val label: String, val prefsValue: String) {
-    FOLLOW_WALLPAPER("跟随壁纸", "follow_wallpaper"),
-    FOLLOW_APP("跟随应用", "system"),
-    LIGHT("浅色模式", "light"),
-    DARK("深色模式", "dark");
-
-    companion object {
-        /** 课表外观"默认主题"下拉专用的偏好 key，仅决定今日页/课程表页主题，与全局主题开关隔离 */
-        const val SCHEDULE_THEME_MODE_KEY = "schedule_theme_mode"
-
-        fun fromPrefsValue(value: String?): ThemeMode =
-            entries.find { it.prefsValue == value } ?: FOLLOW_WALLPAPER
-    }
-}
+// `ThemeMode` 枚举也已下沉 :core（同包名 ThemeMode.kt，2026-10-11 第二十五批）——
+// `CustomizeScheduleScreen` 迁 :ui-shared 后签名里要用它。
+// 本文件只保留**读写它的那对函数**（[ScheduleAppearance.getThemeMode] /
+// [ScheduleAppearance.setThemeMode]，要碰 SharedPreferences），页面通过注入参数调用。
 
 /**
  * 外观参数快照 —— 落盘的唯一结构。

@@ -1,9 +1,18 @@
 /** 自定义课表页面 - 课表外观选择 */
 package com.haooz.chedule.ui.screens
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
-import androidx.activity.compose.BackHandler
+// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十五批）。
+//
+// 迁移动机与做法（壁纸/快照重灾区，但 Android 面比想象小）：
+//  · `Bitmap` → `ImageBitmap`：`snapshot` / `wallpaperBitmap` / 搭配缩略图都改成
+//    跨平台的 `ImageBitmap?`。宿主侧的 `Combination`（含 android.graphics.Bitmap，
+//    要做 remap / recycle / 像素测光）**原样留在宿主**，由宿主映射成本页的
+//    `CombinationThumbnail`（只带两张 ImageBitmap）—— 本页只用得到 snapshot/bitmap
+//    两个字段（其余参数走 `appearance: AppearanceConfig`）。
+//  · `BackHandler`（androidx.activity）→ fork 的 `NavigationBackHandlerFor`。
+//  · `ScheduleAppearance.getThemeMode/setThemeMode` → 注入的 `themeMode` / `onThemeModePersist`。
+//  · `LocalContext` 那行是死代码（声明后从未使用），直接删。
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -66,14 +75,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -88,9 +95,10 @@ import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.CardContentAlignment
 import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
-import com.haooz.chedule.data.Combination
-import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.ThemeMode
+import com.haooz.chedule.data.formatOneDecimal
+import androidx.compose.ui.graphics.ImageBitmap
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.kyant.backdrop.edgelight.edgeLight
@@ -175,13 +183,9 @@ private class CutoutPathCache {
     }
 }
 
-@SuppressLint(
-    "ConfigurationScreenWidthHeight", "FrequentlyChangingValue",
-    "AutoboxingStateCreation"
-)
 @Composable
 fun CustomizeScheduleScreen(
-    snapshot: Bitmap?,
+    snapshot: ImageBitmap?,
     screenCornerRadius: Float,
     onDismiss: () -> Unit,
     onApply: () -> Unit,
@@ -189,12 +193,12 @@ fun CustomizeScheduleScreen(
     onThemeModePreview: (ThemeMode) -> Unit = {},
     onPickWallpaper: () -> Unit = {},
     onClearWallpaper: () -> Unit = {},
-    combinations: List<Combination> = emptyList(),
+    combinations: List<CombinationThumbnail> = emptyList(),
     currentCombinationIndex: Int = 0,
     isExiting: Boolean = false,
     isApplying: Boolean = false,
     isApplyingCustomize: Boolean = false,
-    wallpaperBitmap: Bitmap? = null,
+    wallpaperBitmap: ImageBitmap? = null,
     wallpaperOffset: Offset = Offset.Zero,
     wallpaperScale: Float = 1f,
     onWallpaperOffsetChange: (Offset) -> Unit = {},
@@ -213,6 +217,11 @@ fun CustomizeScheduleScreen(
     /** 预览页：0=今日，1=课程表；椭圆滑块与取消/应用同一行 */
     previewPage: Int = 0,
     onPreviewPageChange: (Int) -> Unit = {},
+    // ── 平台注入 ──────────────────────────────────────────────────────────
+    /** 当前「默认主题」档位（Android = `ScheduleAppearance.getThemeMode()`） */
+    themeMode: () -> ThemeMode = { ThemeMode.FOLLOW_WALLPAPER },
+    /** 落盘「默认主题」（Android = `ScheduleAppearance.setThemeMode`） */
+    onThemeModePersist: (ThemeMode) -> Unit = {},
 ) {
     val densityObj = LocalDensity.current
     val density = densityObj.density
@@ -328,17 +337,16 @@ fun CustomizeScheduleScreen(
         sheetResetKey
     ) { mutableStateOf(appearance.wallpaperBlur) }
 
-    val context = LocalContext.current
     var themeModeValue by remember(currentCombinationIndex, sheetResetKey) {
         // 独立偏好 key，仅影响今日/课表页，不污染全局 theme_mode
-        mutableStateOf(ScheduleAppearance.getThemeMode())
+        mutableStateOf(themeMode())
     }
 
     // 无壁纸时档位无意义，清壁纸即复位为跟随壁纸
     LaunchedEffect(hasWallpaper) {
         if (!hasWallpaper && themeModeValue != ThemeMode.FOLLOW_WALLPAPER) {
             themeModeValue = ThemeMode.FOLLOW_WALLPAPER
-            ScheduleAppearance.setThemeMode(ThemeMode.FOLLOW_WALLPAPER)
+            onThemeModePersist(ThemeMode.FOLLOW_WALLPAPER)
         }
     }
 
@@ -636,17 +644,21 @@ fun CustomizeScheduleScreen(
         }
     }
 
-    BackHandler {
-        when {
-            isPageAnimating -> { /* 页面进入动画中，不响应 */
-            }
+    NavigationBackHandlerFor(
+        enabled = true,
+        onBackCompleted = {
+            when {
+                isPageAnimating -> { /* 页面进入动画中，不响应 */
+                }
 
-            isCutoutAnimating -> { /* 编辑模式动画中，不响应 */
-            }
+                isCutoutAnimating -> { /* 编辑模式动画中，不响应 */
+                }
 
-            else -> onDismiss()
-        }
-    }
+                else -> onDismiss()
+            }
+        },
+        onBackCancelled = {},
+    )
 
     // 动画完成后恒为 1f，避免无谓重组
     val enterValue = if (animDone) 1f else animProgress.value
@@ -819,12 +831,12 @@ fun CustomizeScheduleScreen(
                                     isCurrentComb && snapshot != null && animDone && !cardHidden ->
                                         snapshot
                                     comb != null && comb.snapshot != null -> comb.snapshot
-                                    comb != null && comb.bitmap != null -> comb.bitmap
+                                    comb != null && comb.wallpaper != null -> comb.wallpaper
                                     else -> null
                                 }
                                 if (previewBitmap != null) {
                                     Image(
-                                        bitmap = previewBitmap.asImageBitmap(),
+                                        bitmap = previewBitmap,
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
@@ -1331,7 +1343,7 @@ fun CustomizeScheduleScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
-                            bitmap = snapshot.asImageBitmap(),
+                            bitmap = snapshot,
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1554,7 +1566,9 @@ fun CustomizeScheduleScreen(
                                 onValueChange = { cardTextScaleValue = it },
                                 quantize = { (it * 10f).roundToInt() / 10f },
                                 suffix = "x",
-                                displayValue = { "%.1f".format(it) },
+                                // 原 `"%.1f".format(it)` 是 JVM 专有（String.format 的扩展形式，
+                                // 纯净度扫描器当时只认 `String.format(...)` 而漏掉了它）
+                                displayValue = { it.formatOneDecimal() },
                                 parseInput = { it.replace(',', '.').toFloatOrNull()?.coerceIn(0.5f, 2.0f) }
                             )
                         }
@@ -1950,3 +1964,20 @@ private fun SliderCard(
         )
     }
 }
+
+/**
+ * 缩略图条需要的「搭配视图」——宿主从自己的 `Combination` 映射过来。
+ *
+ * 为什么不在 :ui-shared 里直接复用宿主的 `Combination`：那是个**运行期**结构，
+ * 字段 `bitmap`/`snapshot` 是 `android.graphics.Bitmap`，宿主还要对它做 remap / recycle /
+ * 像素测光（`isRecycled`、`getPixels`）—— 这些在跨平台侧不存在。而本页只用到
+ * 「有没有图、图是什么」这一件事，所以按最小面暴露：两张 `ImageBitmap?`。
+ *
+ * 宿主的 `CombinationStyle`（落盘结构）与本类型无关，继续留在宿主。
+ */
+data class CombinationThumbnail(
+    /** 该搭配的快照；null 表示尚未生成（此时回落到 [wallpaper]） */
+    val snapshot: ImageBitmap?,
+    /** 该搭配的壁纸 */
+    val wallpaper: ImageBitmap?,
+)

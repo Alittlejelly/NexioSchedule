@@ -136,6 +136,18 @@ abstract class CheckKmpPurityTask : DefaultTask() {
                 "JVM 专有，且会按 Locale 数码字形输出（阿拉伯语 locale 下 \"08:00\" 变非 ASCII）；改 padStart",
             ),
             Forbidden(
+                "字符串字面量 .format(...)（String.format 的扩展形式）",
+                // 只匹配**字符串字面量**的扩展调用（`"%.1f".format(x)`）—— 变量形式
+                // （`fmt.format(x)`）静态区分不了，靠 iOS 编译门禁兜底。
+                //
+                // 2026-10-11 补：这条规则是**被 iOS 编译打脸之后**才加的 ——
+                // `"%.1f".format(it)` 在 CustomizeScheduleScreen 里躲过了上面那条
+                // `String.format` 正则，直到页面迁进 :ui-shared 真编 iOS 才炸。
+                // 与「全限定名 java.* 躲过 import 规则」是同一类盲区：**正则永远不如编译器完备**。
+                Regex("\"[^\"]*\"\\s*\\.\\s*format\\("),
+                "String.format 的扩展形式，同样是 JVM 专有；改 padStart 或 :core 的 formatOneDecimal",
+            ),
+            Forbidden(
                 "java.util.UUID",
                 Regex("""java\s*\.\s*util\s*\.\s*UUID"""),
                 "用 kotlin.random.Random 自建 UUID v4 格式（见 PlatformInfo.kt 的 randomUuidV4）",

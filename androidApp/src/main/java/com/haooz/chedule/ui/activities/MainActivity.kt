@@ -151,6 +151,7 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.AddCourseDialog
 import com.haooz.chedule.ui.screens.CourseDetailScreen
+import com.haooz.chedule.ui.screens.CombinationThumbnail
 import com.haooz.chedule.ui.screens.CustomizeScheduleScreen
 import com.haooz.chedule.ui.screens.MainScheduleScreen
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
@@ -5120,6 +5121,25 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                     isCustomizeExiting = true
                 }
             }
+                // 页面已迁 :ui-shared，宿主侧的 Bitmap 要先转成跨平台的 ImageBitmap。
+                // ⚠ 必须 remember：`asImageBitmap()` 每次调用都新建包装对象，不 remember 会让
+                // 页面里 `remember(wallpaperBitmap, …)` 之类的 key 每帧都变（白跑一遍计算）。
+                val customizeSnapshotImage = remember(customizeSnapshot) {
+                    customizeSnapshot?.asImageBitmap()
+                }
+                val customizeWallpaperImage = remember(wallpaperBitmap) {
+                    wallpaperBitmap?.asImageBitmap()
+                }
+                // 搭配缩略图：页面只认「两张图」，宿主的 Combination（含 Bitmap，要做
+                // remap/recycle/测光）留在这一侧，按需映射。
+                val customizeThumbnails = remember(combinations) {
+                    combinations.map {
+                        CombinationThumbnail(
+                            snapshot = it.snapshot?.asImageBitmap(),
+                            wallpaper = it.bitmap?.asImageBitmap(),
+                        )
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -5128,7 +5148,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                         }
                 ) {
                 CustomizeScheduleScreen(
-                    snapshot = customizeSnapshot,
+                    snapshot = customizeSnapshotImage,
                     screenCornerRadius = screenCornerRadius,
                     onDismiss = dismissCustomize,
                     onApply = applyCustomize,
@@ -5158,12 +5178,15 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                     },
                     pendingEnterCutout = pendingEnterCutout,
                     onCutoutEntered = { pendingEnterCutout = false },
-                    combinations = combinations,
+                    combinations = customizeThumbnails,
                     currentCombinationIndex = currentCombinationIndex,
                     isExiting = isCustomizeExiting,
                     isApplying = isApplyingCustomize,
                     isApplyingCustomize = isApplyingCustomize,
-                    wallpaperBitmap = wallpaperBitmap,
+                    wallpaperBitmap = customizeWallpaperImage,
+                    // 「默认主题」档位读写（Android = ScheduleAppearance）
+                    themeMode = { ScheduleAppearance.getThemeMode() },
+                    onThemeModePersist = { ScheduleAppearance.setThemeMode(it) },
                     wallpaperOffset = wallpaperOffset,
                     wallpaperScale = wallpaperScale,
                     onWallpaperOffsetChange = {
