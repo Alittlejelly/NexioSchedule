@@ -27,8 +27,9 @@
 `:ui-shared` 已迁入 85 文件 / 32.2k 行；`:androidApp` 剩 54 文件 / 34.1k 行，其中 **25 文件 8.1k 行永不迁移**，
 **真正待迁 29 文件 / 26.0k 行**。**应用代码完成度约 61%**。
 **`androidx.navigationevent` 只剩 `AppNavHost` 1 文件**。
-🔴 **R2 批次进行中**：✅ 导入通道（parseFullScheduleJson）Gson→kotlinx 已完成 + 真实备份 round-trip 回归通过；
-⏳ **剩余 = 备份文件 I/O**（LocalBackupScreen/BackupAndMigrationScreen 的 Gson 读写，与 Android SAF/FileProvider 纠缠，**需真机备份/恢复验证**）。
+🔴 **R2 批次（读侧已完成）**：✅ 导入通道 + ✅ 恢复门禁（parseBackupPayload）+ ✅ 扫描统计
+Gson→kotlinx，全部用真实备份 round-trip 回归通过。⏳ **写侧**（创建备份的 pretty-print Gson +
+BackupAndMigrationScreen）暂留 androidApp —— 待页面整体迁 commonMain（文件 I/O 抽象后）一并处理。
 iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 
 ### 本机环境（不看会白踩半天）
@@ -180,19 +181,14 @@ iOS target 已声明但默认关闭，**仍无 Xcode 工程**。
 > 每次迁移后还要跑 `.workbuddy-ai/tmp/dupscan.py` 查跨模块同名同包冲突（本会话重建过，只查跨模块）。
 > ⚠ 扫描器也会误报/漏报（已知误报：`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁一次再全信**。
 
-1. **R2 备份文件 I/O（最高风险，剩余主战场）** —— `LocalBackupScreen`/`BackupAndMigrationScreen`
-   的 Gson 读写（`Gson().fromJson/toJson` + TypeToken）。⚠ 与 Android 文件 I/O（SAF 文档选择器/
-   FileProvider 分享/IO 线程）深度纠缠，且**写用户备份文件**。改法照 R2 导入通道模板
-   （ScheduleImportCodec.kt + round-trip 测试）：把纯解析/序列化抽 `:core` kotlinx，
-   **落盘格式保持可跨版本读**（compact 仍能被旧版 Gson 读，但建议保 pretty 以免备份文件外观变化）。
-   **必须真机做一次完整备份→恢复回归**（用用户已提供的两份真实备份）。
-   `EducationalImportScreen` 的 Gson（WebView 导入保存）同批。`performScheduleShare`/`fetchShare`
-   的 Gson 在 Android 宿主（网络/剪贴板），可最后迁或留。
-2. **设置链收尾** —— `TabletSettingsScreen`（1610 行，反向依赖降到约 5：About/BackupAndMigration/
-   LocalBackup 内嵌页 + `sendTestLiveNotification` + HttpURLConnection）；
-   `SettingsScreen`（1377 行）卡 `Activity/ContextWrapper`（findActivity 已删，剩 Calendar/UUID
-   → kotlinx-datetime/`randomUuidV4`）+ 嵌套 TabletSettingsScreen。R2 导入通道已迁走，
-   SettingsScreen 的 Gson 阻塞已解除。
+1. **R2 写侧（低优先）** —— LocalBackupScreen/BackupAndMigrationScreen 的「创建备份」Gson
+   （pretty-print toJson + TimeConfig 反射展开）。**暂留 androidApp**：这两个页面整体还在
+   androidApp（SAF/FileProvider/文件 I/O 未抽象），换 Gson 不带来 iOS 收益却改备份文件格式。
+   **时机 = 页面整体迁 commonMain 时**（届时文件 I/O 抽象 + 写侧一并 kotlinx，用
+   `TimeConfig.toJsonMap()` + skip-nulls pretty 序列化，round-trip 验证写→读一致）。
+   R2 **读侧**（导入/恢复门禁/扫描）已全部完成 + 真实备份回归通过。
+2. **设置链收尾** —— `TabletSettingsScreen`（1610 行，反向依赖约 5）；`SettingsScreen`（1377 行）
+   卡 Calendar/UUID → kotlinx-datetime/`randomUuidV4` + 嵌套 TabletSettingsScreen。R2 Gson 阻塞已解除。
 3. ~~ShiftScheduleScreen~~ ✅ 第二十二批已迁；~~HolidaySettingsScreen~~ ✅ 已迁；~~AiImportScreen~~ ✅ 已迁。
 4. **留守清单（不迁）**：`AboutScreen`（Intent/包管理器/App 图标）、`CourseReminderScreen`（闹钟/电池优化/
    Settings intent）、`WebViewScreen`+`EducationalImport` WebView 分支（iOS 要 WKWebView 重写）、
@@ -219,7 +215,7 @@ Unresolved** —— 先把数据类拆到 `:core`（fromCombination 等依赖 Bi
 
 | commit | 一句话 | 日期 |
 |---|---|---|
-| `33154249` | R2 导入通道 Gson→kotlinx（ScheduleImportCodec）+ 真实备份 round-trip 回归 6 用例 | 10-11 |
+| `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
 | `c4373883` | `AiImportScreen` 进 `:ui-shared`（剪贴板注入）+ 备份夹具入库 | 10-11 |
 | `6ca87004` | 第二十二批：`ShiftScheduleScreen`/`HolidaySettingsScreen` 进 `:ui-shared`（两路并行）；自由形态窗口/节假日回调注入 | 10-11 |
 | `5fb7c04d` | 第二十一批：主页双屏 + 偏好设置进 `:ui-shared`（三路并行）；助手卡槽位注入；AppearanceConfig 拆 :core | 10-11 |
