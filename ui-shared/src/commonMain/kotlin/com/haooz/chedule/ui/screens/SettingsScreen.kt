@@ -1,5 +1,16 @@
 package com.haooz.chedule.ui.screens
 
+// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十四批）。
+//
+// 迁移动机与做法：设置页本体（手机端长列表 + 平板两栏外壳）没有任何 Android 依赖，
+// 唯一的「平台味」集中在平板分支的 `androidPane` 槽位 —— 8 个 dest 的接线
+// （SAF 文件选择 / 口令网络 / 无头 WebView / PackageManager 取图标 / 小部件刷新 /
+// 超级岛测试通知 / HttpURLConnection 拉节假日）逐字搬到宿主
+// `androidApp/.../ui/screens/AndroidSettingsScreen.kt`，本页只接收并转发这些槽位。
+//
+// 因此本文件里**不应该再出现任何 `android.*` / `androidx.activity` / `androidx.core`**；
+// 加回来之前先想想是不是该做成注入参数。
+
 import com.haooz.chedule.data.minusWeeks
 
 import com.haooz.chedule.data.lengthOfMonth
@@ -8,40 +19,15 @@ import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.data.weeksBetween
 import kotlinx.datetime.isoDayNumber
 
-import android.annotation.SuppressLint
-import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.activity.compose.LocalActivity
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.content.ContextCompat
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.reminder.CourseReminderHelper
-import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
 import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
-import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
-import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
-import com.haooz.chedule.ui.utils.AndroidReminderController
-import com.haooz.chedule.ui.utils.AndroidUpdateController
-import com.haooz.chedule.ui.utils.AndroidBackupFileController
-import com.haooz.chedule.ui.utils.AndroidScheduleFileController
-import com.haooz.chedule.ui.utils.ShareCodeApi
-import com.haooz.chedule.ui.utils.ShareCodeFetchResult
-import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
-import com.haooz.chedule.ui.utils.performScheduleShare
-import com.haooz.chedule.wearable.WearableScheduleSync
-import com.haooz.chedule.widget.WidgetUpdateCache
-import java.net.HttpURLConnection
-import java.net.URL
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -145,7 +131,6 @@ internal fun getDaysInMonth(year: Int, month: Int): Int {
 // 顶栏折叠期间会逐帧重组，提到顶层避免组合期每帧新建 Set
 // 说明：设置项的「二级页打开时压暗」只在平板布局需要，手机端不再追踪二级 Activity 栈。
 
-@SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun SettingsScreen(
     viewModel: CourseViewModel,
@@ -159,6 +144,24 @@ fun SettingsScreen(
     onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    // ── 平台注入（宿主提供；桌面/iOS 用默认空实现）────────────────────────────
+    // 设置页的「平板两栏」外壳 TabletSettingsScreen 有 8 个平台专有 dest
+    // （提醒/口令导入/AI 导入/导出/本地备份/偏好/更新/关于），它们的本体早已迁进
+    // :ui-shared，但**接线全是 Android 代码**（SAF / OkHttp / WebView / PackageManager /
+    // WidgetUpdateCache / 超级岛…）。这些接线留在宿主 —— 见 androidApp 的
+    // `AndroidSettingsScreen.kt`，本页只负责把槽位转交下去。
+    /** 平台专有设置面板（8 个 dest）由宿主渲染；null 显示占位 */
+    androidPane: (@Composable (TabletSettingsDest) -> Unit)? = null,
+    /** 提醒页「测试通知」动作（Android 发超级岛/实时活动） */
+    onSendTestNotification: () -> Unit = {},
+    /** 是否超级岛设备（决定「测试通知」按钮文案） */
+    isIslandSupported: () -> Boolean = { false },
+    /** 小部件页「刷新已装小部件」（Android = WidgetUpdateCache） */
+    onRefreshWidgets: () -> Unit = {},
+    /** 节假日数据变更副作用（重排提醒 + 刷小部件） */
+    onHolidayDataChanged: () -> Unit = {},
+    /** 节假日 API 拉取（Android 宿主实现）；null 时返回 emptyList */
+    fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
     val currentWeek by viewModel.currentWeek.collectAsState()
@@ -170,9 +173,6 @@ fun SettingsScreen(
     // 不可在 forEach 内 collectAsState：remember 槽位会随课表增删错位
     val scheduleSummaries by scheduleViewModel.scheduleSummaries.collectAsState()
     val shiftSelectedSchedules by shiftViewModel.shiftSelectedSchedules.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    // 提醒页「测试通知」按钮文案需要超级岛开关（原平板页内联逻辑随迁到宿主注入）
-    val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val hapticFeedback = LocalHapticFeedback.current
     // LocalAppRouter.current 是 @Composable 调用，必须在组合层取（各入口共用）
     val settingsRouter = LocalAppRouter.current
@@ -210,251 +210,12 @@ fun SettingsScreen(
             liquidGlassBackdrop = liquidGlassBackdrop,
             // —— 8 个平台专有 dest（提醒/口令导入/AI 导入/导出/本地备份/偏好/更新/关于）——
             // 分支体自原平板页 when(selected) 逐字迁入，由宿主 androidPane 槽位渲染
-            androidPane = { dest ->
-                when (dest) {
-                    TabletSettingsDest.Reminder -> CourseReminderScreen(
-                        settingsViewModel = settingsViewModel,
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        // Android 提醒能力（闹钟/电池/权限/设置页跳转）注入
-                        reminderController = remember { AndroidReminderController(context) },
-                    )
-
-                    TabletSettingsDest.ScheduleImport -> BackupAndMigrationScreen(
-                        courseViewModel = viewModel,
-                        scheduleViewModel = scheduleViewModel,
-                        settingsViewModel = settingsViewModel,
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        mode = ScheduleDataManageMode.Import,
-                        compactImport = true,
-                        // Android 专有能力注入（同 AppRouteContent 的 BackupAndMigrationRoute）
-                        scheduleFileController = remember { AndroidScheduleFileController(context) },
-                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
-                        onFetchShareCode = { code ->
-                            ShareCodeApi.fetchShare(code).map {
-                                ShareCodeFetchResult(
-                                    code = it.code,
-                                    scheduleName = it.scheduleName,
-                                    scheduleData = it.scheduleData,
-                                )
-                            }
-                        },
-                        onImportThirdParty = { source, code ->
-                            ThirdPartyShareImporter.import(context, source, code)
-                        },
-                        onShareSchedule = { name, onSharingChanged ->
-                            performScheduleShare(
-                                context = context,
-                                scope = coroutineScope,
-                                scheduleName = name,
-                                onSharingChanged = onSharingChanged,
-                            )
-                        },
-                        onExportToWearable = { name ->
-                            WearableScheduleSync.exportToWearable(context, name)
-                        },
-                    )
-
-                    TabletSettingsDest.AiImport -> AiImportScreen(
-                        onBack = {},
-                        scrollBehavior = null,
-                        viewModel = viewModel,
-                        settingsViewModel = settingsViewModel,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        // 剪贴板是 Android 专有能力，宿主注入给已迁 :ui-shared 的页面
-                        onCopyToClipboard = { text ->
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("课表导入提示词", text)
-                            clipboard.setPrimaryClip(clip)
-                        },
-                    )
-
-                    TabletSettingsDest.ScheduleExport -> BackupAndMigrationScreen(
-                        courseViewModel = viewModel,
-                        scheduleViewModel = scheduleViewModel,
-                        settingsViewModel = settingsViewModel,
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        mode = ScheduleDataManageMode.Export,
-                        scheduleFileController = remember { AndroidScheduleFileController(context) },
-                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
-                        onFetchShareCode = { code ->
-                            ShareCodeApi.fetchShare(code).map {
-                                ShareCodeFetchResult(
-                                    code = it.code,
-                                    scheduleName = it.scheduleName,
-                                    scheduleData = it.scheduleData,
-                                )
-                            }
-                        },
-                        onImportThirdParty = { source, code ->
-                            ThirdPartyShareImporter.import(context, source, code)
-                        },
-                        onShareSchedule = { name, onSharingChanged ->
-                            performScheduleShare(
-                                context = context,
-                                scope = coroutineScope,
-                                scheduleName = name,
-                                onSharingChanged = onSharingChanged,
-                            )
-                        },
-                        onExportToWearable = { name ->
-                            WearableScheduleSync.exportToWearable(context, name)
-                        },
-                    )
-
-                    TabletSettingsDest.LocalBackup -> LocalBackupScreen(
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        // Android 文件 I/O（SAF + 备份目录）注入
-                        backupFileController = remember { AndroidBackupFileController(context) },
-                        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
-                    )
-
-                    TabletSettingsDest.Preference -> PreferenceSettingsScreen(
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        // Android 宿主专有副作用：定位权限 / 天气缓存 / 最近任务卡片
-                        hasLocationPermission = {
-                            ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED ||
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                ) == PackageManager.PERMISSION_GRANTED
-                        },
-                        onInvalidateWeatherCache = { invalidateWeatherCache() },
-                        onSetTaskExcludedFromRecents = { hidden ->
-                            MainActivity.setTaskExcludedFromRecents(context, hidden)
-                        },
-                    )
-
-                    TabletSettingsDest.Update -> UpdateSettingsScreen(
-                        scrollBehavior = null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        // Android 更新能力（检查/下载/APK 安装）注入
-                        updateController = remember { AndroidUpdateController(context) },
-                    )
-
-                    TabletSettingsDest.About -> {
-                        val aboutBackdrop =
-                            com.kyant.backdrop.backdrops.rememberLayerBackdrop()
-                        // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
-                        val appRouter = LocalAppRouter.current
-                        // 宿主能力注入：版本号 / 应用名 / 图标（drawable→Bitmap→裁透明边→ImageBitmap）/ 退出 / 诊断录制
-                        // （裁边逻辑原在 AboutScreen.cropBitmapToOpaque，随迁移到 ui-shared 已删除，宿主在此复刻）
-                        val aboutActivity = LocalActivity.current
-                        val aboutPackageInfo = remember {
-                            runCatching {
-                                context.packageManager.getPackageInfo(context.packageName, 0)
-                            }.getOrNull()
-                        }
-                        val aboutIcon = remember {
-                            runCatching { context.packageManager.getApplicationIcon(context.packageName) }
-                                .getOrNull()
-                                ?.let { drawable ->
-                                    val size = maxOf(drawable.intrinsicWidth, drawable.intrinsicHeight, 1)
-                                    val bitmap = androidx.core.graphics.createBitmap(size, size)
-                                    drawable.setBounds(0, 0, size, size)
-                                    drawable.draw(android.graphics.Canvas(bitmap))
-                                    val pixels = IntArray(size * size)
-                                    bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
-                                    var minX = size
-                                    var minY = size
-                                    var maxX = -1
-                                    var maxY = -1
-                                    for (y in 0 until size) {
-                                        for (x in 0 until size) {
-                                            if (pixels[y * size + x] ushr 24 != 0) {
-                                                if (x < minX) minX = x
-                                                if (x > maxX) maxX = x
-                                                if (y < minY) minY = y
-                                                if (y > maxY) maxY = y
-                                            }
-                                        }
-                                    }
-                                    val cropped = if (maxX >= minX && maxY >= minY &&
-                                        (maxX - minX + 1 != size || maxY - minY + 1 != size)
-                                    ) {
-                                        android.graphics.Bitmap.createBitmap(
-                                            bitmap, minX, minY, maxX - minX + 1, maxY - minY + 1
-                                        )
-                                    } else {
-                                        bitmap
-                                    }
-                                    cropped.asImageBitmap()
-                                }
-                        }
-                        AboutScreen(
-                            onBack = {},
-                            liquidGlassBackdrop = aboutBackdrop,
-                            embedded = true,
-                            // 弹窗采样全屏层，才能把左栏内容一起虚化
-                            dialogBackdrop = liquidGlassBackdrop,
-                            // 平板设置页还没路由化（它在 MainActivity 里），
-                            // 所以这三个子页仍以「开新宿主 + 指定初始路由」的方式打开 ——
-                            // 行为与改造前一致：全屏打开，返回回到这里。
-                            onNavigate = { route ->
-                                appRouter.navigate(route)
-                            },
-                            appVersion = remember { aboutPackageInfo?.versionName ?: "未知版本" },
-                            appName = remember {
-                                aboutPackageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
-                                    ?: context.applicationInfo?.nonLocalizedLabel?.toString()
-                                    ?: "Nexio课程表"
-                            },
-                            appIcon = aboutIcon,
-                            onExitApp = { aboutActivity?.finishAffinity() },
-                            diagnosticRecorder = remember { AndroidDiagnosticRecorder(context) },
-                        )
-                    }
-
-                    else -> {}
-                }
-            },
-            // 提醒页底部「测试通知」：原平板页覆盖层 onClick（FeatureLog + 超级岛/实时活动 + toast）逐字迁入
-            onSendTestNotification = {
-                val islandEnabled = islandNotification &&
-                    IslandNotificationHelper.isIslandSupported(context)
-                com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(
-                    "test_notification",
-                    if (islandEnabled) "island" else "live"
-                )
-                if (islandEnabled) {
-                    IslandNotificationHelper.sendTestIslandNotification(
-                        context
-                    )
-                    com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
-                    showToast("已发送超级岛测试通知")
-                } else {
-                    CourseReminderHelper.sendTestLiveNotification(
-                        context
-                    )
-                    com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
-                    showToast("已发送实时活动测试通知")
-                }
-            },
-            isIslandSupported = { IslandNotificationHelper.isIslandSupported(context) },
-            onRefreshWidgets = {
-                WidgetUpdateCache.clear()
-                WidgetUpdateCache.updateInstalledWidgets(context)
-            },
-            onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
-            // 节假日 API 拉取：原平板页内联 HttpURLConnection（10s 超时）+ parseSourceResponse 逐字迁入
-            fetchHolidayEntries = { year ->
-                val conn = URL(
-                    HolidayManager.sourceUrlFor(year)
-                ).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 10_000
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                conn.disconnect()
-                HolidayManager.parseSourceResponse(text)
-            },
+            androidPane = androidPane,
+            onSendTestNotification = onSendTestNotification,
+            isIslandSupported = isIslandSupported,
+            onRefreshWidgets = onRefreshWidgets,
+            onHolidayDataChanged = onHolidayDataChanged,
+            fetchHolidayEntries = fetchHolidayEntries,
         )
         return
     }
@@ -988,7 +749,15 @@ fun SettingsScreen(
                         text = "确定",
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            val date = String.format("%04d/%02d/%02d", tempYear, tempMonth, tempDay)
+                            // ⚠ 原实现是 `String.format("%04d/%02d/%02d", …)` —— JVM 专有。
+                            // 本文件迁进 commonMain 后才被 checkKmpPurity + iOS 编译同时抓到
+                            // （在 :androidApp 里编了两年都没事，因为 Android 就是 JVM）。
+                            // 手写 padStart，格式逐字一致，且**不会像 LocalDate(...) 那样
+                            // 在月/日组合非法时抛异常**（tempDay 的 range 跟着月份变，
+                            // 换月瞬间可能短暂越界）。
+                            val date = "${tempYear.toString().padStart(4, '0')}/" +
+                                "${tempMonth.toString().padStart(2, '0')}/" +
+                                tempDay.toString().padStart(2, '0')
                             viewModel.setClassStartTime(date)
                             showStartDateDialog = false
                         },

@@ -1089,26 +1089,10 @@ private fun TabletLeftEntry(
     )
 }
 
-// 解析失败时回退到今天，避免弹窗初值出现非法日期
-// （自 androidApp 的 SettingsScreen.kt 复制的私有副本：两模块互不可见，无命名歧义）
-private fun parseDate(dateStr: String): Triple<Int, Int, Int> {
-    return try {
-        val parts = dateStr.split("/")
-        Triple(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
-    } catch (_: Exception) {
-        // kotlinx-datetime（R2 跨平台）：替代 JVM 的 java.util.Calendar
-        val d = todayLocalDate()
-        Triple(d.year, d.monthNumber, d.dayOfMonth)
-    }
-}
-
-private fun getDaysInMonth(year: Int, month: Int): Int {
-    return try {
-        LocalDate(year, month, 1).lengthOfMonth()
-    } catch (_: Exception) {
-        31
-    }
-}
+// `parseDate` / `getDaysInMonth` 的私有副本已删除（2026-10-11 第二十四批）：
+// 它们原本是「SettingsScreen 还在 :androidApp、两模块互不可见」时的权宜之计，
+// 现在两个文件同属 :ui-shared 同一个包，直接用 SettingsScreen.kt 里那份
+// （同签名重复声明会报 `Conflicting overloads`）。
 
 /** 右栏：学期与周次 — 与手机设置页同等可编辑（日期/周数/新学期） */
 @Composable

@@ -155,7 +155,7 @@ import com.haooz.chedule.ui.screens.CustomizeScheduleScreen
 import com.haooz.chedule.ui.screens.MainScheduleScreen
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
 import com.haooz.chedule.ui.screens.ScheduleGridGeometry
-import com.haooz.chedule.ui.screens.SettingsScreen
+import com.haooz.chedule.ui.screens.AndroidSettingsScreen
 import com.haooz.chedule.ui.screens.ShiftScheduleScreen
 import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
@@ -3966,7 +3966,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                             if (settingsDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
                                         MiuixTheme(controller = settingsThemeController) {
                                             CompositionLocalProvider(LocalForcedDarkTheme provides settingsPageForcedDark) {
-                                        SettingsScreen(
+                                        AndroidSettingsScreen(
                                             viewModel = viewModel,
                                             scheduleViewModel = scheduleViewModel,
                                             settingsViewModel = settingsViewModel,
@@ -4036,7 +4036,7 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
                                         titleBarHeight = activity?.titleBarHeight ?: 56.dp,
                                     )
 
-                                    1 -> SettingsScreen(
+                                    1 -> AndroidSettingsScreen(
                                         viewModel = viewModel,
                                         scheduleViewModel = scheduleViewModel,
                                         settingsViewModel = settingsViewModel,
