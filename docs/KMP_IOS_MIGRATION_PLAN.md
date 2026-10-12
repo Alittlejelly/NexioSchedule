@@ -214,10 +214,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
 1. **宿主层**（Route 已迁 11/20：About/教务导入 + 9 个文档壳；`AppNavHost` ✅ 已迁）——
-   `AppRouteContent` 的其余 Route（WidgetIntro/CourseReminder/HolidaySettings/WebDav/
-   CourseTimeSettings/CourseManage + 3 个数据管理）
-   / `MainActivity` / `NexioApplication`。这些是宿主壳，iOS 重写入口、Android 保留。
-   ✅ R13 已解（`cf0d5ee5`）；✅ iOS 入口已接真导航（`071d7883`，与 Android 同一个 AppNavHost）。
+   `AppRouteContent` 其余 Route（WidgetIntro/CourseReminder/HolidaySettings/WebDav/
+   CourseTimeSettings/CourseManage + 3 个数据管理）/ `MainActivity` / `NexioApplication`。
+   宿主壳 iOS 重写入口、Android 保留；✅ R13 已解、✅ iOS 入口已接真导航（`071d7883`）。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
