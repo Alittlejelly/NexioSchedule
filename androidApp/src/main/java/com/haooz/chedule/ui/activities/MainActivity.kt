@@ -90,6 +90,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
@@ -309,15 +311,24 @@ class MainActivity : ComponentActivity() {
         /** 二级页侧栏点选主 tab */
         const val EXTRA_MAIN_TAB = "extra_main_tab"
 
-        // 跨 Activity 重建复用，避免每次启动重新解码壁纸
-        @Volatile
-        var cachedWallpaperBitmap: android.graphics.Bitmap? = null
+        // 跨 Activity 重建复用，避免每次启动重新解码壁纸。
+        // 壁纸与变换已下沉到 :ui-shared 的 WallpaperStore（桌面/iOS 的 CourseScheduleApp
+        // 读同一份），这里只是**只读转发** —— 写一律走 WallpaperStore.setCached/saveTransform。
+        // ⚠ 行为与迁移前一致：进程内跨 Activity 重建复用。
+        val cachedWallpaperBitmap: android.graphics.Bitmap?
+            get() = com.haooz.chedule.data.WallpaperStore.currentImageBitmap()?.asAndroidBitmap()
 
-        @Volatile
-        var cachedWallpaperOffset: Offset = Offset.Zero
+        var cachedWallpaperOffset: Offset
+            get() = com.haooz.chedule.data.WallpaperStore.wallpaperOffset
+            set(value) = com.haooz.chedule.data.WallpaperStore.saveTransform(
+                value, com.haooz.chedule.data.WallpaperStore.transformScale
+            )
 
-        @Volatile
-        var cachedWallpaperScale: Float = 1f
+        var cachedWallpaperScale: Float
+            get() = com.haooz.chedule.data.WallpaperStore.transformScale
+            set(value) = com.haooz.chedule.data.WallpaperStore.saveTransform(
+                com.haooz.chedule.data.WallpaperStore.wallpaperOffset, value
+            )
 
         @Volatile
         var cachedAppearance: com.haooz.chedule.data.AppearanceConfig =
@@ -421,17 +432,20 @@ class MainActivity : ComponentActivity() {
             StatsReporter.reportInstallOnce()
         }
 
-        // 异步预加载搭配壁纸，Compose 侧已处理 cachedWallpaperBitmap=null
+        // 异步预加载搭配壁纸，Compose 侧已处理「无壁纸」的情况
         if (cachedWallpaperBitmap == null) {
             kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    // 单搭配：无 id 维度，直接读外观文件
-                    cachedWallpaperBitmap = ScheduleAppearance.loadWallpaper()
-                    cachedWallpaperOffset = Offset(
+                    // 单搭配：无 id 维度，直接读外观文件。
+                    //
+                    // 壁纸与变换的缓存已下沉到共享层 WallpaperStore（桌面/iOS 的
+                    // CourseScheduleApp 要读同一份）。这里负责「解码 → remap → 回填」。
+                    val bitmap = ScheduleAppearance.loadWallpaper()
+                    var offset = Offset(
                         ScheduleAppearance.getOffsetX(),
                         ScheduleAppearance.getOffsetY()
                     )
-                    cachedWallpaperScale = ScheduleAppearance.getScale()
+                    var scale = ScheduleAppearance.getScale()
                     val refW = ScheduleAppearance.getOffsetRefW()
                     val refH = ScheduleAppearance.getOffsetRefH()
                     val metrics = this@MainActivity.resources.displayMetrics
@@ -439,12 +453,16 @@ class MainActivity : ComponentActivity() {
                     val curH = metrics.heightPixels.toFloat()
                     if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
                         val mapped = remapWallpaperForScreen(
-                            cachedWallpaperOffset, cachedWallpaperScale, cachedWallpaperBitmap,
-                            refW, refH, curW, curH
+                            offset, scale, bitmap, refW, refH, curW, curH
                         )
-                        cachedWallpaperOffset = mapped.first
-                        cachedWallpaperScale = mapped.second
+                        offset = mapped.first
+                        scale = mapped.second
                     }
+                    // 回填共享层（ImageBitmap 视图，不复制像素）
+                    bitmap?.asImageBitmap()?.let {
+                        com.haooz.chedule.data.WallpaperStore.setCached(it)
+                    }
+                    com.haooz.chedule.data.WallpaperStore.saveTransform(offset, scale)
                     cachedAppearance = com.haooz.chedule.data.AppearanceConfig(
                         cardBlurRadius = ScheduleAppearance.getCardBlur(),
                         cardAlpha = ScheduleAppearance.getCardAlpha(),
@@ -2601,10 +2619,12 @@ fun CourseScheduleApp(privacyConsented: Boolean = true) {
             }
             val oldWallpaper = wallpaperBitmap
             wallpaperBitmap = bitmap
-            MainActivity.cachedWallpaperBitmap = bitmap
+            // 壁纸缓存与变换下沉到共享层 WallpaperStore（桌面/iOS 读同一份）
+            com.haooz.chedule.data.WallpaperStore.setCached(bitmap.asImageBitmap())
             wallpaperOffset = Offset.Zero
             val autoScale = computeWallpaperMinScale(bitmap, decodeW, decodeH)
             wallpaperScale = autoScale
+            com.haooz.chedule.data.WallpaperStore.saveTransform(Offset.Zero, autoScale)
             val isLight = computeWallpaperIsLight(bitmap)
             val idx = currentCombinationIndex
             if (idx in combinations.indices) {

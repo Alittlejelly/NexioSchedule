@@ -1,5 +1,6 @@
 package com.haooz.chedule.data
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
 import com.haooz.chedule.data.AppFiles
@@ -76,6 +77,59 @@ object WallpaperStore {
      */
     private var cached: ImageBitmap? = null
 
+    // ── 变换缓存（原先在 MainActivity 的 companion 里）──────────────────
+    //
+    // 为什么下沉：`cachedWallpaperOffset/Scale` 是「跨进程重建复用」的中间态 ——
+    // 横竖屏切换、进程被回收后重建，都要靠它把壁纸摆在用户上次调的位置。
+    // 放在 Activity 的 companion 上意味着**桌面/iOS 拿不到**，而这是纯数据
+    // （两个 Float + 一个 Offset），没有任何平台成分，理应共享。
+
+    /** 重映射到当前屏幕后的壁纸 offset（px）。与 [transformScale] 成对。 */
+    var wallpaperOffset: Offset = Offset.Zero
+        private set
+
+    /** 重映射到当前屏幕后的壁纸 scale（相对 ContentScale.Fit）。 */
+    var transformScale: Float = 1f
+        private set
+
+    /**
+     * 写入当前生效的壁纸变换。
+     *
+     * ⚠ 只在「已经 remap 到当前屏幕」之后调 —— 别把某个方向的中间值写进来，
+     *   否则旋转一圈后画面会漂（见 [WallpaperTransform.remap] 的 k 不变量的说明）。
+     */
+    fun saveTransform(offset: Offset, scale: Float) {
+        wallpaperOffset = offset
+        transformScale = scale
+    }
+
+    /**
+     * 把壁纸变换从 `fromW×fromH` 屏幕重映射到 `toW×toH`，并**记住结果**。
+     *
+     * @return 重映射后的 (offset, scale)；没有壁纸或尺寸非法时返回**当前值**（原样不动）
+     */
+    fun remapTransform(
+        fromW: Float,
+        fromH: Float,
+        toW: Float,
+        toH: Float,
+    ): Pair<Offset, Float> {
+        val bitmap = cached ?: return wallpaperOffset to transformScale
+        val (newOffset, newScale) = WallpaperTransform.remap(
+            offset = wallpaperOffset,
+            scale = transformScale,
+            bitmapW = bitmap.width,
+            bitmapH = bitmap.height,
+            fromW = fromW,
+            fromH = fromH,
+            toW = toW,
+            toH = toH,
+        )
+        wallpaperOffset = newOffset
+        transformScale = newScale
+        return newOffset to newScale
+    }
+
     /** 取当前生效壁纸；没有返回 null。命中缓存则不解码、不读盘。 */
     suspend fun load(): ImageBitmap? {
         cached?.let { return it }
@@ -133,6 +187,20 @@ object WallpaperStore {
         } catch (_: Exception) {
             // 删除失败不影响内存态已清；下次 load 会再试
         }
+    }
+
+    /**
+     * 当前内存里的壁纸实例（不解码、不读盘）。
+     *
+     * 给宿主层做「同一份壁纸只解码一次」的**身份比较**用 —— Android 的
+     * `recycleIndependentBitmap` 靠 `===` 判断该不该回收，换实例会误回收
+     * 正在显示的位图（画面直接黑掉）。
+     */
+    fun currentImageBitmap(): ImageBitmap? = cached
+
+    /** 宿主层直接替换缓存实例（如 Android 选完新壁纸、或外部改过盘上文件后）。 */
+    fun setCached(image: ImageBitmap?) {
+        cached = image
     }
 
     /**
