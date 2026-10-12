@@ -20,7 +20,8 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`ea266cd8`**（2026-10-12）。工作区**干净**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`d23c3bb8`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
+（`iosApp/nexioschedule.icon/` + pbxproj/Info.plist 改动，待用户自行提交）；KMP 侧干净。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
@@ -180,7 +181,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `ui/screens` | 13 / 3 | **待迁** —— `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
 | `ui/utils` | 70 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
 | ~~`ui/components`~~ | ✅ **0（已清零）** | 第二十七批 `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 已迁 |
-| `ui/navigation` | 11 / 1 | 待迁（只剩 `AppRouteContent` 的剩余 Route 映射；`AppNavHost` 已迁，Route 已迁 11/20） |
+| `ui/navigation` | 11 / 1 | 待迁（只剩 `AppRouteContent` 的剩余 Route 映射；`AppNavHost` 已迁，Route 已迁 12/20） |
 | `ui/effects` | 3 / 1 | 待迁（薄，`MiuixVisualEffectsPolicy` —— 本就平台专有） |
 | `data` | 6 / 1 | 待迁（`ScheduleAppearance`） |
 | `reminder` | 46 / 10 | 永不迁移 —— ✅ 提醒时刻算法**已抠进 `:core`**（`DayScheduleResolver`，第十五批） |
@@ -213,8 +214,8 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 **剩余待迁 22 文件 / 13.8k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. **宿主层**（Route 已迁 11/20：About/教务导入 + 9 个文档壳；`AppNavHost` ✅ 已迁）——
-   `AppRouteContent` 其余 Route（WidgetIntro/CourseReminder/HolidaySettings/WebDav/
+1. **宿主层**（Route 已迁 12/20：About/教务导入 + 9 个文档壳 + 节假日；`AppNavHost` ✅ 已迁）——
+   `AppRouteContent` 其余 Route（WidgetIntro/CourseReminder/WebDav/
    CourseTimeSettings/CourseManage + 3 个数据管理）/ `MainActivity` / `NexioApplication`。
    宿主壳 iOS 重写入口、Android 保留；✅ R13 已解、✅ iOS 入口已接真导航（`071d7883`）。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
@@ -258,6 +259,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `d23c3bb8` | **第三十五批**：`HolidaySettingsRoute` 迁 `:ui-shared` —— HttpURLConnection 改 `:core` HttpService（**该文件最后一个 java.net 触点清零**），Route 进度 **12/20** | 10-12 |
 | `ea266cd8` | **第三十四批**：4 个带注入的文档壳路由（偏好/更新/本地备份/AI 导入）迁 `:ui-shared`，Route 进度 **11/20**；iOS 剪贴板注入 UIPasteboard | 10-12 |
 | `846415f4` | **第三十三批**：5 个纯文档壳路由（更新日志/协议/隐私/交流/捐赠）迁 `:ui-shared`，Route 进度 7/20；iOS 入口同步接线 | 10-12 |
 | `071d7883` | **第三十二批**：**`AppNavHost` 迁 `:ui-shared`**（navigationevent → `:miuix` 的 `rememberNavigationBack`；屏幕圆角 expect/actual）；**iOS 入口接真导航**（与 Android 同一个导航根） | 10-12 |
@@ -266,8 +268,6 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `1377acaf` | **第二十九批**：`iosApp/` Xcode 工程落地（bundle `com.haooz.iosschedule`）+ `IosAppEntry`（A4 启动注入三件套）—— **模拟器首跑成功**，首屏注入自检存储/文件全 OK；踩坑：Foundation 类方法要显式 import、顶层函数别用 `init` 开头、build phase 要带 `-Pnexio.ios=true` + `JAVA_HOME` | 10-11 |
 | `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
 | `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
-| `231c74bc` | **第二十六批**：`WebViewScreen` 外壳迁 `:ui-shared`（1241→893 行）+ 新增 `ui/web/WebHost.kt` 契约 + `AndroidWebHost`（494 行，网页本体）；复核时修回写丢的 `findActivity` 的 `ContextWrapper` 分支 | 10-11 |
-| `bf06b6f9` | **第二十五批**：`CustomizeScheduleScreen` 迁 `:ui-shared`（壁纸/快照重灾区）；`Bitmap`→`ImageBitmap` + `CombinationThumbnail` 投影；`ThemeMode` 下沉 :core；**补扫描器规则抓 `"…".format()` 盲区** | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
