@@ -109,6 +109,59 @@ data class CombinationStyle(
     }
 }
 
+/**
+ * [AppearanceStyle]（共享层）⇄ [CombinationStyle]（本文件）的互转。
+ *
+ * 两份字段**逐字同名**，转换只是搬运 —— 这是有意的：`AppearanceStore`
+ * 在 `:ui-shared` 用前者存取，`CombinationStyle` 的调用点（页面/`parseSnapshotOrNull`）
+ * 还在用后者。等 `CourseScheduleApp` 迁完，后者就可以删了。
+ */
+fun AppearanceStyle.toCombinationStyle(): CombinationStyle = CombinationStyle(
+    offsetX = offsetX,
+    offsetY = offsetY,
+    scale = scale,
+    offsetRefW = offsetRefW,
+    offsetRefH = offsetRefH,
+    cardBlur = cardBlur,
+    cardAlpha = cardAlpha,
+    cardSurfaceAlpha = cardSurfaceAlpha,
+    cardHeight = cardHeight,
+    cardCornerRadius = cardCornerRadius,
+    wallpaperBrightness = wallpaperBrightness,
+    wallpaperIsLight = wallpaperIsLight,
+    showBreakDividers = showBreakDividers,
+    cardContentAlignment = cardContentAlignment,
+    cardTextColor = cardTextColor,
+    cardTextScale = cardTextScale,
+    showClassroom = showClassroom,
+    showTeacher = showTeacher,
+    cardRefraction = cardRefraction,
+    wallpaperBlur = wallpaperBlur,
+)
+
+fun CombinationStyle.toAppearanceStyle(): AppearanceStyle = AppearanceStyle(
+    offsetX = offsetX,
+    offsetY = offsetY,
+    scale = scale,
+    offsetRefW = offsetRefW,
+    offsetRefH = offsetRefH,
+    cardBlur = cardBlur,
+    cardAlpha = cardAlpha,
+    cardSurfaceAlpha = cardSurfaceAlpha,
+    cardHeight = cardHeight,
+    cardCornerRadius = cardCornerRadius,
+    wallpaperBrightness = wallpaperBrightness,
+    wallpaperIsLight = wallpaperIsLight,
+    showBreakDividers = showBreakDividers,
+    cardContentAlignment = cardContentAlignment,
+    cardTextColor = cardTextColor,
+    cardTextScale = cardTextScale,
+    showClassroom = showClassroom,
+    showTeacher = showTeacher,
+    cardRefraction = cardRefraction,
+    wallpaperBlur = wallpaperBlur,
+)
+
 /** 运行期的外观快照（壁纸位图 + 变换 + 参数），供课表页直接消费 */
 data class Combination(
     val bitmap: Bitmap?,
@@ -203,15 +256,6 @@ object ScheduleAppearance {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
 
-    /**
-     * 批量保存期间累积的写入；非 null 表示正在批量中。
-     *
-     * 原实现共享一个 `SharedPreferences.Editor`（可跨调用累积、最后 apply 一次）；
-     * `KeyValueStore.edit` 是一次性事务、没有可跨调用的 Editor，
-     * 因此改成**累积写入块**，[batchSave] 结束时一次性提交 —— 语义等价
-     * （都是「块内多次写入只落盘一次」），且滑杆拖动这种高频场景仍只提交一次。
-     */
-    private var pendingWrites: (KeyValueEditor.() -> Unit)? = null
 
     fun init(context: Context) {
         if (::appContext.isInitialized) return
@@ -284,32 +328,13 @@ object ScheduleAppearance {
     private const val LEGACY_KEY_COMBINATION_IDS = "combination_ids"
     private const val LEGACY_KEY_CURRENT_COMBINATION_ID = "current_combination_id"
 
-    /** 批量保存外观参数，块内写入合并为一次提交；可嵌套 */
-    fun batchSave(block: () -> Unit) {
-        if (pendingWrites != null) {
-            block()
-            return
-        }
-        pendingWrites = {}
-        try {
-            block()
-        } finally {
-            val writes = pendingWrites ?: {}
-            pendingWrites = null
-            prefs.edit(writes)
-        }
-    }
-
-    /** 所有写入统一入口：批量期间累积，否则独立提交 */
-    private fun edit(block: KeyValueEditor.() -> Unit) {
-        val pending = pendingWrites
-        if (pending != null) {
-            // 累积：先跑已攒下的写入，再跑本次
-            pendingWrites = { pending(); block() }
-        } else {
-            prefs.edit(block)
-        }
-    }
+    /**
+     * 批量保存外观参数，块内写入合并为一次提交；可嵌套。
+     *
+     * 委托 `:ui-shared` 的 [AppearanceStore.batchSave] —— 合并逻辑在共享层，
+     * 两端同一套口径（第四十二批）。
+     */
+    fun batchSave(block: () -> Unit) = AppearanceStore.batchSave(block)
 
     // ── 参数快照 ────────────────────────────────────────────
 
@@ -321,20 +346,47 @@ object ScheduleAppearance {
         return style
     }
 
+    /**
+     * 当前外观快照 —— 委托 `:ui-shared` 的 [AppearanceStore]（第四十二批）。
+     *
+     * 返回类型仍是 [CombinationStyle]（androidApp 的既有类型，调用点零改动），
+     * 内部从共享层的 [AppearanceStyle] 转过来。两份字段逐字同名，
+     * 转换只是字段搬运。
+     */
     fun getStyle(): CombinationStyle {
         cached?.let { return it }
-        val json = prefs.getStringOrNull(FILE_STYLE_KEY)
-        val style = if (json == null) {
-            CombinationStyle().also { saveStyle(it) }
-        } else {
-            CombinationStyle.parseSnapshotOrNull(gson, json) ?: restoreAfterBadSnapshot()
-        }
+        val style = AppearanceStore.currentStyle()
+            .let { s -> restoreAfterBadSnapshotIfNeeded(s) }
+            .toCombinationStyle()
         cached = style
         return style
     }
 
+    /** 快照坏掉（键名对不上）时用现有壁纸重测光后重存，避免主题开关整条失效 */
+    private fun restoreAfterBadSnapshotIfNeeded(style: AppearanceStyle): AppearanceStyle {
+        // AppearanceStore 解析失败会回落默认值 —— 用「盘上是否有过写入」区分
+        // 「真默认」与「坏快照被兜住了」，只有后者才需要重测光重存。
+        val raw = runCatching { prefs.getStringOrNull(FILE_STYLE_KEY) }.getOrNull()
+        if (raw != null && style == AppearanceStyle.defaults() &&
+            AppearanceStyleCodec.decodeOrNull(raw) == null
+        ) {
+            val isLight = computeWallpaperIsLight(loadWallpaper())
+            val fixed = style.copy(wallpaperIsLight = isLight)
+            AppearanceStore.saveStyle(fixed)
+            return fixed
+        }
+        return style
+    }
+
+    /**
+     * 覆盖写入快照 —— 委托 `:ui-shared` 的 [AppearanceStore]（第四十二批）。
+     *
+     * 写入路径从「Gson 序列化 CombinationStyle」换成「转 AppearanceStyle 后由
+     * AppearanceStyleCodec 编码」。两份字段逐字同名，JSON 键名不变 ——
+     * 这是存量用户外观设置还能读出来的保证。
+     */
     fun saveStyle(style: CombinationStyle) {
-        edit { putString(FILE_STYLE_KEY, gson.toJson(style)) }
+        AppearanceStore.saveStyle(style.toAppearanceStyle())
         cached = style
     }
 
