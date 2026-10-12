@@ -744,8 +744,9 @@ private fun MorePopupMenus(
     enabled: Boolean = true,
 ) {
     if (!enabled) {
-        // 兜底：若进入平板前菜单正开着，强制收起，避免残留展开态
-        LaunchedEffect(Unit) {
+        // 菜单开着时切进/切出禁用场景（平板 rail、课表外观、课表切换）要强制收起，
+        // 否则展开态会盖在新页面上还能点。用 enabled 做 key，翻转即重跑。
+        LaunchedEffect(enabled) {
             if (showMorePopup) onMorePopupDismiss()
             if (showTodayMorePopup) onTodayMorePopupDismiss()
         }
@@ -2906,8 +2907,10 @@ fun CourseScheduleApp(
                                     todayMaterialAlpha = todayMaterialAlpha.value,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     isShiftMode = isShiftMode,
-                                    // 平板（rail）右上角不显示「更多」
-                                    enabled = navBarStyle != "rail",
+                                    // 平板（rail）右上角不显示「更多」；课表外观 / 课表切换页也不显示
+                                    // —— 那两页有自己的顶栏，「更多」是浮层里的独立 Box，
+                                    // 不跟它们的开洞动画退场，留着会停在旧顶栏高度且仍可点。
+                                    enabled = navBarStyle != "rail" && !showCustomizePage && !showSwitchSchedule,
                                     // 预测性返回由 LiquidGlassDropdownMenu 内部驱动：
                                     // 它操作的就是这里传入的同一个 fraction Animatable，
                                     // 外面再 snapTo/animateTo 一遍会和它互相 cancel，动画直接卡死。
