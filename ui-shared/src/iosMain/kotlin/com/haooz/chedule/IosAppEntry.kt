@@ -41,7 +41,9 @@ import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.BackupAndMigrationRoute
 import com.haooz.chedule.ui.navigation.ChangelogRoute
 import com.haooz.chedule.ui.navigation.CommunicationRoute
+import com.haooz.chedule.ui.navigation.CourseManageRoute
 import com.haooz.chedule.ui.navigation.CourseReminderRoute
+import com.haooz.chedule.ui.navigation.CourseTimeSettingsRoute
 import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
@@ -128,6 +130,8 @@ private val IOS_HOME_ROUTES: List<Pair<String, AppRoute>> = listOf(
     "应用偏好设置" to AppRoute.PreferenceSettings,
     "更新设置" to AppRoute.UpdateSettings,
     "课程提醒" to AppRoute.CourseReminder,
+    "课表节数与时间" to AppRoute.CourseTimeSettings,
+    "课程管理" to AppRoute.CourseManage,
     "节假日与调休" to AppRoute.HolidaySettings,
     "WebDAV 云备份" to AppRoute.WebDavSettings,
     "课表导入" to AppRoute.ScheduleImport,
@@ -206,7 +210,11 @@ private fun NexioIosRoot() {
                     router = router,
                     mode = ScheduleDataManageMode.Backup,
                 )
-                // 剩下的 CourseTimeSettings / CourseManage 等路由壳迁完再接线
+                // 课表节数与时间 / 课程管理（第三十八批）：iOS 没有自由小窗，传 false
+                AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
+                AppRoute.CourseManage -> CourseManageRoute(router)
+                // 教务导入要 WKWebView 桥接（IosWebHost 未写），暂不开
+                AppRoute.EducationalImport -> {}
                 else -> {}
             }
         }
