@@ -20,7 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`4d2d4198`**（2026-10-11）。工作区**干净**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`cf0d5ee5`**（2026-10-12）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
@@ -215,7 +215,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 1. **宿主层**（进行中，已迁 2/12 个 Route）—— `AppRouteContent` 的其余 Route / `AppNavHost`
    （navigationevent 最后残留）/ `MainActivity` / `NexioApplication`。这些是宿主壳，
-   iOS 会重写入口，Android 保留。⚠ 迁完也**先别在 iOS 入口引用**，R13 未解。
+   iOS 会重写入口，Android 保留。✅ R13 已解（`cf0d5ee5`），iOS 入口可正常引用真实页面。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
@@ -257,6 +257,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `cf0d5ee5` | **第三十一批**：**R13 解** —— `miuix-preference` fork 进 `:miuix`（官方 artifact 三处移除）；iOS 入口首屏接真实页面 `AboutRoute`，**模拟器实跑通过** | 10-12 |
 | `a1f7897d` | **第三十批**：宿主层开工 —— `EducationalImportRoute` / `AboutRoute` 进 `:ui-shared`（Android 侧改 `Android*` 注入包装）；修 Xcode 脚本 phase 未声明 Output Files（改了 Kotlin 不重新链接）；暴露 R13 | 10-12 |
 | `1377acaf` | **第二十九批**：`iosApp/` Xcode 工程落地（bundle `com.haooz.iosschedule`）+ `IosAppEntry`（A4 启动注入三件套）—— **模拟器首跑成功**，首屏注入自检存储/文件全 OK；踩坑：Foundation 类方法要显式 import、顶层函数别用 `init` 开头、build phase 要带 `-Pnexio.ios=true` + `JAVA_HOME` | 10-11 |
 | `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
@@ -267,9 +268,6 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `73677f72` | **miuix 补成完整 fork**（119 文件自包含）→ 三处排除官方 `miuix-ui`；**iOS framework 两个目标链接成功**（R10 解）；顺带消掉 Android 侧两份 miuix-ui 混用的 NoSuchMethodError 隐患 | 10-11 |
 | `c4bb6bb9` | **首次真编 iOS**：`:ui-shared` 挂 `iosArm64`/`iosSimulatorArm64` + framework；四模块 iOS 编译全绿、模拟器跑 109 用例；修 4 处 JVM 专有 API；force `kotlinx-datetime` 0.6.2；**暴露 R10（link 阻塞）** | 10-11 |
 | `23a7a369` | **第二十三批**：`BackupAndMigrationScreen` 迁 `:ui-shared` —— **androidPane 留守 dest 清零**；抽 `ScheduleFileController`；`parseIcsFile`→`:core`、`parseShare*`+`applyScheduleData`→`:ui-shared`；修 `WebDavSettingsScreen` 全限定名 `SimpleDateFormat` 漏报 | 10-11 |
-| `4dc2139d` `9c2cba60` `33154249` | **R2 读侧 Gson→kotlinx**：导入通道 + 恢复门禁 + 扫描统计，真实备份 round-trip 回归 9 用例 | 10-11 |
-| `7ce095fe` | `TabletSettingsScreen` 外壳迁 `:ui-shared`（设置宿主两栏）；8 dest androidPane 槽位过渡 | 10-11 |
-| `0b755b75` | **R2 写侧完成**：备份 JSON encodeBackupJson（skip-nulls+pretty），**备份路径 Gson 清零** | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
@@ -442,7 +440,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | ✅ **模拟器首跑成功**（第二十九批，`iosApp/` 工程 + 注入自检全 OK）；完整导航待宿主层迁移 |
+| iOS 已可用 | ✅ **模拟器跑通真实页面**（第三十一批，`AboutRoute` 渲染正常）；完整导航待宿主层迁移，`IosWebHost` 未写 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
@@ -562,7 +560,7 @@ AppFiles.init(
 | ~~R10~~ | ~~`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名~~ | — | **已解**（`73677f72`）：补成完整 fork + 三处 exclude 官方 miuix-ui。机制见下方专条，**别再退回部分 fork** |
 | R11 | `kotlinx-datetime` 在 iOS 变体被 CMP material3 顶到 0.7.1 | 同一二进制两个版本 → 链接必炸 | ✅ 已在根 `build.gradle.kts` force 回 0.6.2；0.7 升级要**全项目一起做** |
 | R12 | checkKmpPurity 抓不到「全限定名」java API | iOS 编不过 | ✅ 已由 `:ui-shared` 的 iOS 编译兜住；大文件迁移时仍要 grep `java.` 字面量 |
-| **R13** | iOS 入口引用真实页面后，链接报 `Undefined symbols … miuix.kmp.preference#ArrowPreference` | iOS 接不上真实页面 | 官方 miuix 子库（preference/icons/blur）的 klib 进不了链接图。⚠ 之前「能跑」只是 Xcode 没重新链接（见 §5 `a1f7897d`）；**接真实页面前必须先解** |
+| ~~R13~~ | ~~iOS 入口引用真实页面后，链接报 `Undefined symbols … preference#ArrowPreference`~~ | — | **已解**（`cf0d5ee5`）：`miuix-preference` fork 进 `:miuix`（`preference/` 8 文件，只 fork 这一个目录），官方 artifact 三处移除。与 R10 同机制，见下方专条 |
 
 ### R10 详述 —— 已解，但机制值得记住（**别让 fork 再变回「部分 fork」**）
 
