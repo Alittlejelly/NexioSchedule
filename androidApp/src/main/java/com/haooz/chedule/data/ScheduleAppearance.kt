@@ -175,6 +175,17 @@ object ScheduleAppearance {
     /** 壁纸文件名（存 filesDir） */
     private const val WALLPAPER_FILE = "appearance_wallpaper.webp"
 
+    /**
+     * 壁纸文件所在目录 —— 供 `:ui-shared` 的 [WallpaperStore] 复用同一个落盘位置。
+     *
+     * ⚠ 必须与 [loadWallpaper] / [saveWallpaper] 内部用的 `File(appContext.filesDir, …)`
+     * 逐字一致：两边指的不是同一个地方 = 存量用户壁纸静默丢失。
+     */
+    fun appFilesDir(): java.io.File = appContext.filesDir
+
+    /** 屏幕显示指标 —— 供 [WallpaperStore] 计算壁纸目标分辨率（长边/短边）。 */
+    fun displayMetrics(): android.util.DisplayMetrics = appContext.resources.displayMetrics
+
     private lateinit var appContext: Context
     private val gson = Gson()
     private lateinit var prefs: KeyValueStore

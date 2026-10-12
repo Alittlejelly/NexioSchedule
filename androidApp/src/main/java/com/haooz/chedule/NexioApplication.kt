@@ -58,6 +58,11 @@ class NexioApplication : Application() {
         )
         // 课表外观单例：尽早初始化，主界面首帧即可读壁纸与卡片参数
         com.haooz.chedule.data.ScheduleAppearance.init(this)
+        // 壁纸后端：:ui-shared 的 WallpaperStore 走「接口 + 启动注入」，
+        // Android 实现原样委托 ScheduleAppearance（降采样/LruCache/WebP 80 口径不变）。
+        // 必须在 ScheduleAppearance.init 之后 —— 后端读它。
+        com.haooz.chedule.data.WallpaperStore.backend =
+            com.haooz.chedule.data.AndroidWallpaperBackend()
         // 课程变更后的平台副作用（重排提醒 / 手表同步 / 刷新小组件）。
         // CourseViewModel / ScheduleViewModel 已进 :ui-shared，不能直接碰 reminder/widget，
         // 只能经 :core 的 ScheduleEffects 出口回调到这里 —— 未注入时静默丢弃。

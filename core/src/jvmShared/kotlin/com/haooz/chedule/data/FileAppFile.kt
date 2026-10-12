@@ -26,6 +26,8 @@ class FileAppFile(private val file: File) : AppFile {
         file.mkdirs()
     }
 
+    override fun delete(): Boolean = file.delete()
+
     override fun resolve(relative: String): AppFile = FileAppFile(File(file, relative))
 
     override fun toString(): String = "FileAppFile($path)"

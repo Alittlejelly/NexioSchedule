@@ -28,8 +28,10 @@ import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.UserDefaultsStore
+import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
@@ -97,6 +99,10 @@ fun bootstrapNexioIos() {
                 ?: error("内置资源读取失败: $path")
         },
     )
+
+    // 壁纸后端：iOS 用 UIImage（JPEG 编码）+ 共享的 AppFiles 落盘路径。
+    // 与 Android 同一条「接口 + 启动注入」链路，只是实现在 iosMain 里。
+    WallpaperStore.backend = IosWallpaperBackend()
 }
 
 /**

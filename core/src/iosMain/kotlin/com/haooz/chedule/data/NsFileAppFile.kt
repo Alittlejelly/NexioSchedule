@@ -54,6 +54,9 @@ class NsFileAppFile(private val filePath: String) : AppFile {
         createDirectory(filePath)
     }
 
+    override fun delete(): Boolean =
+        NSFileManager.defaultManager.removeItemAtPath(filePath, null)
+
     override fun resolve(relative: String): AppFile = NsFileAppFile("$filePath/$relative")
 
     override fun toString(): String = "NsFileAppFile($filePath)"

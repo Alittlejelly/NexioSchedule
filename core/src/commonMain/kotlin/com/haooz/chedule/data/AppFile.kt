@@ -23,6 +23,14 @@ interface AppFile {
     /** 把本路径当作目录创建（含父级）。 */
     fun mkdirs()
 
+    /**
+     * 删除本文件（不存在时返回 false，不抛）。
+     *
+     * 给壁纸「持久化清除」用 —— 早先只有 Android 的 `File.delete()` 能删，
+     * 共享层只能靠「写空文件」近似，残留文件会让备份/迁移多带一份垃圾。
+     */
+    fun delete(): Boolean = false
+
     /** 解析相对子路径（以 `/` 分隔）。 */
     fun resolve(relative: String): AppFile
 }
