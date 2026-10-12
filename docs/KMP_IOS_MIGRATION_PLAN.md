@@ -230,8 +230,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
    onHolidayDataChanged / onPickWallpaperImage / onShareSchedule / onReadSharedFileText /
    sharedFileIntent / settingsPane / todayAssistantCard / updateController / 位图回收）。
 6. ~~iOS 工程真机验证~~ —— ✅ **第四十三批后运行时已验证**（真主界面在 iOS 跑通）。启动注入（A4）✅ 已接。
-7. **`IosWebHost`（WKWebView）** —— 教务导入唯一的缺件（契约 `ui/web/WebHost.kt` 7 个方法就位，
-   **`WebViewScreen` 与三个对话框一行不用动**）。
+7. **`IosWebHost`（WKWebView）—— 现在只剩这一个功能缺件**（第四十四/四十五批已把文件选择器、
+   选壁纸、分享、外部分享、状态栏、今日助手全部原生接上）。契约 `ui/web/WebHost.kt` 7 个方法就位，
+   **`WebViewScreen` 与三个对话框一行不用动**。
 8. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
 
 ### 🔑 迁移框架铁律（用户 10-11 拍板）
@@ -269,6 +270,8 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `afc40de6` | **第四十五批**：今日助手卡拆分 —— 卡片本体/纯逻辑（669 行）迁 `:ui-shared`，`androidApp/TodayAssistant.kt` 1047→330 行只剩定位/HTTP/缓存；天气与定位改为参数注入，烟花走 `fireworksOverlay` 槽位；iOS 接 CoreLocation + 共享 HttpService，`skycon` 英文枚举**必须转中文**（图标按中文匹配） | 10-12 |
+| `dea8a3b3` | **第四十四批**：iOS 六项平台能力原生实现 —— ① 文件选择器 UIDocumentPicker ② PHPicker 选壁纸（必须 iOS 侧降采样）③ 分享课表（HttpService 上传 + skia 绘口令 + UIActivityViewController）④ `.onOpenURL` 接收外部分享（Compose `mutableStateOf` 存，否则不重组）⑤ 状态栏样式（Kotlin 持状态、Swift 调废弃全局 API）⑥ 检查更新去掉。附带补 iOS 原生 toast HUD | 10-12 |
 | `ebc209ad` | **第四十三批**：`CourseScheduleApp` 迁 `:ui-shared` —— 真主界面跨平台，`MainActivity.kt` 6070→838 行（只留 `AndroidCourseScheduleApp` 装配层）；iOS 入口换真首页、删临时导航台。12 个注入参数承接 Android 能力。**位图 ImageBitmap 化后 `recycle()` 只能靠注入**（共享层无 recycle，22 处回收点走 `bitmapRecycler`） | 10-12 |
 | `e32f494b` | **第四十二批**：外观存储跨平台化 —— `AppearanceStore`/`AppearanceStyle`/`AppearanceStyleCodec` 进 `:core`，`ScheduleAppearance` 降级为迁移桥；**枚举落盘是 ordinal 不是 name**（差点静默丢用户设置，7 个金样测试固化） | 10-12 |
 | `ad0c2105` | **第四十一批**：壁纸缓存（`MainActivity.cachedWallpaper*` 三件套）下沉 `WallpaperStore`，companion 改只读转发；offset/scale **必须成对写** | 10-12 |
@@ -355,7 +358,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 ## 6. 🤝 给 iOS 开发者的交接清单
 
-### A0. ⚠ 三项工程配置 —— 不做则 App 起不来 / 调不到 Kotlin 代码
+### A0. ⚠ 四项工程配置 —— 不做则 App 起不来 / 调不到 Kotlin 代码 / 后端的接口全废
 
 **A0-1 `binaries.framework`** —— ✅ `:ui-shared` 已声明并**链接成功**（`NexioShared`，
 `isStatic = true`，`iosArm64` + `iosSimulatorArm64`；App 的 Compose 界面全来自这里）。
@@ -373,6 +376,44 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 **A0-3 Xcode 的 shared scheme 要提交** —— ✅ `iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme` 已入库；否则 CI 报 `does not contain a scheme named YourApp`
 （自动生成的在 `xcuserdata`，通常被 gitignore）。手动提交
 `YourApp.xcodeproj/xcshareddata/xcschemes/`。
+
+**A0-4 `Info.plist` 必须放行明文 HTTP（ATS）** —— ✅ 已设 `NSAllowsArbitraryLoads = true`（2026-10-12）。
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+	<key>NSAllowsArbitraryLoads</key>
+	<true/>
+</dict>
+```
+
+不设的后果：**后端接口在 iOS 上全部静默失效**，日志是
+`NSURLErrorDomain Code=-1022 … App Transport Security policy requires the use of a secure connection`：
+
+| 调用点 | 地址 |
+|---|---|
+| `:core` `NoticeFetcher` / `StatsReporter` / `AppreciationFetcher`（2 条） | `http://182.92.193.223:3000/api/…` |
+| `:ui-shared` `iosMain` `IosScheduleShare.kt` 的 `ShareCodeApi`（分享口令） | `http://182.92.193.223:3000/api/share` |
+| 用户自填的 WebDAV 地址（多为局域网明文 HTTP） | 用户输入 |
+
+⚠ **为什么不是「只给这个域名开例外」**：ATS 的 `NSExceptionDomains` **只匹配域名，对 IP 字面量不生效**
+（[SO 实例](https://stackoverflow.com/questions/32695030/nsexceptionalallowsinsecurehttploads-not-working-for-ip-addresses)：iOS 9 起就是域名才管用），
+所以后端只有 IP 时只能整体放行。这与 Android 侧
+`androidApp/src/main/res/xml/network_security_config.xml` 的 `<base-config cleartextTrafficPermitted="true">`
+是**同一条策略**（那边也是全局允许明文）。
+**App Store 提交时需要在审核备注里说明理由**（2017 年起 ATS 例外要写 justification）。
+
+⚠ 以后补 `IosWebHost`（WKWebView 的教务导入，学校站点基本是明文 http）时注意：
+`NSAllowsArbitraryLoads` **不管 WebView 里的内容**，要另加 `NSAllowsArbitraryLoadsInWebContent = true`。
+
+**想收紧成「ATS 全绿」的替代方案**（未采用，供以后决定）：后端其实有域名
+`https://nexioschedule.icu`（解析到同一台 182.92.193.223，证书 Let's Encrypt、
+TLS 1.3、四个端点实测都 200），把 `:core` 的 base URL 换成它即可，零 ATS 例外。
+没直接换的原因：`androidApp/…/ScheduleExport.kt` 的 `ShareCodeApi` 与 `:core` 的
+`NoticeFetcher.kt` 顶部都留了同一句作者注释「HTTPS(443) 在部分运营商网络下 TLS 握手被干扰
+（Connection reset），改用 3000 直达后端」—— 那是**网络可达性**上的取舍，
+iOS 用户会撞同一堵墙，所以没擅自改运行时地址。真要走这条路，建议用 expect/actual 按平台给 base URL
+（Android/桌面维持 3000 直连，iOS 走域名 HTTPS），别五个地址一起换。
 
 ### A1. `HttpService` —— ✅ 已实现（`iosMain/HttpService.ios.kt`）
 
@@ -488,7 +529,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | 🟢 **真主界面已就位并跑通**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面，运行时已验证）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。⚠ `IosWebHost`（WKWebView）未写，教务导入暂不可用；壁纸字节序仍未单独验证 |
+| iOS 已可用 | 🟢 **真主界面已就位并跑通**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面，运行时已验证）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。文件选择器/选壁纸/分享/外部分享/状态栏/今日助手卡**均已原生实现**（第四十四/四十五批）。⚠ `IosWebHost`（WKWebView）未写 → 教务导入仍不可用；壁纸字节序仍未单独验证；本批运行时未验证 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
