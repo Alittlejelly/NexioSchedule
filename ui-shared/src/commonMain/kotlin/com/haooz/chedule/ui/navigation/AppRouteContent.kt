@@ -1,16 +1,32 @@
 package com.haooz.chedule.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.BackupFileController
 import com.haooz.chedule.data.DiagnosticRecorder
+import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.HttpTimeouts
 import com.haooz.chedule.data.NoopBackupFileController
 import com.haooz.chedule.data.NoopDiagnosticRecorder
 import com.haooz.chedule.data.NoopUpdateController
 import com.haooz.chedule.data.UpdateController
+import com.haooz.chedule.data.createHttpService
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
@@ -18,17 +34,24 @@ import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.activities.EducationalImportScreen
+import com.haooz.chedule.ui.activities.HolidaySettingsScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
+import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Update
 
 /**
  * 路由宿主的**跨平台**部分 —— 从 `:androidApp` 的 `AppRouteContent` 逐批搬过来
@@ -249,6 +272,96 @@ fun AiImportRoute(
             scrollBehavior = scrollBehavior,
             liquidGlassBackdrop = backdrop,
             onCopyToClipboard = onCopyToClipboard,
+        )
+    }
+}
+
+/**
+ * 节假日与调休路由（第三十五批）。
+ *
+ * 迁移前网络拉取走 `HttpURLConnection` + `Dispatchers.IO/Main`（Android 专有）；
+ * 现在统一走 `:core` 的 [createHttpService]（iOS 是 NSURLSession，桌面是 OkHttp），
+ * 协程调度用 [ioDispatcher] —— 路由本体已完全跨平台。
+ *
+ * @param onHolidayDataChanged 节假日数据变更后的平台副作用（重排提醒/刷小部件），
+ *   Android 宿主注入；桌面/iOS 默认空实现。
+ */
+@Composable
+fun HolidaySettingsRoute(
+    router: AppRouter,
+    onHolidayDataChanged: () -> Unit = {},
+) {
+    val http = remember { createHttpService(HttpTimeouts(connectSeconds = 10, readSeconds = 10)) }
+    val scope = rememberCoroutineScope()
+    val currentDate = remember { todayLocalDate() }
+    var year by remember { mutableIntStateOf(currentDate.year) }
+    var entries by remember { mutableStateOf(HolidayManager.load(year)) }
+    var loading by remember { mutableStateOf(false) }
+
+    fun reload() {
+        entries = HolidayManager.load(year)
+    }
+
+    fun requestYear(targetYear: Int) {
+        if (loading) return
+        loading = true
+        scope.launch {
+            val result = runCatching {
+                val response = withContext(ioDispatcher) {
+                    http.get(HolidayManager.sourceUrlFor(targetYear))
+                }
+                HolidayManager.parseSourceResponse(response.text)
+            }.getOrDefault(emptyList())
+            val merged = HolidayManager.mergeApiEntries(targetYear, result)
+            if (targetYear == year) reload()
+            loading = false
+            if (merged && result.isNotEmpty()) {
+                // API 合并同样要重排提醒并刷小部件，不能只改本地 SP
+                onHolidayDataChanged()
+            }
+        }
+    }
+
+    DocumentPageScaffold(
+        title = "节假日与调休",
+        onBack = { router.popBack() },
+        endAction = { backdropAlpha, shadowAlpha ->
+            if (loading) {
+                Box(
+                    modifier = Modifier
+                        .offset(x = (-6).dp, y = (-4).dp)
+                        .size(40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        progress = null,
+                    )
+                }
+            } else {
+                LiquidTopBarButton(
+                    onClick = { requestYear(year) },
+                    backdrop = rememberLayerBackdrop(),
+                    icon = MiuixIcons.Normal.Update,
+                    contentDescription = "更新",
+                    iconSize = 28.dp,
+                    backdropAlpha = backdropAlpha,
+                    shadowAlpha = shadowAlpha,
+                )
+            }
+        },
+    ) { scrollBehavior, backdrop ->
+        HolidaySettingsScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            year = year,
+            entries = entries,
+            onYearChange = { newYear ->
+                year = newYear
+                reload()
+            },
+            reload = { reload() },
+            onHolidayDataChanged = onHolidayDataChanged,
         )
     }
 }

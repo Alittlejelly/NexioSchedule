@@ -35,6 +35,7 @@ import com.haooz.chedule.ui.navigation.AppNavHost
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.ChangelogRoute
 import com.haooz.chedule.ui.navigation.CommunicationRoute
+import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
 import com.haooz.chedule.ui.navigation.MainLayerTransition
@@ -142,6 +143,8 @@ private fun NexioIosRoot() {
                         UIPasteboard.generalPasteboard.string = text
                     },
                 )
+                // 节假日（第三十五批）：网络拉取已是跨平台 HttpService（iOS = NSURLSession）
+                AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
                 // 其余路由等对应页面/能力迁齐后在此接线
                 else -> {}
             }

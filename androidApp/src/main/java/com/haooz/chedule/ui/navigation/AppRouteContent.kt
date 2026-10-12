@@ -63,9 +63,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.TimeConfig
-import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
@@ -102,17 +100,13 @@ import com.haooz.chedule.ui.utils.ShareCodeApi
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
-import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.performScheduleShare
 import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -124,8 +118,6 @@ import top.yukonga.miuix.kmp.icon.extended.Update
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
@@ -144,8 +136,8 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
  * 纯映射 + DocumentPageScaffold：
  *  - `isInFreeformWindow()` 的 `LocalActivity.current as? MainActivity` 强转；
  *  - CourseManageRoute / CourseTimeSettingsRoute 持有的 Bitmap 卡片快照 + ApiCompat 模糊；
- *  - HolidaySettingsRoute 的 HttpURLConnection 直连；
  *  - CourseReminderHelper / IslandNotificationHelper 等平台副作用调用。
+ * （~~HolidaySettings 的 HttpURLConnection~~ 已随第三十五批迁出 —— 换成 :core 的 HttpService。）
  *
  * 已迁走的页面本体在 `:ui-shared` 的 `com.haooz.chedule.ui.activities/screens`，
  * 未迁的在 androidApp 同包下 —— 两模块**共享包名**，靠「无同名顶层符号」维持，
@@ -229,10 +221,16 @@ fun AppRouteContent(
         AppRoute.ScheduleBackup -> BackupAndMigrationRoute(router, ScheduleDataManageMode.Backup)
 
         // ── 带额外元素的页面（顶栏按钮 / 底部悬浮按钮 / 弹窗）──
-        AppRoute.AiImport -> AiImportRoute(router)
         AppRoute.WidgetIntro -> WidgetIntroRoute(router)
         AppRoute.CourseReminder -> CourseReminderRoute(router)
-        AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
+        AppRoute.HolidaySettings -> {
+            val context = LocalContext.current
+            // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
+            HolidaySettingsRoute(
+                router = router,
+                onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+            )
+        }
         AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
@@ -364,92 +362,6 @@ private fun CourseReminderRoute(router: AppRouter) {
             liquidGlassBackdrop = backdrop,
             // Android 提醒能力（闹钟/电池/权限/设置页跳转）注入
             reminderController = remember { AndroidReminderController(context) },
-        )
-    }
-}
-
-/** 节假日与调休（原 HolidaySettingsActivity，194 行，含网络拉取）。 */
-@Composable
-private fun HolidaySettingsRoute(router: AppRouter) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val currentDate = remember { todayLocalDate() }
-    var year by remember { mutableIntStateOf(currentDate.year) }
-    var entries by remember { mutableStateOf(HolidayManager.load(year)) }
-    var loading by remember { mutableStateOf(false) }
-
-    fun reload() {
-        entries = HolidayManager.load(year)
-    }
-
-    fun requestYear(targetYear: Int) {
-        if (loading) return
-        loading = true
-        scope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                val conn = URL(HolidayManager.sourceUrlFor(targetYear))
-                    .openConnection() as HttpURLConnection
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 10_000
-                val text = conn.inputStream.bufferedReader().use { it.readText() }
-                conn.disconnect()
-                HolidayManager.parseSourceResponse(text)
-            }.getOrDefault(emptyList())
-            withContext(Dispatchers.Main) {
-                val merged = HolidayManager.mergeApiEntries(targetYear, result)
-                if (targetYear == year) reload()
-                loading = false
-                if (merged && result.isNotEmpty()) {
-                    // API 合并同样要重排提醒并刷小部件，不能只改本地 SP
-                    CourseReminderHelper.onHolidayDataChanged(context)
-                }
-            }
-        }
-    }
-
-    DocumentPageScaffold(
-        title = "节假日与调休",
-        onBack = { router.popBack() },
-        endAction = { backdropAlpha, shadowAlpha ->
-            if (loading) {
-                Box(
-                    modifier = Modifier
-                        .offset(x = (-6).dp, y = (-4).dp)
-                        .size(40.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        progress = null,
-                    )
-                }
-            } else {
-                LiquidTopBarButton(
-                    onClick = { requestYear(year) },
-                    backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(),
-                    icon = MiuixIcons.Normal.Update,
-                    contentDescription = "更新",
-                    iconSize = 28.dp,
-                    backdropAlpha = backdropAlpha,
-                    shadowAlpha = shadowAlpha,
-                )
-            }
-        },
-    ) { scrollBehavior, backdrop ->
-        HolidaySettingsScreen(
-            scrollBehavior = scrollBehavior,
-            liquidGlassBackdrop = backdrop,
-            year = year,
-            entries = entries,
-            onYearChange = { newYear ->
-                year = newYear
-                reload()
-            },
-            reload = { reload() },
-            // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
-            onHolidayDataChanged = {
-                CourseReminderHelper.onHolidayDataChanged(context)
-            },
         )
     }
 }
