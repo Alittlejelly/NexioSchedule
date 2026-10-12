@@ -210,6 +210,8 @@ private fun NexioIosRoot() {
                     onReadSharedFileText = { uri -> IosSharedFileReceiver.readText(uri) },
                     // iOS 走 App Store 更新 → 设置页的「更新设置」入口整个不渲染
                     showUpdateSettings = false,
+                    // 底栏由宿主的 UITabBarController（Liquid Glass）画，Compose 不渲染
+                    bottomBarMode = "native",
                 )
             }
             // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost

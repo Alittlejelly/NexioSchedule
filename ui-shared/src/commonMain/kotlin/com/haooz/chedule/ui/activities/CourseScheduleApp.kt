@@ -57,6 +57,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -953,6 +954,16 @@ fun CourseScheduleApp(
      * iOS 走 App Store 更新 → 传 false，入口整个不渲染（不是留个点进去没反应的页）。
      */
     showUpdateSettings: Boolean = true,
+    /**
+     * 底栏由谁画：`compose` = Compose 自己画 [ScheduleBottomBar]（Android / 桌面）；
+     * `native` = 宿主画（iOS 的 `UITabBarController` + Liquid Glass），此时
+     * Compose 侧**不渲染底栏、也不为它预留底部空间**，并把选中态写回
+     * `IosNativeTabBar` 供宿主同步。
+     *
+     * ⚠ 平台能力按项目铁律用「null = 该平台没有」表达；这里是三值字符串而非 null，
+     * 因为「宿主画」是 iOS 的**正常**路径而非缺失能力。
+     */
+    bottomBarMode: String = "compose",
 ) {
 
 
@@ -962,6 +973,15 @@ fun CourseScheduleApp(
     val shiftViewModel: ShiftViewModel = shiftViewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     var selectedTab by remember { mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1) }
+    // 底栏由宿主画时（iOS），把选中态写回去，让系统 tab bar 高亮对齐。
+    // 用 LaunchedEffect 观测而非拦截每个赋值点 —— selectedTab 有 10 处赋值
+    // （横滑 / 侧栏 / 排班模式 / 设置跳转），逐个加回调必然漏。
+    LaunchedEffect(bottomBarMode) {
+        if (bottomBarMode == "native") {
+            snapshotFlow { selectedTab }
+                .collect { com.haooz.chedule.ui.utils.notifyHostTabSelected(it) }
+        }
+    }
     var showShiftLoading by remember { mutableStateOf(false) }
     var isExitingShift by remember { mutableStateOf(false) }
     var shiftModeInitialized by remember { mutableStateOf(false) }
@@ -1538,6 +1558,30 @@ fun CourseScheduleApp(
     )
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
+
+    // 宿主要求切页（iOS 原生 tab bar）：读走请求 → 驱动 pager + 同步 selectedTab。
+    // ⚠ 必须在组合期读 `pendingHostTabRequest`（它是 mutableStateOf）才会订阅重组；
+    //   只在协程里轮询普通字段不会触发重组（首次那版就是这么写的，已改）。
+    // ⚠ 消费与 pager 动画有先后：先记 programmatic 再 scrollToPage，
+    //   否则 `currentPage` 在动画中途会把 selectedTab 拉回去。
+    val hostTabRequest = com.haooz.chedule.ui.utils.consumeHostTabChangeRequest()
+    // ⚠ 这里不能直接用下面的 `coroutineScope`：它在 1655 行才声明，
+    //   而本段在它之前（Kotlin 不允许向前引用局部 val）。
+    //   `rememberCoroutineScope()` 同一组合位置返回的是**同一个** scope 实例，
+    //   所以另取一个不影响语义，只是不能省这行。
+    val hostTabScope = rememberCoroutineScope()
+    LaunchedEffect(hostTabRequest, bottomBarMode) {
+        if (bottomBarMode != "native") return@LaunchedEffect
+        val target = (hostTabRequest ?: return@LaunchedEffect).coerceIn(0, mainPagerPageCount - 1)
+        mainTabProgrammatic = true
+        if (selectedTab != target) selectedTab = target
+        if (mainPagerState.currentPage != target) {
+            // ⚠ 用 `animateMainTabTo`（不是裸 `scrollToPage`）：后者是瞬时跳转，
+            //   底栏点了「啪」一下就过去，没有平移动画 —— 与 Android 底栏点击手感不一致。
+            //   口径统一到这个函数：spring 动画 + 结束吸附兜底。
+            hostTabScope.launch { mainPagerState.animateMainTabTo(target) }
+        }
+    }
 
     // 当前可见页背后是不是壁纸 —— 决定高光亮度：近白底只能压到 0.05，壁纸背景有余量 → 0.1
     // （见 InteractiveHighlight 的 peak）。
@@ -2573,8 +2617,10 @@ fun CourseScheduleApp(
                 }
                 Scaffold(
                     bottomBar = {
-                        // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动
-                        if (navBarStyle != "rail") {
+                        // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动。
+                        // ⚠ `native` = 宿主（iOS UITabBarController + Liquid Glass）画底栏 →
+                        //   这里整个不渲染，否则会与系统 tab bar 叠成两层。
+                        if (navBarStyle != "rail" && bottomBarMode != "native") {
                             ScheduleBottomBar(
                                 navBarStyle = navBarStyle,
                                 isShiftMode = isShiftMode,
