@@ -1,9 +1,14 @@
 package com.haooz.chedule.ui.utils
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.ThemeMode
+import com.haooz.chedule.data.getStringOrNull
 import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定。
@@ -71,3 +76,52 @@ fun isAppDarkTheme(): Boolean {
 // 同一个偏好，构成反向依赖。这里转调，行为与迁移前一致。
 @Composable
 fun rememberAppSettingDark(): Boolean = miuixRememberAppSettingDark()
+
+// ── 课表页「默认主题」档位（第四十三批：随 CourseScheduleApp 迁入共享层）────────────
+//
+// 原实现在 :androidApp 的 ActivitySystemBars.kt（rememberScheduleThemeMode +
+// ScheduleAppearance.get/setThemeMode）。落盘位置是数据契约：**与全局应用主题共用
+// app_theme_prefs 文件但不同的键**（键名见 ThemeMode.SCHEDULE_THEME_MODE_KEY），
+// 这里逐字照搬，只把入口换成跨平台的 AppStorage / KeyValueStore。
+
+/** 与全局应用主题共用一个 prefs 文件（照抄 ScheduleAppearance.FILE_THEME，同值） */
+private const val SCHEDULE_THEME_PREFS_FILE = "app_theme_prefs"
+
+/** 读课表页「默认主题」档位（无值回落 ThemeMode.FOLLOW_WALLPAPER） */
+fun loadScheduleThemeMode(): ThemeMode = ThemeMode.fromPrefsValue(
+    AppStorage.store(SCHEDULE_THEME_PREFS_FILE)
+        .getStringOrNull(ThemeMode.SCHEDULE_THEME_MODE_KEY)
+)
+
+/** 写课表页「默认主题」档位（CustomizeScheduleScreen 点「应用」时落盘） */
+fun saveScheduleThemeMode(mode: ThemeMode) {
+    AppStorage.store(SCHEDULE_THEME_PREFS_FILE).edit {
+        putString(ThemeMode.SCHEDULE_THEME_MODE_KEY, mode.prefsValue)
+    }
+}
+
+/**
+ * 仅影响今日页/课程表页，与全局 theme_mode 隔离。
+ *
+ * 走 KeyValueStore.registerListener。⚠ iOS 侧该实现返回 null
+ *（NSUserDefaultsDidChangeNotification 不带具体 key），主题切换后要等下次组合才刷新 ——
+ * 是平台能力差异，不是崩溃：token 为 null 时 unregisterListener 是空操作。
+ */
+@Composable
+fun rememberScheduleThemeMode(): ThemeMode {
+    val prefs = remember { AppStorage.store(SCHEDULE_THEME_PREFS_FILE) }
+    val themeMode = remember { mutableStateOf(loadScheduleThemeMode()) }
+
+    DisposableEffect(prefs) {
+        val token = prefs.registerListener { key ->
+            if (key == ThemeMode.SCHEDULE_THEME_MODE_KEY) {
+                themeMode.value = loadScheduleThemeMode()
+            }
+        }
+        onDispose {
+            prefs.unregisterListener(token)
+        }
+    }
+
+    return themeMode.value
+}

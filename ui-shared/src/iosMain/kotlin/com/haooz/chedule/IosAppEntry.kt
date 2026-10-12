@@ -1,40 +1,25 @@
 package com.haooz.chedule
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.IosWallpaperBackend
+import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.ui.activities.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.navigation.AboutRoute
 import com.haooz.chedule.ui.navigation.AiImportRoute
@@ -111,8 +96,8 @@ fun bootstrapNexioIos() {
  * iOS 的 Compose 根容器 —— Swift 侧用 `UIViewControllerRepresentable` 包它。
  *
  * 结构与 Android `MainActivity.setContent` 同形：主界面常驻底座（`MainLayerTransition`）
- * + 子页叠加层（`AppNavHost`）。当前主界面还是注入自检页（真课表界面要等
- * `CourseScheduleApp` 依赖的宿主能力在 iOS 侧齐备）；子页导航已经是**真路由**。
+ * + 子页叠加层（`AppNavHost`）。主界面已是**真课表界面** `CourseScheduleApp`
+ * （第四十三批迁入 `:ui-shared`，iOS 用默认注入即可用）；子页导航是真路由。
  */
 fun MainViewController(): UIViewController = ComposeUIViewController {
     MaterialTheme {
@@ -121,39 +106,6 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         }
     }
 }
-
-/**
- * iOS 宿主首页当前能进的路由清单。
- *
- * 真课表主界面（`CourseScheduleApp`）还在 `:androidApp` 的 `MainActivity` 里，
- * 迁过来之前，首页就是这个**路由导航台** —— 每个已迁路由都能从这儿点进去，
- * 便于在模拟器里逐页人工验证（尤其是 `@Composable` 里那些编译期查不出的东西：
- * 玻璃采样、折叠顶栏、对话框、文件选择器降级提示）。
- *
- * ⚠ 这是**临时页**，等 `CourseScheduleApp` 迁进 `:ui-shared` 就整块删掉
- * （连同 [NexioIosSmokeHome]），换成真主界面。
- */
-private val IOS_HOME_ROUTES: List<Pair<String, AppRoute>> = listOf(
-    "关于" to AppRoute.About,
-    "应用偏好设置" to AppRoute.PreferenceSettings,
-    "更新设置" to AppRoute.UpdateSettings,
-    "课程提醒" to AppRoute.CourseReminder,
-    "课表节数与时间" to AppRoute.CourseTimeSettings,
-    "课程管理" to AppRoute.CourseManage,
-    "节假日与调休" to AppRoute.HolidaySettings,
-    "WebDAV 云备份" to AppRoute.WebDavSettings,
-    "课表导入" to AppRoute.ScheduleImport,
-    "课表导出" to AppRoute.ScheduleExport,
-    "课表备份" to AppRoute.ScheduleBackup,
-    "本地备份" to AppRoute.LocalBackup,
-    "AI 文本导入" to AppRoute.AiImport,
-    "桌面小部件" to AppRoute.WidgetIntro,
-    "更新日志" to AppRoute.Changelog,
-    "开源协议" to AppRoute.License,
-    "隐私政策" to AppRoute.PrivacyPolicy,
-    "交流与反馈" to AppRoute.Communication,
-    "捐赠支持" to AppRoute.AppreciateAuthor,
-)
 
 /**
  * iOS 的导航根 —— 对应 MainActivity 的 `Box { MainLayerTransition + AppNavHost }`。
@@ -173,11 +125,31 @@ private fun NexioIosRoot() {
     val mainTransition = rememberNavTransitionState(
         initialValue = if (router.hasOverlay) 1f else 0f,
     )
+    // 注入自检：AppStorage/UserDefaults 与 AppFiles/NSFileManager 的 iOS 实现是新写的，
+    // 编译通过 ≠ 落盘位置与还原类型正确（UserDefaultsStore 的 Int/Long 不分是已知雷区）。
+    // 原先是首页两行文字，真主界面就位后降级为**启动日志**——仍是唯一运行时证据，别删。
+    LaunchedEffect(Unit) {
+        runCatching {
+            val store = AppStorage.store("ios_smoke_test")
+            store.edit { putString("k", "v") }
+            store.edit { putInt("i", 42) }
+            val ok = store.getString("k", "") == "v" && store.getInt("i", 0) == 42
+            NexioLog.i("IosBootstrap", "AppStorage/UserDefaults 自检：${if (ok) "OK" else "值不一致"}")
+        }.onFailure { NexioLog.e("IosBootstrap", "AppStorage 自检失败：${it.message}", it) }
+
+        runCatching {
+            val file = AppFiles.root.resolve("ios_smoke_test").resolve("probe.txt")
+            file.writeBytes("课程表".encodeToByteArray())
+            val ok = file.readText() == "课程表"
+            NexioLog.i("IosBootstrap", "AppFiles/NSFileManager 自检：${if (ok) "OK" else "内容不一致"}")
+        }.onFailure { NexioLog.e("IosBootstrap", "AppFiles 自检失败：${it.message}", it) }
+    }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
-            // 主界面常驻底座（当前是路由导航台，见 NexioIosSmokeHome）
+            // 主界面常驻底座：**真课表界面**（第四十三批）。iOS 不注入任何平台能力
+            // —— 分享/选壁纸/更新/今日助手卡走默认「无此能力」，入口不渲染或降级。
             MainLayerTransition(mainTransition) {
-                NexioIosSmokeHome(onNavigate = { router.navigate(it) })
+                CourseScheduleApp(privacyConsented = true)
             }
             // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
             AppNavHost(router, mainTransition = mainTransition) { route ->
@@ -232,62 +204,6 @@ private fun NexioIosRoot() {
                     AppRoute.EducationalImport -> {}
                     else -> {}
                 }
-            }
-        }
-    }
-}
-
-/**
- * iOS 临时首页：**注入自检** + **路由导航台**。
- *
- * ## 上半部分为什么还在
- *
- * `AppStorage` / `AppFiles` 的 iOS 实现是**新写的**，编译通过不代表落盘位置与还原
- * 类型正确（`UserDefaultsStore` 的 Int/Long 不分是已知雷区）。与其等真机调试时才发现，
- * 不如让首屏自己报出来 —— 这两行是**唯一的运行时证据**，别删。
- *
- * ## 下半部分
- *
- * 每个已迁路由一个按钮，模拟器里能逐页点进去人工验证。
- */
-@Composable
-private fun NexioIosSmokeHome(onNavigate: (AppRoute) -> Unit) {
-    var storeProbe by remember { mutableStateOf("检查中…") }
-    var fileProbe by remember { mutableStateOf("检查中…") }
-
-    LaunchedEffect(Unit) {
-        storeProbe = runCatching {
-            val store = AppStorage.store("ios_smoke_test")
-            store.edit { putString("k", "v") }
-            store.edit { putInt("i", 42) }
-            if (store.getString("k", "") == "v" && store.getInt("i", 0) == 42) "OK" else "值不一致"
-        }.getOrElse { "失败：${it.message}" }
-
-        fileProbe = runCatching {
-            val file = AppFiles.root.resolve("ios_smoke_test").resolve("probe.txt")
-            file.writeBytes("课程表".encodeToByteArray())
-            if (file.readText() == "课程表") "OK" else "内容不一致"
-        }.getOrElse { "失败：${it.message}" }
-    }
-
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(48.dp))
-        Text("Nexio课程表 · iOS", style = MaterialTheme.typography.headlineMedium)
-        Text("版本 ${AppInfo.version}", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(8.dp))
-        Text("存储(AppStorage/UserDefaults)：$storeProbe", style = MaterialTheme.typography.bodySmall)
-        Text("文件(AppFiles/NSFileManager)：$fileProbe", style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(16.dp))
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(bottom = 32.dp),
-        ) {
-            items(IOS_HOME_ROUTES) { (label, route) ->
-                Button(
-                    onClick = { onNavigate(route) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(label) }
             }
         }
     }

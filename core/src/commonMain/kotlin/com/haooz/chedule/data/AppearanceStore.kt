@@ -1,5 +1,7 @@
 package com.haooz.chedule.data
 
+import kotlin.concurrent.Volatile
+
 /**
  * 外观存储 —— **跨平台**（第四十二批，`CourseScheduleApp` 迁 `:ui-shared` 的前置）。
  *
@@ -33,6 +35,17 @@ object AppearanceStore {
 
     /** 快照缓存，读多写少（口径与原 ScheduleAppearance.cached 一致） */
     private var cached: AppearanceStyle? = null
+
+    /**
+     * 冷启动预加载的外观参数兜底缓存（承接原 `MainActivity.cachedAppearance`）。
+     *
+     * 宿主在启动时把盘上的外观参数读成 [AppearanceConfig] 回填到这里；
+     * `CourseScheduleApp` 首帧若搭配尚未加载完成，用它兜底 —— 否则壁纸
+     * 测光/卡片参数会先闪一帧默认值再跳到真实值。
+     * 仅内存，不落盘；键名/落盘格式不受影响。
+     */
+    @Volatile
+    var cachedConfig: AppearanceConfig = AppearanceConfig()
 
     /** 是否处于 [batchSave] 块内 */
     private var inBatch = false

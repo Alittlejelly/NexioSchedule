@@ -3,46 +3,21 @@ package com.haooz.chedule.ui.utils
 import android.app.Activity
 import android.content.res.Configuration
 import android.view.WindowInsetsController
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.ScheduleAppearance
-import com.haooz.chedule.data.ThemeMode
 
 // ⚠ 本文件只剩 **Android 专有**部分（2026-10-10 拆分）。
 // 跨平台的核心（isAppDarkTheme / rememberAppSettingDark / schedulePageBackgroundColor /
 // courseCardSolidBacking / LocalForcedDarkTheme / AppThemeSnapshot / PageBackdropSnapshot）
 // 已迁入 :ui-shared 的同包名 ThemeUtils.kt —— 调用方 import 一行不用改。
 //
+// 2026-10-12 第四十三批：`rememberScheduleThemeMode` 也迁入 :ui-shared 的 ThemeUtils.kt
+// （随 CourseScheduleApp 一起），本文件不再保留 —— 同包同名跨模块共存会让解析结果
+// 取决于模块顺序，属于必须避免的隐式歧义。
+//
 // ⚠⚠ 文件名不要再改回 ThemeUtils.kt：:ui-shared 已有同包名的 ThemeUtils.kt，
 // 同包同文件名在 Kotlin 里会生成同一个类 FQN（com.haooz.chedule.ui.utils.ThemeUtilsKt），
 // 编译期各自能解析通过，但打 dex 时同名类互相覆盖，运行期表现为
 // NoSuchMethodError: applyThemeAwareSystemBars（真机崩溃，编译看不出来）。
-
-/** 仅影响今日页/课程表页，与全局 theme_mode 隔离 */
-@Composable
-fun rememberScheduleThemeMode(): ThemeMode {
-    val prefs = remember { AppStorage.store(ScheduleAppearance.FILE_THEME) }
-    val themeMode = remember { mutableStateOf(ScheduleAppearance.getThemeMode()) }
-
-    DisposableEffect(prefs) {
-        // 走 KeyValueStore.registerListener。⚠ iOS 侧该实现返回 null
-        //（NSUserDefaultsDidChangeNotification 不带具体 key），主题切换后要等下次组合才刷新 ——
-        // 是平台能力差异，不是崩溃：token 为 null 时 unregisterListener 是空操作。
-        val token = prefs.registerListener { key ->
-            if (key == ThemeMode.SCHEDULE_THEME_MODE_KEY) {
-                themeMode.value = ScheduleAppearance.getThemeMode()
-            }
-        }
-        onDispose {
-            prefs.unregisterListener(token)
-        }
-    }
-
-    return themeMode.value
-}
 
 fun Activity.applyThemeAwareSystemBars() {
     val themeMode = AppStorage.store("app_theme_prefs").getString("theme_mode", "system")
