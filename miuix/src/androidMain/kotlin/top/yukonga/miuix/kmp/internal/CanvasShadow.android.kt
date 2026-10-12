@@ -1,4 +1,4 @@
-/** [drawBlurredPathShadow] 的 Android 实现 —— 与 SearchBar 迁移前的手绘代码逐字同源。 */
+/** [drawBlurredPathShadow] 的 Android 实现。 */
 package top.yukonga.miuix.kmp.internal
 
 import android.graphics.BlurMaskFilter

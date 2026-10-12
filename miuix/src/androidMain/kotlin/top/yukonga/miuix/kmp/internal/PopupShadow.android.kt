@@ -8,10 +8,10 @@ import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.BlurMaskFilter
 
 /**
- * Android 实现 —— 保持与迁移前完全一致的绘制路径。
+ * Android 实现。
  *
  * 环形路径：外圈 CW 让填充覆盖整块，内部矩形 CCW 反向挖空 → 得到「面包圈」，
- * 再交给 BlurMaskFilter 做模糊描边。这一段是原 fork 的代码，逐字保留以保证零回归。
+ * 再交给 BlurMaskFilter 做模糊描边。
  */
 actual fun DrawScope.drawBlurredRingShadow(
     size: Size,

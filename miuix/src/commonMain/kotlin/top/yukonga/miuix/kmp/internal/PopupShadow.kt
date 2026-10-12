@@ -1,10 +1,8 @@
 // 面板投影阴影 —— 跨平台绘制
 //
-// 背景：Miuix fork 的弹窗投影原本用 android.graphics 的 BlurMaskFilter + nativeCanvas 手绘，
-// 这把整个 ListPopup.kt 钉死在 Android（Kotlin/Native 上根本编不过）。
-// 现在下沉到 expect/actual：
-//   androidMain —— 仍走 BlurMaskFilter（与迁移前逐像素一致，零回归）
-//   skikoMain   —— 走 SkSL 模糊描边（backdrop 的 skikoMain 已有同套路范例）
+// expect/actual：
+//   androidMain —— BlurMaskFilter（逐像素与 Android 原生路径一致）
+//   skikoMain   —— SkSL 模糊描边（backdrop 的 skikoMain 已有同套路范例）
 //
 // 形状语义：环形路径（外圈 CW 减内圈 CCW）再整体模糊 = 圆角矩形描边的模糊。
 // 为什么不用 backdrop 的 shadow：它的 ShadowModifier 走 Paint().blur()，

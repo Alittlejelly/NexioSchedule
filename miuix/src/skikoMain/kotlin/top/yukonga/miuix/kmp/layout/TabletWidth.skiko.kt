@@ -10,7 +10,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
  *
  * 为什么用窗口尺寸而不是布局约束：本函数在 `CollapsibleTopAppBar` 的组合入口被调用，
  * 那里的 `maxWidth` 受父容器（可能是平板分栏里的侧栏）影响，宽度会偏小；
- * 而原 Android 行为判的是**整个屏幕**，用窗口尺寸才与迁移前一致。
+ * 判的是**整个屏幕**，所以用窗口尺寸。
  *
  * `LocalWindowInfo.containerSize` 是 CMP 的公共 API，desktop/iOS 均可用。
  * 读不到有效密度时（某些宿主）保守返回 false（按手机布局），

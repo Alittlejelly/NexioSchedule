@@ -365,8 +365,7 @@ fun Modifier.dropdownPanelEntry(
     )
     // drawBehind 的 lambda 不是 @Composable，主题色必须在这里取好再传进去。
     // 必须读 **App 主题**（theme_mode 偏好 + 壁纸强制），不能读系统深浅色：
-    // 迁移前是 isAppDarkTheme()，若换成 isSystemLightTheme()，App 内主题与系统不一致时
-    // 遮罩颜色会反（深色面板盖黑遮罩、浅色面板盖白遮罩，看起来就像遮罩消失了）。
+    // 两者不一致时遮罩颜色会反（深色面板盖黑遮罩、浅色面板盖白遮罩，看起来就像遮罩消失了）。
     val appDark = LocalForcedDarkTheme.current ?: rememberAppSettingDark()
     val highlightColor = dropdownPanelEntryHighlightColor(appDark)
     this

@@ -111,11 +111,7 @@ fun SearchBar(
     onActionClick: (() -> Unit)? = null,
     backdrop: Backdrop? = null,
     backdropAlpha: Float = 0f,
-    /**
-     * 是否启用 chrome 透镜（折射）。原读 App 的 AppMaterialSettings.chromeLensEnabled()，
-     * 那是 App 的材质档位偏好；默认改为从 [LocalChromeLensEnabled] 读，
-     * App 在根部 provide，行为与迁移前一致。
-     */
+    /** 是否启用 chrome 透镜（折射），跟随 App 的材质档位偏好 [LocalChromeLensEnabled]。 */
     chromeLensEnabled: Boolean = LocalChromeLensEnabled.current,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
@@ -277,12 +273,12 @@ fun InputField(
     /** 同 [SearchBar]：chrome 透镜开关，由 App 的材质档位注入（LocalChromeLensEnabled）。 */
     chromeLensEnabled: Boolean = LocalChromeLensEnabled.current,
     /**
-     * 当前是否浅色主题。原读 App 的 isAppDarkTheme()。
+     * 当前是否浅色主题。
      *
      * 传 () -> Boolean 而不是直接传 Boolean：调用点在 decorationBox 里取值，
      * 需要的是「每帧现读」而非组合期快照。
      * 为 null 时退回系统深浅色（组合期取一次）；App 若有「强制浅/深」偏好，
-     * 传入自己的判断即可覆盖 —— 迁移前 InputField 内部读的就是 isAppDarkTheme()。
+     * 传入自己的判断即可覆盖。
      */
     isLightTheme: (() -> Boolean)? = null,
 ) {

@@ -878,13 +878,7 @@ fun ListPopupContent(
     collapseContent: (@Composable () -> Unit)? = null,
     /** 跟手滑选状态。为 null 时本弹窗不启用跟手选择（内容层直接透传，不挂手势/形变）。 */
     dragSelectState: DropdownPanelDragSelectState? = null,
-    /**
-     * 是否启用 chrome 透镜（高分辨率下让玻璃面板内部更通透）。
-     *
-     * 原来直接读 App 的 AppMaterialSettings.chromeLensEnabled()，那让本文件无法进
-     * commonMain。默认改为从 [LocalChromeLensEnabled] 读 —— App 在根部 provide，
-     * 行为与迁移前一致；也可显式传参覆盖。
-     */
+    /** 是否启用 chrome 透镜（高分辨率下让玻璃面板内部更通透），跟随 App 的材质档位偏好 [LocalChromeLensEnabled]。 */
     chromeLensEnabled: Boolean = LocalChromeLensEnabled.current,
     content: @Composable () -> Unit,
 ) {
