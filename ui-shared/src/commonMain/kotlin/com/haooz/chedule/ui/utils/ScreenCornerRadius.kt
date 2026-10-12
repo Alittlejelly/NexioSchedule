@@ -13,10 +13,10 @@ import androidx.compose.runtime.Composable
  *   自由窗口固定 20dp、Android 12+ 取真实半径、更老的系统返回 0 —— 与迁移前
  *   `AppNavHost.kt` 里的私有实现逐字一致（零回归红线）。
  * - **桌面返回 0（不裁切）**：桌面窗口圆角由系统窗口管理器画，Compose 再裁会叠出双圆角。
- * - **iOS 读真实屏幕圆角**：`UIScreen` 没有公开圆角 API，走 KVC 读私有
- *   `_displayCornerRadius`（读不到时按设备类型兜底）。**必须给真值** ——
- *   转场中间态的上层页是「浮在屏幕中间的卡片」，不是铺满的，用系统窗口裁切兜不住，
- *   给 0 会在圆屏上露出四个直角。理由与取舍详见 iOS actual 的 KDoc。
+ * - **iOS**: iOS 26+ uses the public UIKit `UIView.effectiveRadiusForCorner` API
+ *   to resolve the window's effective corner radius. Older systems use a device-size
+ *   estimate. Transition cards need their own clipping while moving inside the window;
+ *   no private API is used.
  */
 @Composable
 expect fun rememberScreenCornerRadiusPx(): Float
