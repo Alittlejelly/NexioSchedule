@@ -1289,7 +1289,11 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val existingStart = timeToMinutes(existing.getEffectiveStartTime(sectionTimes))
         val existingEnd = timeToMinutes(existing.getEffectiveEndTime(sectionTimes))
         if (newStartMin != null && newEndMin != null && existingStart != null && existingEnd != null) {
-            return newStartMin < existingEnd && existingStart < newEndMin
+            // 跨午夜时段要先展开再比，否则 `23:00-00:30` 与 `00:00-01:00` 永远判不出冲突
+            return CourseTimeSpan.overlaps(
+                newStartMin, newEndMin,
+                existingStart, existingEnd,
+            )
         }
         return existing.startSection <= newEndSection && existing.endSection >= newStartSection
     }

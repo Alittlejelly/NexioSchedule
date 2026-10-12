@@ -141,7 +141,7 @@ fun DayColumn(
                 if (course.hasValidCustomTime()) {
                     val cs = parseMinutes(course.customStartTime)
                     val ce = parseMinutes(course.customEndTime)
-                    if (cs in 0..<ce) {
+                    if (cs >= 0 && ce >= 0 && cs != ce) {
                         for (section in 1..totalSectionsGrid) {
                             val timeStr = sectionTimes[section] ?: continue
                             val parts = timeStr.split("-")
@@ -150,6 +150,17 @@ fun DayColumn(
                             val se = parseMinutes(parts[1])
                             if (ss >= 0 && se >= 0 && cs < se && ce > ss) {
                                 add(section)
+                            }
+                        }
+                        // 跨午夜（ce < cs）的课还要占住当天 00:00 之前的节次：
+                        // 次日 00:30 结束 = 当天 23:00 起延续，覆盖当天所有靠后的节次
+                        if (ce < cs) {
+                            for (section in 1..totalSectionsGrid) {
+                                val timeStr = sectionTimes[section] ?: continue
+                                val parts = timeStr.split("-")
+                                if (parts.size != 2) continue
+                                val ss = parseMinutes(parts[0])
+                                if (ss >= 0 && ss >= cs) add(section)
                             }
                         }
                     }
@@ -691,7 +702,7 @@ private fun computeCustomTimeLayout(
 ): CustomTimeLayout? {
     val cs = parseMinutes(customStart)
     val ce = parseMinutes(customEnd)
-    if (cs < 0 || ce < 0 || ce <= cs) return null
+    if (cs < 0 || ce < 0 || ce == cs) return null
 
     val totalSections = morningSections + afternoonSections + eveningSections
     val columnBottom = grid.totalHeight
@@ -727,8 +738,10 @@ private fun computeCustomTimeLayout(
         return timeToY(minutes).coerceIn(0f, columnBottom)
     }
 
+    // 跨午夜（结束早于开始）的课在当天的课表格里没有「次日」这一格，
+    // 按「从开始一直画到当天最后一节」处理，至少不会退化成 0 高度。
     val top = timeToYClamped(cs)
-    val bottom = timeToYClamped(ce)
+    val bottom = if (ce < cs) columnBottom else timeToYClamped(ce)
     return CustomTimeLayout(top, (bottom - top).coerceAtLeast(0f))
 }
 

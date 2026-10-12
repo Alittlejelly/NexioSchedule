@@ -1768,8 +1768,9 @@ fun TimeConfigEditScreen(
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             val startMinutes = tempSpecialStartHour * 60 + tempSpecialStartMinute
                                             val endMinutes = tempSpecialEndHour * 60 + tempSpecialEndMinute
-                                            if (endMinutes <= startMinutes) {
-                                                showToast("结束时间需晚于开始时间")
+                                            // 结束不晚于开始按跨午夜处理（次日结束），只有起止完全相同才是无效输入
+                                            if (startMinutes == endMinutes) {
+                                                showToast("开始与结束时间不能相同")
                                                 return@TextButton
                                             }
                                             val startStr = formatHhMm(tempSpecialStartHour, tempSpecialStartMinute)
@@ -1989,8 +1990,9 @@ fun TimeConfigEditScreen(
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             val startMinutes = tempStartHour * 60 + tempStartMinute
                                             val endMinutes = tempEndHour * 60 + tempEndMinute
-                                            if (endMinutes <= startMinutes) {
-                                                showToast("结束时间需晚于开始时间")
+                                            // 结束不晚于开始按跨午夜处理（次日结束），只有起止完全相同才是无效输入
+                                            if (startMinutes == endMinutes) {
+                                                showToast("开始与结束时间不能相同")
                                                 return@TextButton
                                             }
                                             val newTimeStr = "${

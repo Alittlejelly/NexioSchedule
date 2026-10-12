@@ -95,9 +95,64 @@ fun parseHourMinute(value: String): LocalTime? {
     return runCatching { LocalTime(hour, minute) }.getOrNull()
 }
 
-/** 两个 LocalTime 相差的毫秒数（to - from）。 */
-fun millisBetween(from: LocalTime, to: LocalTime): Long =
-    (to.toSecondOfDay() - from.toSecondOfDay()) * 1000L
+/**
+ * 两个 LocalTime 相差的毫秒数（to - from），**不**处理跨午夜：to < from 时为负。
+ *
+ * 课程时段要跨午夜语义请传 [allowRollover] = true，或直接用 [CourseTimeSpan]。
+ */
+fun millisBetween(from: LocalTime, to: LocalTime, allowRollover: Boolean = false): Long {
+    val delta = (to.toSecondOfDay() - from.toSecondOfDay()) * 1000L
+    if (allowRollover && delta < 0L) return delta + 24L * 60L * 60L * 1000L
+    return delta
+}
+
+/**
+ * 课程时间段的「跨午夜」语义。
+ *
+ * 结束时间**小于等于**开始时间即视为**次日**结束（`23:00 - 00:30` 跨午夜 90 分钟），
+ * 存盘仍是 `"HH:mm"` 两个字段，不引入新字段 —— 老数据与导入导出格式完全不受影响。
+ * 起止相同按「满 24 小时」处理，避免算出 0 长的课。
+ */
+object CourseTimeSpan {
+
+    /** 跨午夜判定：结束不晚于开始。相等也算，返回 true 时 [minutesUntilEnd] 给 24 小时。 */
+    fun crossesMidnight(startMin: Int, endMin: Int): Boolean = endMin <= startMin
+
+    /** 时段长度（分钟），跨午夜时给 `endMin + 1440 - startMin`，相等时给 1440。 */
+    fun minutesUntilEnd(startMin: Int, endMin: Int): Int =
+        if (endMin > startMin) endMin - startMin else endMin + 1440 - startMin
+
+    /** 结束时刻在「从开始日零点起算」的分钟偏移，跨午夜时大于 1440。 */
+    fun endOffsetMinutes(startMin: Int, endMin: Int): Int =
+        if (endMin > startMin) endMin else endMin + 1440
+
+    /**
+     * 两个时段是否重叠。
+     *
+     * 跨午夜时段（[crossesMidnight] 为 true）先按「次日尾巴」展开成两段：
+     * `[start, 1440)` 与 `[0, end)`，再逐段做普通的半开区间比较。
+     * 两段都跨午夜的极端情况（整节都在午夜前开始、次日午夜后又跨一次）不现实，
+     * 也不需要支持 —— 一节课最长 24 小时。
+     */
+    fun overlaps(
+        aStart: Int, aEnd: Int,
+        bStart: Int, bEnd: Int,
+    ): Boolean {
+        for (a in expand(aStart, aEnd)) {
+            for (b in expand(bStart, bEnd)) {
+                if (a.first < b.second && b.first < a.second) return true
+            }
+        }
+        return false
+    }
+
+    /** 把 [startMin, endMin] 展开成不跨零点的若干半开区间 `(起点, 终点)`。 */
+    private fun expand(startMin: Int, endMin: Int): List<Pair<Int, Int>> {
+        val end = endOffsetMinutes(startMin, endMin)
+        return if (end <= 1440) listOf(startMin to end)
+        else listOf(startMin to 1440, 0 to (end - 1440))
+    }
+}
 
 private fun pad2(value: Int): String = value.toString().padStart(2, '0')
 

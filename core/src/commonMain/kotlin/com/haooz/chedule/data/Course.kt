@@ -139,6 +139,22 @@ data class Course(
             !customEndTime.isNullOrBlank()
     }
 
+    /** 自定义时间是否跨午夜（结束不晚于开始，见 [CourseTimeSpan]）。 */
+    fun crossesMidnightCustomTime(): Boolean {
+        if (!hasValidCustomTime()) return false
+        val s = parseHmToMinutes(customStartTime!!) ?: return false
+        val e = parseHmToMinutes(customEndTime!!) ?: return false
+        return CourseTimeSpan.crossesMidnight(s, e)
+    }
+
+    /** 自定义时间的时长（分钟），跨午夜按次日结束算；非自定义时间返回 null。 */
+    fun customDurationMinutes(): Int? {
+        if (!hasValidCustomTime()) return null
+        val s = parseHmToMinutes(customStartTime!!) ?: return null
+        val e = parseHmToMinutes(customEndTime!!) ?: return null
+        return CourseTimeSpan.minutesUntilEnd(s, e)
+    }
+
     /**
      * @param sectionTimes 全局绝对节次号 -> "HH:mm-HH:mm"
      */
@@ -175,10 +191,11 @@ data class Course(
         }
     }
 
-    /** 自定义时间显示 "HH:mm - HH:mm"，否则回退节次文本 */
+    /** 自定义时间显示 "HH:mm - HH:mm"，跨午夜标注「次日」；否则回退节次文本 */
     fun getTimeDisplayText(): String {
         if (hasValidCustomTime()) {
-            return "$customStartTime - $customEndTime"
+            val end = if (crossesMidnightCustomTime()) "次日$customEndTime" else "$customEndTime"
+            return "$customStartTime - $end"
         }
         return getSectionText()
     }

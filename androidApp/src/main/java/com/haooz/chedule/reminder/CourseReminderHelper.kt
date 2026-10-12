@@ -348,6 +348,19 @@ object CourseReminderHelper {
     }
 
     /**
+     * 课程结束时刻的时间戳；结束不晚于开始（跨午夜）时顺延一天。
+     *
+     * 不加这一层的话 `23:00 - 00:30` 的下课时刻会落在当天 00:30，
+     * 早于上课时刻 → 课中进度、剩余分钟、下课提醒全部算成负数。
+     */
+    fun courseEndMillis(startTime: String?, endTime: String?): Long {
+        val end = parseTimeToTodayMillis(endTime)
+        if (end <= 0L) return end
+        val start = parseTimeToTodayMillis(startTime)
+        return if (start in 1..end) end + 24L * 60L * 60L * 1000L else end
+    }
+
+    /**
      * 课表边界闹钟专用：课前提醒点、上课瞬间、下课瞬间。
      *
      * 用 setAlarmClock 而非 setExactAndAllowWhileIdle——后者受 Doze 的
@@ -738,7 +751,7 @@ object CourseReminderHelper {
                         (useIsland && hasIslandPreClassSentToday(context, dedupId))
                     if (!alreadySent) {
                         val startMillis = todayMillis(startHour, startMinute)
-                        val endMillis = parseTimeToTodayMillis(getCourseEndTime(course, repository))
+                        val endMillis = courseEndMillis(startTime, getCourseEndTime(course, repository))
                         sendPreClassNotification(
                             context, alarmManager, repository, course, startTime,
                             useIsland, startMillis, endMillis
@@ -2095,7 +2108,7 @@ object CourseReminderHelper {
             val islandHit = useIsland && hasIslandPreClassSentToday(context, dedupId11)
             if (!inWindow || dedupHit || islandHit) continue
             val startMillis = parseTimeToTodayMillis(startTime)
-            val endMillis = parseTimeToTodayMillis(getCourseEndTime(course, repository))
+            val endMillis = courseEndMillis(startTime, getCourseEndTime(course, repository))
             sendPreClassNotification(
                 context, alarmManager, repository, course, startTime,
                 useIsland, startMillis, endMillis

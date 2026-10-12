@@ -156,11 +156,20 @@ fun isBeforeHolidayDate(
             if (!course.hasValidCustomTime()) return false
             val courseStart = parseTime(course.customStartTime) ?: return false
             val courseEnd = parseTime(course.customEndTime) ?: return false
-            if (courseStart >= courseEnd) return false
+            if (courseStart == courseEnd) return false
+            // 跨午夜（结束早于开始）时，课会延续到次日，因此当天从开始节次往后的节次都算命中；
+            // 结束时刻本身要换算成「次日」才能与当天节次做正常比较。
+            val endsNextDay = courseEnd < courseStart
+            val endMinutes = courseEnd.hour * 60 + courseEnd.minute +
+                if (endsNextDay) 1440 else 0
 
             return selectedRange.any { section ->
                 val (sectionStart, sectionEnd) = parseSectionTime(sectionTimes[section]) ?: return@any false
-                courseStart < sectionEnd && courseEnd > sectionStart
+                if (endsNextDay) {
+                    sectionEnd > courseStart
+                } else {
+                    courseStart < sectionEnd && endMinutes > sectionStart.hour * 60 + sectionStart.minute
+                }
             }
         }
 

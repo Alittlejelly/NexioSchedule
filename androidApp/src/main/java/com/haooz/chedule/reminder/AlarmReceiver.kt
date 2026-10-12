@@ -106,7 +106,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 val freshStartTime = CourseReminderHelper.getCourseStartTime(matched, repository) ?: startTime
                 val freshEndTime = CourseReminderHelper.getCourseEndTime(matched, repository) ?: ""
                 val startMillis = CourseReminderHelper.parseTimeToTodayMillis(freshStartTime)
-                val endMillis = CourseReminderHelper.parseTimeToTodayMillis(freshEndTime)
+                val endMillis = CourseReminderHelper.courseEndMillis(freshStartTime, freshEndTime)
 
                 if (startMillis <= 0L) {
                     NexioLog.d("AlarmReceiver", "Invalid start time for ${matched.name}, skipped")

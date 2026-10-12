@@ -613,7 +613,7 @@ fun AddCourseDialog(
                     )
                     if (timeError) {
                         Text(
-                            text = "结束时间需晚于开始时间",
+                            text = "开始与结束时间不能相同",
                             style = MiuixTheme.textStyles.footnote1,
                             color = Color(0xFFF44336),
                             modifier = Modifier.padding(top = 8.dp)
@@ -641,7 +641,8 @@ fun AddCourseDialog(
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 val startMinutes = tempStartHour * 60 + tempStartMinute
                                 val endMinutes = tempEndHour * 60 + tempEndMinute
-                                if (endMinutes > startMinutes) {
+                                // 结束不晚于开始按跨午夜处理（次日结束），只有起止完全相同才是无效输入
+                                if (startMinutes != endMinutes) {
                                     form.customStartTime =
                                         formatTime(tempStartHour, tempStartMinute)
                                     form.customEndTime = formatTime(tempEndHour, tempEndMinute)

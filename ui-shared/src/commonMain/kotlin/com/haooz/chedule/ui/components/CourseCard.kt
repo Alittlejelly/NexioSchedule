@@ -673,7 +673,12 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
                 maxLines = 1
             )
             Text(
-                text = course.customEndTime ?: "",
+                // 跨午夜标注「次日」，否则 23:00 / 00:30 两个角标看着像两节课
+                text = if (course.crossesMidnightCustomTime()) {
+                    "次日${course.customEndTime ?: ""}"
+                } else {
+                    course.customEndTime ?: ""
+                },
                 fontSize = 8.sp,
                 color = textColor,
                 modifier = Modifier

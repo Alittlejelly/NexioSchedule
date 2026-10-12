@@ -1067,7 +1067,7 @@ private fun buildQuoteRanges(
         val start = parseQuoteTime(course.getEffectiveStartTime(sectionTimes) ?: return@mapNotNull null)
         val end = parseQuoteTime(course.getEffectiveEndTime(sectionTimes) ?: return@mapNotNull null)
         if (start == null || end == null) return@mapNotNull null
-        // 结束不晚于开始：脏数据，丢掉，避免永远匹配不到
+        // 跨午夜课（结束不晚于开始）在当天的引言时段里匹配不到，丢掉
         if (end <= start) return@mapNotNull null
         QuoteTimeRange(start, end)
     }.sortedBy { it.start }

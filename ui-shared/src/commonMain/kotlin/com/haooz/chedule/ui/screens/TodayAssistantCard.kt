@@ -190,7 +190,7 @@ private fun formatRemainingUntil(
     to: LocalTime,
     isCountdownToStart: Boolean
 ): String {
-    val remainMillis = millisBetween(from, to)
+    val remainMillis = millisBetween(from, to, allowRollover = true)
     if (remainMillis < 0L) return if (isCountdownToStart) "已开始" else "已结束"
     if (remainMillis < 60_000L) {
         val seconds = ((remainMillis + 999L) / 1000L).toInt().coerceIn(1, 60)
@@ -222,7 +222,7 @@ private fun buildCourseTimeRanges(
 
 // 向上取整，与顶部倒计时、系统岛倒计时共用同一套「剩余分钟」口径
 private fun ceilMinutesUntil(from: LocalTime, to: LocalTime): Int {
-    val remain = millisBetween(from, to)
+    val remain = millisBetween(from, to, allowRollover = true)
     if (remain <= 0L) return 0
     return ((remain + 59_999L) / 60_000L).toInt()
 }
