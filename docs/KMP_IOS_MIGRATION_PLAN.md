@@ -1,26 +1,25 @@
-# Nexio 课程表 · iOS（KMP）迁移计划
+# Nexio 课程表 · iOS（KMP）迁移档案
+
+> **迁移已完成。** 本文不再是「计划」，而是**收尾档案**：现状快照、门禁命令、
+> 架构约定、里程碑与踩过的坑。迁移期的路线图与执行记录已删除（细节见 `git show`）。
 
 > ## 📏 维护纪律（改这份文档前先读）
 >
-> 本文档**只回答三件事**：① 现在在哪 ② 下一步做什么 ③ 红线是什么。
->
 > | ✅ 能加 | ❌ 不能加 |
 > |---|---|
-> | 数字刷新（规模表 / 模块现状 / 风险表） | 「当时怎么想的」过程叙述 |
+> | 数字刷新（规模表 / 门禁现状） | 「当时怎么想的」过程叙述 |
 > | 新发现的**可复用**坑（一句话 + commit） | 已完成批次的逐条拆解 |
-> | 下一步的顺序调整 | 调研过程、已被推翻的判断 |
 >
 > - **已完成的工作只占「里程碑表」一行**：`commit` + 一句话。要看细节 `git show <commit>`。
 > - **踩坑细节**写 `.workbuddy/memory/YYYY-MM-DD.md`，不写这里。
 > - 里程碑表**只留最近 ~15 条**，更老的删掉（信息在 commit 里）。
-> - **全文上限 600 行**。超了就先砍「里程碑」和「阶段路线」，再砍对话式解释。
-> - ⚠ 冲刺期会有**多个会话并发改同一个仓库**，提交前先 `git status` 对齐，别把别人的半成品扫进去。
+> - ⚠ 多人协作仓库，提交前先 `git status` 对齐，别把别人的半成品扫进去。
 
 ---
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`81ad6b0f`**（2026-10-12，第四十三批收尾）。工作区干净。
+**代码状态**：`master`，迁移已完成。§5 里程碑表是最新快照。
 🟡 冲刺期**多会话并发**改同一仓库（`mtzwidget/*` 常被另一会话占用，提交前 `git status` 对齐）。
 
 **iOS 状态（2026-10-12 真机/模拟器验证通过）**：四个模块的 `iosArm64` +
@@ -52,17 +51,14 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 （PixelCopy 采样 / UA 切桌面版重取页 / 脚本注入 / Cookie 跨页保存）；② `EducationalImportScreen`
 的脚本索引更新（`EduImportUpdater`：7 天节流 + 手动更新 Toast）。需走一遍完整导入流程 + 顶栏手动更新。
 
-### 本机环境（不看会白踩半天）
+### 本机环境（macOS）
 
-| 事项 | 说明 |
-|---|---|
-| PowerShell（Windows） | **必须 pwsh 7**；5.1 会把中文输出弄成乱码 |
-| `JAVA_HOME`（Windows） | `D:\JDK` |
-| ⚠ `JAVA_HOME`（**macOS**） | 没有全局 JDK，直接 `./gradlew` 会报 *Unable to locate a Java Runtime*（`/usr/bin/java` 只是 macOS 的安装 stub）。必须 `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew …` |
-| `JAVA_TOOL_OPTIONS` | 跑 `java.exe` 前先 `Remove-Item Env:\JAVA_TOOL_OPTIONS`，否则 `-Dfile.encoding` 被污染 |
-| Python | PATH 里**没有** `python`，用 `C:\Users\43908\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe` |
-| 内嵌中文的 pwsh 脚本 | 存成 UTF-8 **带 BOM**，否则 pwsh 7 可能按 ANSI 读 |
-| `.workbuddy/` | 在 `.gitignore` 里（本地长期笔记，换机器就没了） |
+⚠ 没有全局 JDK，直接 `./gradlew` 会报 *Unable to locate a Java Runtime*
+（`/usr/bin/java` 只是 macOS 的安装 stub），需带：
+
+```bash
+JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew …
+```
 
 ### 已定型、别推翻的决定
 
@@ -78,8 +74,8 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 ### 测试
 
-`core/src/commonTest/`（11）+ `core/src/jvmTest/`（15）共 **256 个用例已入库**。
-跑法 `./gradlew :core:jvmTest --rerun-tasks`（26 个测试类 / 0 失败）。
+`core/src/commonTest/`（11）+ `core/src/jvmTest/`（16）共 **291 个用例已入库**，0 失败。
+跑法 `./gradlew :core:jvmTest --rerun-tasks`。
 夹具 `jvmTest/resources/school_index.pb` 是**真实 248 校生产索引**（若仓库要公开需评估脱敏）。
 
 ---
@@ -93,8 +89,8 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 # 拆开跑（等价）
 ./gradlew :core:compileKotlinLinuxX64 :core:compileTestKotlinLinuxX64  # commonMain/Test 平台中立
-./gradlew checkKmpPurity                             # 已知 JVM 专有 API 静态扫描（当前 268 文件）
-./gradlew :core:jvmTest --rerun-tasks                # 256 个用例
+./gradlew checkKmpPurity                             # 已知 JVM 专有 API 静态扫描
+./gradlew :core:jvmTest --rerun-tasks                # 291 个用例
 
 # 动了 commonMain / skikoMain 时额外跑（需联网 + PATH 有 Node）
 ./gradlew -Pnexio.wasm=true checkKmpWasmJs
@@ -127,18 +123,18 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 ---
 
-## 3. 现状与进度（2026-10-12 第四十三批后实测，本表为准）
+## 3. 模块现状
 
 ### 模块现状
 
 | 模块 | 文件 | 行数 | 源集 | 状态 |
 |---|---:|---:|---|---|
-| `:core` | 115 (+28 测试) | 18.8k | common **56** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
+| `:core` | 116 (+28 测试) | 18.7k | common **56** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
-| `:miuix` | **119** | 31k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
-| `:ui-shared` | **119** | **54.9k** | common **108** / android 3 / jvm 3 / ios 5 | 路由 20/20 + **主界面 `CourseScheduleApp`** 全迁完（阶段 5 ✅） |
-| `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **49** | **16.2k** | android | **无待迁**；全是留守（宿主装配 + 永不迁能力）；单 Activity（Manifest 23→2） |
+| `:miuix` | **129** | 31.9k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
+| `:ui-shared` | **129** | **57.4k** | common **108** / android 3 / jvm 3 / ios 5 | 路由 20/20 + **主界面 `CourseScheduleApp`** 全迁完（阶段 5 ✅） |
+| `:desktopApp` | 1 | ~306 | jvm | 桌面客户端，能真跑并打包 |
+| `:androidApp` | **49** | **15.5k** | android | **无待迁**；全是留守（宿主装配 + 永不迁能力）；单 Activity（Manifest 23→2） |
 
 **`:core` 的 14 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -147,7 +143,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 `DayScheduleResolver`（提醒时刻算法，第十五批）/ `ScheduleEffects`（课程变更的平台副作用出口，第十六批）/
 **`ScheduleFileController`**（SAF 选文件读 + 另存为，第二十三批）。
 
-### `androidApp` 49 文件的归属拆分（第四十三批后：无「待迁」）
+### `androidApp` 49 文件的归属拆分（无「待迁」）
 
 | 归属 | 文件 | 行数 | 说明 |
 |---|---:|---:|---|
@@ -160,113 +156,55 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
   androidApp 无待迁 ⇒ **100%（迁移完成）**；剩下的都是平台能力实现体，本就不过界
 - **含 `:miuix` + `:backdrop`**：101.8k / 109k ⇒ **约 93%**（那两层是第三方 fork，通常不计）
 
-### 剩余工作量
+### 迁移收尾状态
 
-| 项 | 数量 | 备注 |
-|---|---|---|
-| `android.*` import | **270 处** | 换口径重数（多在留守文件里：reminder 46 / widget 56 / ui-web 41 / provider 8 = 151 处本就永不迁） |
-| `androidx.*`（不含 compose） | **26 类** | 同上口径 |
-| `androidx.compose.*` | — | 跨平台，**不算阻塞** |
-| 已完成清零 | — | `java.time` / `LocalConfiguration` / `androidx.navigationevent` / `String.format` / `SimpleDateFormat` / `Calendar`（各自批次见里程碑） |
-| **`LocalContext`** | ✅ **0（已清零）** | 第四十三批 `CourseScheduleApp` 迁走后，共享层不再有 `LocalContext`；宿主装配层持有 |
-| Gson（风险 **R2**） | **7 文件** | 清单见下（**全在留守文件里**，不再阻塞迁移） |
-| `java.io` | 29 处 / 12 文件 | 多为导入导出 |
-| `res` → `composeResources` | ✅ **26 个 drawable 已迁**；`R.drawable.*` 仍在少量页面 | 见 F 节 |
+页面迁移已全部完成：共享层 20/20 路由 + `CourseScheduleApp` 全部落地 `:ui-shared`。
 
-**Gson 6 个文件**：`data/ScheduleAppearance` · `ui/screens/TodayAssistant` ·
-`ui/utils/ScheduleExport` · `ui/utils/ScheduleImport` · `ui/utils/UpdateChecker` · `ui/web/AndroidBridge`
-（`BackupAndMigrationScreen` / `LocalBackupScreen` / `EducationalImportScreen` 已随页面迁出 `:androidApp`）
+**剩余的 `android.*` 引用全部是「永不迁移」的留守归属**，不是待办：
 
-**按目录看 `android.*`（第四十三批后：`ui/*` 已无「待迁」，下表只剩留守归属说明）**
+| 目录 | 归属 |
+|---|---|
+| `reminder` / `widget` / `shizuku` / `wearable` / `provider` | 平台专有，永不迁（提醒时刻算法已抠进 `:core` 的 `DayScheduleResolver`） |
+| `ui/web` | `AndroidWebHost` 本体，平台专有 |
+| `ui/utils` | `CrashLogHelper` / `UpdateChecker` / `ApiCompat` 等本就平台专有 |
+| `data/ScheduleAppearance` · `TodayAssistant` 等 7 个 Gson 文件 | 全在留守文件里，不阻塞迁移 |
+| `res` → `composeResources` | 26 个 drawable 已迁，剩余 `R.drawable.*` 在 Android 侧页面 |
 
-| 目录 | 处/文件 | 归属 |
-|---|---:|---|
-| `ui/activities` | 6 / 1 | ✅ **已清零**：`MainActivity` 已在迁移清单上，方案见「下一步 2」 |
-| `ui/screens` | 13 / 3 | **待迁** —— `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
-| `ui/utils` | 70 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
-| ~~`ui/components`~~ | ✅ **0（已清零）** | 第二十七批 `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 已迁 |
-| `ui/navigation` | 6 / 1 | ✅ **已清零**：Route **20/20 全部迁完**（`AppNavHost` + 全部 Route 壳） |
-| `ui/effects` | 3 / 1 | 待迁（薄，`MiuixVisualEffectsPolicy` —— 本就平台专有） |
-| `data` | 6 / 1 | 待迁（`ScheduleAppearance`） |
-| `reminder` | 46 / 10 | 永不迁移 —— ✅ 提醒时刻算法**已抠进 `:core`**（`DayScheduleResolver`，第十五批） |
-| `widget` | 56 / 7 | 永不迁移 |
-| `ui/web` | 41 / 4 | 永不迁移（`AndroidWebHost` 本体 494 行走这） |
-| `shizuku` / `wearable` / `provider` | 6/2 · 2/2 · 8/1 | 永不迁移 |
-
-### ⚠️ 判断「平台专有」时要先分清**层面**（本轮踩过）
+### ⚠️ 判断「平台专有」时要先分清**层面**
 
 同一个「快照位图」问题，判断错层面就会把抽象建反：
-- ✅ **Compose 层**（跨平台）：`rememberGraphicsLayer()` / `GraphicsLayer.record {}` / `toImageBitmap()`
-  —— CMP 一样支持，**桌面/iOS 会有同样的 screen 转场**。
-- ❌ **Android 专有**：只有 `toImageBitmap().asAndroidBitmap()` → `Bitmap.createBitmap(x,y,w,h)`
-  这一步**裁剪**（Compose 没有跨平台 crop API）。
 
-所以页面签名里的快照类型应该直接用 **`androidx.compose.ui.graphics.ImageBitmap?`**
-（跨平台类型，**不需要任何 expect/actual**），而不是包成平台 `Bitmap`；
-裁剪用 `Canvas.drawImageRect(srcOffset/srcSize)` 重绘实现（`cropImageBitmapClamped`，
-第三十八批已落地，`CourseTimeSettingsRoute` / `CourseManageRoute` 在用）。
-> 我曾误判成「Activity 转场、桌面端永远 null」，建了个 `expect class SnapshotBitmap` 放 `:core`
-> —— 双重错误：方向错（砍掉桌面端功能），位置也错（**`:core` 是纯数据层，不依赖 Compose**）。
-> 已于 `820bd00` 撤销。
+- ✅ **Compose 层**（跨平台）：`rememberGraphicsLayer()` / `toImageBitmap()` —— CMP 一样支持。
+- ❌ **Android 专有**：只有 `asAndroidBitmap()` → `Bitmap.createBitmap` 这一步**裁剪**
+  （Compose 没有跨平台 crop API）。
+
+所以页面签名里的快照类型应该用 **`androidx.compose.ui.graphics.ImageBitmap?`**
+（跨平台类型，不需要 expect/actual），裁剪用 `Canvas.drawImageRect` 重绘
+（`cropImageBitmapClamped`）。
 
 ---
 
-## 4. 下一步（收尾路线，按顺序推进）
+## 4. 架构约定（迁移已完成，新代码沿用）
 
-> ℹ️ 迁移期用的选批/查重扫描器（`.workbuddy-ai/tmp/scan_ui3.py` / `dupscan.py`）是**本地临时工具**，
-> 已随迁移收尾清理。若将来再往 `:ui-shared` 搬文件，仍需手工查一次「同包同名」——
-> 扫描器查不到 `.kt` facade 撞名，而那个坑**编译全绿、dex 只留一个类**（见坑清单第 8 条）。
+**页面 UI 一律放 `:ui-shared` commonMain**；只有 Android 专有「能力」留 androidApp，
+通过注入（回调/槽位/接口）解耦。没有「页面留守」。真正只留 androidApp 的三类：
 
-**待迁已归零**。剩下的都不是「页面」，是 iOS 工程侧与真机验证：
-
-1. ~~宿主层 Route~~ —— ✅ **20/20 全迁完**（第三十八批）。
-2. ~~壁纸层~~ —— ✅ 跨平台化完成（第四十/四十一批：`WallpaperStore` + 平台后端注入 +
-   变换缓存下沉）。
-3. ~~外观层~~ —— ✅ 跨平台化完成（第四十二批：`AppearanceStore` + `AppearanceStyleCodec`，
-   7 个金样测试守数据兼容）。
-4. ~~崩溃修复~~ —— ✅ 三个「编译期不报、运行期才炸」的崩已修（`f64531d6`，
-   模拟器实测三个页面正常）。
-5. ~~`CourseScheduleApp` 迁 `:ui-shared`~~ —— ✅ **第四十三批完成**。5687 行真主界面进
-   commonMain（`ui/activities/CourseScheduleApp.kt`）；`MainActivity.kt` 6070 → 838 行
-   （宿主装配层 `AndroidCourseScheduleApp`）；iOS 入口主底座已换真 `CourseScheduleApp()`，
-   临时路由导航台删除。**iOS 编译 + framework 链接全绿**，Android `assembleDebug` 零回归。
-   ⚠ 平台触点全走注入（10 个参数：resumeCount / isInFreeformWindow / onSystemBarsChanged /
-   onHolidayDataChanged / onPickWallpaperImage / onShareSchedule / onReadSharedFileText /
-   sharedFileIntent / settingsPane / todayAssistantCard / updateController / 位图回收）。
-6. ~~iOS 工程真机验证~~ —— ✅ **第四十三批后运行时已验证**（真主界面在 iOS 跑通）。启动注入（A4）✅ 已接。
-7. **`IosWebHost`（WKWebView）—— 现在只剩这一个功能缺件**（第四十四/四十五批已把文件选择器、
-   选壁纸、分享、外部分享、状态栏、今日助手全部原生接上）。契约 `ui/web/WebHost.kt` 7 个方法就位，
-   **`WebViewScreen` 与三个对话框一行不用动**。
-8. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
-
-### 🔑 迁移框架铁律（用户 10-11 拍板）
-
-**页面 UI 一律迁 `:ui-shared` commonMain**（否则 iOS/桌面要重写一遍）；**只有 Android 专有「能力」留
-androidApp，通过注入（回调/槽位/接口）解耦**。没有「页面留守」。真正只留 androidApp 的三类：
-- **纯能力实现体**：`CrashLogHelper` + 7 个 Android 包装（DiagnosticRecorder/UpdateController/
-  ReminderController/BackupFileController/ScheduleEffects/PlatformToast 等）、`ApiCompat`/
-  `ActivitySystemBars`/`MiuixVisualEffectsPolicy`/`UpdateChecker`/`UpdateInstaller`、`ScheduleAppearance`
-  本体（Bitmap/LruCache）、`ClassEndEffects` 震动/烟花实现、`TodayAssistant` 天气抓取器、`AndroidScheduleEffects`
-- **宿主层**：`MainActivity` / `AppRouteContent` / `NexioApplication`（`AppNavHost` 已迁 ✅）
+- **纯能力实现体**：`CrashLogHelper` + Android 包装（DiagnosticRecorder / UpdateController /
+  ReminderController / BackupFileController / ScheduleEffects / PlatformToast 等）、
+  `ApiCompat` / `ActivitySystemBars` / `MiuixVisualEffectsPolicy` / `UpdateChecker` /
+  `UpdateInstaller`、`ScheduleAppearance` 本体（Bitmap/LruCache）、`ClassEndEffects` 震动/烟花实现
+- **宿主层**：`MainActivity` / `AppRouteContent` / `NexioApplication`
 - **WebView 内容宿主**：webview 本体（iOS 要 WKWebView；页面外壳仍迁 + 槽位注入）
 
-**已建的能力注入抽象（:core 接口 + Android 包装，8 个）**：DiagnosticRecorder / ScheduleEffects /
-PlatformToast / FeatureLog / UpdateController / ReminderController / BackupFileController /
-**ScheduleFileController**（SAF 选文件读 + 另存为）。
-新页面遇 Android 能力照这套模板抽接口。
+⚠ **两条文件 I/O 分工线别混**：
 
-⚠ **两条分工线别混**：
 - 「**应用自己的备份目录**」→ `BackupFileController`（固定目录、列表扫描、读/写/删）
 - 「**用户选定的任意位置**」→ `ScheduleFileController`（导入时选一个文件读、导出时另存为新文件）
 两者都是文件 I/O，但生命周期与失败文案完全不同，**不要合并**。
 
-**并行子代理流水线**（多批验证，2~3 路同时跑）：文件集不相交的批次可并行——每路改自己的页面+调用方；
-**子代理不跑 gradle**（锁冲突），合并后统一门禁。父代理最后统一接线宿主调用点（避免多代理改同一文件）。
-⚠ **纯数据类若声明在 android 专有文件里（如 AppearanceConfig 曾在 Gson 文件中），页面迁入后会
-Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 companion 扩展留宿主）。
-
-每批结束必须：`:androidApp:assembleDebug` 过 + 门禁绿 + **真机过一遍受影响的界面**。
-（用户 10-11 拍板：安卓端回归已验证即放行；**桌面端实机点开推迟到全部迁移完毕后统一修**。）
+**已建的能力注入抽象（`:core` 接口 + Android 包装，8 个）**：DiagnosticRecorder / ScheduleEffects /
+PlatformToast / FeatureLog / UpdateController / ReminderController / BackupFileController /
+ScheduleFileController。新页面遇 Android 能力照这套模板抽接口。
 
 ---
 
@@ -607,68 +545,47 @@ AppFiles.init(
 
 ---
 
-## 8. 分阶段路线
+## 8. 迁移结果
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 0 | 技术预研与地基（backdrop KMP 化 / Miuix 改动量 / kotlinx-datetime 等价性） | ✅ 完成 |
-| 1 | 纯逻辑下沉（`:core` 建立，模型 / 时间 / 节假日 / 仓储） | ✅ 完成 |
-| 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
-| 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
-| 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | ✅ A1 A2 A3 全部实现（A3 已在模拟器真跑通 7 个用例）；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | ✅ **完成**：framework 链接成功（R10/R13 已解），**路由 20/20 + 真主界面 `CourseScheduleApp` 全迁**，iOS 首页已是真课表界面（`ebc209ad`），**运行时已验证跑通** |
-| 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
+| 0 | 技术预研与地基（backdrop KMP 化 / Miuix 改动量 / datetime 等价性） | ✅ |
+| 1 | 纯逻辑下沉（`:core` 建立，模型 / 时间 / 节假日 / 仓储） | ✅ |
+| 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ |
+| 3 | 平台能力抽象 + 仓储下沉（8 套接口 + 启动注入） | ✅ |
+| 4 | iOS 逻辑层贯通 —— 网络层 / UserDefaults / AppFile | ✅ |
+| 5 | UI 首版（`:ui-shared` + iOS 壳，framework 链接成功） | ✅ 路由 20/20 + 真主界面已迁，运行时验证通过 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。
-`androidx.compose.*` 允许。（模块分层与规模见 §3「模块现状」表。）
+`androidx.compose.*` 允许。由 `checkKmpPurity` + `linuxX64` 编译门禁强制。
 
----
+## 9. 踩过的坑（机制值得记住）
 
-## 9. 风险登记表
+**Gson → JsonSupport 换序列化**（R2）：4 条通道（单课表备份 / 分享码 / 教务导入 / 全量备份）
+必须逐条 round-trip 回归，旧格式读取路径不能丢。
 
-| # | 风险 | 影响 | 应对 |
-|---|---|---|---|
-| ~~R1~~ | ~~backdrop / AGSL 在 iOS 无法复现~~ | — | **已排除**：有现成 KMP 移植（SkSL，视觉等价） |
-| **R2** | **Gson 替换破坏 4 条序列化通道** | **用户数据丢失** | 分层替换 + round-trip 回归 + 旧格式读取路径。**真实备份已到手**，配置要求已量出。**单课表备份 / 分享码 / 教务导入 / 全量备份**四条通道待做 |
-| R3 | iOS 本地通知 64 条上限 | 提醒漏发 | 滚动预约策略，阶段 0 原型验证 |
-| R4 | Kotlin/Native 线程模型撞全局单例 | 崩溃 / 状态错乱 | 阶段 4 专项验证，**要等真机** |
-| R5 | `SimpleDateFormat` → kotlinx-datetime 行为偏移 | 日期静默算错 | ✅ 已用逐点对照用例验证语义等价 |
-| ~~R6~~ | ~~Miuix 是 fork 的 `-android` 变体~~ | — | **已排除**：官方 5 个 artifact 都有 `-iosarm64` 变体 |
-| ~~R6b~~ | ~~fork 的 `miuix-ui` 在 iOS 侧缺 actual~~ | — | **已排除**（2026-10-11 真编确认）：`:miuix` 的 `iosArm64` / `iosSimulatorArm64` 编译通过 |
-| R6c | wasmJs 门禁与 `check` 互斥 | 门禁漏跑 | 已知限制，**必须分两次跑** |
-| R6d | iOS 首启即崩（`Info.plist` 缺键） | 白屏 / crash | CMP 1.7.3 起强制检查，建 Xcode 工程时一并补 |
-| R7 | 云端分享白名单未同步 | 新字段静默丢弃 | 改客户端字段必须同改 `server/index.js` 并重新部署 |
-| R8 | UI 迁移周期过长，拖垮主线开发 | 项目停滞 | 严格按批次，每批次结束 `:androidApp` 仍可发版 |
-| R9 | ~~OkHttp 在 iOS 不可用~~ | 低 | 改法已修订：自建 `HttpService`，Android/JVM 复用 OkHttp，Native 已实现 |
-| ~~R10~~ | ~~`:miuix` 是 miuix-ui 的「部分 fork」，与官方 artifact 同包同名~~ | — | **已解**（`73677f72`）：补成完整 fork + 三处 exclude 官方 miuix-ui。机制见下方专条，**别再退回部分 fork** |
-| R11 | `kotlinx-datetime` 在 iOS 变体被 CMP material3 顶到 0.7.1 | 同一二进制两个版本 → 链接必炸 | ✅ 已在根 `build.gradle.kts` force 回 0.6.2；0.7 升级要**全项目一起做** |
-| R12 | checkKmpPurity 抓不到「全限定名」java API | iOS 编不过 | ✅ 已由 `:ui-shared` 的 iOS 编译兜住；大文件迁移时仍要 grep `java.` 字面量 |
-| ~~R13~~ | ~~iOS 入口引用真实页面后，链接报 `Undefined symbols … preference#ArrowPreference`~~ | — | **已解**（`cf0d5ee5`）：`miuix-preference` fork 进 `:miuix`（`preference/` 8 文件，只 fork 这一个目录），官方 artifact 三处移除。与 R10 同机制，见下方专条 |
+**fork 边界**：官方 miuix 0.9.4 与 fork commonMain 重叠 85 文件（30 个有改动、约 4414 行），
+fork 另有 21 个官方没有的文件。两条纪律：
 
-### R10 详述 —— 已解，但机制值得记住（**别让 fork 再变回「部分 fork」**）
+1. **从上游同步 miuix-ui 时必须把新文件一起搬进来** —— 自包含后缺文件会当场报
+   `Unresolved reference`（这是好事，别用「加回官方 artifact」来消错）。
+2. **不要在 fork 里改「别人会调的内部签名」**（这次是 `DialogContentLayout` 少了三个参数）——
+   改了必须连带适配调用方。
 
-**症状**：首次真链接 `:ui-shared` 的 iOS framework 时报
-`IrPropertySymbolImpl is already bound. Signature: …basic/…_ButtonDefaults$stableprop`。
+**kotlinx-datetime 版本混用**：CMP material3 在 iOS 变体上依赖 0.7.x，会顶掉项目锁定的版本；
+两版的 `LocalDate` 是不同类，链接期必炸。升级必须全项目一起升（详见 root `build.gradle.kts`）。
 
-**成因**：官方子库（`miuix-preference` 等）会传递依赖 `miuix-ui`，而本仓库把它 fork 成了
-`:miuix` —— **同包同名**。Android/JVM 类路径按名去重、悄悄用一个（**所以一直没暴露**，
-还埋了「官方 WindowDialog 调到 fork 旧签名 → NoSuchMethodError」的隐患）；
-Kotlin/Native 链接期是硬错误。
+**`Info.plist` 缺键**：CMP 1.7.3 起强制 `CADisableMinimumFrameDurationOnPhone`，漏了**一启动就崩**。
 
-**解法（`73677f72`）**：把 fork 补成**完整 fork**（108 → 119 文件），再在 `:miuix` /
-`:ui-shared` / `:androidApp` 三处 `exclude(module = "miuix-ui")`。
+**wasmJs 门禁与 `--offline` 互斥**：只要 wasmJs 目标存在于构建中，插件就在配置阶段注册
+Distributions 仓库，与 `FAIL_ON_PROJECT_REPOS` 冲突 —— 所以该目标默认关闭、门禁独立跑。
 
-**代价量化**（供以后再遇到同类问题估工）：官方 0.9.4 源码 vs fork，commonMain 重叠 85 文件，
-其中 **30 个有改动、差异约 4414 行**（最大 `basic/ListPopup.kt` 1200 行）；fork 另有 21 个
-官方没有的文件。补 11 个文件、4 处 API 适配即可自包含。
+**Java 名义上跨平台、实则 JVM 专有**：`String.format` 会按 Locale 输出数码字形（阿拉伯语 locale 下
+`"08:00"` 变非 ASCII），`System.currentTimeMillis` 在 Native 上不存在。`checkKmpPurity` 拦这些。
 
-> 🔴 **两条纪律**（否则会退回去）：
-> 1. **从上游同步 miuix-ui 时，必须把新文件一起搬进来** —— 自包含后缺文件会当场
->    报 `Unresolved reference`（这是好事，别用「加回官方 artifact」来消错）。
-> 2. **不要在 fork 里改「别人会调的内部签名」**（这次是 `DialogContentLayout` 少了三个参数）——
->    改了就必须连带把调用方一起适配，否则就是下一次 R10。
+**同包同名 fork 的静默失败**：Android dex 按类名去重，版本错配不报错、只在走某条路径时炸
+（`NoSuchMethodError`）；Kotlin/Native 才是链接期硬错误。往 `:ui-shared` 搬文件前必须手工查撞名。
 
----
 
 ## 10. 红线原则
 
