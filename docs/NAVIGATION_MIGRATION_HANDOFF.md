@@ -183,6 +183,23 @@ MainActivity.setContent
   depth 跨越 0/1 时被驱动）推给 `MainLayerTransition`，在 MainActivity 层施加。
 - **手势跟手/取消回弹**的剩余时长用 `settleOnGlobalCurve` 在整条曲线上反解，
   保证速度连续（原版 `animateEnter` 里「只有首次才 `snapTo(0)`」的等价实现）。
+- **手势跟手要按「手势起点」成比例**：`p = 起点 p × (1 - 手势进度)`。
+  写成 `1 - 手势进度` 的话，入场没播完就滑返回（p 还在 0.4）时第一帧会把 p 拉到 1 ——
+  页面先「跳」到完全覆盖再跟手。1da9c0a8 的 `gestureBase = controller.progress.value`
+  就是干这个的（`SecondaryPagePredictiveBack`）。
+- **`NavTransitionState.snapTo` 会把正在跑的 `animateTo` 挤掉**（内部 `mutation` 代数，
+  等价 `Animatable` 的 `MutatorMutex`）。不这样的话，手势每帧落的值会被还在跑的入场动画
+  下一帧盖回去 —— 表现是「跟手不动 / 抖动」。被挤掉的 `animateTo` 返回 false，
+  调用方据此**跳过收尾**（pop 的「清 `outgoing` + p 拉回 1」不能半路强拉）。
+- **每一层的组合槽位只由「它在渲染列表里的下标」决定**：`layers = 栈内各层 +（pop 期间）出栈层`，
+  **顶层也走同一个循环**（`AppNavHost` 的渲染段）。别再把栈顶单独放在循环外的槽位 ——
+  push 时原来那层要从「顶层槽位」搬到「循环槽位」，同一个 `SaveableStateHolder` key 换槽位
+  = 新挂一份：新槽位组合期读 `savedStates[key]` 还是空的（旧槽位要等这一帧末尾 `onDispose`
+  才写回）→ 二级页进三级页时二级页的滚动位置等 `rememberSaveable` 状态**当场全丢**（实测踩过）。
+  栈只在尾部 append / 移除，下标天然稳定，顺带还让「退场动画期间」那层的状态也不跳。
+- **黑幕挂在最上层自己的 `drawBehind` 上**（`PageLayer(scrimAlpha = …)`），必须放在
+  `Modifier.layout` **外层** —— 否则坐标系跟着页面平移，黑幕会跟着滑走。画在
+  「本层内容之下、之前所有兄弟之上」，与原来夹在中间的全屏 Box 等价。
 
 **关键 API**（`AppRouter`）：`hasOverlay`（false 时返回不拦截，Android 宿主的
 预测性返回/「退出即隐藏后台」照常生效）、`current`、`underTop`、`lastPopped`、
@@ -263,6 +280,43 @@ MainActivity.setContent
     `Animatable.snapTo` 是 suspend，赶不上当帧绘制；等 `LaunchedEffect` 去做的话，
     新页会先以 `p=1`（最终位置）出现一帧，观感是闪一下。同理 pop 结束时
     「清 `outgoing`」与「`p` 拉回 1」必须在同一帧做完，否则新栈顶会被摆到屏外。
+
+12. **同一个 `SaveableStateHolder` key 一帧里只能挂一份 —— 两条真实崩因（2026-10-12 修）**
+    实测崩在 iOS：`IllegalArgumentException: Key course_time_settings was used multiple times`，
+    抛出点是 `SaveableStateHolderImpl.SaveableStateProvider` 里的 `DisposableEffect.onRemembered`
+    （`require(key !in registries)`）。两条路径，**互相独立，都要堵**：
+    - **出场动画没播完又点进同一页**（用户报的「退出动画未结束立即再次进入」）：
+      `outgoing`（已出栈、正在播退场的那层）与新栈顶是**同一个 `route.id`**，
+      同一帧里两次 `SaveableStateProvider(同 key)`。
+      修法：push 分支**同帧** `outgoing = null`；同一个 route 被打断时**不** `snapTo(0)`，
+      从当前进度续播（1da9c0a8 `animateEnter`：「半路被打断：从当前进度续播，不要 snapTo(0)」）。
+    - **连点两次同一个入口**：`AppRouter.navigate` 允许同一路由重复入栈
+      （页面从右侧推入的 600ms 里，同一个坐标还落在下面那层的入口上），栈里两份同 id。
+      修法：`AppNavHost.layerKeys()` 给每层算「裸 id + 同帧去重后缀 `#2`/`#3`」；
+      出栈层**后算** —— 先算会把它挤到 `#2`，出场动画里那一层的 saveable 状态当场重置。
+    ⚠ **算 key 时不要 `remember(routes, outgoing)`**（当天就踩了这个，回归：二级页一个都不显示）：
+    `routes` 就是 `AppRouter` 里那个 `mutableStateListOf` 实例，而 `SnapshotStateList`
+    **没重写 `equals`/`hashCode`**（`Any` 的引用相等）→ `Composer.changed(key)` 永远判「没变」
+    → 缓存停在首次组合（栈空）那份 → `topKey == null` → **顶层页根本不组合**，
+    现象是「点进去什么都没发生」，**且不崩**（`stackKeys[index]` 因为顶层走 else 分支而没被取到）。
+    直接每次组合现算即可（几个字符串）。
+    ⚠ 顺带记录一个**已知小瑕疵（不崩）**：同一路由重复入栈时 `router.current` 是**同一个
+    data object**，`lastRoute !== router.current` 判不出来 → 第二次 push 不播动画，
+    之后要按两次返回才退得出去。要修得把 `lastRoute` 判据与 `LaunchedEffect` 的 key
+    一起换成「导航代数」（`AppRouter` 里加单调计数器），别只改一半 ——
+    只换 key 会出现「栈里还有 A，A 却播了退场」的画面。
+
+13. **`SaveableStateProvider` 的槽位一动，它的状态就重建（二级页进三级页丢滚动位置的根因）**
+    `SaveableStateHolderImpl.SaveableStateProvider` 是「组合期 `remember { SaveableStateRegistry(
+    restoredValues = savedStates[key]) }` + `DisposableEffect.onDispose` 里才 `saveTo(savedStates, key)`」。
+    所以**同一帧内**把同一个 key 的 provider 从一个槽位搬到另一个槽位 = 新挂一份：新槽位
+    组合期读到的 `savedStates[key]` 还是空的，旧槽位要等这一帧末尾才写回 → 里面的
+    `rememberSaveable`（`LazyListState` 的滚动位置等）全部**重建**。
+    现象：二级页 push 三级页后，二级页的滚动位置/折叠状态立刻归零。
+    修法：`AppNavHost` 的渲染改成「所有层（含栈顶）走同一个 `for` 循环」，
+    槽位只由层在 `layers` 里的下标决定；栈只在尾部 append / 移除，下标天然稳定。
+    ⚠ 别再为了「顶层最后画」把它从循环里摘出去（黑幕已经改挂在最上层的 `drawBehind` 上，
+    不再需要它单独占一个槽位）。
 
 7. **LocalAppRouter.current 是 @Composable 调用**，必须在组合层取
    （`val r = LocalAppRouter.current` 然后在 onClick 里用 `r`）。

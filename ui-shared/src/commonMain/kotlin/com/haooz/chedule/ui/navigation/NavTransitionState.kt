@@ -36,22 +36,44 @@ class NavTransitionState(initialValue: Float = 0f) {
     val value: Float get() = raw.floatValue
 
     /**
+     * 突变代数：每次 [snapTo] / 新的一次 [animateTo] 都自增；正在跑的动画发现代数变了
+     * 就不再落值，并给调用方返回 false。
+     *
+     * ⚠ 这是 1da9c0a8 那版 `Animatable` 的 `MutatorMutex` 的手写等价物，**别删**：
+     * 那版的 `snapGestureProgress` 调的是 suspend 的 `Animatable.snapTo`，天然会把正在跑的
+     * `animateTo` 挤掉 —— 连 `restoreToken` 都得用递增 Int 而不是 Boolean，就因为
+     * 「新手势 snapTo 会取消进行中的 restore，Boolean 会卡在 true」。
+     * 这里的 [snapTo] 是普通函数（组合期要用它对齐转场起始帧，见 AppNavHost 的
+     * 「push 起始帧必须在组合期归零」），没有互斥量 —— 不靠这个代数，
+     * 预测性返回跟手时「手势每帧落的值」会被「还在跑的入场动画」下一帧盖回去，
+     * 表现就是跟手不动 / 抖动。
+     */
+    private var mutation = 0
+
+    /**
      * 从**当前值**续播到 [target]，不跳回起点 ——
      * 1da9c0a8 里 `animateEnter` 只在首次 `snapTo(0)` 的那条规则。
+     *
+     * @return true = 完整播到了 [target]；false = 中途被 [snapTo] 或新的一次 [animateTo]
+     *         挤掉。**被打断时调用方不要再跑收尾代码** —— pop 的收尾是「清 outgoing +
+     *         把 p 拉回 1」，半路强拉会把正在跟手 / 正在入场的那一层瞬间甩到屏外。
      */
     // ⚠ 原为 internal，迁入 :ui-shared 后必须 public：AppNavHost 还在 :androidApp，跨模块读不到 internal
-    suspend fun animateTo(target: Float, spec: AnimationSpec<Float>) {
+    suspend fun animateTo(target: Float, spec: AnimationSpec<Float>): Boolean {
+        val token = ++mutation
         animate(
             initialValue = raw.floatValue,
             targetValue = target,
             initialVelocity = 0f,
             animationSpec = spec,
-        ) { value, _ -> raw.floatValue = value }
+        ) { value, _ -> if (token == mutation) raw.floatValue = value }
+        return token == mutation
     }
 
-    /** 预测性返回跟手：逐帧直接落值，不播动画。 */
+    /** 预测性返回跟手：逐帧直接落值，不播动画。同时把正在跑的转场动画挤掉（见 [mutation]）。 */
     // ⚠ 同 [animateTo]：跨模块供 :androidApp 的 AppNavHost 调用，不能是 internal
     fun snapTo(target: Float) {
+        mutation++
         raw.floatValue = target.coerceIn(0f, 1f)
     }
 }

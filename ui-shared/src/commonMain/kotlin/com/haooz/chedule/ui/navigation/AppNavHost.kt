@@ -32,6 +32,7 @@ import com.haooz.chedule.ui.effects.motion.SecondaryPageExitEasing
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
@@ -77,7 +78,8 @@ fun AppNavHost(
     modifier: Modifier = Modifier,
     content: @Composable (AppRoute) -> Unit,
 ) {
-    // key 用 route.id：同一路由压两次会共用状态，当前子页互不跳自己，将来有自跳再改
+    // key 由 layerKeys() 统一算（裸 route.id + 同帧去重后缀）：
+    // 出栈动画里的那一层与栈内层不能撞 key，同一路由重复入栈也不行 —— 见 layerKeys 的 KDoc
     val stateHolder = rememberSaveableStateHolder()
     val scope = rememberCoroutineScope()
 
@@ -85,12 +87,66 @@ fun AppNavHost(
     // pop 期间仍在屏幕上的那一层：已出栈，但要跟着把退出动画播完
     var outgoing by remember { mutableStateOf<AppRoute?>(null) }
 
+    /**
+     * 出场收尾：从当前进度续播到 0，**完整播完**才同帧清 [outgoing] 并把 p 拉回 1
+     *（只清 `outgoing` 而 p 停在 0 的话，新栈顶会被摆到屏外）。
+     *
+     * ⚠ 半路被打断时（预测性返回手势接管）什么都不做：那时 p 已经归手势驱动，
+     * 再拉回 1 会把正在跟手的那一层瞬间甩到屏外。这个「打断就不收尾」的语义来自
+     * 1da9c0a8 —— 那版 `Animatable.snapTo` 会把正在跑的 `animateTo` 挤掉，
+     * `animateExit()` 之后的收尾自然就不走了；这里的等价物是
+     * [NavTransitionState.animateTo] 的返回值（见其 KDoc）。
+     *
+     * ⚠ 还要比对「收的是不是还是同一层」：从 [onBackCancelled] 起的这次收尾挂在
+     * `rememberCoroutineScope` 上，**不随导航自动取消** —— 播到一半用户又 push 了新页时，
+     * 不比对就会把新页的入场动画一把掐掉（`outgoing` 已被 push 清空，收尾却还在跑）。
+     */
+    val settleExit: suspend () -> Unit = {
+        val exiting = outgoing
+        if (exiting != null) {
+            val from = progress.value.coerceIn(0f, 1f)
+            // 从当前值续播到 0：可能是手势松手的剩余距离，也可能是被打断的位置
+            val (dur, easing) = settleOnGlobalCurve(
+                fromProgress = from,
+                toProgress = 0f,
+                fullEasing = NAV_EXIT_EASING,
+                totalDuration = NAV_EXIT_DURATION,
+                invertGlobal = true,
+                minDuration = MIN_GESTURE_SETTLE_MS,
+            )
+            val finished = coroutineScope {
+                val exit = async { progress.animateTo(0f, tween(dur, easing = easing)) }
+                if (router.depth == 0) {
+                    launch { mainTransition.animateTo(0f, tween(dur, easing = easing)) }
+                }
+                exit.await()
+            }
+            if (finished && outgoing === exiting) {
+                // 同帧收尾：只清 outgoing 而 p 停在 0 的话，新栈顶会被摆到屏外
+                outgoing = null
+                progress.snapTo(1f)
+            }
+        }
+    }
+
     // 转场起点必须在组合期对齐：LaunchedEffect 晚一帧，那一帧会闪
     var lastRoute by remember { mutableStateOf(router.current) }
     if (lastRoute !== router.current) {
         lastRoute = router.current
         when (router.lastDirection) {
-            NavDirection.Push -> progress.snapTo(0f)
+            NavDirection.Push -> {
+                val interrupted = outgoing
+                // ⚠ 必须**同帧**摘掉 outgoing：出场动画没播完又点进同一页时
+                //（「退出动画未结束立即再次进入」），outgoing 与新栈顶是同一个 route.id，
+                // 同一帧里两次 SaveableStateProvider(同 key) → SaveableStateHolderImpl 直接抛
+                // IllegalArgumentException("Key xxx was used multiple times") 崩掉（实测）。
+                outgoing = null
+                // 同一个 route 被打断（出场动画里又点进来）→ 这一层在组合里从没销毁过，
+                // 从当前进度续播（1da9c0a8 `animateEnter` 的「半路被打断：从当前进度续播，
+                // 不要 snapTo(0)」；那版 `snapGestureProgress` 也会标上「已入场」防重播）。
+                // 换了 route 才是新页，才归零从屏外右侧推入。
+                if (interrupted?.id != router.current?.id) progress.snapTo(0f)
+            }
             // pop 起点就是 1，不用动 p，只要留住被弹出的那层
             NavDirection.Pop -> outgoing = router.lastPopped
         }
@@ -104,20 +160,27 @@ fun AppNavHost(
         enabled = router.hasOverlay,
         onBackCompleted = { router.popBack() },
         onBackCancelled = {
-            val from = progress.value.coerceIn(0f, 1f)
-            val (dur, easing) = settleOnGlobalCurve(
-                fromProgress = from,
-                toProgress = 1f,
-                fullEasing = NAV_ENTER_EASING,
-                totalDuration = NAV_ENTER_DURATION,
-                invertGlobal = false,
-                minDuration = MIN_GESTURE_RESTORE_MS,
-            )
-            scope.launch {
-                launch { progress.animateTo(1f, tween(dur, easing = easing)) }
-                // 首层返回时主界面也在跟手，一起弹回
-                if (router.depth == 1) {
-                    launch { mainTransition.animateTo(1f, tween(dur, easing = easing)) }
+            if (outgoing != null) {
+                // 手势打断的是一次还没播完的出场：「回弹」= 把那次出场播完 ——
+                // 用户已经决定离开这一页，取消手势只表示「别把下面那层也弹掉」。
+                //（不这么走的话会把已出栈的那层又拉回全屏盖住新栈顶。）
+                scope.launch { settleExit() }
+            } else {
+                val from = progress.value.coerceIn(0f, 1f)
+                val (dur, easing) = settleOnGlobalCurve(
+                    fromProgress = from,
+                    toProgress = 1f,
+                    fullEasing = NAV_ENTER_EASING,
+                    totalDuration = NAV_ENTER_DURATION,
+                    invertGlobal = false,
+                    minDuration = MIN_GESTURE_RESTORE_MS,
+                )
+                scope.launch {
+                    launch { progress.animateTo(1f, tween(dur, easing = easing)) }
+                    // 首层返回时主界面也在跟手，一起弹回
+                    if (router.depth == 1) {
+                        launch { mainTransition.animateTo(1f, tween(dur, easing = easing)) }
+                    }
                 }
             }
         },
@@ -125,37 +188,38 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         // backProgress：手势期间为 0..1 的连续进度，非手势期间为 null（skiko 恒为 null）。
         // Android 上它读 navigationevent 的 snapshot state，snapshotFlow 能跟上逐帧变化。
+        //
+        // ⚠ 手势必须**按手势起点成比例**往回落，不能写成 `p = 1 - 手势进度`：
+        // 入场动画没播完就滑返回时（p 还在 0.4），第一帧手势进度≈0 会把 p 直接拉到 1 ——
+        // 页面先「跳」到完全覆盖再跟手。1da9c0a8 的 `SecondaryPagePredictiveBack` 就是
+        // 先冻结 `gestureBase = controller.progress.value`，再 `p = gestureBase × (1 - 进度)`。
+        //（它冻结时会顺手标记入场已开始，本文件对应上面 Push 分支的续播判定。）
+        var gestureBase = 1f
+        var mainGestureBase = 1f
+        var sawGesture = false
         snapshotFlow { back.backProgress() }.collect { gestureProgress ->
-            if (gestureProgress != null && PredictiveBackSettings.enabled) {
-                val p = (1f - gestureProgress).coerceIn(0f, 1f)
-                progress.snapTo(p)
-                // 栈里只剩一层时，被推的是主界面
-                if (router.depth == 1) mainTransition.snapTo(p)
+            if (gestureProgress == null) {
+                sawGesture = false
+                return@collect
             }
+            if (!PredictiveBackSettings.enabled) return@collect
+            if (!sawGesture) {
+                sawGesture = true
+                gestureBase = progress.value.coerceIn(0f, 1f)
+                mainGestureBase = mainTransition.value.coerceIn(0f, 1f)
+            }
+            val remain = (1f - gestureProgress).coerceIn(0f, 1f)
+            // snapTo 会把还在跑的转场动画挤掉（NavTransitionState 的 mutation）；
+            // 否则被打断的入场动画下一帧就把手势落的值盖回去，跟手不动。
+            progress.snapTo(gestureBase * remain)
+            // 栈里只剩一层时，被推的是主界面
+            if (router.depth == 1) mainTransition.snapTo(mainGestureBase * remain)
         }
     }
 
     LaunchedEffect(router.current) {
         if (router.lastDirection == NavDirection.Pop) {
-            // 从当前值续播到 0：可能是手势松手的剩余距离，也可能是被打断的位置
-            val from = progress.value.coerceIn(0f, 1f)
-            val (dur, easing) = settleOnGlobalCurve(
-                fromProgress = from,
-                toProgress = 0f,
-                fullEasing = NAV_EXIT_EASING,
-                totalDuration = NAV_EXIT_DURATION,
-                invertGlobal = true,
-                minDuration = MIN_GESTURE_SETTLE_MS,
-            )
-            coroutineScope {
-                launch { progress.animateTo(0f, tween(dur, easing = easing)) }
-                if (router.depth == 0) {
-                    launch { mainTransition.animateTo(0f, tween(dur, easing = easing)) }
-                }
-            }
-            // 同帧收尾：只清 outgoing 而 p 停在 0 的话，新栈顶会被摆到屏外
-            outgoing = null
-            progress.snapTo(1f)
+            settleExit()
         } else {
             val from = progress.value.coerceIn(0f, 1f)
             // minDuration = 0：纯续播
@@ -177,11 +241,7 @@ fun AppNavHost(
         }
     }
 
-    // pop 期间仍在屏幕上的那一层已出栈，由 outgoing 单独渲染；栈内其余层走下面的整栈循环
     val routes = router.routes
-    val lastIndex = routes.lastIndex
-    // 直接下层：push/稳定态是栈顶下面那层；pop 期间是被揭开的层（即当前栈顶）
-    val underIndex = if (outgoing != null) lastIndex else lastIndex - 1
 
     // 屏幕圆角：转场中间态把上层裁成圆角，让它像一张卡片从右边推进来。
     // 只对上层做 —— 下层是被揭开的那一层，不该有轮廓。
@@ -199,68 +259,113 @@ fun AppNavHost(
         p > 0f && p < 1f
     }
 
+    // ── SaveableStateHolder 的 key ─────────────────────────────────────────
+    // ⚠ 同一帧里同一个 key 只能挂一份，否则 SaveableStateHolderImpl 直接抛
+    // IllegalArgumentException("Key xxx was used multiple times")，整屏崩。
+    // 两条真实路径，都必须靠「算出来的唯一 key」兜住：
+    //   ① 出场动画没播完又点进同一页 —— 出栈层（outgoing）与新栈顶层同 route.id。
+    //      （上游的组合期同步里已顺手清 outgoing，这是第二道保险）
+    //   ② 连点两次同一个入口 —— `AppRouter.navigate` 明确允许同一路由重复入栈
+    //      （页面从右侧推入的 600ms 里，同一个坐标仍落在下面那层的入口上）。
+    //
+    // ⚠ **别包 `remember(routes, outgoing)`**：`routes` 就是 `AppRouter` 里那个
+    // `mutableStateListOf` 实例，而 `SnapshotStateList` **没有重写 equals/hashCode**
+    // （`Any` 的引用相等），`Composer.changed(key)` 判「没变」→ remember 永不重算 →
+    // `stackKeys` 永远是首次组合（栈空）那份 → `topKey == null` → **二级页一个都不组合**。
+    // 直接算即可：开销是几个字符串，且重复路由的 key 由 `SaveableStateProvider`
+    // 内部按 equals 比较（`registries` 是 ScatterMap、`ReusableContent` 比的是 dataKey），
+    // 等值的新字符串不会让页面状态重置。
+    val (stackKeys, exitKey) = layerKeys(routes, outgoing)
+
+    // ── 这一帧要渲染的层 ───────────────────────────────────────────────────
+    // 栈内各层 +（pop 期间）已出栈、正在播退场的那层（排在最后 = 画在最上面）。
+    //
+    // ⚠ **所有层都走同一个循环**：每一层的组合槽位只由「它在列表里的下标」决定。
+    // 这是「二级页进三级页时，二级页状态（滚动位置等）不能丢」的关键 ——
+    // 之前把栈顶单独放在循环**外**的槽位，push 时原来那层要从「顶层槽位」搬到
+    // 「循环槽位」，同一个 key 换了槽位就等于新挂一份：新槽位组合期的
+    // `remember { SaveableStateRegistry(restoredValues = savedStates[key]) }` 读到的还是空的
+    //（旧槽位要等这一帧末尾 `onDispose` 才把状态写回 `savedStates`，见
+    // `SaveableStateHolderImpl.SaveableStateProvider`）→ `rememberSaveable` 全部重建。
+    // 栈只在尾部 append / 移除，下标天然稳定：二级 A → 三级 B 时 A 仍在 `[0]`、B 在 `[1]`；
+    // pop 回来 B 还在 `[1]`，所以**连它播退场动画期间**的状态都不变。
+    val exitingLayer = outgoing
+    val layers: List<AppRoute> = if (exitingLayer != null) routes + exitingLayer else routes
+    val renderKeys: List<String> = if (exitKey != null) stackKeys + exitKey else stackKeys
+
+    // 黑幕：只压暗被盖住的内容，推入/退出的顶层不被压暗。原来是一个夹在
+    // 「下层各页」与「顶层页」之间的全屏 Box，现在挂在最上层自己的 `drawBehind` 上 ——
+    // 等价（画在「它自己的内容之下、之前所有兄弟之上」，且在全屏未平移的坐标系里）。
+    val scrimAlpha: () -> Float = {
+        val p = progress.value
+        // p 到位（顶层完全盖住）就不画：省一次全屏 alpha 混合
+        if (p < 0.999f) NAV_BG_DIM * p else 0f
+    }
+
     Box(modifier.fillMaxSize()) {
         // ── 整栈常驻（2026-10-10 起）：栈内每一层都保持组合，像 Activity back stack
         // 实例全活着 —— 任意深度 pop 回去都是活页，不是重建。
         // 绘制三档（等价 stop 的 Activity 不画窗口）：
-        //   栈顶     → 常画（在黑幕之上单独画，见下方）
+        //   最上层   → 常画（全屏圆角裁切 + 黑幕，都在 PageLayer 里）
         //   直接下层 → p<1 就画，p==1（被顶层完全盖住）才暂停 ——
         //              ⚠ 不能用「0<p<1」判：push 起始帧 p 恰好=0、顶层还在屏外，
         //              那一帧下层必须画，否则会闪出主界面（实测踩过）
         //   更深层   → 永远不画（任何 p 下都被完全遮住），只保留组合与状态
-        val topIndexInStack = if (outgoing == null) lastIndex else -1
-        for (index in routes.indices) {
-            if (index == topIndexInStack) continue // 顶层最后画：黑幕要压在下层上、顶层下
-            val route = routes[index]
-            val isDirectUnder = index == underIndex
+        val topIndex = layers.lastIndex
+        for (index in layers.indices) {
+            val page = layers[index]
+            val isTop = index == topIndex
+            val isDirectUnder = index == topIndex - 1
             val fraction: () -> Float = when {
+                isTop -> ({ 1f - progress.value })
                 isDirectUnder -> ({ -NAV_PARALLAX * progress.value })
                 // 更深层固定停靠位：p 永远不影响它们
                 else -> ({ -NAV_PARALLAX })
             }
             val paused: () -> Boolean = when {
+                isTop -> ({ false })
                 isDirectUnder -> ({ progress.value >= 1f })
                 else -> ({ true })
             }
             PageLayer(
                 fraction = fraction,
                 paused = paused,
+                clipShape = if (isTop) screenClipShape else null,
+                scrimAlpha = if (isTop) scrimAlpha else null,
                 inFlight = inFlight,
             ) {
-                stateHolder.SaveableStateProvider(route.id) { content(route) }
-            }
-        }
-
-        // 黑幕：夹在「下层各页」与「顶层页」之间，随 p 渐暗 —— 只压暗被盖住的内容，
-        // 推入的顶层页不被压暗（与拆 Activity 时代 Activity 转场的层级一致）。
-        // ⚠ 显隐不能挂「转场进行中」这种组合期状态：跟手期间没有动画在跑（纯逐帧落值），
-        // 那样手势全程没有压暗。常驻挂载，只在 draw 阶段跳过稳定态。
-        if (router.hasOverlay || outgoing != null) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        val p = progress.value
-                        val a = NAV_BG_DIM * p
-                        if (a > 0.001f && p < 0.999f) drawRect(Color.Black.copy(alpha = a))
-                    },
-            )
-        }
-
-        // 顶层：pop 期间是被弹出的那层（已出栈，播完退出动画）；否则是栈顶。
-        // 常画、带屏幕圆角裁切、位于黑幕之上 —— 黑幕不压它。
-        val visibleTop = outgoing ?: router.current
-        if (visibleTop != null) {
-            PageLayer(
-                fraction = { 1f - progress.value },
-                paused = { false },
-                clipShape = screenClipShape,
-                inFlight = inFlight,
-            ) {
-                stateHolder.SaveableStateProvider(visibleTop.id) { content(visibleTop) }
+                stateHolder.SaveableStateProvider(renderKeys[index]) { content(page) }
             }
         }
     }
+}
+
+/**
+ * 给「这一帧要渲染的每一层」算 [androidx.compose.runtime.saveable.SaveableStateHolder] 的 key。
+ *
+ * 返回 `(栈内每一层的 key, 出栈层的 key)`：前者下标与 [AppRouter.routes] 对齐，后者没有出栈层时为 null。
+ *
+ * ⚠ 同一个 key 在同一帧出现两次会直接抛
+ * `IllegalArgumentException: Key xxx was used multiple times`（SaveableStateHolderImpl 的
+ * `require(!registry.containsKey(keyStr))`），所以这里保证「栈内 + 出栈」整体唯一：
+ * - 栈内重复入栈（`AppRouter.navigate` 允许）：首次出现保持**裸 id**，其后 `#2` / `#3`。
+ *   裸 id 是关键 —— 弹出后重开同一页要能恢复上次的滚动位置（`AppRouter` 的已知取舍）。
+ * - 出栈层**后算**：它在栈里时占的是栈内的那个 key，后算才能拿到同一个 ——
+ *   先算会把它挤到 `#2`，出场动画里那一层的 saveable 状态会当场重置。
+ */
+private fun layerKeys(routes: List<AppRoute>, outgoing: AppRoute?): Pair<List<String>, String?> {
+    val used = HashSet<String>(routes.size + 1)
+    val stackKeys = ArrayList<String>(routes.size)
+    for (route in routes) stackKeys += uniqueKey(route.id, used)
+    return stackKeys to outgoing?.let { uniqueKey(it.id, used) }
+}
+
+/** 取 [id]，已被占用就依次试 `#2` / `#3`… 直到拿到一个没被占的。 */
+private fun uniqueKey(id: String, used: MutableSet<String>): String {
+    if (used.add(id)) return id
+    var n = 2
+    while (!used.add("$id#$n")) n++
+    return "$id#$n"
 }
 
 /**
@@ -275,6 +380,11 @@ private fun PageLayer(
     fraction: () -> Float,
     paused: () -> Boolean = { false },
     clipShape: Shape? = null,
+    /**
+     * 非 null 时在本层内容**之下**画一层全屏黑幕（只给最上面那层传，见 [AppNavHost] 的
+     * `scrimAlpha`）：夹在「下层各页」与「本层」之间，只压暗被盖住的内容。
+     */
+    scrimAlpha: (() -> Float)? = null,
     inFlight: () -> Boolean = { false },
     content: @Composable () -> Unit,
 ) {
@@ -284,6 +394,20 @@ private fun PageLayer(
             // 暂停绘制：层还在组合里（状态、协程全活着），只是不进渲染管线 ——
             // 等价 stop 的 Activity 不画窗口。放最外层：暂停时连内层 clip 都跳过。
             .skipDrawWhen(paused)
+            // ⚠ 黑幕必须放在 layout **外层**（和下面 clip 相反）：
+            // 它要全屏不动 —— layout 更内层的坐标系是跟着页面平移过的，放里面黑幕
+            // 会跟着页面一起滑。放这里即「本层内容之下、之前画过的兄弟之上」，
+            // 与原来那个夹在中间的全屏 Box 完全等价。
+            .then(
+                if (scrimAlpha == null) {
+                    Modifier
+                } else {
+                    Modifier.drawBehind {
+                        val a = scrimAlpha()
+                        if (a > 0.001f) drawRect(Color.Black.copy(alpha = a))
+                    }
+                },
+            )
             // ⚠ 顺序关键：clip 必须在 layout **之后**（更内层）。
             // 位移是 layout 在「摆放阶段」做的，clip 在内层时它的坐标系跟着
             // 页面一起平移 —— 圆角长在页面自己的角上，整个滑动过程都是圆角卡片
