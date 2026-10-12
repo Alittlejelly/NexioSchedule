@@ -69,7 +69,6 @@ import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
-import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
 import com.haooz.chedule.ui.activities.CourseManageScreen
 import com.haooz.chedule.ui.activities.CourseReminderScreen
@@ -77,10 +76,7 @@ import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.TimeConfigCardBounds
 import com.haooz.chedule.ui.activities.HolidaySettingsScreen
-import com.haooz.chedule.ui.activities.LocalBackupScreen
-import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
-import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
@@ -170,22 +166,14 @@ fun AppRouteContent(
         AppRoute.Communication -> CommunicationRoute(router)
         AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
 
-        AppRoute.PreferenceSettings -> DocumentPageScaffold(
-            title = "应用偏好设置",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, backdrop ->
-            // 偏好设置页可能改主题 → 系统栏要跟着刷新（原来在 Activity 的 setContent 里）
-            val activity = LocalActivity.current
-            // 权限检查 / 天气缓存 / 隐藏最近任务卡片都是 Android 专有能力，由宿主注入
+        // 带注入的文档壳路由已迁 :ui-shared（第三十四批），Android 注入平台能力。
+        // ⚠ context/activity 必须在组合期取好再捕获 —— `LocalContext.current` 是
+        // @Composable getter，写进非组合 lambda 会编不过。
+        AppRoute.PreferenceSettings -> {
             val context = LocalContext.current
-            val isDark = isAppDarkTheme()
-            LaunchedEffect(isDark) {
-                activity?.applyThemeAwareSystemBars()
-            }
-            PreferenceSettingsScreen(
-                scrollBehavior = scrollBehavior,
-                liquidGlassBackdrop = backdrop,
-                // Android 宿主专有副作用：定位权限 / 天气缓存 / 最近任务卡片
+            val activity = LocalActivity.current
+            PreferenceSettingsRoute(
+                router = router,
                 hasLocationPermission = {
                     ContextCompat.checkSelfPermission(
                         context, Manifest.permission.ACCESS_FINE_LOCATION
@@ -198,33 +186,40 @@ fun AppRouteContent(
                 onSetTaskExcludedFromRecents = { hidden ->
                     MainActivity.setTaskExcludedFromRecents(context, hidden)
                 },
+                // 偏好设置页改主题 → 系统栏跟着刷新（原来在 Activity 的 setContent 里）
+                onThemeDarkChanged = { activity?.applyThemeAwareSystemBars() },
             )
         }
 
-        AppRoute.UpdateSettings -> DocumentPageScaffold(
-            title = "更新设置",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, backdrop ->
+        AppRoute.UpdateSettings -> {
             val context = LocalContext.current
-            UpdateSettingsScreen(
-                scrollBehavior = scrollBehavior,
-                liquidGlassBackdrop = backdrop,
-                // Android 更新能力（检查/下载/APK 安装）注入
+            UpdateSettingsRoute(
+                router = router,
                 updateController = remember { AndroidUpdateController(context) },
             )
         }
 
-        AppRoute.LocalBackup -> DocumentPageScaffold(
-            title = "本地备份",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, backdrop ->
+        AppRoute.LocalBackup -> {
             val context = LocalContext.current
-            LocalBackupScreen(
-                scrollBehavior = scrollBehavior,
-                liquidGlassBackdrop = backdrop,
-                // Android 文件 I/O（SAF 选文件 + 备份目录扫描/读写）注入
+            LocalBackupRoute(
+                router = router,
                 backupFileController = remember { AndroidBackupFileController(context) },
-                onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+                onHolidayDataChanged = {
+                    CourseReminderHelper.onHolidayDataChanged(context)
+                },
+            )
+        }
+
+        AppRoute.AiImport -> {
+            val context = LocalContext.current
+            AiImportRoute(
+                router = router,
+                onCopyToClipboard = { text ->
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("课表导入提示词", text)
+                    clipboard.setPrimaryClip(clip)
+                },
             )
         }
 
@@ -242,33 +237,6 @@ fun AppRouteContent(
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
         AppRoute.EducationalImport -> AndroidEducationalImportRoute(router)
-    }
-}
-
-/**
- * AI 文本导入（原 AiImportActivity，98 行）。
- *
- * Screen 的两个 backdrop 参数都有默认值，这里只传 [DocumentPageScaffold] 建好的玻璃层即可。
- */
-@Composable
-private fun AiImportRoute(router: AppRouter) {
-    // 剪贴板是 Android 专有能力，宿主注入给已迁 :ui-shared 的页面
-    val context = LocalContext.current
-    DocumentPageScaffold(
-        title = "AI 文本导入",
-        onBack = { router.popBack() },
-    ) { scrollBehavior, backdrop ->
-        AiImportScreen(
-            onBack = { router.popBack() },
-            scrollBehavior = scrollBehavior,
-            liquidGlassBackdrop = backdrop,
-            onCopyToClipboard = { text ->
-                val clipboard =
-                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("课表导入提示词", text)
-                clipboard.setPrimaryClip(clip)
-            },
-        )
     }
 }
 

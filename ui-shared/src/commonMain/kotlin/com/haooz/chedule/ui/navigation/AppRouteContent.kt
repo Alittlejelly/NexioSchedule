@@ -5,17 +5,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.ImageBitmap
+import com.haooz.chedule.data.BackupFileController
 import com.haooz.chedule.data.DiagnosticRecorder
+import com.haooz.chedule.data.NoopBackupFileController
 import com.haooz.chedule.data.NoopDiagnosticRecorder
+import com.haooz.chedule.data.NoopUpdateController
+import com.haooz.chedule.data.UpdateController
 import com.haooz.chedule.ui.activities.AboutScreen
+import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.activities.EducationalImportScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
+import com.haooz.chedule.ui.activities.LocalBackupScreen
+import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
+import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
@@ -134,5 +143,112 @@ fun CommunicationRoute(router: AppRouter) {
 fun AppreciateAuthorRoute(router: AppRouter) {
     DocumentPageScaffold(title = "捐赠支持", onBack = { router.popBack() }) { scrollBehavior, _ ->
         AppreciateAuthorScreen(scrollBehavior = scrollBehavior)
+    }
+}
+
+// ── 带能力注入的文档壳路由（第三十四批）：壳在 commonMain，平台能力走参数 ──
+
+/**
+ * 应用偏好设置路由。
+ *
+ * 四个平台能力全部参数注入：定位权限检查 / 天气缓存清空 / 最近任务卡片隐藏 /
+ * 主题切换后的系统栏刷新。Android 从 `ContextCompat` / `MainActivity` 取，
+ * 桌面/iOS 用默认值（前三项空/false，后一项无系统栏概念）。
+ */
+@Composable
+fun PreferenceSettingsRoute(
+    router: AppRouter,
+    hasLocationPermission: () -> Boolean = { false },
+    onInvalidateWeatherCache: () -> Unit = {},
+    onSetTaskExcludedFromRecents: (Boolean) -> Unit = {},
+    onThemeDarkChanged: (Boolean) -> Unit = {},
+) {
+    DocumentPageScaffold(
+        title = "应用偏好设置",
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        // 偏好设置页可能改主题 → 系统栏要跟着刷新（原来在 Activity 的 setContent 里）
+        val isDark = isAppDarkTheme()
+        LaunchedEffect(isDark) { onThemeDarkChanged(isDark) }
+        PreferenceSettingsScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            hasLocationPermission = hasLocationPermission,
+            onInvalidateWeatherCache = onInvalidateWeatherCache,
+            onSetTaskExcludedFromRecents = onSetTaskExcludedFromRecents,
+        )
+    }
+}
+
+/**
+ * 更新设置路由。
+ *
+ * @param updateController 更新能力（检查/下载/APK 安装）：Android 注入
+ *   `AndroidUpdateController(context)`；桌面/iOS 用默认 [NoopUpdateController]。
+ */
+@Composable
+fun UpdateSettingsRoute(
+    router: AppRouter,
+    updateController: UpdateController = NoopUpdateController,
+) {
+    DocumentPageScaffold(
+        title = "更新设置",
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        UpdateSettingsScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            updateController = updateController,
+        )
+    }
+}
+
+/**
+ * 本地备份路由。
+ *
+ * @param backupFileController 备份文件能力（SAF 选文件 + 目录扫描读写）：Android 注入
+ *   `AndroidBackupFileController(context)`；桌面/iOS 用默认 [NoopBackupFileController]。
+ * @param onHolidayDataChanged 全量恢复成功后的平台副作用（重排提醒等），Android 宿主注入。
+ */
+@Composable
+fun LocalBackupRoute(
+    router: AppRouter,
+    backupFileController: BackupFileController = NoopBackupFileController,
+    onHolidayDataChanged: () -> Unit = {},
+) {
+    DocumentPageScaffold(
+        title = "本地备份",
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        LocalBackupScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            backupFileController = backupFileController,
+            onHolidayDataChanged = onHolidayDataChanged,
+        )
+    }
+}
+
+/**
+ * AI 文本导入路由。
+ *
+ * @param onCopyToClipboard 复制提示词到系统剪切板：Android 用 `ClipboardManager`，
+ *   iOS 用 `UIPasteboard`，桌面用 `Toolkit`。默认空实现。
+ */
+@Composable
+fun AiImportRoute(
+    router: AppRouter,
+    onCopyToClipboard: (String) -> Unit = {},
+) {
+    DocumentPageScaffold(
+        title = "AI 文本导入",
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        AiImportScreen(
+            onBack = { router.popBack() },
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            onCopyToClipboard = onCopyToClipboard,
+        )
     }
 }
