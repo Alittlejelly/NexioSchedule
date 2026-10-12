@@ -50,6 +50,8 @@ class IosAppHost {
     val overlayActive: Boolean
         get() = router.hasOverlay || navigationOverlayActive || overlays.isActive || popupHost.isActive
     val mainProgress: Double get() = mainTransition.value.toDouble()
+    val cutoutScale: Float get() = navigation.cutoutScale
+    val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
 
     val mainController: UIViewController by lazy {
         ComposeUIViewController {
@@ -71,7 +73,7 @@ class IosAppHost {
                     snapshotFlow {
                         NativeHostSnapshot(
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
-                            isDark, overlayActive, mainProgress,
+                            isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
                         )
                     }.collect { onStateChanged?.invoke() }
                 }
@@ -115,4 +117,6 @@ private data class NativeHostSnapshot(
     val isDark: Boolean,
     val overlayActive: Boolean,
     val mainProgress: Double,
+    val cutoutScale: Float,
+    val cutoutCenterYRatio: Float,
 )

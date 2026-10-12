@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,16 @@ class HostNavigationState {
     var isDark by mutableStateOf(false)
     var bottomBarInset by mutableStateOf(0.0)
     var onTabSelected: ((Int) -> Unit)? = null
+    /**
+     * 开洞缩放进度，1f=正常。宿主（当前只有 iOS）据此对原生 chrome 施加同样缩放——
+     * Android 上底栏是 Compose 的，在主内容缩放层内，本就跟随，无需上报。
+     */
+    var cutoutScale by mutableFloatStateOf(1f)
+    /**
+     * 开洞缩放的变换原点纵比，与主内容 graphicsLayer 同源。开洞中心由
+     * CustomizeScheduleScreen 回传，不是常量，故一并上报供原生 chrome 对齐。
+     */
+    var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
 }
 
 val LocalHostNavigation = staticCompositionLocalOf<HostNavigationState?> { null }

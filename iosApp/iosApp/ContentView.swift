@@ -1,6 +1,7 @@
 // xcode: set sdk=iOS
 
 import SwiftUI
+import UIKit
 import NexioShared
 
 struct ContentView: View {
@@ -75,12 +76,18 @@ private final class AppHostController: UIViewController {
                 DispatchQueue.main.async { [weak self] in self?.applyState() }
             }
         }
+        // 原生截屏桥：把含 TabBar 的全屏图交给 Compose 补快照
+        IosNativeCapture.shared.captureScreen = { [weak self] in
+            IosNativeCapture.shared.store(data: self?.captureScreenPNG())
+        }
+
         applyState()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateMainTransform()
+        updateChromeTransform()
         reportBottomInset()
     }
 
@@ -112,7 +119,32 @@ private final class AppHostController: UIViewController {
         mainContainer.isUserInteractionEnabled = !overlayActive
         mainContainer.accessibilityElementsHidden = overlayActive
         updateMainTransform()
+        updateChromeTransform()
         reportBottomInset()
+    }
+
+    /// 开洞（课表外观）时把原生 TabBar 跟着主内容一起上移缩小。
+    private func updateChromeTransform() {
+        let scale = CGFloat(min(1, max(0.65, host.cutoutScale)))
+        let screenH = view.bounds.height
+        let screenW = view.bounds.width
+        guard scale < 0.999, screenH > 0, screenW > 0 else {
+            if chromeContainer.transform != .identity {
+                chromeContainer.transform = .identity
+            }
+            return
+        }
+        let layer = chromeContainer.layer
+        let centerX = screenW * 0.5
+        let centerY = screenH * CGFloat(host.cutoutCenterYRatio)
+        let newAnchor = CGPoint(x: 0.5, y: CGFloat(host.cutoutCenterYRatio))
+        let oldAnchor = CGPoint(x: 0.5, y: 0.5)
+        layer.position = CGPoint(
+            x: centerX + (layer.position.x - centerX) * (oldAnchor.x - newAnchor.x),
+            y: centerY + (layer.position.y - centerY) * (oldAnchor.y - newAnchor.y)
+        )
+        layer.anchorPoint = newAnchor
+        chromeContainer.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 
     private func updateMainTransform() {
@@ -153,6 +185,18 @@ private final class AppHostController: UIViewController {
             child.topAnchor.constraint(equalTo: parent.topAnchor),
             child.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
         ])
+    }
+
+    /// 全屏截图（含原生 TabBar），PNG 字节。供 Compose 侧补进切换课表页快照 ——
+    private func captureScreenPNG() -> Data? {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = view.window?.screen.scale ?? UIScreen.main.scale
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: view.bounds.size, format: format)
+        let image = renderer.image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+        return image.pngData()
     }
 
     deinit {

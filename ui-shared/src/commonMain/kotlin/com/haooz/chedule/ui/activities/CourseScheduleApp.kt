@@ -1490,11 +1490,11 @@ fun CourseScheduleApp(
         withFrameNanos { }
         withFrameNanos { }
         // 必须单独 catch OutOfMemoryError：Bitmap 像素在 native 堆，全屏 toImageBitmap
-        // 读回是低端机上最容易 OOM 的一步，而 OOM 是 Error 不是 Exception，
-        // 只写 catch(Exception) 等于没兜底 —— 直接把进程带走。
-        // 返回 null：所有消费方都已能处理「没有快照」（切换页照样走完动画）。
         try {
-            screenGraphicsLayer.toImageBitmap()
+            // 有原生 chrome 时（iOS）优先用原生整屏截图：GraphicsLayer.record()
+            // 只录 Compose 绘制的内容，底部原生 TabBar 会整条缺失。
+            com.haooz.chedule.ui.utils.captureScreenWithNativeChrome()
+                ?: screenGraphicsLayer.toImageBitmap()
         } catch (_: OutOfMemoryError) {
             FeatureLog.t("主页", "main_snapshot_oom")
             null
@@ -1666,6 +1666,10 @@ fun CourseScheduleApp(
             host.shiftMode = isShiftMode
             host.showsNativeTabBar = nativeBottomBar
             host.isDark = effectiveIsDark
+            // 开洞缩放进度：iOS 原生 TabBar 在主内容合成根之外，拿不到缩放层，
+            // 需由Swift 读这个值自行施加同样变换（对齐 Android 上 Compose 底栏的行为）
+            host.cutoutScale = cutoutMainScale.value
+            host.cutoutCenterYRatio = cutoutCenterYRatio
         }
     }
     // 内容区（切天/周）一有横向手势：立刻取消未完成的主 tab 平移，吸回当前页，避免露出隔壁页
