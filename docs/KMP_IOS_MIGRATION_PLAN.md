@@ -29,6 +29,10 @@
 原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
 **iOS 代码侧能力已齐**（A1 网络 / A2 偏好 / A3 文件三个 actual 都写好并编译通过）。
 **第四十三批的主界面迁移已过运行时验证**（真主界面在 iOS 上跑起来了）。
+**第四十四/四十五批（六项平台能力 + 今日助手）已过「构建 + 启动」验证**：
+`xcodebuild` 端到端构建成功（含 Swift 壳与 `NexioShared.framework` 嵌入），
+装进 iPhone 18 Pro Max 模拟器启动后**真课表界面完整渲染、无崩溃**。
+⚠ 交互路径（选文件 / 相册 / 分享面板 / 定位授权）仍需人工点一遍 —— 无法自动点按。
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
 （含本体）/课表导入导出备份页/外观自定义页/教务导入（外壳+本体）/小部件引导/课程提醒/WebDAV/
@@ -529,7 +533,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | 🟢 **真主界面已就位并跑通**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面，运行时已验证）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。文件选择器/选壁纸/分享/外部分享/状态栏/今日助手卡**均已原生实现**（第四十四/四十五批）。⚠ `IosWebHost`（WKWebView）未写 → 教务导入仍不可用；壁纸字节序仍未单独验证；本批运行时未验证 |
+| iOS 已可用 | 🟢 **真主界面已就位并跑通**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面，运行时已验证）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。文件选择器/选壁纸/分享/外部分享/状态栏/今日助手卡**均已原生实现**（第四十四/四十五批）。⚠ `IosWebHost`（WKWebView）未写 → 教务导入仍不可用；壁纸字节序仍未单独验证 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
