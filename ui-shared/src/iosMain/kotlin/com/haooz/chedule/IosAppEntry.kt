@@ -29,7 +29,11 @@ import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.navigation.AboutRoute
-import com.haooz.chedule.ui.navigation.AppRouter
+import com.haooz.chedule.ui.navigation.AppNavHost
+import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.MainLayerTransition
+import com.haooz.chedule.ui.navigation.rememberAppRouter
+import com.haooz.chedule.ui.navigation.rememberNavTransitionState
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.dataWithContentsOfFile
@@ -76,14 +80,45 @@ fun bootstrapNexioIos() {
 /**
  * iOS 的 Compose 根容器 —— Swift 侧用 `UIViewControllerRepresentable` 包它。
  *
- * ⚠ 当前是**过渡根**：注入自检 + 一个「关于页」入口（第三十批迁过来的
- * `AboutRoute`，用来验证「`:ui-shared` 的 Route 在 iOS 上真能用」）。
- * 完整导航（`AppNavHost`）还在 `:androidApp`，迁过来之后这里换成真正的入口。
+ * 结构与 Android `MainActivity.setContent` 同形：主界面常驻底座（`MainLayerTransition`）
+ * + 子页叠加层（`AppNavHost`）。当前主界面还是注入自检页（真课表界面要等
+ * `CourseScheduleApp` 依赖的宿主能力在 iOS 侧齐备）；子页导航已经是**真路由**。
  */
 fun MainViewController(): UIViewController = ComposeUIViewController {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            NexioIosSmokeRoot()
+            NexioIosRoot()
+        }
+    }
+}
+
+/**
+ * iOS 的导航根 —— 对应 MainActivity 的 `Box { MainLayerTransition + AppNavHost }`。
+ *
+ * iOS 没有系统返回键，`rememberNavigationBack` 的 skiko 侧 handler 是空实现；
+ * 返回全靠页面自己的返回按钮 → `router.popBack()`（`AboutScreen` 自带）。
+ */
+@Composable
+private fun NexioIosRoot() {
+    val router = rememberAppRouter()
+    val mainTransition = rememberNavTransitionState(
+        initialValue = if (router.hasOverlay) 1f else 0f,
+    )
+    Box(Modifier.fillMaxSize()) {
+        // 主界面常驻底座（当前是注入自检页，见 NexioIosSmokeHome）
+        MainLayerTransition(mainTransition) {
+            NexioIosSmokeHome(onOpenAbout = { router.navigate(AppRoute.About) })
+        }
+        // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
+        AppNavHost(router, mainTransition = mainTransition) { route ->
+            when (route) {
+                AppRoute.About -> AboutRoute(
+                    router = router,
+                    appVersion = AppInfo.version,
+                )
+                // 其余路由等对应页面/能力迁齐后在此接线
+                else -> {}
+            }
         }
     }
 }
@@ -96,27 +131,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
  * 是已知雷区）。与其等真机调试时才发现，不如让首屏自己报出来。
  */
 @Composable
-private fun NexioIosSmokeRoot() {
+private fun NexioIosSmokeHome(onOpenAbout: () -> Unit) {
     var storeProbe by remember { mutableStateOf("检查中…") }
     var fileProbe by remember { mutableStateOf("检查中…") }
-    // 关于页是第三十批从 :androidApp 迁过来的跨平台 Route，这里直接拿来用
-    // 关于页：第三十批迁过来的跨平台 Route，用来验证「`:ui-shared` 的 Route 在 iOS 上真能用」。
-    // （此前引用它会触发 R13 的链接错误，现已随 miuix-preference 一并 fork 解决。）
-    var showAbout by remember { mutableStateOf(true) }
-
-    if (showAbout) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AboutRoute(
-                router = remember { AppRouter() },
-                appVersion = AppInfo.version,
-            )
-            Button(
-                onClick = { showAbout = false },
-                modifier = Modifier.align(Alignment.TopStart).padding(top = 48.dp, start = 16.dp),
-            ) { Text("返回") }
-        }
-        return
-    }
 
     LaunchedEffect(Unit) {
         storeProbe = runCatching {
@@ -143,6 +160,6 @@ private fun NexioIosSmokeRoot() {
         Text("存储(AppStorage/UserDefaults)：$storeProbe")
         Text("文件(AppFiles/NSFileManager)：$fileProbe")
         Spacer(Modifier.height(16.dp))
-        Button(onClick = { showAbout = true }) { Text("打开关于页") }
+        Button(onClick = onOpenAbout) { Text("打开关于页") }
     }
 }

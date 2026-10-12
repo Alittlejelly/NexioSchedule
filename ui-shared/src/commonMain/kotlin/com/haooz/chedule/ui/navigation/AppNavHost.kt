@@ -1,10 +1,5 @@
 package com.haooz.chedule.ui.navigation
 
-import android.app.Activity
-import android.content.Context
-import android.os.Build
-import android.view.RoundedCorner
-import android.view.WindowManager
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -30,19 +25,16 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.NavigationEventTransitionState
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutSoftStartEasing
 import com.haooz.chedule.ui.effects.motion.SecondaryPageExitEasing
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import kotlin.math.roundToInt
 
 /**
@@ -68,8 +60,14 @@ import kotlin.math.roundToInt
  * 滚动位置/折叠进度由 holder 按 route.id 托管，重开同一页时恢复。
  * 已知取舍：出栈不清状态，重开同一页会回到上次位置（文档页可接受）。
  *
- * 栈空时 `isBackEnabled` 变 false，返回键交还 Android 宿主（MainActivity 的
- * 预测性返回 / 隐藏后台）—— 这是 [AppRouter] 栈从空开始、主界面不参与路由的原因。
+ * 栈空时 `isBackEnabled` 变 false，返回键交还宿主（Android：MainActivity 的
+ * 预测性返回 / 隐藏后台；iOS：无系统返回键，靠页面自己的返回按钮 `router.popBack()`）——
+ * 这是 [AppRouter] 栈从空开始、主界面不参与路由的原因。
+ *
+ * **返回手势**走 `:miuix` 的 `rememberNavigationBack()` 跨平台封装：
+ * Android 包 androidx.navigationevent（预测性返回跟手），skiko（iOS/桌面）是空实现
+ * （系统手势由宿主接管，Kotlin 侧拿不到）——本文件不再直接 import navigationevent，
+ * 这是 2026-10-12 从 `:androidApp` 迁入 `:ui-shared` 的前提。
  */
 @Composable
 fun AppNavHost(
@@ -98,11 +96,13 @@ fun AppNavHost(
         }
     }
 
-    // 预测性返回：跟手逐帧落值；松手完成 → 出栈（剩余距离交给下面的动画续播）；取消 → 弹回
-    val navEventState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
-    NavigationBackHandler(
-        state = navEventState,
-        isBackEnabled = router.hasOverlay,
+    // 预测性返回：跟手逐帧落值；松手完成 → 出栈（剩余距离交给下面的动画续播）；取消 → 弹回。
+    // ⚠ handler 与 backProgress 必须来自同一个 rememberNavigationBack（同一份底层状态），
+    // 拆成两处各自 remember = 编译全绿但跟手动画永远不动（miuix fork 踩过，见其 KDoc）。
+    val back = rememberNavigationBack()
+    back.handler(
+        enabled = router.hasOverlay,
+        onBackCompleted = { router.popBack() },
         onBackCancelled = {
             val from = progress.value.coerceIn(0f, 1f)
             val (dur, easing) = settleOnGlobalCurve(
@@ -121,16 +121,13 @@ fun AppNavHost(
                 }
             }
         },
-        onBackCompleted = { router.popBack() },
     )
     LaunchedEffect(Unit) {
-        snapshotFlow { navEventState.transitionState }.collect { transitionState ->
-            if (
-                transitionState is NavigationEventTransitionState.InProgress &&
-                transitionState.direction == NavigationEventTransitionState.TRANSITIONING_BACK &&
-                PredictiveBackSettings.enabled
-            ) {
-                val p = (1f - transitionState.latestEvent.progress).coerceIn(0f, 1f)
+        // backProgress：手势期间为 0..1 的连续进度，非手势期间为 null（skiko 恒为 null）。
+        // Android 上它读 navigationevent 的 snapshot state，snapshotFlow 能跟上逐帧变化。
+        snapshotFlow { back.backProgress() }.collect { gestureProgress ->
+            if (gestureProgress != null && PredictiveBackSettings.enabled) {
+                val p = (1f - gestureProgress).coerceIn(0f, 1f)
                 progress.snapTo(p)
                 // 栈里只剩一层时，被推的是主界面
                 if (router.depth == 1) mainTransition.snapTo(p)
@@ -188,8 +185,8 @@ fun AppNavHost(
 
     // 屏幕圆角：转场中间态把上层裁成圆角，让它像一张卡片从右边推进来。
     // 只对上层做 —— 下层是被揭开的那一层，不该有轮廓。
-    val density = LocalDensity.current
     val cornerRadiusPx = rememberScreenCornerRadiusPx()
+    val density = LocalDensity.current
     val screenClipShape = remember(cornerRadiusPx, density) {
         if (cornerRadiusPx > 0f) {
             with(density) { ContinuousRoundedRectangle(cornerRadiusPx.toDp()) }
@@ -262,29 +259,6 @@ fun AppNavHost(
             ) {
                 stateHolder.SaveableStateProvider(visibleTop.id) { content(visibleTop) }
             }
-        }
-    }
-}
-
-/** 屏幕圆角半径（px）；拿不到时为 0，此时不做裁切。多窗口/自由窗口用固定 20dp。 */
-@Composable
-private fun rememberScreenCornerRadiusPx(): Float {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    return remember(context, density) {
-        try {
-            if ((context as? Activity)?.isInMultiWindowMode == true) {
-                20f * density.density
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-                wm?.currentWindowMetrics?.windowInsets
-                    ?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat()
-                    ?: 0f
-            } else {
-                0f
-            }
-        } catch (_: Exception) {
-            0f
         }
     }
 }
@@ -452,8 +426,7 @@ private fun inverseEasingTime(easing: Easing, progress: Float): Float {
 /** 还原 1da9c0a8 二级页转场参数 */
 private const val NAV_ENTER_DURATION = 600
 private const val NAV_EXIT_DURATION = 320
-// NAV_PARALLAX 已随 NavTransitionState 迁入 :ui-shared（同包名，这里无需 import、
-// 也不用再声明 —— 跨模块后必须是 public，否则 androidApp 读不到）。
+// NAV_PARALLAX 在同包的 NavTransitionState.kt（本模块），无需 import。
 // 压暗只在本文件用，保持 internal。
 internal const val NAV_BG_DIM = 0.42f
 
