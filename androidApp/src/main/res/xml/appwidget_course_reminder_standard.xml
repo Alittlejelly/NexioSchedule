@@ -5,10 +5,9 @@
     android:minHeight="110dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"
-    android:maxResizeWidth="276dp"
     android:minResizeHeight="157dp"
     android:maxResizeHeight="412dp"
-    android:resizeMode="vertical"
+    android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
     android:previewImage="@drawable/widget_course_preview" />
