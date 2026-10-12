@@ -20,7 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`1e66ed67`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
+**代码状态**：`master` = **`6091d8f2`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
 （`iosApp/nexioschedule.icon/` + pbxproj/Info.plist 改动，待用户自行提交）；KMP 侧干净。
 🟡 冲刺期**多会话并发**改同一仓库。
 
@@ -32,10 +32,10 @@
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
 （含本体）/课表导入导出备份页/外观自定义页/教务导入（外壳+本体）/小部件引导/课程提醒/WebDAV/
-课表导入导出备份路由/AppNavHost 已迁**；`:ui-shared` 111 文件 / 47.6k 行；
-`:androidApp` 剩 48 文件 / 21.7k 行（其中待迁 22 / 13.1k）。
-**应用代码完成度约 82%**（口径见 §3）。**真正的「页面」已全部迁完，宿主层只剩
-`AppRouteContent` 剩余 2 个 Route（Route 已迁 18/20）/ `MainActivity` / `NexioApplication`**。
+课表导入导出备份路由/**全部 20 条路由**/AppNavHost 已迁**；`:ui-shared` 112 文件 / 48.2k 行；
+`:androidApp` 剩 48 文件 / 21.3k 行（其中待迁 22 / 12.6k）。
+**应用代码完成度约 84%**（口径见 §3）。**真正的「页面」与「路由」已全部迁完，宿主层只剩
+`MainActivity` / `NexioApplication`** —— 也就是「iOS 的 MainActivity」只剩 `CourseScheduleApp`。
 **R2 序列化全部完成**（读+写）——备份路径 Gson 清零。**能力注入抽象已建 8 个**：DiagnosticRecorder/
 ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/BackupFileController/
 **ScheduleFileController**（SAF 选文件读 / 另存为）。
@@ -130,9 +130,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `:core` | 108 (+28 测试) | 18.0k | common **52** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | **119** | 31k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
-| `:ui-shared` | **111** | **47.6k** | common **104** / android 2 / jvm 2 / ios 3 | 阶段 5 进行中（**宿主层只剩 2 个 Route + MainActivity**） |
+| `:ui-shared` | **112** | **48.2k** | common **105** / android 2 / jvm 2 / ios 3 | 阶段 5 进行中（**路由 20/20 全迁完，只剩 MainActivity**） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **48** | **21.7k** | android | 待迁 **22 / 13.1k** + 留守 **26 / 8.6k**；单 Activity（Manifest 23→2） |
+| `:androidApp` | **48** | **21.3k** | android | 待迁 **22 / 12.6k** + 留守 **26 / 8.6k**；单 Activity（Manifest 23→2） |
 
 **`:core` 的 14 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -146,11 +146,11 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | 归属 | 文件 | 行数 | 说明 |
 |---|---:|---:|---|
 | **永不迁移** | **26** | **8.6k** | `reminder/` 10 · `widget/` 7 · `ui/web/` 4 · `shizuku/` 2 · `wearable/` 2 · `provider/` 1 |
-| **待迁** | **23** | **14.2k** | `ui/activities` 1 · `ui/screens` 3 · `ui/utils` 12 · 其余 7 |
+| **待迁** | **22** | **12.6k** | `ui/activities` 1（`MainActivity`）· `ui/screens` 3 · `ui/utils` 12 · 其余 6 |
 
 **完成度**（引用时注明口径）：
-- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 47.6k = 58.7k，
-  待迁 13.1k ⇒ **约 82%**
+- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 48.2k = 59.3k，
+  待迁 12.6k ⇒ **约 82%**
 - **含 `:miuix` + `:backdrop`**：94.8k / 109k ⇒ **约 87%**（那两层是第三方 fork，通常不计）
 
 ### 剩余工作量
@@ -160,15 +160,11 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `android.*` import | **270 处** | 换口径重数（多在留守文件里：reminder 46 / widget 56 / ui-web 41 / provider 8 = 151 处本就永不迁） |
 | `androidx.*`（不含 compose） | **26 类** | 同上口径 |
 | `androidx.compose.*` | — | 跨平台，**不算阻塞** |
-| ~~`java.time`~~ | ✅ 已完成 | 22 文件全换 |
-| **`LocalConfiguration`** | ✅ **0 处（已清零）** | 换成 `screenWidthDp()` / `isTabletWidth()` |
+| 已完成清零 | — | `java.time` / `LocalConfiguration` / `androidx.navigationevent` / `String.format` / `SimpleDateFormat` / `Calendar`（各自批次见里程碑） |
 | **`LocalContext`** | **47 处** | 仍是页面级阻塞之首，但已被 VM 解耦大幅削弱 |
 | Gson（风险 **R2**） | **7 文件** | 清单见下 |
 | `java.io` | 29 处 / 12 文件 | 多为导入导出 |
 | `res` → `composeResources` | ✅ **26 个 drawable 已迁**；`R.drawable.*` 仍在少量页面 | 见 F 节 |
-| ~~`androidx.navigationevent`~~（页面侧 + 导航骨架） | ✅ **清零** | 第三十二批 `AppNavHost` 迁 `:ui-shared`，navigationevent 换 `:miuix` 的 `rememberNavigationBack`（有 skiko actual，iOS/桌面空实现） |
-| ~~`String.format`~~ | ✅ **共享侧清零** | 第二十批在 TimeConfigEditScreen 抓到 17 处；共享文件进 commonMain 前必查（checkKmpPurity FORBIDDEN） |
-| ~~`SimpleDateFormat` / `Calendar`~~ | ✅ **共享侧清零** | 第二十三批：`WebDavSettingsScreen` 与课表导出各抓到一处，改 `:core` 的 `formatDateTimeMinute` / `formatIcsTimestamp` |
 
 **Gson 6 个文件**：`data/ScheduleAppearance` · `ui/screens/TodayAssistant` ·
 `ui/utils/ScheduleExport` · `ui/utils/ScheduleImport` · `ui/utils/UpdateChecker` · `ui/web/AndroidBridge`
@@ -178,11 +174,11 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 | 目录 | 处/文件 | 归属 |
 |---|---:|---|
-| `ui/activities` | 6 / 1 | **待迁** —— 只剩 `MainActivity`（宿主） |
+| `ui/activities` | 6 / 1 | ✅ **已清零**：`MainActivity` 已在迁移清单上，方案见「下一步 2」 |
 | `ui/screens` | 13 / 3 | **待迁** —— `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
 | `ui/utils` | 70 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
 | ~~`ui/components`~~ | ✅ **0（已清零）** | 第二十七批 `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 已迁 |
-| `ui/navigation` | 6 / 1 | 待迁（只剩 `AppRouteContent` 的 2 个 Route；`AppNavHost` 已迁，Route 已迁 18/20） |
+| `ui/navigation` | 6 / 1 | ✅ **已清零**：Route **20/20 全部迁完**（`AppNavHost` + 全部 Route 壳） |
 | `ui/effects` | 3 / 1 | 待迁（薄，`MiuixVisualEffectsPolicy` —— 本就平台专有） |
 | `data` | 6 / 1 | 待迁（`ScheduleAppearance`） |
 | `reminder` | 46 / 10 | 永不迁移 —— ✅ 提醒时刻算法**已抠进 `:core`**（`DayScheduleResolver`，第十五批） |
@@ -199,10 +195,12 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
   这一步**裁剪**（Compose 没有跨平台 crop API）。
 
 所以页面签名里的快照类型应该直接用 **`androidx.compose.ui.graphics.ImageBitmap?`**
-（跨平台类型，**不需要任何 expect/actual**），而不是包成平台 `Bitmap`。
+（跨平台类型，**不需要任何 expect/actual**），而不是包成平台 `Bitmap`；
+裁剪用 `Canvas.drawImageRect(srcOffset/srcSize)` 重绘实现（`cropImageBitmapClamped`，
+第三十八批已落地，`CourseTimeSettingsRoute` / `CourseManageRoute` 在用）。
 > 我曾误判成「Activity 转场、桌面端永远 null」，建了个 `expect class SnapshotBitmap` 放 `:core`
 > —— 双重错误：方向错（砍掉桌面端功能），位置也错（**`:core` 是纯数据层，不依赖 Compose**）。
-> 已于 `820bd00` 撤销。**未迁页面各自迁移时再换契约类型**（契约边界随页面走）。
+> 已于 `820bd00` 撤销。
 
 ---
 
@@ -212,21 +210,24 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 > 查跨模块同名同包冲突（只查跨模块；同模块不同源集 expect/actual 同名是正常模式）。
 > ⚠ 扫描器有已知误报（`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁**。
 
-**剩余待迁 22 文件 / 13.8k，全是宿主层与平台专有实现体，没有「页面」了**。
+**剩余待迁 22 文件 / 12.6k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. **宿主层**（Route 已迁 18/20：About/教务导入 + 9 个文档壳 + 节假日 + 小部件引导/课程提醒/WebDAV
-   + 课表导入导出备份；`AppNavHost` ✅ 已迁）—— `AppRouteContent` 只剩 **2 个** Route
-   （`CourseTimeSettings` / `CourseManage`），再往后是 `MainActivity` / `NexioApplication`。
-   宿主壳 iOS 重写入口、Android 保留；✅ R13 已解、✅ iOS 入口已接真导航（`071d7883`）。
-   ⚠ 最后两个是**最难啃的**：都持有 `Bitmap` 卡片快照 + `ApiCompat.blurRenderEffect`（Android 专有）。
-   快照**裁剪**没有跨平台 API，但可以用 `Canvas.drawImage(srcOffset/srcSize)` 重绘实现
-   （快捷菜单那段已经在这么做了）—— 别再走 expect/actual。
+1. ~~**宿主层~~ Route~~**~~ —— ✅ **20/20 已全部迁完**（第三十八批收尾）。
 2. **`CourseScheduleApp` 迁 `:ui-shared`** —— 这是「iOS 的 MainActivity」的最后一块：
-   真课表主界面（双屏 pager + 设置侧栏）目前还在 `:androidApp` 的 `MainActivity.kt`（6070 行）。
-   搬完 iOS 才真正有主界面，临时首页（路由导航台）才能删。
-   依赖的 Android 专有项：`LocalContext` / `Dispatchers.IO` / `CourseReminderHelper` /
+   真课表主界面（双屏 pager + 设置侧栏）目前还在 `:androidApp` 的 `MainActivity.kt`（6070 行，
+   `CourseScheduleApp` 单独占 1240–5816 行）。
+   ⚠ **拆两批走**：先搬**结构层**（pager / 顶栏 / 路由跳转 / 转场动画）；
+   壁纸与 `android.graphics.Bitmap`（该函数内 **179 处引用**）单独第二批 ——
+   那是纯平台能力，按「接口 + 启动注入」抽成 WallpaperProvider。
+   其余 Android 专有项：`LocalContext` / `Dispatchers.IO` / `CourseReminderHelper` /
    `MainActivity.resumeCount` / `TodayAssistant` 天气抓取器 —— 逐个走注入。
+   **搬完 iOS 才真正有主界面，临时首页（路由导航台）才能删。**
+3. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
+   shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
+   ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
+   **`WebViewScreen` 与三个对话框一行不用动**。
+4. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
@@ -268,6 +269,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `6091d8f2` | **第三十八批**：**最后两个路由** `CourseTimeSettingsRoute` / `CourseManageRoute` 迁 `:ui-shared` —— **Route 20/20 全部迁完**；新增跨平台 `cropImageBitmapClamped`（替 `Bitmap.createBitmap`）；`renderEffect` 换 `:backdrop` 的 `BlurEffect`；`BackHandler` 换 `:miuix` 的 `NavigationBackHandlerFor` | 10-12 |
 | `1e66ed67` | **第三十七批**：课表导入/导出/备份三个路由迁 `:ui-shared`（四条 Android 能力注入 + 跨平台默认值）；**iOS 宿主接线 18/20 路由**，首页升级为「注入自检 + 路由导航台」 | 10-12 |
 | `9140a7ad` | **第三十六批**：小部件引导 / 课程提醒 / WebDAV 三个路由壳迁 `:ui-shared`（平台能力全参数注入；测试通知回调传 null = 该端无此能力、不渲染按钮），Route 进度 **15/20** | 10-12 |
 | `d23c3bb8` | **第三十五批**：`HolidaySettingsRoute` 迁 `:ui-shared` —— HttpURLConnection 改 `:core` HttpService（**该文件最后一个 java.net 触点清零**），Route 进度 **12/20** | 10-12 |
@@ -313,6 +315,13 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 >    ⇒ 迁移大文件时自己也要 grep 这两类字面量；**最终裁决权在 iOS 编译**，门禁绿 ≠ 跨平台干净。
 > 9. **搬进 `:ui-shared` 的声明，只要宿主层还要用就不能是 `internal`** —— 第二十七批 `EduImportUpdater`（连同
 >    `isUpdating`/`dataVersion`）跟着 Screen 一起搬，`:ui-shared` 内部全绿，只有 `:androidApp` 引用时才炸 9 处。
+> 10. **`renderEffect` / `drawImage` / `BackHandler` 进了 commonMain 会换 API**（第三十八批）：
+>     - 模糊别用 `androidx.compose.ui.graphics.rendereffect.*`（skiko 不在那）——
+>       用 `androidx.compose.ui.graphics.{BlurEffect,TileMode}`，配 `:backdrop` 的 `isRenderEffectSupported()`；
+>     - 裁剪别照抄 `DrawScope.drawImage(srcOffset/srcSize/dstSize)` —— `Canvas.drawImageRect`
+>       是另一套签名（多一个 `dstOffset`，且 `paint` 必填）；
+>     - `androidx.activity.compose.BackHandler` 是 Android 专有 → `:miuix` 的
+>       `NavigationBackHandlerFor`（skiko 侧有 actual，iOS/桌面空实现）。
 
 ---
 
@@ -451,7 +460,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | 🟡 与 Android 同一导航根（`AppNavHost`），**18/20 路由已接线**并链接成功；首页是**临时路由导航台**（每页一个按钮，供模拟器逐页人工验证）+ 注入自检。真主界面要等 `CourseScheduleApp` 迁完，`IosWebHost` 未写 |
+| iOS 已可用 | 🟡 与 Android 同一导航根（`AppNavHost`），**20/20 路由全部接线**并链接成功；首页是**临时路由导航台**（每页一个按钮，供模拟器逐页人工验证）+ 注入自检。真主界面要等 `CourseScheduleApp` 迁完，`IosWebHost` 未写 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
@@ -482,16 +491,18 @@ AppFiles.init(
 - ✅ **不用迁**（留 `:androidApp`）：`widget/` + `reminder/` 约 **40 处** `R.mipmap.ic_launcher` /
   `R.layout.*` / `R.drawable.widget_*`（RemoteViews 与 Notification 是 Android 专有）
 - ⚠ **要迁**：`TodayAssistant.kt:75-89` 天气图标 **20 个** `R.drawable.icon_*`（唯一有规模的，
-  整段 `when` 分支要改）；`AboutScreen` `ic_github`/`ic_gitee`；`AppreciateAuthorScreen`
-  `ic_anonymous_avatar`/`zanshangma`；`PreferenceSettingsScreen` `theme_preview_light/night`；
-  `WidgetIntroScreen` `ic_miuix_logo`/`ic_widget_clock`/`ic_widget_location`；`WebViewScreen` `ic_phone_pc`
+  整段 `when` 分支要改）；其余是零散的 `ic_github`/`ic_gitee`、`theme_preview_light/night`、
+  `ic_widget_*`、`ic_phone_pc` 等
 
 **两条 CMP 变更，阶段 5 会用到**：
 
+- **`LocalLifecycleOwner` 换包**：CMP 1.7.3 起移到 lifecycle 包。当前 0 处使用，阶段 5 大概率会用到
 - **`@Preview` 用哪个包**：CMP 1.10.0 起统一，commonMain 直接用
   `androidx.compose.ui.tooling.preview.Preview`。**别按旧指南走 `org.jetbrains.compose` 那个**（已废弃）
-- **`LocalLifecycleOwner` 换包**：CMP 1.7.3 起移到 lifecycle 包。当前 0 处使用，阶段 5 大概率会用到
 
+> ✅ 第三十八批收尾时确认：**要迁的资源已全部随页面迁完** —— 20 个天气图标等已换成
+> `composeResources`（`Res.drawable.*`）；`:androidApp` 剩余 `R.drawable.*` 只在永不迁的
+> `widget/` / `reminder/` 里。
 ---
 
 ## 7. iOS 功能落差（先定哪些能要）
@@ -532,7 +543,7 @@ AppFiles.init(
 | 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
 | 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
 | 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | ✅ A1 A2 A3 全部实现（A3 已在模拟器真跑通 7 个用例）；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：framework 已链接成功（R10/R13 已解），iOS 入口已接真导航；**宿主层剩 2 个 Route + `CourseScheduleApp`** |
+| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：framework 已链接成功（R10/R13 已解），iOS 入口已接真导航，**路由 20/20 全迁完**；只差 `CourseScheduleApp`（真主界面） |
 | 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。
