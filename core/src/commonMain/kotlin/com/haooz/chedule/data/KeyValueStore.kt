@@ -1,50 +1,23 @@
 package com.haooz.chedule.data
 
 /**
- * 跨平台键值存储。
+ * 跨平台键值存储。Android 实现必须继续走 SharedPreferences 本身，
+ * 换成 DataStore 或自建文件会让存量用户的全部设置读不出来。
  *
- * 现状：28 个文件、约 700 处 `SharedPreferences` 调用，横跨 17 个偏好文件，
- * 且承载全部用户数据（课程表 / 时间配置 / 节假日 / 备份配置 / 隐私同意）。
- *
- * ## 为什么是接口而不是 expect/actual 类
- *
- * `SharedPreferences` 在 `Holidays` 等处**作为参数类型出现**（6 个 `internal fun`
- * 形如 `loadEndCourseExclusion(preferences: SharedPreferences)`）。若走 expect class，
- * actual 就是 SharedPreferences 本身，`:app` 侧的既有签名不必改 —— 但那样 commonMain
- * 无法表达"写入"能力（KTX 的 `edit {}` 依赖 Editor）。
- *
- * 选接口的代价是 `:app` 侧需要一层包装；换来的是：
- * - commonTest 可以用 [InMemoryKeyValueStore] 做 round-trip 回归，**不需要 Android 设备**
- * - iOS 侧接 NSUserDefaults 时只需再写一个实现，调用点零改动
- *
- * ## 与 SharedPreferences 的语义差异（务必注意）
- *
- * 1. **写入分两段**：Android 是 `edit {}` DSL（提交即 apply），这里是 [KeyValueEditor]。
- *    不要在 `:app` 里混用两套 —— 一个文件内统一用一种。
- * 2. **类型不匹配时不抛异常**：SharedPreferences 对类型不符的 key 会抛
- *    `ClassCastException`，项目里 `Holidays` 大量用 `runCatching { … }.getOrDefault(…)`
- *    来兜底（历史数据格式变更导致）。本接口约定**返回默认值而非抛异常**，
- *    这样那些 runCatching 可以逐步简化；但**现有 runCatching 先保留**，不要顺手删。
- * 3. **[all] 的返回类型**：Android 是 `Map<String, *>`（只读快照）。本接口返回
- *    `Map<String, Any?>` 的拷贝，**改动它不影响存储**。
- *
- * ⚠ **红线**：Android 实现必须继续走 SharedPreferences 本身，不得换成 DataStore 或
- * 自建文件 —— 否则存量用户的全部设置会读不出来。
+ * 与 SharedPreferences 的语义差异：
+ * 1. 写入分两段，Android 的 `edit {}` 在这里是 [KeyValueEditor]，一个文件内统一用一种。
+ * 2. 类型不匹配时**返回默认值而非抛异常**，这样调用点的 `runCatching` 可以逐步简化
+ *    （现有的先保留，不要顺手删）。
+ * 3. [all] 返回拷贝，改动它不影响存储。
  */
+
 /**
  * 「不确定是哪个键」的哨兵常量。
  *
- * `registerListener` 的回调参数在 **Android 上是准确的 key**，但在 **iOS 上不是**：
- * `NSUserDefaultsDidChangeNotification` 只说「有东西变了」，具体键在 userInfo 里，
- * 且 cinterop 绑定中拿不到稳定符号 → iOS 统一传本哨兵。
- *
- * 因此**凡是按 key 过滤的监听都必须同时接受本哨兵**：
- * ```
- * prefs.registerListener { key ->
- *     if (key == KEY_CHANGED_ANYWHERE || key == "my_key") { 复查 }
- * }
- * ```
- * 否则 iOS 上会「收到通知但被过滤掉」—— 表现为设置项改了 UI 不刷新。
+ * `registerListener` 的回调参数在 Android 上是准确的 key，在 iOS 上不是 ——
+ * `NSUserDefaultsDidChangeNotification` 只说「有东西变了」，拿不到具体键，iOS 统一传本哨兵。
+ * 所以凡是按 key 过滤的监听都必须同时接受它，否则 iOS 上会「收到通知但被过滤掉」，
+ * 表现为设置项改了 UI 不刷新。
  */
 const val KEY_CHANGED_ANYWHERE: String = "__key_changed_anywhere__"
 
@@ -77,19 +50,11 @@ interface KeyValueStore {
     fun unregisterListener(token: Any?)
 }
 
-/**
- * 对应 `SharedPreferences.getString(key, null)`：**键不存在返回 null**。
- *
- * 接口的 [KeyValueStore.getString] 刻意收非空默认值（契约里没有可空重载），
- * 而迁移前有 12 处 `getString(key, null) ?: …` 的写法，所以补这个扩展。
- *
- * ⚠ 语义逐条对齐：键存在但**类型不是 String** 时，Android 实现会原样抛
- * `ClassCastException`（见 `SharedPreferencesStore`），这里不会把它吞成 null。
- */
+/** 对应 `SharedPreferences.getString(key, null)`：键不存在返回 null。类型不符时仍会抛 ClassCastException。 */
 fun KeyValueStore.getStringOrNull(key: String): String? =
     if (contains(key)) getString(key, "") else null
 
-/** 事务内可用的写入面。用完 [KeyValueStore.edit] 的回调即提交（等价 Android 的 apply）。 */
+/** 事务内可用的写入面。用完 [KeyValueStore.edit] 的回调即提交。 */
 interface KeyValueEditor {
     fun putString(key: String, value: String)
     fun putInt(key: String, value: Int)
@@ -101,13 +66,7 @@ interface KeyValueEditor {
     fun clear()
 }
 
-/**
- * 内存实现，供 commonTest 做 round-trip 回归，也作为未来非持久化场景的默认值。
- *
- * 刻意**不做线程安全优化**：SharedPreferences 的跨线程一致性由 Android 保证，
- * 而 `Holidays` / `CourseRepository` 等调用点普遍带 `@Synchronized`，
- * 测试实现只需行为等价即可。
- */
+/** 内存实现，供 commonTest 做 round-trip 回归。不做线程安全优化：调用点普遍自带 `@Synchronized`。 */
 class InMemoryKeyValueStore(
     initial: Map<String, Any?> = emptyMap(),
 ) : KeyValueStore {
@@ -136,9 +95,8 @@ class InMemoryKeyValueStore(
 
     override fun getStringSet(key: String, defaultValue: Set<String>): Set<String> {
         val stored = data[key] as? Set<String> ?: return defaultValue
-        // 必须用 LinkedHashSet：kotlin.collections.toSet() 对 size==1 的集合会返回
-        // 共享的不可变单例（Collections.singleton），调用方就地 add 会抛
-        // UnsupportedOperationException —— 这正是 Android 上那个经典陷阱。
+        // 必须用 LinkedHashSet：toSet() 对 size==1 的集合返回共享不可变单例，
+        // 调用方就地 add 会抛 UnsupportedOperationException。
         return LinkedHashSet(stored)
     }
 
