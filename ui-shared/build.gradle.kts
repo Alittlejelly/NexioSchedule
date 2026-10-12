@@ -107,9 +107,9 @@ kotlin {
             // ⚠ 必须 exclude 官方 `miuix-ui`：`:miuix` 是它的同包同名 fork，
             // 两份 klib 一起进 iOS 链接期会报 `IrPropertySymbolImpl is already bound`。
             // 理由详见 miuix/build.gradle.kts 的注释。
-            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}") {
-                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
-            }
+            // ⚠ `miuix-preference` 不再从官方 artifact 取 —— 已 fork 进 `:miuix`
+            //（`preference/` 目录），官方版与 fork 的 miuix-ui ABI 对不上，
+            // iOS 链接期会报 `Undefined symbols … preference#ArrowPreference`（风险 R13）。
             implementation("top.yukonga.miuix.kmp:miuix-icons:${libs.versions.miuix.get()}") {
                 exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
             }

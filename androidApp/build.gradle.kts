@@ -113,7 +113,7 @@ dependencies {
     // ===== Miuix UI =====
     // miuix-ui 已 fork 到 :miuix 模块（KMP），不再使用 jar 依赖。
     //
-    // ⚠ 下面 5 个官方子库**每个都必须 exclude 官方 miuix-ui**（2026-10-11 补）：
+    // ⚠ 下面 4 个官方子库**每个都必须 exclude 官方 miuix-ui**（2026-10-11 补）：
     // 它们各自会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，而本仓库把 miuix-ui fork 成了
     // `:miuix` 模块 —— 同包同名。Android 上类路径按名去重、悄悄用一个（不报错，但
     // 官方 0.9.4 的 `WindowDialog` 会调到 fork 的旧 `DialogContentLayout` 签名 →
@@ -122,8 +122,10 @@ dependencies {
     val excludeOfficialMiuixUi: ModuleDependency.() -> Unit = {
         exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
     }
-    // 偏好设置组件
-    implementation(libs.miuix.preference) { excludeOfficialMiuixUi() }
+    // 偏好设置组件（miuix-preference）**不再引官方 artifact** —— 已 fork 进 `:miuix`
+    // 的 `preference/` 目录（R13：官方 artifact 链接的是官方 miuix-ui 的 ABI，与 fork 签名
+    // 对不上，iOS 链接期报 `Undefined symbols … preference#ArrowPreference`）。同包同名类
+    // 若同时存在于官方 artifact 与 fork，Android dex 阶段会 duplicate class。
     // 图标资源
     implementation(libs.miuix.icons) { excludeOfficialMiuixUi() }
     // Squircle形状支持

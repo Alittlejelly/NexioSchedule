@@ -1,9 +1,13 @@
 package com.haooz.chedule
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,6 +28,8 @@ import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.ui.navigation.AboutRoute
+import com.haooz.chedule.ui.navigation.AppRouter
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.dataWithContentsOfFile
@@ -94,10 +100,23 @@ private fun NexioIosSmokeRoot() {
     var storeProbe by remember { mutableStateOf("检查中…") }
     var fileProbe by remember { mutableStateOf("检查中…") }
     // 关于页是第三十批从 :androidApp 迁过来的跨平台 Route，这里直接拿来用
-    // ⚠ 别在这里引用 AboutRoute 之类的真实页面：它们会牵出 miuix 官方子库
-    //（`miuix-preference` 的 ArrowPreference），iOS 链接期报
-    // `Undefined symbols … preference#ArrowPreference`（风险 R13，见迁移计划 §9）。
-    // 那个坑解决之前，iOS 入口只跑注入自检。
+    // 关于页：第三十批迁过来的跨平台 Route，用来验证「`:ui-shared` 的 Route 在 iOS 上真能用」。
+    // （此前引用它会触发 R13 的链接错误，现已随 miuix-preference 一并 fork 解决。）
+    var showAbout by remember { mutableStateOf(true) }
+
+    if (showAbout) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AboutRoute(
+                router = remember { AppRouter() },
+                appVersion = AppInfo.version,
+            )
+            Button(
+                onClick = { showAbout = false },
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 48.dp, start = 16.dp),
+            ) { Text("返回") }
+        }
+        return
+    }
 
     LaunchedEffect(Unit) {
         storeProbe = runCatching {
@@ -123,5 +142,7 @@ private fun NexioIosSmokeRoot() {
         Text("版本 ${AppInfo.version}", style = MaterialTheme.typography.bodyMedium)
         Text("存储(AppStorage/UserDefaults)：$storeProbe")
         Text("文件(AppFiles/NSFileManager)：$fileProbe")
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = { showAbout = true }) { Text("打开关于页") }
     }
 }

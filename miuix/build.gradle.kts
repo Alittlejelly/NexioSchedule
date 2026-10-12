@@ -124,9 +124,16 @@ kotlin {
             implementation("top.yukonga.miuix.kmp:miuix-blur:${libs.versions.miuix.get()}") {
                 exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
             }
-            implementation("top.yukonga.miuix.kmp:miuix-preference:${libs.versions.miuix.get()}") {
-                exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
-            }
+            // ⚠ `miuix-preference` **已 fork 进本模块**（`preference/` 10 个文件，
+            //    取自 `miuix-preference-0.9.4-sources.jar`），官方 artifact 已移除。
+            //
+            //    为什么必须 fork：它是官方 artifact，编译时链接的是**官方 miuix-ui** 的
+            //    ABI，而本模块是改过的 fork —— 两边对 `ArrowPreference` 的签名对不上，
+            //    iOS 链接期报 `Undefined symbols … preference#ArrowPreference`（风险 R13）。
+            //    与本模块 fork miuix-ui 是同一件事（R10），**别退回去用官方 artifact**。
+            //
+            //    只 fork 了 `preference/` 一个目录：同 jar 里的 `popup/` 与 `menu/`
+            //    和本模块的 `Liquid*` 定制版重名冲突（那是项目自己的定制），不能并入。
             implementation("top.yukonga.miuix.kmp:miuix-navigation3-ui:${libs.versions.miuixNavigation3.get()}")
         }
         androidMain.dependencies {
