@@ -23,6 +23,8 @@ import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.activities.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
+import com.haooz.chedule.ui.screens.TodayAssistantCard
+import com.haooz.chedule.ui.screens.rememberWeatherIos
 import com.haooz.chedule.ui.utils.IosSharedFileReceiver
 import com.haooz.chedule.ui.utils.rememberIosShareAction
 import com.haooz.chedule.ui.utils.IosSystemBars
@@ -181,6 +183,27 @@ private fun NexioIosRoot() {
                     onPickWallpaperImage = { onPicked -> wallpaperPicker.pick(onPicked) },
                     // 分享课表：上传生成口令 → 复制剪贴板 → 模板图绘口令 → 系统分享面板
                     onShareSchedule = rememberIosShareAction(),
+                    // 今日助手卡：卡片本体在共享层，iOS 只提供天气+定位（CoreLocation）
+                    todayAssistantCard = { d ->
+                        val (weather, hasLocationPermission, requestLocation) = rememberWeatherIos()
+                        TodayAssistantCard(
+                            weather = weather,
+                            hasLocationPermission = hasLocationPermission,
+                            onRequestLocation = requestLocation,
+                            courses = d.courses,
+                            tomorrowCourses = d.tomorrowCourses,
+                            sectionTimes = d.sectionTimes,
+                            morningSections = d.morningSections,
+                            afternoonSections = d.afternoonSections,
+                            showClassroom = d.showClassroom,
+                            showTeacher = d.showTeacher,
+                            wallpaperBackdrop = d.wallpaperBackdrop,
+                            blurRadius = d.blurRadius,
+                            surfaceOpacity = d.surfaceOpacity,
+                            // 下课烟花是 Android 专有（LocalContext/nanoTime），iOS 不渲染
+                            fireworksOverlay = null,
+                        )
+                    },
                     // 外部分享进来的文件（Swift 侧 .onOpenURL → IosSharedFileReceiver）
                     sharedFileIntent = IosSharedFileReceiver.pending,
                     onShareIntentConsumed = { IosSharedFileReceiver.clear() },

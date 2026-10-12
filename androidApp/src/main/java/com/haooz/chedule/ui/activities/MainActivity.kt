@@ -163,11 +163,13 @@ import com.haooz.chedule.ui.screens.MainScheduleScreen
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
 import com.haooz.chedule.ui.screens.ScheduleGridGeometry
 import com.haooz.chedule.ui.screens.AndroidSettingsScreen
+import com.haooz.chedule.ui.screens.FireworksOverlay
 import com.haooz.chedule.ui.screens.ShiftScheduleScreen
 import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
 import com.haooz.chedule.ui.screens.TodayAssistantCard
 import com.haooz.chedule.ui.screens.TodayScreen
+import com.haooz.chedule.ui.screens.rememberWeather
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
@@ -821,7 +823,12 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
             )
         },
         todayAssistantCard = { d ->
+            // 天气/定位是 Android 能力（LocationManager + OkHttp），在宿主算好传给共享卡片
+            val (weather, hasLocationPermission, requestLocation) = rememberWeather()
             TodayAssistantCard(
+                weather = weather,
+                hasLocationPermission = hasLocationPermission,
+                onRequestLocation = requestLocation,
                 courses = d.courses,
                 tomorrowCourses = d.tomorrowCourses,
                 sectionTimes = d.sectionTimes,
@@ -832,6 +839,10 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
                 wallpaperBackdrop = d.wallpaperBackdrop,
                 blurRadius = d.blurRadius,
                 surfaceOpacity = d.surfaceOpacity,
+                // 下课烟花仍留在 Android（依赖 LocalContext / System.nanoTime）
+                fireworksOverlay = { trigger, modifier ->
+                    FireworksOverlay(trigger = trigger, modifier = modifier)
+                },
             )
         },
         updateController = remember { AndroidUpdateController(context) },
