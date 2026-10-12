@@ -525,24 +525,12 @@ AppFiles.init(
 | 1 | 纯逻辑下沉（`:core` 建立，模型 / 时间 / 节假日 / 仓储） | ✅ 完成 |
 | 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
 | 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
-| 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | 🟡 A1 A2 已实现，**A3 待写**；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：`:ui-shared` 已挂 iOS 目标并编译通过（2026-10-11）；**链接卡在 R10** |
+| 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | ✅ A1 A2 A3 全部实现（A3 已在模拟器真跑通 7 个用例）；Native 线程模型（R4）要等真机 |
+| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：framework 已链接成功（R10/R13 已解），iOS 入口已接真导航；**宿主层剩 5 个 Route** |
 | 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。
-`androidx.compose.*` 允许。
-
-**目标架构**
-
-```
-:core          KMP 共享模块
-  commonMain/  领域模型 · 时间计算 · 节假日 · 课程仓储 · 备份序列化 + 平台接口
-  androidMain/ actual：SharedPreferences / java.io.File / OkHttp
-  iosMain/     actual：NSUserDefaults / NSFileManager / NSURLSession
-:ui-shared     CMP 共享 UI（commonMain 93 / android 1 / jvm 1 / ios 1）
-:androidApp    Android 壳（保留 reminder / widget / shizuku / wearable）
-:iosApp        Xcode 工程（待建）
-```
+`androidx.compose.*` 允许。（模块分层与规模见 §3「模块现状」表。）
 
 ---
 
