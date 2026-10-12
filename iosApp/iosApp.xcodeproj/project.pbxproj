@@ -11,6 +11,7 @@
 		4B4B4B4B0000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4A4A4A0000000000000002 /* ContentView.swift */; };
 		4B4B4B4B0000000000000004 /* NexioShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A4A4A4A0000000000000004 /* NexioShared.framework */; };
 		4B4B4B4B0000000000000005 /* NexioShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4A4A4A4A0000000000000004 /* NexioShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A9A2325F307C72020029E790 /* nexioschedule.icon in Resources */ = {isa = PBXBuildFile; fileRef = A9A2325E307C72020029E790 /* nexioschedule.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -34,6 +35,7 @@
 		4A4A4A4A0000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4A4A4A4A0000000000000004 /* NexioShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = NexioShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A4A4A4A0000000000000005 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Config.xcconfig; path = Configuration/Config.xcconfig; sourceTree = "<group>"; };
+		A9A2325E307C72020029E790 /* nexioschedule.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = nexioschedule.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,8 @@
 				4A4A4A4A0000000000000005 /* Config.xcconfig */,
 				13B07F8B1A680F5B00A75B9A /* iosApp */,
 				13B07F8E1A680F5B00A75B9A /* Products */,
+				A9A2325D307BEFAF0029E790 /* Recovered References */,
+				A9A2325E307C72020029E790 /* nexioschedule.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -73,6 +77,14 @@
 				13B07F8D1A680F5B00A75B9A /* NexioSchedule.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A9A2325D307BEFAF0029E790 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				4A4A4A4A0000000000000004 /* NexioShared.framework */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -135,6 +147,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9A2325F307C72020029E790 /* nexioschedule.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -181,13 +194,13 @@
 			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -205,37 +218,16 @@
 			};
 			name = Debug;
 		};
-		1A1A1A1A00000000000000E1 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		1A1A1A1A00000000000000D2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
 			buildSettings = {
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = nexioschedule;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -254,15 +246,38 @@
 			};
 			name = Debug;
 		};
+		1A1A1A1A00000000000000E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		1A1A1A1A00000000000000E2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
 			buildSettings = {
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = nexioschedule;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = iosApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
