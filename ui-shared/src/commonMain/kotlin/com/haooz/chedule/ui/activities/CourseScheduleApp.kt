@@ -224,29 +224,18 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
- * 真课表主界面 —— **第四十三批：自 `:androidApp` 的 `MainActivity.kt` 整体迁入共享层**。
- *
- * 迁移前它是 `MainActivity.kt` 里 1240–5816 行的巨型函数（连同顶部/尾部私有 helper）。
- * Android 专有能力全部走**注入参数**（本页只认回调，不认平台类型）：
+ * 真课表主界面。Android 专有能力全部走注入参数，本页只认回调不认平台类型：
  * 系统栏 / 节假日提醒重排 / 相册选壁纸 / 分享 / 外部分享文件读取 / 设置页装配 /
- * 今日助手卡 / 更新能力。
+ * 今日助手卡 / 更新能力。宿主装配见 `AndroidCourseScheduleApp`，
+ * iOS/桌面直接调本函数，缺能力的入口不渲染。
  *
- * Android 宿主装配见 `:androidApp` 的 `AndroidCourseScheduleApp`；
- * iOS/桌面直接调本函数（默认空实现即可用，缺能力的入口不渲染）。
- *
- * ⚠ 位图统一 `ImageBitmap`（原 `android.graphics.Bitmap`）；快照裁剪走 `cropImageBitmap`；
- * 壁纸存储走 `WallpaperStore`；外观参数走 `AppearanceStore`。
+ * 位图统一 [ImageBitmap]，快照裁剪走 `cropImageBitmap`，壁纸存储走 `WallpaperStore`。
  */
 
 /** 宿主注入的位图回收实现（Android = `asAndroidBitmap().recycle()`；iOS/桌面 = null，交给 GC）。 */
 var bitmapRecycler: ((ImageBitmap) -> Unit)? = null
 
-/**
- * 释放独立快照位图；与进程级壁纸缓存或 keep 引用共用时不回收。
- *
- * 原 `recycleIndependentBitmap` 的共享版：ImageBitmap 无 `recycle()`，回收交给
- * [bitmapRecycler] 注入。`isRecycled` 检查在宿主实现里做。
- */
+/** 释放独立快照位图；与进程级壁纸缓存或 keep 引用共用时不回收。 */
 private fun recycleSnapshot(bitmap: ImageBitmap?, vararg keep: ImageBitmap?) {
     if (bitmap == null) return
     if (bitmap === WallpaperStore.currentImageBitmap()) return
@@ -257,7 +246,6 @@ private fun recycleSnapshot(bitmap: ImageBitmap?, vararg keep: ImageBitmap?) {
 /**
  * 将壁纸 offset/scale 从 fromW×fromH 重映射到 toW×toH。
  * 无有效 bitmap/参考尺寸时原样返回，避免横竖屏切换把数据算坏。
- * （原 MainActivity.kt 私有 helper 的共享版：Bitmap 尺寸换成 ImageBitmap。）
  */
 private fun remapWallpaperForScreen(
     offset: Offset,
@@ -274,7 +262,7 @@ private fun remapWallpaperForScreen(
     )
 }
 
-/** 运行期的外观快照（壁纸位图 + 变换 + 参数）—— 共享层版本，bitmap 是 ImageBitmap。 */
+/** 运行期的外观快照（壁纸位图 + 变换 + 参数）。 */
 data class ScheduleCombination(
     val bitmap: ImageBitmap?,
     val offset: Offset,
@@ -297,7 +285,7 @@ data class ScheduleCombination(
     var wallpaperBlur: Boolean = false,
 )
 
-/** [ScheduleCombination] → 外观配置（与迁移前 androidApp 的 `AppearanceConfig.fromCombination` 同义）。 */
+/** [ScheduleCombination] → 外观配置。 */
 fun AppearanceConfig.Companion.fromCombination(c: ScheduleCombination): AppearanceConfig = AppearanceConfig(
     cardBlurRadius = c.cardBlurRadius,
     cardAlpha = c.cardAlpha.coerceIn(0f, 1f),

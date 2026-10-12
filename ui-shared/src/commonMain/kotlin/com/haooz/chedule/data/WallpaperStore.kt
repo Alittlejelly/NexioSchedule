@@ -8,16 +8,10 @@ import com.haooz.chedule.data.AppFiles
 /**
  * 壁纸的后端能力 —— 平台实现方需要提供的四件事。
  *
- * ## 为什么是接口而不是 expect/actual
- *
- * 项目铁律：`:core` / commonMain **零平台实现**。而壁纸的 Android 实现
- * （`ScheduleAppearance`）在 `:androidApp` —— `:ui-shared` 反向依赖不到它，
- * 写 expect/actual 就必然要在共享层重写一遍解码（那会跟 Android 现有实现漂移，
- *  violate「Android 零回归」红线）。
- *
- * 所以走**接口 + 启动注入**：Android 的 `NexioApplication.onCreate()` 注入
- * `AndroidWallpaperBackend`（内部委托 `ScheduleAppearance`）；iOS 默认用
- * [IosWallpaperBackend]（`iosMain`，不需要谁注入）。
+ * 走接口 + 启动注入而不是 expect/actual：Android 实现（`ScheduleAppearance`）在
+ * `:androidApp`，`:ui-shared` 反向依赖不到它，写 actual 就得在共享层重写一遍解码。
+ * Android 由 `NexioApplication.onCreate()` 注入 `AndroidWallpaperBackend`；
+ * iOS 默认用 [IosWallpaperBackend]。
  */
 interface WallpaperBackend {
     /** 解码壁纸字节为 [ImageBitmap]；失败返回 null（不抛）。 */
@@ -34,55 +28,32 @@ interface WallpaperBackend {
 }
 
 /**
- * 壁纸存储 —— **跨平台**（第三十九批，为 `CourseScheduleApp` 迁 `:ui-shared` 铺路）。
+ * 壁纸存储。
  *
- * ## 为什么要这一层
- *
- * 壁纸的存取原先全在 `:androidApp` 的 `ScheduleAppearance` 里（`BitmapFactory` /
- * `LruCache` / `CompressFormat` / `filesDir`），`MainActivity.CourseScheduleApp`
- * 直接调它 —— 那是 `CourseScheduleApp` 最后一个平台耦合点，不抽掉整个函数搬不进共享模块。
- *
- * ## ⚠ 存储路径是数据兼容契约
- *
- * 文件名 `appearance_wallpaper.webp` 与落盘根目录（Android `filesDir` / iOS `Documents`，
- * 分别对应 `AppFiles.root`）**逐字不能改** —— 改了等于存量用户的壁纸静默丢失。
- *
- * ⚠ 后缀 `.webp` 只是名字：`BitmapFactory` 与 `UIImage` 都**按内容识别格式**，
- * 不看扩展名。iOS 存 JPEG 内容、文件仍叫 `.webp` 是安全的（iOS 是新平台，
- * 不会有存量 webp 文件要读）。
+ * ⚠ 存储路径是数据兼容契约：文件名与落盘根目录（[AppFiles.root]）逐字不能改，
+ * 改了等于存量用户的壁纸静默丢失。后缀 `.webp` 只是名字 —— 解码都按内容识别格式，
+ * 不看扩展名。
  */
 object WallpaperStore {
 
-    /**
-     * 壁纸文件名。⚠️ 与 `ScheduleAppearance.WALLPAPER_FILE` 逐字一致 ——
-     * 这是存量用户还能看到自己壁纸的唯一保证。
-     */
+    /** 壁纸文件名，与存量用户的数据兼容绑定，别改。 */
     const val FILE_NAME = "appearance_wallpaper.webp"
 
-    /** 测光网格边长（16×16）。与 Android 侧一致，别改。 */
+    /** 测光网格边长（16×16）。 */
     private const val GRID = 16
 
-    /**
-     * 平台后端。Android 由 `NexioApplication` 注入；未注入时（桌面/测试）退化成
-     * 「读不到盘」，不会崩 —— 表现为没有壁纸。
-     */
+    /** 平台后端。未注入时（桌面/测试）退化成「读不到盘」，表现为没有壁纸。 */
     var backend: WallpaperBackend? = null
 
     /**
-     * 内存缓存。
-     *
-     * ⚠ Android 侧真正的主缓存是 `ScheduleAppearance` 的 `LruCache`（按 byteCount 淘汰）。
-     * 这里只是「避免同一次会话里重复读盘」的兜底 —— **单例语义，不做 LRU**。
-     * 所以改壁纸必须两边都清，否则共享层会继续返回旧实例。
+     * 内存缓存。Android 侧真正的主缓存是 `ScheduleAppearance` 的 `LruCache`，
+     * 这里只是「避免同一次会话里重复读盘」的兜底，单例语义不做 LRU ——
+     * 所以改壁纸必须两边都清。
      */
     private var cached: ImageBitmap? = null
 
-    // ── 变换缓存（原先在 MainActivity 的 companion 里）──────────────────
-    //
-    // 为什么下沉：`cachedWallpaperOffset/Scale` 是「跨进程重建复用」的中间态 ——
-    // 横竖屏切换、进程被回收后重建，都要靠它把壁纸摆在用户上次调的位置。
-    // 放在 Activity 的 companion 上意味着**桌面/iOS 拿不到**，而这是纯数据
-    // （两个 Float + 一个 Offset），没有任何平台成分，理应共享。
+    // 变换存在这里而不是 Activity 的 companion：横竖屏切换、进程重建后
+    // 都要靠它把壁纸摆回用户上次调的位置，而它是纯数据，没有平台成分。
 
     /** 重映射到当前屏幕后的壁纸 offset（px）。与 [transformScale] 成对。 */
     var wallpaperOffset: Offset = Offset.Zero
@@ -95,8 +66,7 @@ object WallpaperStore {
     /**
      * 写入当前生效的壁纸变换。
      *
-     * ⚠ 只在「已经 remap 到当前屏幕」之后调 —— 别把某个方向的中间值写进来，
-     *   否则旋转一圈后画面会漂（见 [WallpaperTransform.remap] 的 k 不变量的说明）。
+     * ⚠ 只在「已经 remap 到当前屏幕」之后调，否则旋转一圈后画面会漂。
      */
     fun saveTransform(offset: Offset, scale: Float) {
         wallpaperOffset = offset
@@ -106,7 +76,7 @@ object WallpaperStore {
     /**
      * 把壁纸变换从 `fromW×fromH` 屏幕重映射到 `toW×toH`，并**记住结果**。
      *
-     * @return 重映射后的 (offset, scale)；没有壁纸或尺寸非法时返回**当前值**（原样不动）
+     * @return 重映射后的 (offset, scale)；没有壁纸或尺寸非法时返回当前值
      */
     fun remapTransform(
         fromW: Float,
@@ -192,9 +162,7 @@ object WallpaperStore {
     /**
      * 当前内存里的壁纸实例（不解码、不读盘）。
      *
-     * 给宿主层做「同一份壁纸只解码一次」的**身份比较**用 —— Android 的
-     * `recycleIndependentBitmap` 靠 `===` 判断该不该回收，换实例会误回收
-     * 正在显示的位图（画面直接黑掉）。
+     * 给宿主层做身份比较用 —— 靠 `===` 判断该不该回收，换实例会误回收正在显示的位图。
      */
     fun currentImageBitmap(): ImageBitmap? = cached
 
@@ -205,9 +173,7 @@ object WallpaperStore {
 
     /**
      * 16×16 网格**感知加权平均亮度**（0.299R + 0.587G + 0.114B），阈值 128。
-     *
-     * 与 `ScheduleAppearance.computeWallpaperIsLight` 算法一致 —— 阈值**没动过**，
-     * 改了会让「跟随壁纸」的主题在临界图上翻转。
+     * 与 Android 侧一致 —— 阈值改了会让「跟随壁纸」的主题在临界图上翻转。
      *
      * @return null = 无壁纸或尺寸非法（调用方按「未测光」处理）
      */
@@ -223,8 +189,7 @@ object WallpaperStore {
                         .coerceIn(0, image.width - 1)
                     val py = ((y + 0.5f) / GRID * image.height).toInt()
                         .coerceIn(0, image.height - 1)
-                    // ⚠ PixelMap 返回 Color（分量是 0f~1f），不是打包的 Int ——
-                    //   Android 那边 `pixel shr 16 and 0xFF` 的写法这里不适用。
+                    // PixelMap 返回 Color（分量 0f~1f），不是打包的 Int
                     val c = pixels[px, py]
                     val r = c.red * 255f
                     val g = c.green * 255f
