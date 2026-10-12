@@ -20,14 +20,15 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`e32f494b`**（2026-10-12）。工作区干净（应用图标已随 `a6f04c7a` 提交）。
-🟡 冲刺期**多会话并发**改同一仓库。
+**代码状态**：`master` = **`81ad6b0f`**（2026-10-12，第四十三批收尾）。工作区干净。
+🟡 冲刺期**多会话并发**改同一仓库（`mtzwidget/*` 常被另一会话占用，提交前 `git status` 对齐）。
 
-**iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
+**iOS 状态（2026-10-12 真机/模拟器验证通过）**：四个模块的 `iosArm64` +
 `iosSimulatorArm64` **编译通过**；`:core` 跨平台测试在模拟器上 **116 用例 0 失败**（含 iOS 专属的 `NsFileAppFileTest` 7 个）；
 `:ui-shared` 的 **`NexioShared.framework` 两个目标都链接成功**（`linkDebugFrameworkIos{Arm64,SimulatorArm64}`）。
 原挡住 link 的 R10（miuix 部分 fork）**已解** —— `:miuix` 补成完整 fork（119 文件、自包含）。
-**iOS 代码侧能力已齐**（A1 网络 / A2 偏好 / A3 文件三个 actual 都写好并编译通过），缺的只剩**工程侧**。
+**iOS 代码侧能力已齐**（A1 网络 / A2 偏好 / A3 文件三个 actual 都写好并编译通过）。
+**第四十三批的主界面迁移已过运行时验证**（真主界面在 iOS 上跑起来了）。
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
 （含本体）/课表导入导出备份页/外观自定义页/教务导入（外壳+本体）/小部件引导/课程提醒/WebDAV/
@@ -208,9 +209,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 
 ## 4. 下一步（收尾路线，按顺序推进）
 
-> 🔧 **先用扫描器选批**（`.workbuddy-ai/tmp/scan_ui3.py`），每次迁移后跑 `.workbuddy-ai/tmp/dupscan.py`
-> 查跨模块同名同包冲突（只查跨模块；同模块不同源集 expect/actual 同名是正常模式）。
-> ⚠ 扫描器有已知误报（`androidx` 被当反向依赖符号），**报「0 阻断」也要先小规模试迁**。
+> ℹ️ 迁移期用的选批/查重扫描器（`.workbuddy-ai/tmp/scan_ui3.py` / `dupscan.py`）是**本地临时工具**，
+> 已随迁移收尾清理。若将来再往 `:ui-shared` 搬文件，仍需手工查一次「同包同名」——
+> 扫描器查不到 `.kt` facade 撞名，而那个坑**编译全绿、dex 只留一个类**（见坑清单第 8 条）。
 
 **待迁已归零**。剩下的都不是「页面」，是 iOS 工程侧与真机验证：
 
@@ -228,11 +229,10 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
    ⚠ 平台触点全走注入（10 个参数：resumeCount / isInFreeformWindow / onSystemBarsChanged /
    onHolidayDataChanged / onPickWallpaperImage / onShareSchedule / onReadSharedFileText /
    sharedFileIntent / settingsPane / todayAssistantCard / updateController / 位图回收）。
-6. **iOS 工程真机验证**—— 模拟器编译链接已过，但**运行未验证**：主界面双屏/拖拽/换壁纸/
-   外观编辑/分享降级要真机或模拟器人工走一遍。启动注入（A4）✅ 已接。
-   ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
-   **`WebViewScreen` 与三个对话框一行不用动**。
-7. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
+6. ~~iOS 工程真机验证~~ —— ✅ **第四十三批后运行时已验证**（真主界面在 iOS 跑通）。启动注入（A4）✅ 已接。
+7. **`IosWebHost`（WKWebView）** —— 教务导入唯一的缺件（契约 `ui/web/WebHost.kt` 7 个方法就位，
+   **`WebViewScreen` 与三个对话框一行不用动**）。
+8. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
 
 ### 🔑 迁移框架铁律（用户 10-11 拍板）
 
@@ -488,7 +488,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | 🟢 **真主界面已就位**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。⚠ **运行未验证**（模拟器/真机人工走一遍主界面）；`IosWebHost`（WKWebView）未写，教务导入暂不可用 |
+| iOS 已可用 | 🟢 **真主界面已就位并跑通**（第四十三批：`CourseScheduleApp` 迁 `:ui-shared`，iOS 首页 = 真课表界面，运行时已验证）；与 Android 同一导航根（`AppNavHost`），**20/20 路由接线**；framework 链接全绿。⚠ `IosWebHost`（WKWebView）未写，教务导入暂不可用；壁纸字节序仍未单独验证 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
@@ -571,7 +571,7 @@ AppFiles.init(
 | 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
 | 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
 | 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | ✅ A1 A2 A3 全部实现（A3 已在模拟器真跑通 7 个用例）；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | ✅ **迁移完成**：framework 链接成功（R10/R13 已解），**路由 20/20 + 真主界面 `CourseScheduleApp` 全迁**，iOS 首页已是真课表界面（`ebc209ad`）。⚠ 运行时待模拟器/真机人工验证 |
+| 5 | UI 首版（`:ui-shared` + iOS 壳） | ✅ **完成**：framework 链接成功（R10/R13 已解），**路由 20/20 + 真主界面 `CourseScheduleApp` 全迁**，iOS 首页已是真课表界面（`ebc209ad`），**运行时已验证跑通** |
 | 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。
