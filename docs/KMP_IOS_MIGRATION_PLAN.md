@@ -110,8 +110,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 > `:ui-shared` 的 framework **两个目标都链接成功**（`NexioShared.framework`，静态，~267 MB）。
 
 > ⚠ **wasmJs 门禁与 `check` 互斥**：`-Pnexio.wasm=true` 期间 Kotlin/Wasm 插件会在配置阶段
-> 注册 Distributions 仓库，与 `FAIL_ON_PROJECT_REPOS` 冲突 → `check` 直接失败。
-> **必须分两次跑**（先默认态 check，再 wasm）。
+> 注册 Distributions 仓库，与 `FAIL_ON_PROJECT_REPOS` 冲突 → `check` 直接失败，**必须分两次跑**。
 > ⚠ **PowerShell 里 `-P` 参数要加引号**：`.\gradlew.bat '-Pnexio.wasm=true' checkKmpWasmJs`。
 >
 > 🔴 **「能编过」必须问清楚是哪个目标能编过。** 踩过大坑：`:core` 一度只有 android + jvm
