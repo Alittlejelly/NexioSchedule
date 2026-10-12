@@ -1,8 +1,8 @@
 // Nexio课程表 - 顶层构建配置
 //
-// 除插件声明外，这里还挂了一条 **commonMain/skikoMain 平台纯净度检查**。
-// 原因见下面 CheckKmpPurityTask 的注释：这类「Android/JVM 全绿、iOS 编不过」的问题
-// 编译器在本机拦不住，只能用静态检查兜底。
+// 除插件声明外，这里挂了三道与 KMP 迁移相关的强制配置，
+// 各自的原因写在对应位置：平台纯净度检查、kotlinx-datetime 版本钉死、
+// Node 发行版来源。
 
 plugins {
     alias(libs.plugins.android.application) apply false
@@ -12,29 +12,20 @@ plugins {
 // ─────────────────────────────────────────────────────────────────────────────
 // commonMain / skikoMain 平台纯净度检查
 //
-// 背景（真实教训）：`:core` 此前只有 android + jvm 两个 **JVM** 目标，
-// `compileCommonMainKotlinMetadata` 是 SKIPPED —— commonMain 从未被平台中立的 stdlib
-// 检查过。于是 5 类 JVM 专有 API 一路绿灯，直到真正编 Kotlin/Native 才全部暴露：
-//   @Volatile（靠 JVM 默认导入 kotlin.jvm.* 解析）、synchronized、Dispatchers.IO
-//   （在 Native 上是 internal）、System.currentTimeMillis()、String.format()
+// 这类「Android/JVM 全绿、iOS 编不过」的问题编译器在本机拦不住
+// （:core/:miuix/:backdrop 挂不了 linuxX64 —— Compose Multiplatform
+// 不支持该目标，iOS 目标又需要 macOS 宿主），只能用静态检查兜底。
 //
-// 各模块的应对不同：
-//   :core              → 挂了 linuxX64 目标，由编译器真编译（最强）
-//   :backdrop / :miuix → 做不到：Compose Multiplatform **不支持 linuxX64**，
-//                        而 iOS 目标需要 macOS 宿主。只能退化为静态检查。
-//
-// 静态检查不如编译器完备（未知 API 查不出来），但能把已知的坑全拦住，
-// 且在任何平台都能跑、无需 Kotlin/Native 工具链。
+// 已知盲区：正则查不出未知 API。`:core` 靠 linuxX64 目标真编译兜底，
+// 其余模块靠 iOS / wasmJs 编译门禁兜底。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 一条禁止规则。[appliesTo] 用于排除文件级的已知例外。
  *
- * 规则设计上的两个坑（都已实测确认，不是推测）：
- *  1. `@Volatile` 只有在**文件未导入** `kotlin.concurrent.Volatile` 时才是问题，
- *     否则是误报 —— 必须做文件级判断。
- *  2. `@JvmInline` / `import kotlin.jvm.JvmInline` 是**合法**的：Kotlin 对 value class
- *     的注解做了特殊处理，实测 linuxX64 能编过。
+ * 两个坑（已实测，非推测）：
+ *  1. `@Volatile` 只有在文件未导入 `kotlin.concurrent.Volatile` 时才是问题，否则误报；
+ *  2. `@JvmInline` / `import kotlin.jvm.JvmInline` 是合法的，value class 专用。
  */
 class Forbidden(
     val name: String,
@@ -59,7 +50,7 @@ abstract class CheckKmpPurityTask : DefaultTask() {
         val violations = mutableListOf<String>()
         var scanned = 0
 
-        // 必须用 asFileTree 展开目录：ConfigurableFileCollection 里放的是「目录」本身，
+        // 必须用 asFileTree 展开目录：ConfigurableFileCollection 里放的是目录本身，
         // 直接取 .files 只会拿到目录对象（曾因此扫描到 0 个文件却报通过 —— 假绿）。
         val ktFiles = sources.asFileTree.matching { include("**/*.kt") }.files
             .sortedBy { it.absolutePath }
@@ -96,8 +87,8 @@ abstract class CheckKmpPurityTask : DefaultTask() {
     }
 
     companion object {
-        // 放在伴生对象里而不是脚本顶层：避免 @TaskAction 捕获 build script 实例，
-        // 否则 Gradle 配置缓存会报 "cannot serialize Gradle script object references"。
+        // 必须放伴生对象：@TaskAction 捕获 build script 实例会让配置缓存
+        // 报 "cannot serialize Gradle script object references"。
         val FORBIDDEN = listOf(
             Forbidden(
                 "@Volatile（无限定）",
@@ -137,13 +128,8 @@ abstract class CheckKmpPurityTask : DefaultTask() {
             ),
             Forbidden(
                 "字符串字面量 .format(...)（String.format 的扩展形式）",
-                // 只匹配**字符串字面量**的扩展调用（`"%.1f".format(x)`）—— 变量形式
+                // 只匹配字符串字面量的扩展调用（`"%.1f".format(x)`）；变量形式
                 // （`fmt.format(x)`）静态区分不了，靠 iOS 编译门禁兜底。
-                //
-                // 2026-10-11 补：这条规则是**被 iOS 编译打脸之后**才加的 ——
-                // `"%.1f".format(it)` 在 CustomizeScheduleScreen 里躲过了上面那条
-                // `String.format` 正则，直到页面迁进 :ui-shared 真编 iOS 才炸。
-                // 与「全限定名 java.* 躲过 import 规则」是同一类盲区：**正则永远不如编译器完备**。
                 Regex("\"[^\"]*\"\\s*\\.\\s*format\\("),
                 "String.format 的扩展形式，同样是 JVM 专有；改 padStart 或 :core 的 formatOneDecimal",
             ),
@@ -203,48 +189,31 @@ subprojects {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // kotlinx-datetime 版本钉死 —— 全应用只允许一个版本
 //
-// 背景（2026-10-11 首次真编 iOS 时发现）：Compose Multiplatform 的 material3
-// 1.12.0-alpha03 在 **iOS 变体**上依赖 `kotlinx-datetime:0.7.1`，冲突解析后把
-// 本项目锁定的 0.6.2 顶掉 —— 而 Android / JVM 侧走的是 AndroidX material3
-// （不拉 kotlinx-datetime），仍是 0.6.2。结果是同一个 iOS 二进制里
-// `:core` 按 0.6.2 编译、`:ui-shared` 按 0.7.1 编译：
-//   - `:core` 的公开签名里到处都是 `LocalDate`（Course / HolidayEntry /
-//     TeachingWeekReorganization…）—— 两个版本 = 两个不同的类，链接期必炸
-//   - 直接症状是 `Clock.System` 在 Native 上 `Unresolved reference 'System'`
-//     （0.7 把 Clock 换成了 `kotlin.time.Clock`）
+// CMP material3 在 **iOS 变体**上依赖 kotlinx-datetime 0.7.1，会把本项目锁定的
+// 0.6.2 顶掉，而 Android/JVM 侧走 AndroidX material3（不拉 datetime）仍是 0.6.2。
+// 结果是同一个 iOS 二进制里 :core 按 0.6.2 编、:ui-shared 按 0.7.1 编 ——
+// 两版的 LocalDate 是不同类，链接期必炸（症状：Clock.System 报 Unresolved reference）。
 //
-// 所以这里 force 回 0.6.2，与 Android 侧保持一致。**不是**「先绕过」：
-// 版本混用本身就是错的，等真要做 0.7 升级（catalog 注释里说的「阶段 2」）时
-// 是**全项目一起升**，连同 `monthNumber` → `month`、`Clock` → `kotlin.time.Clock`
-// 一起改，然后删掉这条 force。
-// ─────────────────────────────────────────────────────────────────────────────
+// 升级 datetime 时必须全项目一起升（含 monthNumber → month、Clock → kotlin.time.Clock），
+// 然后删掉这条 force。
 subprojects {
     configurations.configureEach {
         resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Kotlin/Wasm：不要从 nodejs.org 下载 Node 发行版，用本机已装的
+// Kotlin/Wasm：用本机已装的 Node，不从 nodejs.org 下载
 //
-// 背景：`:backdrop` / `:miuix` 挂了 wasmJs 编译门禁（见各自 build.gradle.kts）。
-// Kotlin/Wasm 插件会为 `kotlinWasmNodeJsSetup` 任务自行注册 Distributions 仓库，
-// 与 settings.gradle.kts 的 FAIL_ON_PROJECT_REPOS 直接冲突：
+// Kotlin/Wasm 插件会为 `kotlinWasmNodeJsSetup` 注册 Distributions 仓库，
+// 与 settings.gradle.kts 的 FAIL_ON_PROJECT_REPOS 硬冲突：
 //   "repository 'Distributions at https://nodejs.org/dist' was added by unknown code"
 //
-// 官方做法（kotlinlang.org/docs/js-project-setup.html#use-pre-installed-node-js）是
-// 把 EnvSpec.download 置为 false —— 本机 Node v24.16.0 已在 PATH 中。
-//
-// ⚠ 实测（2026-10-10）只做这一步**不够**：即使 download=false，
-// 该仓库仍在配置阶段被注册（注册动作发生在读取 download 之前），冲突依旧。
-// 所以 wasmJs 门禁**刻意不挂在 check 上**，而是独立命令跑：
-//     ./gradlew checkKmpWasmJs
-// 这样 `--offline` 的 Android 零回归门禁（:core:check / :miuix:check / :backdrop:check）
-// 完全不受影响 —— 红线不脏。
-// ─────────────────────────────────────────────────────────────────────────────
+// 官方做法是把 EnvSpec.download 置 false —— 但**只做这一步不够**：即使 download=false，
+// 该仓库仍在配置阶段被注册（注册发生在读取 download 之前），冲突依旧。
+// 所以 wasmJs 门禁刻意不挂 check，改由独立命令跑（见下方 checkKmpWasmJs），
+// 让 `--offline` 的 Android 零回归门禁不受影响。
 subprojects {
     plugins.withType<org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsPlugin> {
         extensions.getByType<org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsEnvSpec>()
@@ -252,12 +221,7 @@ subprojects {
     }
 }
 
-// wasmJs 编译门禁：独立任务，**不挂 check**（原因见上）。
-//
-// ⚠ 两个 property 必须**同时**给 —— wasmJs 目标默认不存在，只给
-// `-Pnexio.wasm=true` 但目标没声明时，下面 tasks.named 会找不到任务而失败。
-// 所以本任务自己也读 nexio.wasm 来决定要不要配置依赖。
-//
+// wasmJs 编译门禁：独立任务，不挂 check（原因见上）。
 // 用法：./gradlew -Pnexio.wasm=true checkKmpWasmJs   （首次需联网，需 PATH 中有 Node）
 val wasmGateEnabled = (project.findProperty("nexio.wasm") as? String)?.toBoolean() ?: false
 if (wasmGateEnabled) {

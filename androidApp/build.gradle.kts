@@ -70,23 +70,22 @@ configurations.all {
 
 dependencies {
     // ===== 跨平台共享模块（KMP）=====
-    // 领域模型：Course / ScheduleFolder / TimeConfig。包名不变，import 无需改动
+    // 领域模型：Course / ScheduleFolder / TimeConfig。包名与迁移前一致
     implementation(project(":core"))
 
-    // ===== 共享 UI（阶段 5 分批迁入的页面 / 主题）=====
+    // ===== 共享 UI（迁入的页面 / 主题）=====
     // 包名与迁移前一致，调用方 import 一行不用改
     implementation(project(":ui-shared"))
 
     // ===== 液态玻璃效果库（fork 自 io.github.kyant0:backdrop 2.0.1，KMP）=====
-    // 取代原先直接放在 :app 里的 com/kyant/backdrop（Android-only fork）
+    // 取代原先放在 :app 里的 Android-only fork
     implementation(project(":backdrop"))
 
     // ===== 小米风格 UI 组件库（fork 自 top.yukonga.miuix.kmp:miuix-ui 0.9.3，KMP）=====
-    // 取代原先放在 :app 里的 top/yukonga/miuix（Android-only fork）
-    // 包名不变，import 无需改动；本项目 3,177 行定制全部保留在模块内
+    // 取代原先放在 :app 里的 Android-only fork；包名不变，定制全部保留在模块内
     implementation(project(":miuix"))
 
-    // ===== 小米穿戴（手表 interconnect） =====
+    // ===== 小米穿戴（手表 interconnect）=====
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
 
     // ===== AndroidX / Compose 基础 =====
@@ -113,26 +112,17 @@ dependencies {
     // ===== Miuix UI =====
     // miuix-ui 已 fork 到 :miuix 模块（KMP），不再使用 jar 依赖。
     //
-    // ⚠ 下面 4 个官方子库**每个都必须 exclude 官方 miuix-ui**（2026-10-11 补）：
-    // 它们各自会传递依赖 `top.yukonga.miuix.kmp:miuix-ui`，而本仓库把 miuix-ui fork 成了
-    // `:miuix` 模块 —— 同包同名。Android 上类路径按名去重、悄悄用一个（不报错，但
-    // 官方 0.9.4 的 `WindowDialog` 会调到 fork 的旧 `DialogContentLayout` 签名 →
-    // 走到那条路径 NoSuchMethodError）；Kotlin/Native 上更是链接期硬错误
-    // （`IrPropertySymbolImpl is already bound`）。详见 docs 风险 R10。
+    // ⚠ 下面每个官方子库**都必须 exclude 官方 miuix-ui**：它们各自会传递依赖
+    // miuix-ui，与 fork 同包同名。Android 上类路径按名去重、不报错，但版本错配会
+    // 在运行某条路径时炸（NoSuchMethodError）；Kotlin/Native 上是链接期硬错误
+    // （IrPropertySymbolImpl is already bound）。
     val excludeOfficialMiuixUi: ModuleDependency.() -> Unit = {
         exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
     }
-    // 偏好设置组件（miuix-preference）**不再引官方 artifact** —— 已 fork 进 `:miuix`
-    // 的 `preference/` 目录（R13：官方 artifact 链接的是官方 miuix-ui 的 ABI，与 fork 签名
-    // 对不上，iOS 链接期报 `Undefined symbols … preference#ArrowPreference`）。同包同名类
-    // 若同时存在于官方 artifact 与 fork，Android dex 阶段会 duplicate class。
-    // 图标资源
+    // 图标资源 / Squircle 形状 / 模糊效果 / Navigation3
     implementation(libs.miuix.icons) { excludeOfficialMiuixUi() }
-    // Squircle形状支持
     implementation(libs.miuix.squircle) { excludeOfficialMiuixUi() }
-    // 模糊效果支持
     implementation(libs.miuix.blur) { excludeOfficialMiuixUi() }
-    // Navigation3 导航组件
     implementation(libs.miuix.navigation3) { excludeOfficialMiuixUi() }
 
     // ===== NavigationEvent =====
