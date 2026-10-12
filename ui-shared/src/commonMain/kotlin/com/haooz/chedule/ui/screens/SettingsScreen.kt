@@ -164,17 +164,10 @@ fun SettingsScreen(
     fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
     /**
      * 是否显示「更新设置」入口。
-     *
-     * iOS 走 App Store 更新、没有应用内检查更新/APK 安装能力 —— 宿主传 false 把入口整个去掉，
-     * 而不是留一个点进去什么都做不了的页面（同「null = 该端无此能力就不渲染」的既定原则）。
      */
     showUpdateSettings: Boolean = true,
     /**
-     * 是否显示「排班模式」入口（进入开关 + 已进入时的「退出排班模式」按钮 + 确认弹窗）。
-     *
-     * iOS 不支持排班课表 → 宿主传 false，三处入口整个不渲染
-     * （同「null = 该端无此能力就不渲染」的既定原则）。
-     *
+     * 是否显示「排班模式」入口（进入开关 + 已进入时的「退出排班模式」按钮 + 确认弹窗）
      * ⚠ 传 false 时 `isShiftMode` 必为 false（iOS 侧永远进不去排班模式），
      *   所以只需挡「进入」那两处；「退出」那处一并挡掉以防状态被外部置起。
      */

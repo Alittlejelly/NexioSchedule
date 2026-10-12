@@ -213,8 +213,6 @@ private fun NexioIosRoot() {
                     // iOS 不支持排班课表 → 设置页的「排班模式」入口（进入开关 / 退出按钮 /
                     // 确认弹窗）与排班模式内部面板全部不渲染
                     showShiftModeEntry = false,
-                    // 底栏由宿主的 UITabBarController（Liquid Glass）画，Compose 不渲染
-                    bottomBarMode = "native",
                 )
             }
             // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost

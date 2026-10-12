@@ -11,11 +11,8 @@ CURRENT_PROJECT_VERSION = 1
 // 真机签名用的团队；模拟器构建可以留空，上真机前填自己的 Apple Developer Team ID
 DEVELOPMENT_TEAM =
 
-// 最低系统版本 = iOS 26.0
-// ⚠ 提到 26 是为了 Liquid Glass（`UIGlassEffect`，iOS 26 引入）不必写 `@available` 分支。
-// ⚠ 代价：**放弃 iOS 16~25 全部用户**。降回低版本需同时改回这里的值与
-//   `iosApp.xcodeproj/project.pbxproj` 里两处 IPHONEOS_DEPLOYMENT_TARGET。
-IPHONEOS_DEPLOYMENT_TARGET = 26.0
+// Compose Multiplatform 要求的最低系统版本（UIKit + Skiko 渲染路径实测门槛）
+IPHONEOS_DEPLOYMENT_TARGET = 16.0
 
 // Kotlin framework 的搜索路径。第一项是 build phase 脚本建的**固定软链**，
 // 指向 gradle 本次实际产出的 framework（见 project.pbxproj 的 \"Build Kotlin Framework\"）；

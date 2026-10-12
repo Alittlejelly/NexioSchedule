@@ -43,7 +43,15 @@ fun ScheduleBottomBar(
     val onSelect: (Int) -> Unit = { idx -> onTabSelected(idx) }
     val iconTint = MiuixTheme.colorScheme.onSurfaceContainer.copy(alpha = 0.8f)
     val navBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomPadding = maxOf(24.dp, navBarBottomInset + 8.dp)
+    val bottomPadding = if (navBarBottomInset > 0.dp) {
+        // 有系统安全区（iOS 的 home indicator / Android 导航栏）：**贴着它**即可，
+        // 不要再加额外间距 —— 安全区本身就是留白，再加 8dp 会让底栏悬在屏幕中间。
+        // 实测 iPhone 18 Pro Max：inset=34dp、底栏 42dp 时看起来「偏上」。
+        navBarBottomInset
+    } else {
+        // 无安全区（桌面/平板全屏等）：给一个最小悬浮边距，避免完全贴边。
+        24.dp
+    }
 
     Box(
         modifier = Modifier
