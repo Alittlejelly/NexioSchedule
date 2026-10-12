@@ -10,10 +10,8 @@ struct ContentView: View {
     }
 }
 
-/// 把 Kotlin 侧 `IosAppEntry.kt` 的 `MainViewController()` 接进 SwiftUI。
-///
-/// Kotlin 那边渲染的是真课表主界面 + `AppNavHost` 子页导航；宿主能力（文件选择器 /
-/// 分享 / 选壁纸 / 天气）都从 `:ui-shared` 注入。Kotlin 侧换 Compose 根时这里不用改。
+/// Embeds one retained Kotlin app session using separate main and overlay controllers.
+/// Native chrome stays between those controllers instead of above the entire app.
 private struct ComposeRootRepresentable: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         // 状态栏样式：Kotlin 侧（`IosSystemBars`）只持状态，真正调用必须在 Swift 做 ——
@@ -25,10 +23,211 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
                 IosSystemBars.shared.statusBarDark ? .lightContent : .darkContent
             UIApplication.shared.setStatusBarStyle(style, animated: true)
         }
-        return IosAppEntryKt.MainViewController()
+        return AppHostController(host: IosAppHost())
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        // 状态全在 Compose 里，SwiftUI 侧没有需要同步的东西
+        // Kotlin publishes state changes through the host callback.
+    }
+}
+
+/// Keeps native navigation between the main content and full-screen Compose overlays.
+private final class AppHostController: UIViewController {
+    private let host: IosAppHost
+    private let mainContainer = UIView()
+    private let chromeContainer = TabBarPassthroughView()
+    private let chromeController = NativeChromeController()
+    private var lastBottomInset: CGFloat = -1
+
+    init(host: IosAppHost) {
+        self.host = host
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.clipsToBounds = true
+        mainContainer.backgroundColor = .clear
+        chromeContainer.backgroundColor = .clear
+
+        pin(mainContainer, to: view)
+        embed(host.mainController, in: mainContainer)
+        pin(chromeContainer, to: mainContainer)
+        embed(chromeController, in: chromeContainer)
+        chromeContainer.tabBar = chromeController.tabBar
+        embed(host.overlayController, in: view)
+
+        chromeController.onUserSelection = { [weak self] index in
+            self?.host.selectTab(index: Int32(index))
+        }
+        chromeController.onLayout = { [weak self] in
+            self?.reportBottomInset()
+        }
+        host.onStateChanged = { [weak self] in
+            if Thread.isMainThread {
+                self?.applyState()
+            } else {
+                DispatchQueue.main.async { [weak self] in self?.applyState() }
+            }
+        }
+        applyState()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateMainTransform()
+        reportBottomInset()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        reportBottomInset()
+    }
+
+    private func applyState() {
+        guard isViewLoaded else { return }
+        chromeController.configure(
+            tabCount: Int(host.tabCount),
+            shiftMode: host.shiftMode,
+            selectedIndex: Int(host.selectedTab)
+        )
+        let hideChrome = !host.showsNativeTabBar
+        if chromeContainer.isHidden != hideChrome {
+            chromeContainer.isHidden = hideChrome
+            view.setNeedsLayout()
+        }
+        let chromeStyle: UIUserInterfaceStyle = host.isDark ? .dark : .light
+        if chromeController.overrideUserInterfaceStyle != chromeStyle {
+            chromeController.overrideUserInterfaceStyle = chromeStyle
+        }
+        let overlayActive = host.overlayActive
+        host.overlayController.view.isUserInteractionEnabled = overlayActive
+        host.overlayController.view.accessibilityElementsHidden = !overlayActive
+        host.overlayController.view.accessibilityViewIsModal = overlayActive
+        mainContainer.isUserInteractionEnabled = !overlayActive
+        mainContainer.accessibilityElementsHidden = overlayActive
+        updateMainTransform()
+        reportBottomInset()
+    }
+
+    private func updateMainTransform() {
+        let progress = min(1, max(0, host.mainProgress))
+        mainContainer.transform = CGAffineTransform(
+            translationX: -0.24 * CGFloat(progress) * view.bounds.width,
+            y: 0
+        )
+    }
+
+    private func reportBottomInset() {
+        guard isViewLoaded, view.window != nil else { return }
+        let bar = chromeController.tabBar
+        let inset: CGFloat
+        if chromeContainer.isHidden || bar.isHidden || bar.bounds.isEmpty {
+            inset = 0
+        } else {
+            let barBounds = bar.convert(bar.bounds, to: view)
+            inset = min(view.bounds.height, max(0, view.bounds.maxY - barBounds.minY))
+        }
+        guard abs(lastBottomInset - inset) > 0.5 else { return }
+        lastBottomInset = inset
+        host.updateBottomBarInset(points: Double(inset))
+    }
+
+    private func embed(_ controller: UIViewController, in container: UIView) {
+        addChild(controller)
+        pin(controller.view, to: container)
+        controller.didMove(toParent: self)
+    }
+
+    private func pin(_ child: UIView, to parent: UIView) {
+        child.translatesAutoresizingMaskIntoConstraints = false
+        parent.addSubview(child)
+        NSLayoutConstraint.activate([
+            child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            child.topAnchor.constraint(equalTo: parent.topAnchor),
+            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
+        ])
+    }
+
+    deinit {
+        host.onStateChanged = nil
+    }
+}
+
+/// Empty native tab content must not intercept the Compose content below it.
+private final class TabBarPassthroughView: UIView {
+    weak var tabBar: UITabBar?
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, alpha > 0.01, isUserInteractionEnabled,
+              let bar = tabBar, !bar.isHidden, bar.alpha > 0.01,
+              bar.isUserInteractionEnabled else { return nil }
+        let barPoint = convert(point, to: bar)
+        guard bar.point(inside: barPoint, with: event) else { return nil }
+        return bar.hitTest(barPoint, with: event)
+    }
+}
+
+/// UIKit owns the tab bar appearance, including automatic OS-version adaptation.
+private final class NativeChromeController: UITabBarController, UITabBarControllerDelegate {
+    var onUserSelection: ((Int) -> Void)?
+    var onLayout: (() -> Void)?
+    private var configuredShiftMode: Bool?
+    private var configuredTabCount = 0
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.isOpaque = false
+        delegate = self
+    }
+
+    func configure(tabCount: Int, shiftMode: Bool, selectedIndex: Int) {
+        let titles = shiftMode ? ["排班课表", "设置"] : ["今日", "课程表", "我的"]
+        let count = min(titles.count, max(1, tabCount))
+        if configuredShiftMode != shiftMode || configuredTabCount != count {
+            configuredShiftMode = shiftMode
+            configuredTabCount = count
+            let shells = (0..<count).map { index -> UIViewController in
+                let controller = UIViewController()
+                controller.view.backgroundColor = .clear
+                controller.view.isOpaque = false
+                let icon: UIImage?
+                if shiftMode {
+                    icon = index == 0 ? MiuixTabIcons.imageMonths : MiuixTabIcons.imageSettings
+                } else {
+                    icon = MiuixTabIcons.tabIcon(index)
+                }
+                let template = icon?.withRenderingMode(.alwaysTemplate)
+                controller.tabBarItem = UITabBarItem(
+                    title: titles[index], image: template, selectedImage: template
+                )
+                return controller
+            }
+            setViewControllers(shells, animated: false)
+        }
+        let target = min(count - 1, max(0, selectedIndex))
+        if self.selectedIndex != target {
+            self.selectedIndex = target
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        onLayout?()
+    }
+
+    func tabBarController(
+        _ tabBarController: UITabBarController,
+        didSelect viewController: UIViewController
+    ) {
+        guard let index = viewControllers?.firstIndex(of: viewController) else { return }
+        onUserSelection?(index)
     }
 }

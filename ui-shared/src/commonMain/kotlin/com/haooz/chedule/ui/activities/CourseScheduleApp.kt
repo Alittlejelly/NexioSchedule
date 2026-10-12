@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.SideEffect
@@ -62,6 +63,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -151,6 +154,8 @@ import com.haooz.chedule.ui.screens.TodayAssistantCardData
 import com.haooz.chedule.ui.screens.TodayScreen
 import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+import com.haooz.chedule.ui.utils.HostedOverlay
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.consumeAllTouches
@@ -675,12 +680,17 @@ private fun ShiftLoadingOverlay(
     show: Boolean,
     onShiftReady: () -> Unit,
     onHide: () -> Unit,
+    onActivityChanged: (Boolean) -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = show,
         enter = fadeIn(animationSpec = tween(100)),
         exit = fadeOut(animationSpec = tween(100))
     ) {
+        DisposableEffect(Unit) {
+            onActivityChanged(true)
+            onDispose { onActivityChanged(false) }
+        }
         LaunchedEffect(Unit) {
             delay(100.milliseconds)
             onShiftReady()
@@ -968,7 +978,9 @@ fun CourseScheduleApp(
     val shiftViewModel: ShiftViewModel = shiftViewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     var selectedTab by remember { mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1) }
+    val hostNavigation = LocalHostNavigation.current
     var showShiftLoading by remember { mutableStateOf(false) }
+    var shiftLoadingActive by remember { mutableStateOf(false) }
     var isExitingShift by remember { mutableStateOf(false) }
     var shiftModeInitialized by remember { mutableStateOf(false) }
     val settingsScrollBehavior = rememberSharedScrollBehavior()
@@ -1036,6 +1048,7 @@ fun CourseScheduleApp(
     }
     val isTablet = isTabletWidth()
     val navBarStyle = if (isTablet) "rail" else "standard"
+    val nativeBottomBar = hostNavigation != null && !isTablet
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val density = LocalDensity.current
     val screenWPx = with(density) { screenWidthDp().dp.toPx() }
@@ -1623,6 +1636,49 @@ fun CourseScheduleApp(
     val screenCornerRadius = rememberScreenCornerRadiusPx()
 
     val coroutineScope = rememberCoroutineScope()
+    val mainTabAnimation = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
+    val mainTabGeneration = remember { intArrayOf(0) }
+    val onMainTabSelected: (Int) -> Unit = { index ->
+        if (index in 0 until mainPagerPageCount &&
+            (index != selectedTab || mainPagerState.currentPage != index)
+        ) {
+            val generation = ++mainTabGeneration[0]
+            mainTabAnimation[0]?.cancel()
+            mainTabProgrammatic = true
+            selectedTab = index
+            mainTabAnimation[0] = coroutineScope.launch {
+                try {
+                    if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
+                    if (pagerState.isScrollInProgress) pagerState.cancelScroll()
+                    if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
+                    if (navBarStyle == "rail") mainPagerState.scrollToPage(index)
+                    else mainPagerState.animateMainTabTo(index)
+                    FeatureLog.t("主页", "tab", "idx=$index shift=$isShiftMode rail=${navBarStyle == "rail"}")
+                } finally {
+                    if (mainTabGeneration[0] == generation) mainTabProgrammatic = false
+                }
+            }
+        }
+    }
+    val latestMainTabSelected by rememberUpdatedState(onMainTabSelected)
+    DisposableEffect(hostNavigation) {
+        val callback: (Int) -> Unit = { latestMainTabSelected(it) }
+        hostNavigation?.onTabSelected = callback
+        onDispose {
+            hostNavigation?.let { host ->
+                if (host.onTabSelected === callback) host.onTabSelected = null
+            }
+        }
+    }
+    SideEffect {
+        hostNavigation?.let { host ->
+            host.selectedTab = selectedTab
+            host.tabCount = if (isShiftMode) 2 else 3
+            host.shiftMode = isShiftMode
+            host.showsNativeTabBar = nativeBottomBar
+            host.isDark = effectiveIsDark
+        }
+    }
     // 内容区（切天/周）一有横向手势：立刻取消未完成的主 tab 平移，吸回当前页，避免露出隔壁页
     val cancelUnfinishedMainTabAnim by rememberUpdatedState {
         if (mainPagerState.isScrollInProgress ||
@@ -2550,67 +2606,15 @@ fun CourseScheduleApp(
                 )
         ) {
             val scaffoldContent = @Composable {
-                val onMainTabSelected: (Int) -> Unit = { idx ->
-                    if (idx != selectedTab) {
-                        // 只翻高亮目标；selectedTab 等落页后由 settledPage 同步，
-                        // 避免点击瞬间整树重组抢在动画第一帧
-                        mainTabProgrammatic = true
-                        selectedTab = idx
-                        coroutineScope.launch {
-                            try {
-                                // pad：只取消主 pager 未完成滚动，尽快落页，保证点击跟手
-                                if (navBarStyle == "rail") {
-                                    if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
-                                    mainPagerState.scrollToPage(idx)
-                                } else {
-                                    if (todayPagerState.isScrollInProgress) todayPagerState.cancelScroll()
-                                    if (pagerState.isScrollInProgress) pagerState.cancelScroll()
-                                    if (mainPagerState.isScrollInProgress) mainPagerState.cancelScroll()
-                                    mainPagerState.animateMainTabTo(idx)
-                                }
-                                FeatureLog.t(
-                                    "主页", "tab", "idx=$idx shift=$isShiftMode rail=${navBarStyle == "rail"}"
-                                )
-                            } finally {
-                                mainTabProgrammatic = false
-                            }
-                        }
-                    }
-                }
                 Scaffold(
                     bottomBar = {
                         // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动
-                        if (navBarStyle != "rail") {
+                        if (navBarStyle != "rail" && !nativeBottomBar) {
                             ScheduleBottomBar(
                                 navBarStyle = navBarStyle,
                                 isShiftMode = isShiftMode,
                                 selectedTab = selectedTab,
-                                onTabSelected = { idx ->
-                                    if (idx != selectedTab) {
-                                        // 先锁 programmatic，只改高亮目标，避免动画中途被拉回
-                                        mainTabProgrammatic = true
-                                        selectedTab = idx
-                                        FeatureLog.t(
-                                            "主页", "tab", "idx=$idx shift=$isShiftMode"
-                                        )
-                                        coroutineScope.launch {
-                                            try {
-                                                if (todayPagerState.isScrollInProgress) {
-                                                    todayPagerState.cancelScroll()
-                                                }
-                                                if (pagerState.isScrollInProgress) {
-                                                    pagerState.cancelScroll()
-                                                }
-                                                if (mainPagerState.isScrollInProgress) {
-                                                    mainPagerState.cancelScroll()
-                                                }
-                                                mainPagerState.animateMainTabTo(idx)
-                                            } finally {
-                                                mainTabProgrammatic = false
-                                            }
-                                        }
-                                    }
-                                },
+                                onTabSelected = onMainTabSelected,
                                 liquidGlassBackdrop = chromeBackdrop,
                             )
                         }
@@ -2757,6 +2761,7 @@ fun CourseScheduleApp(
                                             blurSampleTrack = com.haooz.chedule.ui.components.tabletNavExpandSampleTrack,
                                             onMoreSlotTop = { if (canSampleMoreSlot) moreSlotTopPx.value = it },
                                             onMoreMaterial = { scheduleMaterialAlpha.value = it },
+                                            onMoreExpand = { showMorePopup = true },
                                             gradientColorOverride = lockedSurface,
                                         )
                                     }
@@ -2860,6 +2865,7 @@ fun CourseScheduleApp(
                                         blurSampleTrack = com.haooz.chedule.ui.components.tabletNavExpandSampleTrack,
                                         onMoreSlotTop = { if (canSampleMoreSlot) moreSlotTopPx.value = it },
                                         onMoreMaterial = { todayMaterialAlpha.value = it },
+                                        onMoreExpand = { showTodayMorePopup = true },
                                         gradientColorOverride = lockedSurface,
                                     )
                                 }
@@ -2889,6 +2895,10 @@ fun CourseScheduleApp(
                         }
                         // 「更多」与顶栏同源问题：外层 chrome 主题跟 selectedTab 变，
                         // 切到设置页时未移出屏幕的「更多」会跳色。今日/课程表壁纸已恒同步
+                        HostedOverlay(
+                            active = showMorePopup || showTodayMorePopup ||
+                                morePopupFraction.value > 0.001f || todayMorePopupFraction.value > 0.001f,
+                        ) {
                         PageLockedTopBarTheme(wallpaperForcedDark) {
                         // LocalAppRouter.current 必须在组合层取（onClick lambda 里取不到）
                         val popupRouter = LocalAppRouter.current
@@ -2927,6 +2937,7 @@ fun CourseScheduleApp(
                                     },
                                     onJumpToDate = { todayJumpToDateTrigger++ },
                                 )
+                        }
                         }
                         // 弹窗排在「更多」之后 → 始终盖在它之上，遮罩能压暗「更多」
                         MiuixPopupHost()
@@ -3791,6 +3802,9 @@ fun CourseScheduleApp(
                     //   底栏从 `maxOf(28, inset + 8)` 改成「有安全区就贴 inset」后，这里如果还
                     //   保留 +8，按钮会比底栏高 8dp → 陷进底栏胶囊里。
                     val bottomBarPadding = if (navBarBottomInset > 0.dp) navBarBottomInset else 28.dp
+                    val backToNowBottomPadding = if (nativeBottomBar) {
+                        hostNavigation.bottomBarInset.toFloat().dp + 8.dp
+                    } else bottomBarPadding + 64.dp
                     Box(modifier = Modifier.fillMaxSize()) {
                         // 对齐切换课表底栏：None 转场 + 手动 appear + graphicsLayer clip=false，
                         // 避免 AnimatedVisibility 收拢尺寸时把阴影裁掉
@@ -3800,9 +3814,8 @@ fun CourseScheduleApp(
                             exit = ExitTransition.None,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                // 浮在 ScheduleBottomBar 之上：bottomBarPadding（底栏底边距）
-                                // + 56.dp（底栏高度）+ 8.dp（与底栏的间隙）
-                                .padding(bottom = bottomBarPadding + 64.dp)
+                                // Native chrome reports its full occupied region, including safe area.
+                                .padding(bottom = backToNowBottomPadding)
                                 .zIndex(20f)
                         ) {
                             val appear by transition.animateFloat(
@@ -4316,7 +4329,40 @@ fun CourseScheduleApp(
                     }
                 }
             }
-            // 快照层也要拦截触摸，覆盖 showDetail 已 false 但快照未清除的窗口
+            // The snapshot cover must also cover native chrome until it is released.
+            HostedOverlay(active = mainContentSnapshot != null) {
+            val snapshotTransform = if (hostNavigation != null) {
+                Modifier
+                    .then(mainContentBlurModifier)
+                    .graphicsLayer {
+                        val baseScale = if (!showSwitchSchedule) backgroundScale.value else 1f
+                        val exitScale = if (isCustomizeExiting) customizeExitScale.value else 1f
+                        val cutoutScale = cutoutMainScale.value
+                        val effectiveScale = if (isCustomizeExiting && isWindowCutoutActive) {
+                            cutoutScale
+                        } else exitScale * cutoutScale
+                        scaleX = baseScale * effectiveScale
+                        scaleY = baseScale * effectiveScale
+                        alpha = mainContentAlpha
+                        val sheetProgress = ((cutoutScale - 0.65f) / 0.35f).coerceIn(0f, 1f)
+                        translationY = sheetOffsetY.value * (1f - sheetProgress)
+                        transformOrigin = when {
+                            isWindowCutoutActive -> TransformOrigin(0.5f, cutoutCenterYRatio)
+                            isCustomizeExiting -> TransformOrigin(0.5f, 0.58f)
+                            else -> TransformOrigin.Center
+                        }
+                    }
+                    .drawWithContent {
+                        if (screenCornerRadius > 0f &&
+                            (backgroundScale.value < 0.999f || isCustomizeExiting)
+                        ) {
+                            val path = Path().apply {
+                                addSquircleRect(size.width, size.height, screenCornerRadius)
+                            }
+                            clipPath(path) { this@drawWithContent.drawContent() }
+                        } else drawContent()
+                    }
+            } else Modifier
             if (mainContentSnapshot != null) {
                 // remember 固定包装对象身份：asImageBitmap() 每帧新建会让 Image 的位图纹理
                 // 缓存每帧失效，全屏快照每帧重传纹理
@@ -4326,11 +4372,20 @@ fun CourseScheduleApp(
                 Image(
                     bitmap = mainSnapshotImage,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().consumeAllTouches(),
+                    modifier = Modifier.fillMaxSize().consumeAllTouches().then(snapshotTransform),
                     contentScale = ContentScale.Crop
                 )
             }
+            }
         }
+        HostedOverlay(
+            active = floatingCardVisible || swapFlightVisible ||
+                shortcutMenuVisible || shortcutMenuCourse != null || emptyCellMenuTarget != null ||
+                showCustomizePage || isCustomizeExiting || isWindowCutoutActive || customizeCoverActive ||
+                snapshotCoverBitmap != null || showDetail || detailSnapshot != null ||
+                showSwitchSchedule || switchAnimRunning || switchOverlayActive ||
+                showShiftLoading || shiftLoadingActive,
+        ) {
         // 浮层主题跟壁纸/应用设置
         val overlayEffectiveForcedDark = if (captureThemeActive) captureThemeIsDark else forcedDark
         val overlayEffectiveDark = overlayEffectiveForcedDark ?: appSettingDark
@@ -5451,7 +5506,9 @@ fun CourseScheduleApp(
                 }
             },
             onHide = { showShiftLoading = false },
+            onActivityChanged = { shiftLoadingActive = it },
         )
+        }
     }
 }
 
@@ -5631,11 +5688,13 @@ private fun TodayTopBar(
     blurSampleTrack: () -> Float = { 0f },
     onMoreSlotTop: (Float) -> Unit = {},
     onMoreMaterial: (Float) -> Unit = {},
+    onMoreExpand: () -> Unit = {},
     /** 渐变遮罩色；见 [ScheduleTopBar]。今日页同样跟壁纸锁色，需锁住避免切页跳色 */
     gradientColorOverride: Color? = null,
 ) {
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
+    val hostedMore = LocalHostNavigation.current != null
     // 平板：标题避让侧栏后左对齐用的附加修饰符
     val titleRailPadding = if (isTabletLiquidGlass) {
         com.haooz.chedule.ui.components.tabletNavRailStartPadding().padding(start = 12.dp)
@@ -5699,6 +5758,16 @@ private fun TodayTopBar(
                         Spacer(
                             modifier = Modifier
                                 .size(42.dp)
+                                .then(
+                                    if (hostedMore) Modifier
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = onMoreExpand,
+                                        )
+                                        .semantics { contentDescription = "更多" }
+                                    else Modifier
+                                )
                                 .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
                         )
                     }

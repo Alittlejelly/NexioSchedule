@@ -72,6 +72,9 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         commonMain.dependencies {
             implementation(compose.foundation)
             implementation(compose.ui)

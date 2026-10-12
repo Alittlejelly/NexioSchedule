@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +77,7 @@ fun AppNavHost(
     /** 主界面（常驻底座）的首层转场进度：它不在这个转场容器里，视差只能由宿主施加。 */
     mainTransition: NavTransitionState,
     modifier: Modifier = Modifier,
+    onOverlayActivityChanged: ((Boolean) -> Unit)? = null,
     content: @Composable (AppRoute) -> Unit,
 ) {
     // key 由 layerKeys() 统一算（裸 route.id + 同帧去重后缀）：
@@ -292,6 +294,8 @@ fun AppNavHost(
     val exitingLayer = outgoing
     val layers: List<AppRoute> = if (exitingLayer != null) routes + exitingLayer else routes
     val renderKeys: List<String> = if (exitKey != null) stackKeys + exitKey else stackKeys
+    // Keep native input blocked until the outgoing page has finished drawing.
+    SideEffect { onOverlayActivityChanged?.invoke(layers.isNotEmpty()) }
 
     // 黑幕：只压暗被盖住的内容，推入/退出的顶层不被压暗。原来是一个夹在
     // 「下层各页」与「顶层页」之间的全屏 Box，现在挂在最上层自己的 `drawBehind` 上 ——

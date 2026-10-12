@@ -66,6 +66,8 @@ class MiuixPopupUtils {
         var dimEnterTransition by mutableStateOf<EnterTransition?>(null)
         var dimExitTransition by mutableStateOf<ExitTransition?>(null)
         var content by mutableStateOf<@Composable () -> Unit>({})
+        internal var isAnimating by mutableStateOf(false)
+        internal var theme by mutableStateOf<MiuixOverlayTheme?>(null)
     }
 
     @Stable
@@ -82,6 +84,8 @@ class MiuixPopupUtils {
         var dimAlpha by mutableStateOf<MutableState<Float>?>(null)
         var onDismissFinished by mutableStateOf<(() -> Unit)?>(null)
         var content by mutableStateOf<@Composable () -> Unit>({})
+        internal var isAnimating by mutableStateOf(false)
+        internal var theme by mutableStateOf<MiuixOverlayTheme?>(null)
     }
 
     companion object {
@@ -197,8 +201,15 @@ class MiuixPopupUtils {
             val latestDimAlpha by rememberUpdatedState(dimAlpha)
             val latestOnDismissFinished by rememberUpdatedState(onDismissFinished)
             val latestContent by rememberUpdatedState(content)
+            val sharedHost = renderInRootScaffold && LocalSharedOverlayHost.current != null
+            val theme = if (sharedHost) {
+                currentMiuixOverlayTheme()
+            } else {
+                null
+            }
 
             SideEffect {
+                state.theme = theme
                 state.enterTransition = latestEnter
                 state.exitTransition = latestExit
                 state.enableWindowDim = latestEnableDim
@@ -223,6 +234,9 @@ class MiuixPopupUtils {
                 onDispose {
                     if (state.showState.value) {
                         state.showState.value = false
+                    }
+                    if (sharedHost && !state.isAnimating) {
+                        dialogStates.removeAll { it.showState === state.showState }
                     }
                 }
             }
@@ -276,8 +290,15 @@ class MiuixPopupUtils {
             val latestDimEnter by rememberUpdatedState(dimEnterTransition)
             val latestDimExit by rememberUpdatedState(dimExitTransition)
             val latestContent by rememberUpdatedState(content)
+            val sharedHost = renderInRootScaffold && LocalSharedOverlayHost.current != null
+            val theme = if (sharedHost) {
+                currentMiuixOverlayTheme()
+            } else {
+                null
+            }
 
             SideEffect {
+                state.theme = theme
                 state.enterTransition = latestEnter
                 state.exitTransition = latestExit
                 state.enableWindowDim = latestEnableDim
@@ -301,6 +322,9 @@ class MiuixPopupUtils {
                     if (state.showState.value) {
                         state.showState.value = false
                     }
+                    if (sharedHost && !state.isAnimating) {
+                        popupStates.removeAll { it.showState === state.showState }
+                    }
                 }
             }
         }
@@ -311,7 +335,14 @@ class MiuixPopupUtils {
             largeScreen: Boolean,
         ) {
             val visibleState = remember { MutableTransitionState(dialogState.showState.value) }
+            val sharedHost = LocalSharedOverlayHost.current?.dialogs === LocalDialogStates.current
+            val dimVisibleState = if (sharedHost) {
+                remember { MutableTransitionState(dialogState.showState.value) }
+            } else {
+                visibleState
+            }
             var pendingOpen by remember { mutableStateOf(false) }
+            var hasBeenVisible by remember { mutableStateOf(dialogState.showState.value) }
             var lastTarget by remember { mutableStateOf(dialogState.showState.value) }
             val keyboardController = LocalSoftwareKeyboardController.current
             val density = LocalDensity.current
@@ -320,10 +351,12 @@ class MiuixPopupUtils {
             LaunchedEffect(dialogState.showState.value) {
                 val newTarget = dialogState.showState.value
                 if (newTarget) {
-                    if (!visibleState.isIdle && !lastTarget) {
+                    hasBeenVisible = true
+                    if ((!visibleState.isIdle || !dimVisibleState.isIdle) && !lastTarget) {
                         pendingOpen = true
                     } else {
                         visibleState.targetState = true
+                        dimVisibleState.targetState = true
                     }
                 } else {
                     if (imeInsets.getBottom(density) > 0) {
@@ -331,23 +364,48 @@ class MiuixPopupUtils {
                     }
                     pendingOpen = false
                     visibleState.targetState = false
+                    dimVisibleState.targetState = false
                 }
                 lastTarget = newTarget
             }
-            LaunchedEffect(visibleState.isIdle, pendingOpen) {
-                if (pendingOpen && visibleState.isIdle) {
+            LaunchedEffect(visibleState.isIdle, dimVisibleState.isIdle, pendingOpen) {
+                if (pendingOpen && visibleState.isIdle && dimVisibleState.isIdle) {
                     pendingOpen = false
                     visibleState.targetState = true
+                    dimVisibleState.targetState = true
                 }
             }
             val dialogStates = LocalDialogStates.current
+            val active = overlayEntryIsActive(
+                show = dialogState.showState.value,
+                pendingOpen = pendingOpen,
+                contentCurrent = visibleState.currentState,
+                contentTarget = visibleState.targetState,
+                contentIdle = visibleState.isIdle,
+                dimCurrent = dimVisibleState.currentState,
+                dimTarget = dimVisibleState.targetState,
+                dimIdle = dimVisibleState.isIdle,
+            )
+            SideEffect { dialogState.isAnimating = active }
+            // A shorter content exit must not remove a longer-running dim layer.
+            LaunchedEffect(active, hasBeenVisible) {
+                if (sharedHost && hasBeenVisible && !active && !dialogState.showState.value) {
+                    dialogState.onDismissFinished?.invoke()
+                    if (!dialogState.showState.value) {
+                        dialogStates.removeAll { it.showState === dialogState.showState }
+                    }
+                }
+            }
+            DisposableEffect(dialogState) {
+                onDispose { dialogState.isAnimating = false }
+            }
 
             val effectiveLargeScreen = largeScreen && dialogState.enableAutoLargeScreen
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (dialogState.enableWindowDim) {
                     AnimatedVisibility(
-                        visibleState = visibleState,
+                        visibleState = dimVisibleState,
                         modifier = Modifier.zIndex(dialogState.zIndex - 0.001f),
                         enter = dialogState.dimEnterTransition ?: DialogDimEnter,
                         exit = dialogState.dimExitTransition ?: DialogDimExit,
@@ -379,7 +437,7 @@ class MiuixPopupUtils {
                     }
                 } else {
                     AnimatedVisibility(
-                        visibleState = visibleState,
+                        visibleState = dimVisibleState,
                         modifier = Modifier.zIndex(dialogState.zIndex - 0.002f),
                     ) {
                         Box(
@@ -413,7 +471,7 @@ class MiuixPopupUtils {
                     }
                     DisposableEffect(dialogState.showState) {
                         onDispose {
-                            if (!dialogState.showState.value) {
+                            if (!sharedHost && !dialogState.showState.value) {
                                 dialogState.onDismissFinished?.invoke()
                                 dialogStates.removeAll { it.showState === dialogState.showState }
                             }
@@ -429,34 +487,64 @@ class MiuixPopupUtils {
             popupState: PopupState,
         ) {
             val visibleState = remember { MutableTransitionState(false) }
+            val sharedHost = LocalSharedOverlayHost.current?.popups === LocalPopupStates.current
+            val dimVisibleState = if (sharedHost) {
+                remember { MutableTransitionState(false) }
+            } else {
+                visibleState
+            }
             var pendingOpen by remember { mutableStateOf(false) }
+            var hasBeenVisible by remember { mutableStateOf(false) }
             var lastTarget by remember { mutableStateOf(false) }
             LaunchedEffect(popupState.showState.value) {
                 val newTarget = popupState.showState.value
                 if (newTarget) {
-                    if (!visibleState.isIdle && !lastTarget) {
+                    hasBeenVisible = true
+                    if ((!visibleState.isIdle || !dimVisibleState.isIdle) && !lastTarget) {
                         pendingOpen = true
                     } else {
                         visibleState.targetState = true
+                        dimVisibleState.targetState = true
                     }
                 } else {
                     pendingOpen = false
                     visibleState.targetState = false
+                    dimVisibleState.targetState = false
                 }
                 lastTarget = newTarget
             }
-            LaunchedEffect(visibleState.isIdle, pendingOpen) {
-                if (pendingOpen && visibleState.isIdle) {
+            LaunchedEffect(visibleState.isIdle, dimVisibleState.isIdle, pendingOpen) {
+                if (pendingOpen && visibleState.isIdle && dimVisibleState.isIdle) {
                     pendingOpen = false
                     visibleState.targetState = true
+                    dimVisibleState.targetState = true
                 }
             }
             val popupStates = LocalPopupStates.current
+            val active = overlayEntryIsActive(
+                show = popupState.showState.value,
+                pendingOpen = pendingOpen,
+                contentCurrent = visibleState.currentState,
+                contentTarget = visibleState.targetState,
+                contentIdle = visibleState.isIdle,
+                dimCurrent = dimVisibleState.currentState,
+                dimTarget = dimVisibleState.targetState,
+                dimIdle = dimVisibleState.isIdle,
+            )
+            SideEffect { popupState.isAnimating = active }
+            LaunchedEffect(active, hasBeenVisible) {
+                if (sharedHost && hasBeenVisible && !active && !popupState.showState.value) {
+                    popupStates.removeAll { it.showState === popupState.showState }
+                }
+            }
+            DisposableEffect(popupState) {
+                onDispose { popupState.isAnimating = false }
+            }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 if (popupState.enableWindowDim) {
                     AnimatedVisibility(
-                        visibleState = visibleState,
+                        visibleState = dimVisibleState,
                         modifier = Modifier.zIndex(popupState.zIndex - 0.001f),
                         enter = popupState.dimEnterTransition ?: PopupDimEnter,
                         exit = popupState.dimExitTransition ?: PopupDimExit,
@@ -482,7 +570,7 @@ class MiuixPopupUtils {
                     }
                 } else {
                     AnimatedVisibility(
-                        visibleState = visibleState,
+                        visibleState = dimVisibleState,
                         modifier = Modifier.zIndex(popupState.zIndex - 0.002f),
                     ) {
                         Box(
@@ -516,7 +604,7 @@ class MiuixPopupUtils {
                     }
                     DisposableEffect(popupState.showState) {
                         onDispose {
-                            if (!popupState.showState.value) {
+                            if (!sharedHost && !popupState.showState.value) {
                                 popupStates.removeAll { it.showState === popupState.showState }
                             }
                         }
@@ -547,18 +635,23 @@ class MiuixPopupUtils {
 
             for (state in dialogStates) {
                 key(state.showState) {
-                    DialogEntry(
-                        dialogState = state,
-                        largeScreen = largeScreen,
-                    )
+                    val theme = state.theme
+                    if (theme != null) {
+                        theme.Provide { DialogEntry(dialogState = state, largeScreen = largeScreen) }
+                    } else {
+                        DialogEntry(dialogState = state, largeScreen = largeScreen)
+                    }
                 }
             }
 
             for (state in popupStates) {
                 key(state.showState) {
-                    PopupEntry(
-                        popupState = state,
-                    )
+                    val theme = state.theme
+                    if (theme != null) {
+                        theme.Provide { PopupEntry(popupState = state) }
+                    } else {
+                        PopupEntry(popupState = state)
+                    }
                 }
             }
 

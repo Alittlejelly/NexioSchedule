@@ -1,6 +1,8 @@
 /** 排班课表页面 */
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +87,9 @@ fun ShiftScheduleScreen(
     val isDark = isAppDarkTheme()
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val isTablet = isTabletWidth()
+    val nativeChromeInset = LocalHostNavigation.current
+        ?.takeIf { it.showsNativeTabBar && !isTablet }
+        ?.bottomBarInset?.toFloat()?.dp
     val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
 
@@ -133,7 +138,7 @@ fun ShiftScheduleScreen(
                 .padding(
                     top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
                         if (isInFreeformWindow) titleBarHeight + 40.dp else 96.dp,
-                    bottom = 140.dp
+                    bottom = nativeChromeInset?.plus(24.dp) ?: 140.dp
                 )
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {

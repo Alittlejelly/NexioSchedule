@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+
 // ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十四批）。
 //
 // 迁移动机与做法：设置页本体（手机端长列表 + 平板两栏外壳）没有任何 Android 依赖，
@@ -235,6 +237,9 @@ fun SettingsScreen(
     val isDark = isAppDarkTheme()
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+    val nativeChromeInset = LocalHostNavigation.current
+        ?.takeIf { it.showsNativeTabBar && !isTablet }
+        ?.bottomBarInset?.toFloat()?.dp
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Scaffold(
@@ -276,7 +281,7 @@ fun SettingsScreen(
                     top = paddingValues.calculateTopPadding() +
                         CollapsibleTopAppBarDefaults.CollapsedHeight,
                     end = tabletHorizontalPadding,
-                    bottom = 120.dp
+                    bottom = nativeChromeInset?.plus(24.dp) ?: 120.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

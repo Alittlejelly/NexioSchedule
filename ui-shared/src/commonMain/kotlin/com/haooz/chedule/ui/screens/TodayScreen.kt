@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+
 import com.haooz.chedule.data.formatChineseDate
 import com.haooz.chedule.data.millisBetween
 import com.haooz.chedule.data.parseHourMinute
@@ -499,6 +501,9 @@ fun TodayScreen(
 
 
     val isTablet = navBarStyle == "rail"
+    val nativeChromeInset = LocalHostNavigation.current
+        ?.takeIf { it.showsNativeTabBar && !isTablet }
+        ?.bottomBarInset?.toFloat()?.dp
     val tabletHorizontalPadding = if (isTablet) 24.dp else 16.dp
 
     val todayRefraction = cardRefraction
@@ -778,7 +783,7 @@ fun TodayScreen(
                                 .padding(
                                     top = paddingValues.calculateTopPadding() +
                                         CollapsibleTopAppBarDefaults.CollapsedHeight,
-                                    bottom = 60.dp
+                                    bottom = nativeChromeInset?.plus(8.dp) ?: 60.dp
                                 )
                                 // 布局期补展开高度，避免组合期读 currentHeightPx
                                 .collapsibleTopInset(settingsScrollBehavior)
@@ -843,7 +848,7 @@ fun TodayScreen(
                             contentPadding = PaddingValues(
                                 top = paddingValues.calculateTopPadding() +
                                     CollapsibleTopAppBarDefaults.CollapsedHeight + 14.dp,
-                                bottom = 120.dp
+                                bottom = nativeChromeInset?.plus(24.dp) ?: 120.dp
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
@@ -868,7 +873,7 @@ fun TodayScreen(
                             top = paddingValues.calculateTopPadding() +
                                 CollapsibleTopAppBarDefaults.CollapsedHeight,
                             end = tabletHorizontalPadding,
-                            bottom = 175.dp
+                            bottom = nativeChromeInset?.plus(80.dp) ?: 175.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {

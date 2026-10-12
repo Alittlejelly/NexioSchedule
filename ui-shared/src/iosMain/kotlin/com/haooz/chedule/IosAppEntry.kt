@@ -2,13 +2,10 @@ package com.haooz.chedule
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
-import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
@@ -44,19 +41,15 @@ import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
-import com.haooz.chedule.ui.navigation.MainLayerTransition
 import com.haooz.chedule.ui.navigation.PreferenceSettingsRoute
 import com.haooz.chedule.ui.navigation.PrivacyPolicyRoute
 import com.haooz.chedule.ui.navigation.UpdateSettingsRoute
 import com.haooz.chedule.ui.navigation.WebDavSettingsRoute
 import com.haooz.chedule.ui.navigation.WidgetIntroRoute
-import com.haooz.chedule.ui.navigation.rememberAppRouter
-import com.haooz.chedule.ui.navigation.rememberNavTransitionState
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.dataWithContentsOfFile
 import platform.UIKit.UIPasteboard
-import platform.UIKit.UIViewController
 
 /**
  * iOS 启动注入 —— 对应 Android 的 `NexioApplication.onCreate()` 开头。
@@ -116,46 +109,10 @@ private val fileController = IosScheduleFileController()
 /** 相册选壁纸实现，全 app 共用一个（delegate 强引用同上） */
 private val wallpaperPicker = IosWallpaperPicker()
 
-/**
- * iOS 的 Compose 根容器 —— Swift 侧用 `UIViewControllerRepresentable` 包它。
- *
- * 结构与 Android `MainActivity.setContent` 同形：主界面常驻底座（`MainLayerTransition`）
- * + 子页叠加层（`AppNavHost`）。主界面已是**真课表界面** `CourseScheduleApp`
- * （第四十三批迁入 `:ui-shared`，iOS 用默认注入即可用）；子页导航是真路由。
- */
-fun MainViewController(): UIViewController = ComposeUIViewController {
-    // ⚠ 主题根必须是 [CourseScheduleTheme]（= MiuixTheme + theme_mode 偏好 + 触感门控 +
-    //   :miuix 能力注入），与 Android MainActivity / 桌面 Main **同一个**。
-    //   原来这里包的是 MaterialTheme —— 于是：
-    //   ① 应用内深浅色切换对 iOS 完全无效（theme_mode 没人读，也没人在 MiuixTheme 里应用）；
-    //   ② 二级/三级页自己的 MiuixTheme(controller=...) 读不到上层的 colorSchemeMode，
-    //      只能退回系统深浅色 → 「二级三级页面锁死跟随系统」。
-    //   Android / 桌面的调用点见 CourseScheduleTheme 定义处。
-    CourseScheduleTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            NexioIosRoot()
-        }
-    }
-}
-
-/**
- * iOS 的导航根 —— 对应 MainActivity 的 `Box { MainLayerTransition + AppNavHost }`。
- *
- * iOS 没有系统返回键，`rememberNavigationBack` 的 skiko 侧 handler 是空实现；
- * 返回全靠页面自己的返回按钮 → `router.popBack()`（`AboutScreen` 自带）。
- *
- * ⚠ [LocalAppRouter] **必须在这里 provide**：页面里有若干入口（如
- * `BackupAndMigrationScreen` 的「本地备份」）不接收 router 参数，而是直接读
- * 这个 CompositionLocal —— 不 provide 就在点进去那一刻抛
- * `IllegalStateException: LocalAppRouter 未提供`。
- * Android 侧由 `MainActivity` 在最外层 provide，这里是 iOS 的对应位置。
- */
+/** The retained main content; UIKit applies the shared main-layer transition. */
 @Composable
-private fun NexioIosRoot() {
-    val router = rememberAppRouter()
-    val mainTransition = rememberNavTransitionState(
-        initialValue = if (router.hasOverlay) 1f else 0f,
-    )
+internal fun NexioIosMain(host: IosAppHost) {
+    val router = host.router
     // 注入自检：AppStorage/UserDefaults 与 AppFiles/NSFileManager 的 iOS 实现是新写的，
     // 编译通过 ≠ 落盘位置与还原类型正确（UserDefaultsStore 的 Int/Long 不分是已知雷区）。
     // 原先是首页两行文字，真主界面就位后降级为**启动日志**——仍是唯一运行时证据，别删。
@@ -179,7 +136,6 @@ private fun NexioIosRoot() {
         Box(Modifier.fillMaxSize()) {
             // 主界面常驻底座：**真课表界面**（第四十三批）。尚未接的宿主能力
             // （分享/选壁纸/今日助手卡）走默认「无此能力」，入口不渲染而不是留个死按钮。
-            MainLayerTransition(mainTransition) {
                 CourseScheduleApp(
                     privacyConsented = true,
                     onSystemBarsChanged = { statusDark, _ ->
@@ -218,9 +174,22 @@ private fun NexioIosRoot() {
                     // iOS 走 App Store 更新 → 设置页的「更新设置」入口整个不渲染
                     showUpdateSettings = false,
                 )
-            }
-            // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
-            AppNavHost(router, mainTransition = mainTransition) { route ->
+        }
+    }
+}
+
+/** Draws routes above both the main content and the native tab bar. */
+@Composable
+internal fun NexioIosNavigation(host: IosAppHost) {
+    val router = host.router
+    val mainTransition = host.mainTransition
+    CompositionLocalProvider(LocalAppRouter provides router) {
+        Box(Modifier.fillMaxSize()) {
+            AppNavHost(
+                router,
+                mainTransition = mainTransition,
+                onOverlayActivityChanged = { host.navigationOverlayActive = it },
+            ) { route ->
                 when (route) {
                     AppRoute.About -> AboutRoute(
                         router = router,

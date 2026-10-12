@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+
 import com.haooz.chedule.data.HolidayEntry
 
 import com.haooz.chedule.data.minusDays
@@ -278,7 +280,10 @@ fun MainScheduleScreen(
     val isTablet = isTabletWidth()
     val density = LocalDensity.current
     // 沉浸式：滚动视口不避开底栏。底部留白写进滚动 layout 高度，避免被测量链裁掉
-    val scheduleEndSpacer = 175.dp
+    val nativeChromeInset = LocalHostNavigation.current
+        ?.takeIf { it.showsNativeTabBar && !isTablet }
+        ?.bottomBarInset?.toFloat()?.dp
+    val scheduleEndSpacer = nativeChromeInset?.plus(80.dp) ?: 175.dp
     val screenWidthPx = with(density) { screenWidthDp().dp.toPx() }
     val screenHeightPx = with(density) { screenHeightDp().dp.toPx() }
     val scrollState = externalScrollState

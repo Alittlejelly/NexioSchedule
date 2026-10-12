@@ -4,6 +4,8 @@ import com.haooz.chedule.data.formatMonthDay
 
 import com.haooz.chedule.data.todayLocalDate
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.haooz.chedule.ui.utils.LocalHostNavigation
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -85,6 +90,7 @@ fun ScheduleTopBar(
     onMoreSlotTop: (Float) -> Unit = {},
     // 上报顶栏滚动材质透明度，供「更多」控件收起态同步渐显渐隐
     onMoreMaterial: (Float) -> Unit = {},
+    onMoreExpand: () -> Unit = {},
     /**
      * 渐变遮罩色。共享顶栏槽里三根顶栏叠在一起平移淡入淡出，外层主题跟的是
      * **当前 tab**（见 MainActivity 的 `forcedDark`），切页瞬间会变 —— 不显式锁色
@@ -93,6 +99,7 @@ fun ScheduleTopBar(
     gradientColorOverride: Color? = null,
 ) {
     if (!visible || liquidGlassBackdrop == null) return
+    val hostedMore = LocalHostNavigation.current != null
 
     val titleText = when {
         isHoliday -> "放假中"
@@ -173,6 +180,16 @@ fun ScheduleTopBar(
                                 Spacer(
                                     modifier = Modifier
                                         .size(42.dp)
+                                        .then(
+                                            if (hostedMore) Modifier
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null,
+                                                    onClick = onMoreExpand,
+                                                )
+                                                .semantics { contentDescription = "更多" }
+                                            else Modifier
+                                        )
                                         .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
                                 )
                             }
