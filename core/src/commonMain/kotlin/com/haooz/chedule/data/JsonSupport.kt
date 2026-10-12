@@ -11,29 +11,12 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 /**
- * `org.json` 的跨平台替代。
+ * `org.json` 的跨平台替代（kotlinx-serialization 的动态解析，不需要编译器插件）。
  *
- * ## 为什么要换
- *
- * `org.json`（`JSONObject` / `JSONArray`）**由 Android 平台提供**，JDK 与 Kotlin/Native
- * 都没有。任何用它的文件都进不了 `:core`。
- *
- * ## 为什么不需要 kotlinx-serialization 编译器插件
- *
- * 这里只用 **JsonElement 动态解析**（`JsonObject` / `JsonArray` / `JsonPrimitive`），
- * 不声明 `@Serializable` 数据类，所以**不需要给模块加 serialization 插件**，
- * 也就不必给 `:app` 动构建配置。将来要是需要强类型映射再加插件也不迟。
- *
- * ## 与 org.json 的语义差异（迁移时注意）
- *
- * 1. **取值失败返回默认值，不抛异常**。org.json 的 `getString` / `getJSONArray` 缺键时
- *    抛 `JSONException`；这里一律返回默认值 / null。迁移前大量调用点用
- *    `runCatching { … }.getOrDefault(…)` 兜底，现在那些兜底仍有效（只是不再需要）。
- * 2. **`JsonNull` 一律视为「无值」**。org.json 的 `optString` 遇到 `JSONObject.NULL`
- *    会返回字符串 `"null"`（公认的设计缺陷）。这里返回默认值 —— 更符合直觉，
- *    且已知调用点（NoticeFetcher）都会先用 [isJsonNull] 判空，不受影响。
- * 3. **[JsonObject] 是有序的 `Map`**，遍历顺序为插入顺序，与 org.json 的
- *    `LinkedHashMap` 行为一致；但 org.json 的 `keys()` 顺序在旧版本不保证，迁移后反而更稳定。
+ * 与 org.json 的语义差异：
+ * 1. 取值失败返回默认值，不抛 `JSONException`。
+ * 2. `JsonNull` 一律视为「无值」，而 org.json 的 `optString` 会返回字符串 `"null"`。
+ * 3. [JsonObject] 遍历顺序为插入顺序。
  */
 
 private val json = Json {
@@ -42,7 +25,7 @@ private val json = Json {
     isLenient = true
 }
 
-/** 解析 JSON 文本为任意元素。格式非法时抛 [kotlinx.serialization.SerializationException]（对应 Gson 的 JsonSyntaxException / org.json 的 JSONException）。 */
+/** 解析 JSON 文本为任意元素。格式非法时抛 SerializationException。 */
 fun parseJsonElement(text: String): JsonElement = json.parseToJsonElement(text)
 
 /** 解析 JSON 文本为对象。格式非法或顶层不是对象时抛异常。 */
@@ -82,19 +65,15 @@ private fun JsonArray.raw(index: Int): JsonElement? =
     getOrNull(index)?.takeIf { it !is JsonNull }
 
 /**
- * 按 org.json 的 `JSON.toString(Object)` 语义把任意 [JsonElement] 转成文本。
- *
- * org.json 对**嵌套的 object / array** 也会给出其 JSON 文本（而不是空串或报错），
- * 这是 `optString` 在真实数据上可能被踩的行为 —— 早先版本这里返回 `""`。
+ * 按 org.json 的 `JSON.toString(Object)` 语义把任意 [JsonElement] 转成文本，
+ * 嵌套的 object / array 也给出其 JSON 文本，而不是空串或报错。
  */
 private fun JsonElement.toOrgJsonText(): String =
     if (this is JsonPrimitive) content else toString()
 
 /**
- * 把字符串按 org.json 的 `(int) Double.parseDouble(s)` 语义转成整数。
- *
- * 关键是 org.json **先转 double 再截断**，所以 `"34.9"` → `34`、`"1e3"` → `1000`、
- * `"2.5"` → `2`。早先版本用严格的 `intOrNull()`，这些输入会**静默回落成默认值**。
+ * 按 org.json 的 `(int) Double.parseDouble(s)` 语义转成整数：先转 double 再截断，
+ * 所以 `"34.9"` → `34`、`"1e3"` → `1000`。
  */
 private fun String.toOrgJsonInt(): Int? = toDoubleOrNull()?.takeIf { !it.isNaN() }?.toInt()
 private fun String.toOrgJsonLong(): Long? = toDoubleOrNull()?.takeIf { !it.isNaN() }?.toLong()
@@ -102,15 +81,11 @@ private fun String.toOrgJsonLong(): Long? = toDoubleOrNull()?.takeIf { !it.isNaN
 // ---- 「原始值」读取：给 `opt(key) as? X` 风格的代码用 ----
 
 /**
- * 对应 org.json 的 **`opt(key)`** —— 返回「原始值」而不是强制转成某种类型。
+ * 对应 org.json 的 `opt(key)`：返回「原始值」而不是强制转成某种类型，
+ * 形状为字符串 → `String`、数字 → `Double`、布尔 → `Boolean`、对象 → `Map`、数组 → `List`。
  *
- * 返回形状与 Gson 的 `ObjectTypeAdapter` 一致（见 [jsonToPlainValue]）：
- * 字符串 → `String`、数字 → `Double`、布尔 → `Boolean`、对象 → `Map`、数组 → `List`、
- * null / 缺键 → `null`。
- *
- * 这样 `item.opt("date") as? String`、`isStoredInteger(item.opt("type"))` 这类
- * 判断可以**逐字保留**，不用改写成 `optString` / `optInt`（那两个会做强制转换，
- * 语义不同 —— 例如 `optString` 会把数字 `1` 转成 `"1"`）。
+ * 保留它是为了让 `item.opt("date") as? String` 这类判断能原样留着 ——
+ * 改写成 `optString` 会做强制转换，语义不同（数字 `1` 会变成 `"1"`）。
  */
 fun JsonObject.optRaw(key: String): Any? = jsonToPlainValue(this[key])
 
@@ -123,13 +98,8 @@ fun JsonArray.optRaw(index: Int): Any? = jsonToPlainValue(getOrNull(index))
 fun JsonObject.optString(key: String): String = optString(key, "")
 
 /**
- * 对应 `optString(key, fallback)`。
- *
- * 与 org.json 一致：数字/布尔会强制转文本（`123` → `"123"`），
- * **嵌套 object/array 返回其 JSON 文本**。
- *
- * ⚠ 唯一有意的差异：值为显式 null 时返回 [fallback]，而 org.json 会返回字符串 `"null"`
- * （公认缺陷）。已知调用点都会先判空，不受影响。
+ * 对应 `optString(key, fallback)`：数字/布尔会强制转文本，嵌套 object/array 返回其 JSON 文本。
+ * 唯一有意的差异：显式 null 返回 [fallback]，org.json 会返回字符串 `"null"`。
  */
 fun JsonObject.optString(key: String, fallback: String): String =
     raw(key)?.toOrgJsonText() ?: fallback

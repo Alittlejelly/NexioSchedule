@@ -5,10 +5,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 
-// 注：TimeRoutine / SpecialItem / SpecialBlock 的 fromRaw 原先是 internal。
-// 搬到 :core 后 internal 的可见范围变成了 :core 模块本身，:app 的解析与导入逻辑访问不到，
-// 因此改为 public。等阶段 2 换成 kotlinx.serialization、由编译器生成反序列化代码后，
-// 这些手工 fromRaw 应当整体删除。
+// TimeRoutine / SpecialItem / SpecialBlock 的 fromRaw 供 :app 的解析与导入逻辑调用，故为 public。
 
 /**
  * 作息方案：同一套节次骨架（上午/下午/晚上各几节）下的**一套时间**。
