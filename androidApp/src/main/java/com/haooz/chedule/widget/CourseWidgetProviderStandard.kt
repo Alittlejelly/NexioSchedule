@@ -1,7 +1,6 @@
 /** 课程表桌面小组件提供者 (2×2 标准版) */
 package com.haooz.chedule.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -263,22 +262,11 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
             }
         }
 
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        val launchPending = PendingIntent.getActivity(
-            context, 0, launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // 任意位置点击 = 打开应用 + 刷新全部小部件
+        views.setOnClickPendingIntent(
+            R.id.widget_standard_root,
+            WidgetClickHelper.launchAndRefreshPending(context)
         )
-        views.setOnClickPendingIntent(R.id.widget_header, launchPending)
-
-        val refreshIntent = Intent(context, CourseWidgetProviderStandard::class.java).apply {
-            action = ACTION_UPDATE_WIDGET
-        }
-        val refreshPending = PendingIntent.getBroadcast(
-            context, 1, refreshIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        cardIds.forEach { views.setOnClickPendingIntent(it, refreshPending) }
-        views.setOnClickPendingIntent(R.id.widget_empty, refreshPending)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }

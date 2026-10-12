@@ -315,6 +315,7 @@ class MainActivity : ComponentActivity() {
         intent?.getIntExtra(EXTRA_MAIN_TAB, -1)?.takeIf { it in 0..2 }?.let {
             com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = it
         }
+        refreshWidgetsIfLaunchedFromWidget(intent)
 
         // 默认不启用：只有"退出即隐藏后台"开启时才启用（见 syncBackCallback），
         // 其余情况交回系统默认返回，保证预测性返回动画可用
@@ -487,12 +488,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        refreshWidgetsIfLaunchedFromWidget(intent)
         extractIntentData(intent)
         handleReminderSettingsIntent(intent)
         intent.getIntExtra(EXTRA_MAIN_TAB, -1).takeIf { it in 0..2 }?.let {
             com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = it
         }
         shareIntentVersion++
+    }
+
+    /** 小部件任意位置点击 = 打开应用 + 刷新全部小部件 */
+    private fun refreshWidgetsIfLaunchedFromWidget(intent: Intent?) {
+        if (!com.haooz.chedule.widget.WidgetClickHelper.consumeLaunchFlag(intent)) return
+        com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(this)
     }
 
     private fun handleBackNavigation() {

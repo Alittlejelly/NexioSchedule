@@ -1,7 +1,6 @@
 /** 今日课程桌面小组件提供者 (2×2 标准版) */
 package com.haooz.chedule.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -239,14 +238,11 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
             }
         }
 
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        val launchPending = PendingIntent.getActivity(
-            context, 0, launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // 任意位置点击 = 打开应用 + 刷新全部小部件
+        views.setOnClickPendingIntent(
+            R.id.widget_standard_root,
+            WidgetClickHelper.launchAndRefreshPending(context)
         )
-        views.setOnClickPendingIntent(R.id.widget_header, launchPending)
-        views.setOnClickPendingIntent(R.id.widget_course_content, launchPending)
-        views.setOnClickPendingIntent(R.id.widget_empty, launchPending)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
