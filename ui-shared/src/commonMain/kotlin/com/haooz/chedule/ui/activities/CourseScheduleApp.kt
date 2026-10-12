@@ -2889,10 +2889,9 @@ fun CourseScheduleApp(
                         }
                         // 「更多」与顶栏同源问题：外层 chrome 主题跟 selectedTab 变，
                         // 切到设置页时未移出屏幕的「更多」会跳色。今日/课程表壁纸已恒同步
-                        HostedOverlay(
-                            active = showMorePopup || showTodayMorePopup ||
-                                morePopupFraction.value > 0.001f || todayMorePopupFraction.value > 0.001f,
-                        ) {
+                        // 不再包 HostedOverlay：iOS 上浮层独立合成根拿不到主内容开洞缩放，
+                        // 导致「更多」不随顶栏缩小、且盖在课表外观页上仍可点。
+                        // 留在本槽即与顶栏按钮同层，行为与 Android 一致。
                         PageLockedTopBarTheme(wallpaperForcedDark) {
                         // LocalAppRouter.current 必须在组合层取（onClick lambda 里取不到）
                         val popupRouter = LocalAppRouter.current
@@ -2931,7 +2930,6 @@ fun CourseScheduleApp(
                                     },
                                     onJumpToDate = { todayJumpToDateTrigger++ },
                                 )
-                        }
                         }
                         // 弹窗排在「更多」之后 → 始终盖在它之上，遮罩能压暗「更多」
                         MiuixPopupHost()
