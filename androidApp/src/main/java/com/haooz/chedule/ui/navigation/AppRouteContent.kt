@@ -70,20 +70,15 @@ import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
-import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
-import com.haooz.chedule.ui.activities.ChangelogScreen
-import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseManageScreen
 import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.TimeConfigCardBounds
 import com.haooz.chedule.ui.activities.HolidaySettingsScreen
-import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
-import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
@@ -168,26 +163,12 @@ fun AppRouteContent(
     when (route) {
         AppRoute.About -> AndroidAboutRoute(router)
 
-        AppRoute.Changelog -> DocumentPageScaffold(
-            title = "更新日志",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, _ ->
-            ChangelogScreen(scrollBehavior = scrollBehavior)
-        }
-
-        AppRoute.License -> DocumentPageScaffold(
-            title = "开源协议",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, _ ->
-            LicenseScreen(scrollBehavior = scrollBehavior)
-        }
-
-        AppRoute.PrivacyPolicy -> DocumentPageScaffold(
-            title = "隐私政策",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, _ ->
-            PrivacyPolicyScreen(scrollBehavior = scrollBehavior)
-        }
+        // 纯文档壳路由已迁 :ui-shared（第三十三批），直接调跨平台版
+        AppRoute.Changelog -> ChangelogRoute(router)
+        AppRoute.License -> LicenseRoute(router)
+        AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
+        AppRoute.Communication -> CommunicationRoute(router)
+        AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
 
         AppRoute.PreferenceSettings -> DocumentPageScaffold(
             title = "应用偏好设置",
@@ -233,13 +214,6 @@ fun AppRouteContent(
             )
         }
 
-        AppRoute.Communication -> DocumentPageScaffold(
-            title = "交流与反馈",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, _ ->
-            CommunicationScreen(scrollBehavior = scrollBehavior)
-        }
-
         AppRoute.LocalBackup -> DocumentPageScaffold(
             title = "本地备份",
             onBack = { router.popBack() },
@@ -252,13 +226,6 @@ fun AppRouteContent(
                 backupFileController = remember { AndroidBackupFileController(context) },
                 onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
             )
-        }
-
-        AppRoute.AppreciateAuthor -> DocumentPageScaffold(
-            title = "捐赠支持",
-            onBack = { router.popBack() },
-        ) { scrollBehavior, _ ->
-            AppreciateAuthorScreen(scrollBehavior = scrollBehavior)
         }
 
         // ── 数据管理（导入 / 导出 / 备份，共用 BackupAndMigrationScreen，按 mode 区分）──

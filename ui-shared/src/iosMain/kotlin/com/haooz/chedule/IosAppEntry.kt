@@ -29,9 +29,14 @@ import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.navigation.AboutRoute
+import com.haooz.chedule.ui.navigation.AppreciateAuthorRoute
 import com.haooz.chedule.ui.navigation.AppNavHost
 import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.ChangelogRoute
+import com.haooz.chedule.ui.navigation.CommunicationRoute
+import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.MainLayerTransition
+import com.haooz.chedule.ui.navigation.PrivacyPolicyRoute
 import com.haooz.chedule.ui.navigation.rememberAppRouter
 import com.haooz.chedule.ui.navigation.rememberNavTransitionState
 import platform.Foundation.NSBundle
@@ -116,6 +121,12 @@ private fun NexioIosRoot() {
                     router = router,
                     appVersion = AppInfo.version,
                 )
+                // 纯文档壳路由（第三十三批迁入 commonMain），iOS 直接可用
+                AppRoute.Changelog -> ChangelogRoute(router)
+                AppRoute.License -> LicenseRoute(router)
+                AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
+                AppRoute.Communication -> CommunicationRoute(router)
+                AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
                 // 其余路由等对应页面/能力迁齐后在此接线
                 else -> {}
             }

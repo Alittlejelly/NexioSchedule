@@ -8,8 +8,14 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.haooz.chedule.data.DiagnosticRecorder
 import com.haooz.chedule.data.NoopDiagnosticRecorder
 import com.haooz.chedule.ui.activities.AboutScreen
+import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
+import com.haooz.chedule.ui.activities.ChangelogScreen
+import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.activities.EducationalImportScreen
+import com.haooz.chedule.ui.activities.LicenseScreen
+import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
+import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
@@ -85,4 +91,48 @@ fun AboutRoute(
         onExitApp = onExitApp,
         diagnosticRecorder = diagnosticRecorder,
     )
+}
+
+// ── 纯文档壳路由（第三十三批）：DocumentPageScaffold + 单个已迁 Screen，零平台触点 ──
+// 这五个的形状完全一样（标题 + 返回 + 正文），Android 侧同名 `Android*` 包装都不需要，
+// `:androidApp` 的 AppRouteContent 直接调这里。
+
+/** 更新日志路由。 */
+@Composable
+fun ChangelogRoute(router: AppRouter) {
+    DocumentPageScaffold(title = "更新日志", onBack = { router.popBack() }) { scrollBehavior, _ ->
+        ChangelogScreen(scrollBehavior = scrollBehavior)
+    }
+}
+
+/** 开源协议路由。 */
+@Composable
+fun LicenseRoute(router: AppRouter) {
+    DocumentPageScaffold(title = "开源协议", onBack = { router.popBack() }) { scrollBehavior, _ ->
+        LicenseScreen(scrollBehavior = scrollBehavior)
+    }
+}
+
+/** 隐私政策路由。 */
+@Composable
+fun PrivacyPolicyRoute(router: AppRouter) {
+    DocumentPageScaffold(title = "隐私政策", onBack = { router.popBack() }) { scrollBehavior, _ ->
+        PrivacyPolicyScreen(scrollBehavior = scrollBehavior)
+    }
+}
+
+/** 交流与反馈路由。 */
+@Composable
+fun CommunicationRoute(router: AppRouter) {
+    DocumentPageScaffold(title = "交流与反馈", onBack = { router.popBack() }) { scrollBehavior, _ ->
+        CommunicationScreen(scrollBehavior = scrollBehavior)
+    }
+}
+
+/** 捐赠支持路由。 */
+@Composable
+fun AppreciateAuthorRoute(router: AppRouter) {
+    DocumentPageScaffold(title = "捐赠支持", onBack = { router.popBack() }) { scrollBehavior, _ ->
+        AppreciateAuthorScreen(scrollBehavior = scrollBehavior)
+    }
 }
