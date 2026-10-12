@@ -20,7 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`9140a7ad`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
+**代码状态**：`master` = **`1e66ed67`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
 （`iosApp/nexioschedule.icon/` + pbxproj/Info.plist 改动，待用户自行提交）；KMP 侧干净。
 🟡 冲刺期**多会话并发**改同一仓库。
 
@@ -268,6 +268,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `1e66ed67` | **第三十七批**：课表导入/导出/备份三个路由迁 `:ui-shared`（四条 Android 能力注入 + 跨平台默认值）；**iOS 宿主接线 18/20 路由**，首页升级为「注入自检 + 路由导航台」 | 10-12 |
 | `9140a7ad` | **第三十六批**：小部件引导 / 课程提醒 / WebDAV 三个路由壳迁 `:ui-shared`（平台能力全参数注入；测试通知回调传 null = 该端无此能力、不渲染按钮），Route 进度 **15/20** | 10-12 |
 | `d23c3bb8` | **第三十五批**：`HolidaySettingsRoute` 迁 `:ui-shared` —— HttpURLConnection 改 `:core` HttpService（**该文件最后一个 java.net 触点清零**），Route 进度 **12/20** | 10-12 |
 | `ea266cd8` | **第三十四批**：4 个带注入的文档壳路由（偏好/更新/本地备份/AI 导入）迁 `:ui-shared`，Route 进度 **11/20**；iOS 剪贴板注入 UIPasteboard | 10-12 |
