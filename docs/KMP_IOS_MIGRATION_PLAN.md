@@ -20,8 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`6091d8f2`**（2026-10-12）。工作区有**用户在 Xcode 里配的应用图标**
-（`iosApp/nexioschedule.icon/` + pbxproj/Info.plist 改动，待用户自行提交）；KMP 侧干净。
+**代码状态**：`master` = **`e32f494b`**（2026-10-12）。工作区干净（应用图标已随 `a6f04c7a` 提交）。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
@@ -213,26 +212,28 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 **剩余待迁 22 文件 / 12.6k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. ~~**宿主层~~ Route~~**~~ —— ✅ **20/20 已全部迁完**（第三十八批收尾）。
-2. **`CourseScheduleApp` 迁 `:ui-shared`** —— 这是「iOS 的 MainActivity」的最后一块：
-   真课表主界面（双屏 pager + 设置侧栏）目前还在 `:androidApp` 的 `MainActivity.kt`（6070 行，
-   `CourseScheduleApp` 单独占 1240–5816 行）。
-   ⚠ **拆两批走**：先搬**结构层**（pager / 顶栏 / 路由跳转 / 转场动画）；
-   壁纸与 `android.graphics.Bitmap`（该函数内 **179 处引用**）单独第二批 ——
-   那是纯平台能力，按「接口 + 启动注入」抽成 WallpaperProvider。
-   其余 Android 专有项：`LocalContext` / `Dispatchers.IO` / `CourseReminderHelper` /
-   `MainActivity.resumeCount` / `TodayAssistant` 天气抓取器 —— 逐个走注入。
-   **搬完 iOS 才真正有主界面，临时首页（路由导航台）才能删。**
-3. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
+1. ~~宿主层 Route~~ —— ✅ **20/20 全迁完**（第三十八批）。
+2. ~~壁纸层~~ —— ✅ 跨平台化完成（第四十/四十一批：`WallpaperStore` + 平台后端注入 +
+   变换缓存下沉）。
+3. ~~外观层~~ —— ✅ 跨平台化完成（第四十二批：`AppearanceStore` + `AppearanceStyleCodec`，
+   7 个金样测试守数据兼容）。
+4. ~~崩溃修复~~ —— ✅ 三个「编译期不报、运行期才炸」的崩已修（`f64531d6`，
+   模拟器实测三个页面正常）。
+5. **`CourseScheduleApp` 迁 `:ui-shared`（下一批，最后一块）** —— 真课表主界面还在
+   `:androidApp` 的 `MainActivity.kt`（6070 行，`CourseScheduleApp` 占 1240–5816）。
+   ⚠ **拆批走**：先搬**结构层**（双屏 pager / 顶栏 / 转场编排），壁纸交互与挖孔编辑
+   （`isWindowCutoutActive` 25 处）等 Android 专有交互按「接口 + 宿主注入」第二批。
+   前置已全部就绪：壁纸层 ✅ / 外观层 ✅ / VM 工厂 ✅（共享层 `viewModel()` 已换成
+   `courseViewModel()` 等跨平台工厂，iOS 拿进程级单例）/ 20 处 `MainActivity.cachedWallpaper*`
+   已转发到 `WallpaperStore`。
+   剩余平台触点：`LocalContext` / `Dispatchers.IO`→`ioDispatcher` / `CourseReminderHelper` /
+   `MainActivity.resumeCount` / `TodayAssistant` 天气抓取器 / `ApiCompat`×2 —— 逐个注入。
+   **搬完 iOS 才有真主界面，`IosAppEntry` 的临时路由导航台才能删。**
+6. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
    **`WebViewScreen` 与三个对话框一行不用动**。
-4. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
-2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
-   shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
-   ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
-   **`WebViewScreen` 与三个对话框一行不用动**。
-3. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
+7. **真机回归**—— 见 §1 的 🔴 提示（WebViewScreen 整段搬运，必须人工走一遍教务导入）。
 
 ### 🔑 迁移框架铁律（用户 10-11 拍板）
 
@@ -269,6 +270,11 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `e32f494b` | **第四十二批**：外观存储跨平台化 —— `AppearanceStore`/`AppearanceStyle`/`AppearanceStyleCodec` 进 `:core`，`ScheduleAppearance` 降级为迁移桥；**枚举落盘是 ordinal 不是 name**（差点静默丢用户设置，7 个金样测试固化） | 10-12 |
+| `ad0c2105` | **第四十一批**：壁纸缓存（`MainActivity.cachedWallpaper*` 三件套）下沉 `WallpaperStore`，companion 改只读转发；offset/scale **必须成对写** | 10-12 |
+| `f64531d6` | **修三个崩**：① 两模块同包同名 `AppRouteContent.kt` → facade 类撞 `AppRouteContentKt`，dex 只留一个 → 全路由 NoSuchMethodError（共享层改名 `AppRoutes.kt`）② `viewModel()` 在 Kotlin/Native 无实现（新建跨平台 VM 工厂，iOS 进程级单例）③ iOS 根漏 provide `LocalAppRouter`。**三个都是编译期不报、运行期才炸** | 10-12 |
+| `a6f04c7a` | 用户的应用图标接入（`nexioschedule.icon` + 工程同步） | 10-12 |
+| `3c938827` | **第四十批**：壁纸层跨平台化 —— `WallpaperStore`（commonMain）+ `WallpaperBackend` 注入；Android actual 委托 `ScheduleAppearance` 零回归；iOS 走 skia（CMP 无 ImageBitmap⇄UIImage 双向转换），存 JPEG（文件名仍 `.webp`，按内容识别）；`AppFile` 补 `delete()`。⚠ iOS 字节序未真机验证 | 10-12 |
 | `6091d8f2` | **第三十八批**：**最后两个路由** `CourseTimeSettingsRoute` / `CourseManageRoute` 迁 `:ui-shared` —— **Route 20/20 全部迁完**；新增跨平台 `cropImageBitmapClamped`（替 `Bitmap.createBitmap`）；`renderEffect` 换 `:backdrop` 的 `BlurEffect`；`BackHandler` 换 `:miuix` 的 `NavigationBackHandlerFor` | 10-12 |
 | `1e66ed67` | **第三十七批**：课表导入/导出/备份三个路由迁 `:ui-shared`（四条 Android 能力注入 + 跨平台默认值）；**iOS 宿主接线 18/20 路由**，首页升级为「注入自检 + 路由导航台」 | 10-12 |
 | `9140a7ad` | **第三十六批**：小部件引导 / 课程提醒 / WebDAV 三个路由壳迁 `:ui-shared`（平台能力全参数注入；测试通知回调传 null = 该端无此能力、不渲染按钮），Route 进度 **15/20** | 10-12 |
@@ -278,9 +284,6 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `071d7883` | **第三十二批**：**`AppNavHost` 迁 `:ui-shared`**（navigationevent → `:miuix` 的 `rememberNavigationBack`；屏幕圆角 expect/actual）；**iOS 入口接真导航**（与 Android 同一个导航根） | 10-12 |
 | `cf0d5ee5` | **第三十一批**：**R13 解** —— `miuix-preference` fork 进 `:miuix`（官方 artifact 三处移除）；iOS 入口首屏接真实页面 `AboutRoute`，**模拟器实跑通过** | 10-12 |
 | `a1f7897d` | **第三十批**：宿主层开工 —— `EducationalImportRoute` / `AboutRoute` 进 `:ui-shared`（Android 侧改 `Android*` 注入包装）；修 Xcode 脚本 phase 未声明 Output Files（改了 Kotlin 不重新链接）；暴露 R13 | 10-12 |
-| `1377acaf` | **第二十九批**：`iosApp/` Xcode 工程落地（bundle `com.haooz.iosschedule`）+ `IosAppEntry`（A4 启动注入三件套）—— **模拟器首跑成功**，首屏注入自检存储/文件全 OK；踩坑：Foundation 类方法要显式 import、顶层函数别用 `init` 开头、build phase 要带 `-Pnexio.ios=true` + `JAVA_HOME` | 10-11 |
-| `400c6525` | **第二十八批**：iOS 侧 `NsFileAppFile`（`NSFileManager` 版 `AppFile`）+ `defaultDocumentsDir()` —— **交接清单 A3 补齐**，与 `FileAppFile` 逐条对齐；`NSData⇄ByteArray` 抽成共享扩展，运行时待真机 | 10-11 |
-| `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
@@ -322,6 +325,25 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 >       是另一套签名（多一个 `dstOffset`，且 `paint` 必填）；
 >     - `androidx.activity.compose.BackHandler` 是 Android 专有 → `:miuix` 的
 >       `NavigationBackHandlerFor`（skiko 侧有 actual，iOS/桌面空实现）。
+> 11. **两模块同包同名 `.kt` = facade 类撞名，编译全绿、运行全崩**（`f64531d6`）：
+>     `:ui-shared` 与 `:androidApp` 都有 `ui/navigation/AppRouteContent.kt` → 两边
+>     facade 都是 `AppRouteContentKt`，dex 打包只留一个 → 所有 `*Route` 运行期
+>     `NoSuchMethodError`。共享层那份改名 `AppRoutes.kt` 即解（同包零 import 改动）。
+>     ⇒ **往 `:ui-shared` 加文件前，先查 `:androidApp` 同包有无同名**（`dupscan.py` 只查
+>     函数撞名，查不到 facade 撞名）；排查法 `dexdump base.apk | grep "Class descriptor.*Kt;"`。
+> 12. **`viewModel()` 在 Kotlin/Native 上无实现**（`f64531d6`）：klib 有符号、编译过，
+>     运行抛 `Factory.create 未实现`。共享层统一走 `:ui-shared` 的 `ViewModelFactory`
+>     expect/actual（Android/jvm 原样 `viewModel()`，iOS 进程级单例 —— 别图省事改成
+>     `remember{VM()}`，那会把 Activity 级共享降级成每页一实例）。
+> 13. **外观枚举落盘是 ordinal 不是 name**（`e32f494b`）：`CardAppearance.kt` 顶部明文
+>     「落盘格式 = ordinal，枚举顺序不能改」。Gson 默认按 name 序列化枚举，但本项目
+>     存量数据是 ordinal —— 序列化实现换库时**以存量数据为准**，别照 Gson 默认行为抄。
+>     金样测试 `AppearanceStyleCodecTest`（7 用例）守着。
+> 14. **CMP iOS 图像编解码走 skia 不走 UIKit**（第三十~四十二批）：没有
+>     `ImageBitmap ⇄ UIImage` 双向转换；`readPixels(IntArray)` 吃像素 stride、
+>     `Bitmap.installPixels` 吃 ByteArray、`CGRect` 读字段要 `useContents{}`、
+>     UIKit cinterop 要文件级 `@OptIn(ExperimentalForeignApi::class)`。
+>     ⚠ iOS 壁纸存/读/缩放的字节序推断**未真机验证**。
 
 ---
 
