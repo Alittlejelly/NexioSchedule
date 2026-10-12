@@ -74,6 +74,9 @@ import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.scheduleViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -113,9 +116,9 @@ enum class ScheduleDataManageMode {
 @Composable
 fun BackupAndMigrationScreen(
     scrollBehavior: SharedScrollBehavior? = null,
-    courseViewModel: CourseViewModel = viewModel(),
-    scheduleViewModel: ScheduleViewModel = viewModel(),
-    settingsViewModel: SettingsViewModel = viewModel(),
+    courseViewModel: CourseViewModel = courseViewModel(),
+    scheduleViewModel: ScheduleViewModel = scheduleViewModel(),
+    settingsViewModel: SettingsViewModel = settingsViewModel(),
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     mode: ScheduleDataManageMode = ScheduleDataManageMode.Import,
     /** pad 设置右栏：导入页去掉「导入方式」，并把口令/文件拆成两个小标题 */

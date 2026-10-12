@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
@@ -93,7 +94,7 @@ private fun pad2(hour: Int, minute: Int): String = "${pad2(hour)}:${pad2(minute)
 
 @Composable
 fun CourseReminderScreen(
-    settingsViewModel: SettingsViewModel = viewModel(),
+    settingsViewModel: SettingsViewModel = settingsViewModel(),
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     /** 提醒控制器（Android = AndroidReminderController 包装）；桌面/iOS 用 NoopReminderController */

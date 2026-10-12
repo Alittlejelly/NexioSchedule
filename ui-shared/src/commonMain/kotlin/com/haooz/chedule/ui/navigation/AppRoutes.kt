@@ -114,6 +114,8 @@ import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -135,7 +137,23 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 路由宿主的**跨平台**部分 —— 从 `:androidApp` 的 `AppRouteContent` 逐批搬过来
- * （第三十批起步：教务导入 + 关于页）。
+ * （第三十批起步：教学导入 + 关于页，第三十八批收完 20/20）。
+ *
+ * ## ⚠ 本文件**不能**改回 `AppRouteContent.kt`（2026-10-12 线上事故）
+ *
+ * `:androidApp` 有一个 `com/haooz/chedule/ui/navigation/AppRouteContent.kt`，
+ * 宿主装配（`AppRouteContent` 主函数 + `Android*` 包装）在里面。本文件若与它
+ * **同名**，Kotlin 会给两边生成同一个 facade 类 `AppRouteContentKt`：
+ * - **编译期**：两个源文件同 FQN，编译器合并看待 → 一片绿，什么都不报
+ * - **运行期**：D8/R8 打 dex 时两个 `AppRouteContentKt.class` 同名冲突，只留一个。
+ *   留下的是 app 那个（里面只有 `AppRouteContent`），于是
+ *   `AiImportRoute` / `PreferenceSettingsRoute` / `EducationalImportRoute` 等
+ *   全部 `NoSuchMethodError` —— **点哪页哪页闪退**，且 Android/iOS 都跑不掉
+ *
+ * 这与里程碑里「同名文件静默失效」是同一族坑，但**更隐蔽**：那次是 import 指错，
+ * 这次连 import 都不用写（同包），所以编译器一声不响。
+ *
+ * ⇒ **纪律**：往 `:ui-shared` 加文件前，先查 `:androidApp` 同包下有没有同名 `.kt`。
  *
  * ## 为什么 Android 侧还留一份
  *
@@ -941,8 +959,8 @@ fun CourseManageRoute(
     val density = LocalDensity.current
     val windowInfo = LocalWindowInfo.current
     val coroutineScope = rememberCoroutineScope()
-    val courseViewModel: CourseViewModel = viewModel()
-    val settingsViewModel: SettingsViewModel = viewModel()
+    val courseViewModel = courseViewModel()
+    val settingsViewModel = settingsViewModel()
     val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
 
     // Edit screen state

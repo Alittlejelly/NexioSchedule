@@ -48,6 +48,7 @@ import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.screens.ClassEndEffectSettings
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -114,7 +115,7 @@ fun PreferenceSettingsScreen(
     }
 
     // SettingsViewModel 已去掉 Application（提醒时刻算法抠进 :core 后不再需要 Context），统一走 viewModel() 进 ViewModelStore
-    val settingsViewModel = viewModel<SettingsViewModel>()
+    val settingsViewModel = settingsViewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
     val islandNotification by settingsViewModel.islandNotification.collectAsState()
     val reminderPrefs = remember { AppStorage.store("course_reminder_prefs") }

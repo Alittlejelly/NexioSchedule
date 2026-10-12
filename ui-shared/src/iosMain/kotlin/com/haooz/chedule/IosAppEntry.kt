@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +49,7 @@ import com.haooz.chedule.ui.navigation.CourseReminderRoute
 import com.haooz.chedule.ui.navigation.CourseTimeSettingsRoute
 import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
+import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
 import com.haooz.chedule.ui.navigation.MainLayerTransition
 import com.haooz.chedule.ui.navigation.PreferenceSettingsRoute
@@ -158,6 +160,12 @@ private val IOS_HOME_ROUTES: List<Pair<String, AppRoute>> = listOf(
  *
  * iOS 没有系统返回键，`rememberNavigationBack` 的 skiko 侧 handler 是空实现；
  * 返回全靠页面自己的返回按钮 → `router.popBack()`（`AboutScreen` 自带）。
+ *
+ * ⚠ [LocalAppRouter] **必须在这里 provide**：页面里有若干入口（如
+ * `BackupAndMigrationScreen` 的「本地备份」）不接收 router 参数，而是直接读
+ * 这个 CompositionLocal —— 不 provide 就在点进去那一刻抛
+ * `IllegalStateException: LocalAppRouter 未提供`。
+ * Android 侧由 `MainActivity` 在最外层 provide，这里是 iOS 的对应位置。
  */
 @Composable
 private fun NexioIosRoot() {
@@ -165,63 +173,65 @@ private fun NexioIosRoot() {
     val mainTransition = rememberNavTransitionState(
         initialValue = if (router.hasOverlay) 1f else 0f,
     )
-    Box(Modifier.fillMaxSize()) {
-        // 主界面常驻底座（当前是路由导航台，见 NexioIosSmokeHome）
-        MainLayerTransition(mainTransition) {
-            NexioIosSmokeHome(onNavigate = { router.navigate(it) })
-        }
-        // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
-        AppNavHost(router, mainTransition = mainTransition) { route ->
-            when (route) {
-                AppRoute.About -> AboutRoute(
-                    router = router,
-                    appVersion = AppInfo.version,
-                )
-                // 纯文档壳路由（第三十三批迁入 commonMain），iOS 直接可用
-                AppRoute.Changelog -> ChangelogRoute(router)
-                AppRoute.License -> LicenseRoute(router)
-                AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
-                AppRoute.Communication -> CommunicationRoute(router)
-                AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
-                // 带注入的文档壳（第三十四批）：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
-                AppRoute.PreferenceSettings -> PreferenceSettingsRoute(router)
-                AppRoute.UpdateSettings -> UpdateSettingsRoute(router)
-                AppRoute.LocalBackup -> LocalBackupRoute(router)
-                AppRoute.AiImport -> AiImportRoute(
-                    router = router,
-                    onCopyToClipboard = { text ->
-                        UIPasteboard.generalPasteboard.string = text
-                    },
-                )
-                // 节假日（第三十五批）：网络拉取已是跨平台 HttpService（iOS = NSURLSession）
-                AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
-                // 小部件引导（第三十六批）：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
-                AppRoute.WidgetIntro -> WidgetIntroRoute(router)
-                // 课程提醒（第三十六批）：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
-                // 测试通知不注入 → 底部按钮不渲染（宁可不给，也不给点了没反应的）
-                AppRoute.CourseReminder -> CourseReminderRoute(router)
-                // WebDAV（第三十六批）：备份/恢复本体已在 :core，只差提醒重排副作用
-                AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
-                // 课表导入/导出/备份（第三十七批）：iOS 无系统文件选择器，
-                // 走默认 NoopScheduleFileController；口令通道四条都用默认「不支持」
-                AppRoute.ScheduleImport -> BackupAndMigrationRoute(
-                    router = router,
-                    mode = ScheduleDataManageMode.Import,
-                )
-                AppRoute.ScheduleExport -> BackupAndMigrationRoute(
-                    router = router,
-                    mode = ScheduleDataManageMode.Export,
-                )
-                AppRoute.ScheduleBackup -> BackupAndMigrationRoute(
-                    router = router,
-                    mode = ScheduleDataManageMode.Backup,
-                )
-                // 课表节数与时间 / 课程管理（第三十八批）：iOS 没有自由小窗，传 false
-                AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
-                AppRoute.CourseManage -> CourseManageRoute(router)
-                // 教务导入要 WKWebView 桥接（IosWebHost 未写），暂不开
-                AppRoute.EducationalImport -> {}
-                else -> {}
+    CompositionLocalProvider(LocalAppRouter provides router) {
+        Box(Modifier.fillMaxSize()) {
+            // 主界面常驻底座（当前是路由导航台，见 NexioIosSmokeHome）
+            MainLayerTransition(mainTransition) {
+                NexioIosSmokeHome(onNavigate = { router.navigate(it) })
+            }
+            // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
+            AppNavHost(router, mainTransition = mainTransition) { route ->
+                when (route) {
+                    AppRoute.About -> AboutRoute(
+                        router = router,
+                        appVersion = AppInfo.version,
+                    )
+                    // 纯文档壳路由（第三十三批迁入 commonMain），iOS 直接可用
+                    AppRoute.Changelog -> ChangelogRoute(router)
+                    AppRoute.License -> LicenseRoute(router)
+                    AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
+                    AppRoute.Communication -> CommunicationRoute(router)
+                    AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
+                    // 带注入的文档壳（第三十四批）：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
+                    AppRoute.PreferenceSettings -> PreferenceSettingsRoute(router)
+                    AppRoute.UpdateSettings -> UpdateSettingsRoute(router)
+                    AppRoute.LocalBackup -> LocalBackupRoute(router)
+                    AppRoute.AiImport -> AiImportRoute(
+                        router = router,
+                        onCopyToClipboard = { text ->
+                            UIPasteboard.generalPasteboard.string = text
+                        },
+                    )
+                    // 节假日（第三十五批）：网络拉取已是跨平台 HttpService（iOS = NSURLSession）
+                    AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
+                    // 小部件引导（第三十六批）：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
+                    AppRoute.WidgetIntro -> WidgetIntroRoute(router)
+                    // 课程提醒（第三十六批）：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
+                    // 测试通知不注入 → 底部按钮不渲染（宁可不给，也不给点了没反应的）
+                    AppRoute.CourseReminder -> CourseReminderRoute(router)
+                    // WebDAV（第三十六批）：备份/恢复本体已在 :core，只差提醒重排副作用
+                    AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
+                    // 课表导入/导出/备份（第三十七批）：iOS 无系统文件选择器，
+                    // 走默认 NoopScheduleFileController；口令通道四条都用默认「不支持」
+                    AppRoute.ScheduleImport -> BackupAndMigrationRoute(
+                        router = router,
+                        mode = ScheduleDataManageMode.Import,
+                    )
+                    AppRoute.ScheduleExport -> BackupAndMigrationRoute(
+                        router = router,
+                        mode = ScheduleDataManageMode.Export,
+                    )
+                    AppRoute.ScheduleBackup -> BackupAndMigrationRoute(
+                        router = router,
+                        mode = ScheduleDataManageMode.Backup,
+                    )
+                    // 课表节数与时间 / 课程管理（第三十八批）：iOS 没有自由小窗，传 false
+                    AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
+                    AppRoute.CourseManage -> CourseManageRoute(router)
+                    // 教务导入要 WKWebView 桥接（IosWebHost 未写），暂不开
+                    AppRoute.EducationalImport -> {}
+                    else -> {}
+                }
             }
         }
     }

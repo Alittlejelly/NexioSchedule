@@ -47,6 +47,9 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.scheduleViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -77,9 +80,9 @@ fun WebDavSettingsScreen(
     var listScrollY by remember { mutableIntStateOf(0) }
 
     // ViewModel 用于恢复后刷新 UI
-    val courseViewModel: CourseViewModel = viewModel()
-    val scheduleViewModel: ScheduleViewModel = viewModel()
-    val settingsViewModel: SettingsViewModel = viewModel()
+    val courseViewModel = courseViewModel()
+    val scheduleViewModel = scheduleViewModel()
+    val settingsViewModel = settingsViewModel()
 
     var serverUrl by remember { mutableStateOf(webDavManager.serverUrl.ifBlank { "https://dav.jianguoyun.com/dav/" }) }
     var username by remember { mutableStateOf(webDavManager.username) }

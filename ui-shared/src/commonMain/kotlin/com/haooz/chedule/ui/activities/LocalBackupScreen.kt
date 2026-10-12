@@ -63,6 +63,9 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.scheduleViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -160,9 +163,9 @@ fun LocalBackupScreen(
     var selectedSchedule by remember { mutableStateOf("") }
 
     // 三个 VM 都已去掉 Application（平台副作用走 :core 的 ScheduleEffects 出口），统一走 viewModel() 进 ViewModelStore
-    val courseViewModel = viewModel<CourseViewModel>()
-    val scheduleViewModel = viewModel<ScheduleViewModel>()
-    val settingsViewModel = viewModel<SettingsViewModel>()
+    val courseViewModel = courseViewModel()
+    val scheduleViewModel = scheduleViewModel()
+    val settingsViewModel = settingsViewModel()
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
 
     // 扫描要逐个读 json 解析统计课表数，必须在 IO 线程做；初值留空，由 LaunchedEffect 填充

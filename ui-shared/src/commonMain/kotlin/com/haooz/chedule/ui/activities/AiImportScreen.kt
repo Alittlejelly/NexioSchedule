@@ -59,6 +59,8 @@ import com.haooz.chedule.ui.screens.AddCourseDialog
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -82,8 +84,8 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
 fun AiImportScreen(
     onBack: () -> Unit,
     scrollBehavior: SharedScrollBehavior? = null,
-    viewModel: CourseViewModel = viewModel(),
-    settingsViewModel: SettingsViewModel = viewModel(),
+    viewModel: CourseViewModel = courseViewModel(),
+    settingsViewModel: SettingsViewModel = settingsViewModel(),
     backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     // 平台宿主注入：复制提示词到系统剪切板（由宿主实现，桌面/iOS 默认空实现）

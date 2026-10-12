@@ -85,6 +85,9 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.scheduleViewModel
+import com.haooz.chedule.viewmodel.settingsViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.capsule.ContinuousCapsule
@@ -143,9 +146,9 @@ fun EducationalImportScreen(
     onForceUpdate: () -> Unit,
     onFinish: () -> Unit,
 ) {
-    val courseViewModel: CourseViewModel = viewModel()
-    val scheduleViewModel: ScheduleViewModel = viewModel()
-    val settingsViewModel: SettingsViewModel = viewModel()
+    val courseViewModel = courseViewModel()
+    val scheduleViewModel = scheduleViewModel()
+    val settingsViewModel = settingsViewModel()
 
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
     val currentScheduleName by scheduleViewModel.currentScheduleName.collectAsState()

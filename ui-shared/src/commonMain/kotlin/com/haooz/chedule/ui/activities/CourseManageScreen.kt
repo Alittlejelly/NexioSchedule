@@ -61,6 +61,7 @@ import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
+import com.haooz.chedule.viewmodel.courseViewModel
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,7 +91,7 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
 @Composable
 fun CourseManageScreen(
     scrollBehavior: SharedScrollBehavior? = null,
-    viewModel: CourseViewModel = viewModel(),
+    viewModel: CourseViewModel = courseViewModel(),
     hiddenCourseIds: Set<String> = emptySet(),
     shrinkingCourseIds: Set<String> = emptySet(),
     onCourseClick: (
