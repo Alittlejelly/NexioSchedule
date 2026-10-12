@@ -2378,7 +2378,12 @@ fun CourseScheduleApp(
     val todayMorePopupFraction = remember { Animatable(0f) }
     // 「更多」占位槽实测顶部位置（px，root 坐标）：布局期上报，菜单据此定位，避免首帧 inset 未到而偏位
     val moreSlotTopPx = remember { mutableFloatStateOf(0f) }
-    val canSampleMoreSlot = !isWindowCutoutActive && !showCustomizePage && !showSwitchSchedule
+    // 占位槽在开洞/切页期间仍在顶层顶栏里，照常采样。
+    // 曾把 showCustomizePage / showSwitchSchedule 一起关掉，导致 moreSlotTopPx
+    // 冻结在进页前的旧高度：Android 上菜单被外观页整页盖住、点不到也看不出，
+    // iOS 上浮层是独立合成根、压在外观页之上，于是「更多」停在错位高度且仍可点。
+    // 恢复采样让位置跟随顶栏，两端表现一致。
+    val canSampleMoreSlot = !isWindowCutoutActive
     // 顶栏滚动材质透明度（收起态「更多」玻璃渐显渐隐）；两个顶栏各自一份，避免切页时互相覆盖
     // 初值 0 而非 1f：真实材质值由 SideEffect 在首帧组合后写入，
     // 用 1f 会让「更多」先亮一帧材质再变透明。收起态 f=0 时
@@ -2907,10 +2912,8 @@ fun CourseScheduleApp(
                                     todayMaterialAlpha = todayMaterialAlpha.value,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     isShiftMode = isShiftMode,
-                                    // 平板（rail）右上角不显示「更多」；课表外观 / 课表切换页也不显示
-                                    // —— 那两页有自己的顶栏，「更多」是浮层里的独立 Box，
-                                    // 不跟它们的开洞动画退场，留着会停在旧顶栏高度且仍可点。
-                                    enabled = navBarStyle != "rail" && !showCustomizePage && !showSwitchSchedule,
+                                    // 平板（rail）右上角不显示「更多」
+                                    enabled = navBarStyle != "rail",
                                     // 预测性返回由 LiquidGlassDropdownMenu 内部驱动：
                                     // 它操作的就是这里传入的同一个 fraction Animatable，
                                     // 外面再 snapTo/animateTo 一遍会和它互相 cancel，动画直接卡死。
