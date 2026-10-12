@@ -2,8 +2,8 @@ package com.haooz.chedule
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -124,7 +124,14 @@ private val wallpaperPicker = IosWallpaperPicker()
  * （第四十三批迁入 `:ui-shared`，iOS 用默认注入即可用）；子页导航是真路由。
  */
 fun MainViewController(): UIViewController = ComposeUIViewController {
-    MaterialTheme {
+    // ⚠ 主题根必须是 [CourseScheduleTheme]（= MiuixTheme + theme_mode 偏好 + 触感门控 +
+    //   :miuix 能力注入），与 Android MainActivity / 桌面 Main **同一个**。
+    //   原来这里包的是 MaterialTheme —— 于是：
+    //   ① 应用内深浅色切换对 iOS 完全无效（theme_mode 没人读，也没人在 MiuixTheme 里应用）；
+    //   ② 二级/三级页自己的 MiuixTheme(controller=...) 读不到上层的 colorSchemeMode，
+    //      只能退回系统深浅色 → 「二级三级页面锁死跟随系统」。
+    //   Android / 桌面的调用点见 CourseScheduleTheme 定义处。
+    CourseScheduleTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             NexioIosRoot()
         }
@@ -210,9 +217,6 @@ private fun NexioIosRoot() {
                     onReadSharedFileText = { uri -> IosSharedFileReceiver.readText(uri) },
                     // iOS 走 App Store 更新 → 设置页的「更新设置」入口整个不渲染
                     showUpdateSettings = false,
-                    // iOS 不支持排班课表 → 设置页的「排班模式」入口（进入开关 / 退出按钮 /
-                    // 确认弹窗）与排班模式内部面板全部不渲染
-                    showShiftModeEntry = false,
                 )
             }
             // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost

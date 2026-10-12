@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.getStringOrNull
 import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
@@ -103,9 +104,9 @@ fun saveScheduleThemeMode(mode: ThemeMode) {
 /**
  * 仅影响今日页/课程表页，与全局 theme_mode 隔离。
  *
- * 走 KeyValueStore.registerListener。⚠ iOS 侧该实现返回 null
- *（NSUserDefaultsDidChangeNotification 不带具体 key），主题切换后要等下次组合才刷新 ——
- * 是平台能力差异，不是崩溃：token 为 null 时 unregisterListener 是空操作。
+ * 走 KeyValueStore.registerListener。⚠ iOS 的 `NSUserDefaultsDidChangeNotification`
+ * 只通知「有东西变了」、**不带 key**，所以回调里是**无条件复查**而非按 key 精确过滤
+ * （见 `UserDefaultsStore.registerListener` 与常量 `KEY_CHANGED_ANYWHERE`）。
  */
 @Composable
 fun rememberScheduleThemeMode(): ThemeMode {
@@ -113,8 +114,12 @@ fun rememberScheduleThemeMode(): ThemeMode {
     val themeMode = remember { mutableStateOf(loadScheduleThemeMode()) }
 
     DisposableEffect(prefs) {
+        // ⚠ 同 CourseScheduleTheme：iOS 传 `KEY_CHANGED_ANYWHERE` 哨兵（系统只通知
+        //   「有东西变了」，不带 key），按 key 精确过滤会让 iOS 永远收不到生效 → 无条件复查。
         val token = prefs.registerListener { key ->
-            if (key == ThemeMode.SCHEDULE_THEME_MODE_KEY) {
+            if (key == KEY_CHANGED_ANYWHERE ||
+                key == ThemeMode.SCHEDULE_THEME_MODE_KEY
+            ) {
                 themeMode.value = loadScheduleThemeMode()
             }
         }

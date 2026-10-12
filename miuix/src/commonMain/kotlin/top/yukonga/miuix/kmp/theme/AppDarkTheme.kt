@@ -15,6 +15,24 @@ import androidx.compose.runtime.staticCompositionLocalOf
 val LocalForcedDarkTheme = staticCompositionLocalOf<Boolean?> { null }
 
 /**
+ * App 偏好里的「是否深色」，由**宿主**在根部 provide。
+ *
+ * ## 为什么需要这个（2026-10-12 修 iOS 深浅色切换失效）
+ *
+ * `:miuix` 不依赖 `:core`，所以 iOS / 桌面的 `rememberAppSettingDark()`
+ * **读不到 NSUserDefaults**，只能退回 `isSystemInDarkTheme()` —— 于是
+ * 「应用内深浅色切换」在 iOS 上完全无效（Android 读 SharedPreferences 所以正常）。
+ *
+ * 按项目铁律用「null = 该平台/该宿主没有提供」表达：
+ * - Android 的 actual 直接读 SharedPreferences，不依赖本 Local；
+ * - Skia 侧 actual 读本 Local，宿主没 provide 时才退回系统深浅色。
+ *
+ * ⚠ 默认 `null` 而非 `false`：默认 false 会让「没 provide 的宿主」一律亮色，
+ *   比跟随系统更糟。
+ */
+val LocalAppSettingDark = staticCompositionLocalOf<Boolean?> { null }
+
+/**
  * App 偏好里记录的「是否深色」（跟随系统 / 强制浅 / 强制深）。
  *
  * 这里只声明契约：真实数据在 App 的 SharedPreferences 里，Android 侧的实现见

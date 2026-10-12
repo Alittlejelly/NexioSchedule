@@ -171,7 +171,6 @@ fun SettingsScreen(
      * ⚠ 传 false 时 `isShiftMode` 必为 false（iOS 侧永远进不去排班模式），
      *   所以只需挡「进入」那两处；「退出」那处一并挡掉以防状态被外部置起。
      */
-    showShiftModeEntry: Boolean = true,
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
     val currentWeek by viewModel.currentWeek.collectAsState()
@@ -414,21 +413,18 @@ fun SettingsScreen(
                                         settingsRouter.navigate(AppRoute.WidgetIntro)
                                     }
                                 )
-                                // iOS 不支持排班课表 → 入口整个不渲染（showShiftModeEntry）
-                                if (showShiftModeEntry) {
-                                    ArrowPreference(
-                                        title = "排班模式",
-                                        summary = "同时对比多个课表的排班情况",
-                                        holdDownState = showShiftModeConfirmDialog,
-                                        onClick = { showShiftModeConfirmDialog = true }
-                                    )
-                                }
+                                ArrowPreference(
+                                    title = "排班模式",
+                                    summary = "同时对比多个课表的排班情况",
+                                    holdDownState = showShiftModeConfirmDialog,
+                                    onClick = { showShiftModeConfirmDialog = true }
+                                )
                             }
                         }
                     }
                 }
 
-                if (isShiftMode && showShiftModeEntry) {
+                if (isShiftMode) {
                     item(key = "shift_schedules") {
                         SmallTitle(
                             text = "选择对比课表",
@@ -595,7 +591,7 @@ fun SettingsScreen(
         OverlayDialog(
             title = "进入排班模式",
             summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
-            show = showShiftModeEntry && showShiftModeConfirmDialog,
+            show = showShiftModeConfirmDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showShiftModeConfirmDialog = false },
 

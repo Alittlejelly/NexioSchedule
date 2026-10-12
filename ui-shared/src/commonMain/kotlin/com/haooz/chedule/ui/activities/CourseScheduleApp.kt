@@ -325,8 +325,6 @@ data class SettingsPaneArgs(
     val liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
     /** 是否显示「更新设置」入口（iOS 走 App Store → false） */
     val showUpdateSettings: Boolean = true,
-    /** 是否显示「排班模式」入口（iOS 不支持排班课表 → 宿主传 false，入口整个不渲染） */
-    val showShiftModeEntry: Boolean = true,
 )
 
 /**
@@ -355,7 +353,6 @@ internal fun RenderSettingsPane(
             settingsScrollBehavior = args.settingsScrollBehavior,
             liquidGlassBackdrop = args.liquidGlassBackdrop,
             showUpdateSettings = args.showUpdateSettings,
-            showShiftModeEntry = args.showShiftModeEntry,
         )
     }
 }
@@ -962,7 +959,6 @@ fun CourseScheduleApp(
      * iOS 不支持排班课表 → 传 false，入口整个不渲染
      * （同 `showUpdateSettings`：不是留一个点进去什么都做不了的入口）。
      */
-    showShiftModeEntry: Boolean = true,
 ) {
 
 
@@ -3664,7 +3660,6 @@ fun CourseScheduleApp(
                                                 settingsScrollBehavior = settingsScrollBehavior,
                                                 liquidGlassBackdrop = liquidGlassBackdrop,
                                                 showUpdateSettings = showUpdateSettings,
-                                                showShiftModeEntry = showShiftModeEntry,
                                             )
                                         )
                                             }
@@ -3737,7 +3732,6 @@ fun CourseScheduleApp(
                                             settingsScrollBehavior = settingsScrollBehavior,
                                             liquidGlassBackdrop = liquidGlassBackdrop,
                                             showUpdateSettings = showUpdateSettings,
-                                            showShiftModeEntry = showShiftModeEntry,
                                         )
                                     )
                                 }

@@ -1,7 +1,13 @@
+@file:OptIn(ExperimentalForeignApi::class)
+
 package com.haooz.chedule.data
 
-import platform.Foundation.NSNumber
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSUserDefaults
+import platform.Foundation.NSUserDefaultsDidChangeNotification
+import platform.Foundation.NSNumber
+import platform.Foundation.NSOperationQueue
 
 /**
  * [KeyValueStore] 的 iOS 实现：按名字开一个独立的 NSUserDefaults 域。
@@ -103,11 +109,40 @@ class UserDefaultsStore(
 
     /**
      * iOS 无「带 key 的变更回调」：`NSUserDefaultsDidChangeNotification` 只通知「变了」，
-     * 不带是哪个键。契约允许返回 null，且目前 `:app` / `:core` 都没有调用点。
+     * 不带是哪个键 → 回调时传 [KEY_CHANGED_ANYWHERE] 哨兵，由调用方自己复查关心的键。
+     *
+     * ⚠ 这**不是**可以长期留空的桩：`CourseScheduleTheme` 靠它监听 `theme_mode`，
+     *   之前这里是 `= null`（注释写「没有调用点」），结果 **iOS 上应用内深浅色切换
+     *   写进了磁盘但 UI 永不刷新** —— 用户切了完全没反应。
+     *
+     * ⚠ 用 block 版 `addObserverForName` 而非 selector 版 `addObserver`：后者在
+     *   Kotlin/Native 里签名是 `(observer, selector: CPointer, object)`，塞不进 Kotlin lambda。
+     *
+     * ⚠ **返回 handle（不是 token）**：block 版由 NotificationCenter 内部持有观察者，
+     *   `removeObserver` 要传的就是它。调用方（DisposableEffect）保留返回值即可。
      */
-    override fun registerListener(listener: (String) -> Unit): Any? = null
+    override fun registerListener(listener: (String) -> Unit): Any? =
+        observerCenter.addObserverForName(
+            name = NSUserDefaultsDidChangeNotification,
+            `object` = null,
+            // 主线程队列：listener 会写 Compose 状态，而 Compose 状态不是线程安全的。
+            // ⚠ NSUserDefaults 的通知本身在**任意线程**投递，这里必须指定队列才能保证在主线程回调。
+            queue = NSOperationQueue.mainQueue,
+            usingBlock = { _ -> listener(KEY_CHANGED_ANYWHERE) },
+        )
 
-    override fun unregisterListener(token: Any?) = Unit
+    override fun unregisterListener(token: Any?) {
+        if (token != null) observerCenter.removeObserver(token)
+    }
+
+    /**
+     * 每个 store 实例一个中心。
+     *
+     * ⚠ 不用 `NSNotificationCenter.defaultCenter`：那是全局单例，多个 store 实例
+     *   （本项目 17 个 prefs 文件 = 17 个 store）的监听会互相收到对方的变更通知，
+     *   `removeObserver` 也可能误删别人的。
+     */
+    private val observerCenter = NSNotificationCenter()
 
     /** 按调用方期望的类型读 NSNumber —— 这是单键读取不需要类型标记的原因。 */
     private fun number(key: String): NSNumber? = defaults.objectForKey(key) as? NSNumber

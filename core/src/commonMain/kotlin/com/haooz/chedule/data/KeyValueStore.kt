@@ -31,6 +31,23 @@ package com.haooz.chedule.data
  * ⚠ **红线**：Android 实现必须继续走 SharedPreferences 本身，不得换成 DataStore 或
  * 自建文件 —— 否则存量用户的全部设置会读不出来。
  */
+/**
+ * 「不确定是哪个键」的哨兵常量。
+ *
+ * `registerListener` 的回调参数在 **Android 上是准确的 key**，但在 **iOS 上不是**：
+ * `NSUserDefaultsDidChangeNotification` 只说「有东西变了」，具体键在 userInfo 里，
+ * 且 cinterop 绑定中拿不到稳定符号 → iOS 统一传本哨兵。
+ *
+ * 因此**凡是按 key 过滤的监听都必须同时接受本哨兵**：
+ * ```
+ * prefs.registerListener { key ->
+ *     if (key == KEY_CHANGED_ANYWHERE || key == "my_key") { 复查 }
+ * }
+ * ```
+ * 否则 iOS 上会「收到通知但被过滤掉」—— 表现为设置项改了 UI 不刷新。
+ */
+const val KEY_CHANGED_ANYWHERE: String = "__key_changed_anywhere__"
+
 interface KeyValueStore {
     fun getString(key: String, defaultValue: String): String
     fun getInt(key: String, defaultValue: Int): Int

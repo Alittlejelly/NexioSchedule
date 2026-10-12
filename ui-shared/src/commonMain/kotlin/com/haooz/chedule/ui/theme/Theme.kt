@@ -12,12 +12,14 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.LocalAppSettingDark
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
 
@@ -40,10 +42,13 @@ fun CourseScheduleTheme(
     }
 
     DisposableEffect(prefs) {
-        // ⚠ iOS 侧 registerListener 返回 null（变更通知不带 key），token 为 null 时
-        // unregisterListener 是空操作 —— 主题切换在 iOS 上要等下次组合才刷新，不崩。
+        // ⚠ iOS 的回调**不带 key**（传 `KEY_CHANGED_ANYWHERE` 哨兵，系统只通知「有东西变了」），
+        //   Android 的 SharedPreferences 才给准确 key。所以这里不能用 `key == "theme_mode"`
+        //   精确过滤 —— 那样 iOS 上收到通知也会被丢掉，主题仍然不刷新。
+        //   正确做法：key 未知时**无条件复查**（读一次 prefs 的开销可忽略），
+        //   key 已知时才做精确过滤（省掉无关变更的重读）。
         val token = prefs.registerListener { key ->
-            if (key == "theme_mode") {
+            if (key == KEY_CHANGED_ANYWHERE || key == "theme_mode") {
                 themeMode.value = prefs.getString("theme_mode", "system")
             }
         }
@@ -53,8 +58,9 @@ fun CourseScheduleTheme(
     }
 
     DisposableEffect(hapticPrefs) {
+        // 同上：iOS 传哨兵 → 无条件复查，不能按 key 精确过滤。
         val token = hapticPrefs.registerListener { key ->
-            if (key == KEY_HAPTIC_FEEDBACK) {
+            if (key == KEY_CHANGED_ANYWHERE || key == KEY_HAPTIC_FEEDBACK) {
                 hapticFeedbackEnabled = hapticPrefs.getBoolean(KEY_HAPTIC_FEEDBACK, true)
             }
         }
@@ -94,6 +100,18 @@ fun CourseScheduleTheme(
         content = {
             CompositionLocalProvider(
                 LocalHapticFeedback provides gatedHaptic,
+                // :miuix 读不到 :core 的偏好（模块间无依赖），Skia 侧靠这个 Local 拿
+                // 「应用内深浅色」。不 provide 的话 iOS/桌面会退回跟随系统深浅色，
+                // 表现为「应用内切换无效 + 二三级页锁死跟随系统」。
+                //
+                // ⚠ 只有显式 dark/light 才传值；`system` 传 null，让下游照旧退回
+                //   isSystemInDarkTheme() —— 不能把 system 当成「非 dark 即 light」，
+                //   那会让系统深色下的 light 模式判断失效。
+                LocalAppSettingDark provides when (themeMode.value) {
+                    "dark" -> true
+                    "light" -> false
+                    else -> null
+                },
                 // :miuix 需要的 App 能力注入点。搬迁前这些组件直接读 AppMaterialSettings /
                 // PredictiveBackSettings / isAppDarkTheme()，构成 :miuix → :app 的反向依赖，
                 // 无法进 commonMain。改为 App 在根部 provide，模块内任何位置都能读到，

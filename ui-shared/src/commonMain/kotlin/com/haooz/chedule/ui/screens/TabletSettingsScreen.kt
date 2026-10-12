@@ -373,7 +373,6 @@ fun TabletSettingsScreen(
      * 是否显示「排班模式」入口（iOS 不支持 → false，五处入口整个不渲染）。
      * 语义与手机版 [SettingsScreen] 的同名参数一致。
      */
-    showShiftModeEntry: Boolean = true,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     /** 平台专有设置面板（下述 8 个 dest）由宿主渲染；null 显示占位 */
     androidPane: (@Composable (TabletSettingsDest) -> Unit)? = null,
@@ -513,9 +512,7 @@ fun TabletSettingsScreen(
                                                 )
                                             }
                                         // 排班模式入口：并入「特色功能」分类，非排班模式时显示
-                                        if (group == TabletSettingsDest.Reminder.group &&
-                                            !isShiftMode && showShiftModeEntry
-                                        ) {
+                                        if (group == TabletSettingsDest.Reminder.group && !isShiftMode) {
                                             ArrowPreference(
                                                 title = "排班模式",
                                                 summary = "同时对比多个课表的排班情况",
@@ -570,7 +567,7 @@ fun TabletSettingsScreen(
                             }
                         }
                         // 排班模式：退出入口放左栏
-                        if (isShiftMode && showShiftModeEntry) {
+                        if (isShiftMode) {
                             item(key = "shift_exit") {
                                 top.yukonga.miuix.kmp.basic.Button(
                                     modifier = Modifier
@@ -644,7 +641,6 @@ fun TabletSettingsScreen(
                                     settingsViewModel = settingsViewModel,
                                     shiftViewModel = shiftViewModel,
                                     isShiftMode = isShiftMode,
-                                    showShiftModeEntry = showShiftModeEntry,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     scrollBehavior = null,
                                 )
@@ -1031,7 +1027,7 @@ fun TabletSettingsScreen(
     OverlayDialog(
         title = "进入排班模式",
         summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
-        show = showShiftModeEntry && showShiftModeConfirmDialog,
+        show = showShiftModeConfirmDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showShiftModeConfirmDialog = false },
     ) {
@@ -1110,8 +1106,6 @@ private fun TabletSemesterPane(
     settingsViewModel: SettingsViewModel,
     shiftViewModel: ShiftViewModel,
     isShiftMode: Boolean,
-    /** iOS 传 false：排班模式内部面板（选择对比课表）整块不渲染 */
-    showShiftModeEntry: Boolean = true,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
     scrollBehavior: top.yukonga.miuix.kmp.layout.SharedScrollBehavior? = null,
 ) {
@@ -1238,7 +1232,7 @@ private fun TabletSemesterPane(
                 }
             }
         }
-        if (isShiftMode && showShiftModeEntry) {
+        if (isShiftMode) {
             // 排班模式：选择要对比的课表
             item(key = "shift_schedules") {
                 SmallTitle(
