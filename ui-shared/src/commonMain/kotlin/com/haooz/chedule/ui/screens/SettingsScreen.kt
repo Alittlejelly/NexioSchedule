@@ -169,6 +169,16 @@ fun SettingsScreen(
      * 而不是留一个点进去什么都做不了的页面（同「null = 该端无此能力就不渲染」的既定原则）。
      */
     showUpdateSettings: Boolean = true,
+    /**
+     * 是否显示「排班模式」入口（进入开关 + 已进入时的「退出排班模式」按钮 + 确认弹窗）。
+     *
+     * iOS 不支持排班课表 → 宿主传 false，三处入口整个不渲染
+     * （同「null = 该端无此能力就不渲染」的既定原则）。
+     *
+     * ⚠ 传 false 时 `isShiftMode` 必为 false（iOS 侧永远进不去排班模式），
+     *   所以只需挡「进入」那两处；「退出」那处一并挡掉以防状态被外部置起。
+     */
+    showShiftModeEntry: Boolean = true,
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
     val currentWeek by viewModel.currentWeek.collectAsState()
@@ -411,18 +421,21 @@ fun SettingsScreen(
                                         settingsRouter.navigate(AppRoute.WidgetIntro)
                                     }
                                 )
-                                ArrowPreference(
-                                    title = "排班模式",
-                                    summary = "同时对比多个课表的排班情况",
-                                    holdDownState = showShiftModeConfirmDialog,
-                                    onClick = { showShiftModeConfirmDialog = true }
-                                )
+                                // iOS 不支持排班课表 → 入口整个不渲染（showShiftModeEntry）
+                                if (showShiftModeEntry) {
+                                    ArrowPreference(
+                                        title = "排班模式",
+                                        summary = "同时对比多个课表的排班情况",
+                                        holdDownState = showShiftModeConfirmDialog,
+                                        onClick = { showShiftModeConfirmDialog = true }
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                if (isShiftMode) {
+                if (isShiftMode && showShiftModeEntry) {
                     item(key = "shift_schedules") {
                         SmallTitle(
                             text = "选择对比课表",
@@ -584,10 +597,12 @@ fun SettingsScreen(
             }
         }
 
+        // show=false 时整个弹窗不渲染：iOS 上没有入口能把它打开，
+        // 但仍要挡 —— 万一 showShiftModeConfirmDialog 被别的路径置 true，别漏出弹窗。
         OverlayDialog(
             title = "进入排班模式",
             summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
-            show = showShiftModeConfirmDialog,
+            show = showShiftModeEntry && showShiftModeConfirmDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showShiftModeConfirmDialog = false },
 

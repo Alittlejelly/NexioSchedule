@@ -66,15 +66,19 @@ private final class MainTabBarController: UITabBarController {
         super.viewDidLoad()
 
         let titles = ["今日", "课程表", "我的"]
-        let symbols = ["calendar.day.timeline.left", "list.bullet.rectangle", "person.crop.circle"]
         viewControllers = titles.enumerated().map { index, title in
             // 每个 tab 一个空壳 VC，只负责挂 tabBarItem；
             // 内容由 [syncComposeRoot] 把共享的 Compose 根搬进来。
             let shell = UIViewController()
+            // ⚠ 图标用 [MiuixTabIcons]（从 MiuixIcons 的矢量路径生成），不用 SF Symbols ——
+            //   否则 iOS 与 Android/Compose 底栏图形不一致（Compose 那边是 MiuixIcons）。
+            // 同一张图给 image / selectedImage：着色由 tab bar 的 tintColor 负责，
+            // 给两张不同的图会导致选中态换图形，不是我们要的「只是变色」。
+            let icon = MiuixTabIcons.tabIcon(index)
             shell.tabBarItem = UITabBarItem(
                 title: title,
-                image: UIImage(systemName: symbols[index]),
-                selectedImage: nil
+                image: icon?.withRenderingMode(.alwaysTemplate),
+                selectedImage: icon?.withRenderingMode(.alwaysTemplate)
             )
             return shell
         }
