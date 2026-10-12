@@ -136,10 +136,9 @@ import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * 路由宿主的**跨平台**部分 —— 从 `:androidApp` 的 `AppRouteContent` 逐批搬过来
- * （第三十批起步：教学导入 + 关于页，第三十八批收完 20/20）。
+ * 路由宿主的**跨平台**部分。
  *
- * ## ⚠ 本文件**不能**改回 `AppRouteContent.kt`（2026-10-12 线上事故）
+ * ⚠ 本文件**不能**改名为 `AppRouteContent.kt`（曾导致线上事故）
  *
  * `:androidApp` 有一个 `com/haooz/chedule/ui/navigation/AppRouteContent.kt`，
  * 宿主装配（`AppRouteContent` 主函数 + `Android*` 包装）在里面。本文件若与它
@@ -150,14 +149,11 @@ import kotlin.time.Duration.Companion.milliseconds
  *   `AiImportRoute` / `PreferenceSettingsRoute` / `EducationalImportRoute` 等
  *   全部 `NoSuchMethodError` —— **点哪页哪页闪退**，且 Android/iOS 都跑不掉
  *
- * 这与里程碑里「同名文件静默失效」是同一族坑，但**更隐蔽**：那次是 import 指错，
- * 这次连 import 都不用写（同包），所以编译器一声不响。
+ * 编译器一声不响，比「import 指错」那类坑更隐蔽 —— 同包同名连 import 都不用写。
  *
  * ⇒ **纪律**：往 `:ui-shared` 加文件前，先查 `:androidApp` 同包下有没有同名 `.kt`。
  *
- * ## 为什么 Android 侧还留一份
- *
- * 宿主装配永远有两半：
+ * Android 侧之所以还留一份：宿主装配永远有两半 ——
  * - **跨平台的一半**（在这里）：路由跳转、状态接线、Updater 订阅 —— iOS / 桌面照抄即用
  * - **平台专有的一半**（`:androidApp` 的 `Android*Route` 包装）：`Context` / `Activity` /
  *   权限 / 应用图标 —— 通过**参数注入**进来，本文件一行平台代码都不碰
@@ -223,7 +219,7 @@ fun AboutRoute(
     )
 }
 
-// ── 纯文档壳路由（第三十三批）：DocumentPageScaffold + 单个已迁 Screen，零平台触点 ──
+// ── 纯文档壳路由：DocumentPageScaffold + 单个 Screen，零平台触点 ──
 // 这五个的形状完全一样（标题 + 返回 + 正文），Android 侧同名 `Android*` 包装都不需要，
 // `:androidApp` 的 AppRouteContent 直接调这里。
 

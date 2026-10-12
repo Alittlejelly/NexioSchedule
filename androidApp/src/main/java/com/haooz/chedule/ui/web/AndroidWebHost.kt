@@ -52,7 +52,6 @@ private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
 // ════════════════════════════════════════════════════════════════════════
 //  网页内容宿主 —— Android 实现（android.webkit.WebView）
 //
-//  2026-10-11 自 `:androidApp` 的 `WebViewScreen.kt` 整段搬来（第二十六批）。
 //  那一页的**外壳**已迁 `:ui-shared`，这里留下的是**网页本体**：
 //  创建与配置 / UA 与视口策略 / JS 桥 / PixelCopy 逐帧采色 / 销毁。
 //

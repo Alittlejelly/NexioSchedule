@@ -13,7 +13,7 @@ import org.jetbrains.skia.Rect
 import platform.UIKit.UIScreen
 
 /**
- * iOS 壁纸后端（第三十九批）。
+ * iOS 壁纸后端。
  *
  * ## 为什么走 skia 而不是 UIKit
  *

@@ -134,7 +134,7 @@ internal fun NexioIosMain(host: IosAppHost) {
     }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
-            // 主界面常驻底座：**真课表界面**（第四十三批）。尚未接的宿主能力
+            // 主界面常驻底座：**真课表界面**。尚未接的宿主能力
             // （分享/选壁纸/今日助手卡）走默认「无此能力」，入口不渲染而不是留个死按钮。
                 CourseScheduleApp(
                     privacyConsented = true,
@@ -195,13 +195,13 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                         router = router,
                         appVersion = AppInfo.version,
                     )
-                    // 纯文档壳路由（第三十三批迁入 commonMain），iOS 直接可用
+                    // 纯文档壳路由，iOS 直接可用
                     AppRoute.Changelog -> ChangelogRoute(router)
                     AppRoute.License -> LicenseRoute(router)
                     AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
                     AppRoute.Communication -> CommunicationRoute(router)
                     AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
-                    // 带注入的文档壳（第三十四批）：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
+                    // 带注入的文档壳：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
                     AppRoute.PreferenceSettings -> PreferenceSettingsRoute(router)
                     AppRoute.UpdateSettings -> UpdateSettingsRoute(router)
                     AppRoute.LocalBackup -> LocalBackupRoute(router)
@@ -211,14 +211,14 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                             UIPasteboard.generalPasteboard.string = text
                         },
                     )
-                    // 节假日（第三十五批）：网络拉取已是跨平台 HttpService（iOS = NSURLSession）
+                    // 节假日：网络拉取走跨平台 HttpService（iOS = NSURLSession）
                     AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
-                    // 小部件引导（第三十六批）：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
+                    // 小部件引导：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
                     AppRoute.WidgetIntro -> WidgetIntroRoute(router)
-                    // 课程提醒（第三十六批）：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
+                    // 课程提醒：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
                     // 测试通知不注入 → 底部按钮不渲染（宁可不给，也不给点了没反应的）
                     AppRoute.CourseReminder -> CourseReminderRoute(router)
-                    // WebDAV（第三十六批）：备份/恢复本体已在 :core，只差提醒重排副作用
+                    // WebDAV：备份/恢复本体已在 :core，只差提醒重排副作用
                     AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
                     // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）。
                     // 口令导入/第三方导入（要服务端接口 + 平台分享能力）仍走默认「不支持」。
@@ -237,7 +237,7 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                         mode = ScheduleDataManageMode.Backup,
                         scheduleFileController = fileController,
                     )
-                    // 课表节数与时间 / 课程管理（第三十八批）：iOS 没有自由小窗，传 false
+                    // 课表节数与时间 / 课程管理：iOS 没有自由小窗，传 false
                     AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
                     AppRoute.CourseManage -> CourseManageRoute(router)
                     // 教务导入要 WKWebView 桥接（IosWebHost 未写），暂不开

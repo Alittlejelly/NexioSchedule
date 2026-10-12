@@ -1,6 +1,6 @@
 package com.haooz.chedule.data
 
-// ⚠ 2026-10-11 自 `:androidApp` 的 `ui/utils/UpdateChecker.kt` 下沉 :core（第二十七批）。
+// 版本比较独立成文件的原因：
 //
 // 动机：`UpdateDialog` 迁 `:ui-shared` 时要用版本比较，而它当时和 `UpdateChecker`
 // （OkHttp + SharedPreferences + File）挤在一个 Android 文件里。这段逻辑**一行平台 API 都没有**，

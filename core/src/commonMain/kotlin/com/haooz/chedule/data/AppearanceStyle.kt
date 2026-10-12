@@ -1,7 +1,7 @@
 package com.haooz.chedule.data
 
 /**
- * 外观参数快照 —— **跨平台**（第四十二批，`CourseScheduleApp` 前置）。
+ * 外观参数快照 —— **跨平台**。
  *
  * ## ⚠ 字段名是数据兼容契约
  *

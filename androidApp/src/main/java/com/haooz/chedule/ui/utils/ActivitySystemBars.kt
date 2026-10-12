@@ -10,9 +10,8 @@ import com.haooz.chedule.data.AppStorage
 // courseCardSolidBacking / LocalForcedDarkTheme / AppThemeSnapshot / PageBackdropSnapshot）
 // 已迁入 :ui-shared 的同包名 ThemeUtils.kt —— 调用方 import 一行不用改。
 //
-// 2026-10-12 第四十三批：`rememberScheduleThemeMode` 也迁入 :ui-shared 的 ThemeUtils.kt
-// （随 CourseScheduleApp 一起），本文件不再保留 —— 同包同名跨模块共存会让解析结果
-// 取决于模块顺序，属于必须避免的隐式歧义。
+// `rememberScheduleThemeMode` 在 :ui-shared 的 ThemeUtils.kt，本文件不再保留 ——
+// 同包同名跨模块共存会让解析结果取决于模块顺序，属于必须避免的隐式歧义。
 //
 // ⚠⚠ 文件名不要再改回 ThemeUtils.kt：:ui-shared 已有同包名的 ThemeUtils.kt，
 // 同包同文件名在 Kotlin 里会生成同一个类 FQN（com.haooz.chedule.ui.utils.ThemeUtilsKt），

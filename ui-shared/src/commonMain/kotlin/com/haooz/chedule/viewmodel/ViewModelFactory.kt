@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
 
 /**
- * ViewModel 工厂 —— **跨平台**（第四十批，修 iOS 上 `viewModel()` 崩）。
+ * ViewModel 工厂 —— **跨平台**。
  *
  * ## 为什么必须有这一层
  *

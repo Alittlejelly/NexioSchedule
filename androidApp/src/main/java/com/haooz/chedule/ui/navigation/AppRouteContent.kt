@@ -104,20 +104,8 @@ import com.haooz.chedule.data.showToast
  * 这是**唯一**需要知道「哪个路由对应哪个 Screen」的地方 —— 宿主只负责创建
  * [AppRouter]、渲染 [AppNavHost]，不关心具体有哪些页面。
  *
- * ## 迁移注意（阶段 5+，别照旧注释理解）
- *
- * 「路由 → composable」的映射形状是可搬的，但**这个文件当前不能整体搬进
- * `:ui-shared`**：里面还压着一批 Android 专有触点，整体搬会直接编不过。
- * 搬家前先把下列触点上收（注入或拆进 androidMain 宿主），让本文件只剩
- * 纯映射 + DocumentPageScaffold：
- *  - `isInFreeformWindow()` 的 `LocalActivity.current as? MainActivity` 强转；
- *  - CourseManageRoute / CourseTimeSettingsRoute 持有的 Bitmap 卡片快照 + ApiCompat 模糊；
- *  - CourseReminderHelper / IslandNotificationHelper 等平台副作用调用。
- * （~~HolidaySettings 的 HttpURLConnection~~ 已随第三十五批迁出 —— 换成 :core 的 HttpService。）
- *
- * 已迁走的页面本体在 `:ui-shared` 的 `com.haooz.chedule.ui.activities/screens`，
- * 未迁的在 androidApp 同包下 —— 两模块**共享包名**，靠「无同名顶层符号」维持，
- * 新增页面时先确认另一侧没有同名文件。以两侧源码树实际清单为准，本注释不做枚举。
+ * 本文件留在 androidApp：页面壳多已迁到 `:ui-shared`，这里只剩映射与 Android 能力装配。
+ * 两模块**共享包名**，靠「无同名顶层符号」维持，新增页面时先确认另一侧没有同名文件。
  */
 @Composable
 fun AppRouteContent(
@@ -127,14 +115,14 @@ fun AppRouteContent(
     when (route) {
         AppRoute.About -> AndroidAboutRoute(router)
 
-        // 纯文档壳路由已迁 :ui-shared（第三十三批），直接调跨平台版
+        // 纯文档壳路由，直接调跨平台版
         AppRoute.Changelog -> ChangelogRoute(router)
         AppRoute.License -> LicenseRoute(router)
         AppRoute.PrivacyPolicy -> PrivacyPolicyRoute(router)
         AppRoute.Communication -> CommunicationRoute(router)
         AppRoute.AppreciateAuthor -> AppreciateAuthorRoute(router)
 
-        // 带注入的文档壳路由已迁 :ui-shared（第三十四批），Android 注入平台能力。
+        // 文档壳路由，Android 注入平台能力。
         // ⚠ context/activity 必须在组合期取好再捕获 —— `LocalContext.current` 是
         // @Composable getter，写进非组合 lambda 会编不过。
         AppRoute.PreferenceSettings -> {
@@ -197,7 +185,7 @@ fun AppRouteContent(
         AppRoute.ScheduleBackup -> AndroidBackupAndMigrationRoute(router, ScheduleDataManageMode.Backup)
 
         // ── 带额外元素的页面（顶栏按钮 / 底部悬浮按钮 / 弹窗）──
-        // 路由壳已迁 :ui-shared（第三十六批），Android 只注入平台能力。
+        // Android 只注入平台能力。
         AppRoute.WidgetIntro -> {
             val context = LocalContext.current
             WidgetIntroRoute(
@@ -252,7 +240,7 @@ fun AppRouteContent(
                 onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
             )
         }
-        // 路由壳已迁 :ui-shared（第三十八批），Android 只注入自由小窗判定
+        // Android 只注入自由小窗判定
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(
             router = router,
             isInFreeformWindow = isInFreeformWindow(),
@@ -273,11 +261,10 @@ fun AppRouteContent(
  * 而那个 Activity 的 setContent 没有 provide，默认值是 `error(...)` —— 一点开就崩。
  */
 /**
- * 课表导入 / 导出 / 备份的 **Android 包装**（第三十七批）。
+ * 课表导入 / 导出 / 备份的 **Android 包装**。
  *
- * 路由壳已迁 `:ui-shared` 的 [BackupAndMigrationRoute]，这里只剩四条 Android 专有能力
- * 的装配：文件选择器 / 提醒重排 / 口令取回与抓取 / 口令分享出图 / 手环推送。
- * 三者共用同一份装配，只是 `mode` 不同。
+ * 这里只剩四条 Android 专有能力的装配：文件选择器 / 提醒重排 / 口令取回与抓取 /
+ * 口令分享出图 / 手环推送。三者共用同一份装配，只是 `mode` 不同。
  */
 @Composable
 private fun AndroidBackupAndMigrationRoute(router: AppRouter, mode: ScheduleDataManageMode) {

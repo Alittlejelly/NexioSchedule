@@ -1,6 +1,6 @@
 package com.haooz.chedule.data
 
-// ⚠ 2026-10-11 自 `:androidApp` 的 `data/ScheduleAppearance.kt` 拆出并下沉 :core（第二十五批）。
+// `ThemeMode` 独立成文件的原因：
 //
 // 动机：`CustomizeScheduleScreen` 迁 `:ui-shared` 时，签名里有 `onThemeModePreview: (ThemeMode) -> Unit`
 // —— 而 `ThemeMode` 当时和 `ScheduleAppearance`（Gson + Bitmap + LruCache 的壁纸存储本体）

@@ -29,7 +29,7 @@ import java.io.FileOutputStream
 
 /** 卡片内容对齐方式 / 文字配色 / 透镜折射强度：已下沉 :core（同包名 CardTextColor.kt） */
 
-// `ThemeMode` 枚举也已下沉 :core（同包名 ThemeMode.kt，2026-10-11 第二十五批）——
+// `ThemeMode` 枚举也已下沉 :core（同包名 ThemeMode.kt）——
 // `CustomizeScheduleScreen` 迁 :ui-shared 后签名里要用它。
 // 本文件只保留**读写它的那对函数**（[ScheduleAppearance.getThemeMode] /
 // [ScheduleAppearance.setThemeMode]，要碰 SharedPreferences），页面通过注入参数调用。
@@ -331,8 +331,7 @@ object ScheduleAppearance {
     /**
      * 批量保存外观参数，块内写入合并为一次提交；可嵌套。
      *
-     * 委托 `:ui-shared` 的 [AppearanceStore.batchSave] —— 合并逻辑在共享层，
-     * 两端同一套口径（第四十二批）。
+     * 委托 `:ui-shared` 的 [AppearanceStore.batchSave]，合并逻辑在共享层。
      */
     fun batchSave(block: () -> Unit) = AppearanceStore.batchSave(block)
 
@@ -347,7 +346,7 @@ object ScheduleAppearance {
     }
 
     /**
-     * 当前外观快照 —— 委托 `:ui-shared` 的 [AppearanceStore]（第四十二批）。
+     * 当前外观快照 —— 委托 `:ui-shared` 的 [AppearanceStore]。
      *
      * 返回类型仍是 [CombinationStyle]（androidApp 的既有类型，调用点零改动），
      * 内部从共享层的 [AppearanceStyle] 转过来。两份字段逐字同名，
@@ -379,7 +378,7 @@ object ScheduleAppearance {
     }
 
     /**
-     * 覆盖写入快照 —— 委托 `:ui-shared` 的 [AppearanceStore]（第四十二批）。
+     * 覆盖写入快照 —— 委托 `:ui-shared` 的 [AppearanceStore]。
      *
      * 写入路径从「Gson 序列化 CombinationStyle」换成「转 AppearanceStyle 后由
      * AppearanceStyleCodec 编码」。两份字段逐字同名，JSON 键名不变 ——

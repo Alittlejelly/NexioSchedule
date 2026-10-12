@@ -696,16 +696,14 @@ private fun recycleIndependentBitmap(
 }
 
 
-// ── Android 装配层（第四十三批）──────────────────────────────────────────────
+// ── Android 装配层 ──────────────────────────────────────────────────────────
 //
-// `CourseScheduleApp` 已整体迁 `:ui-shared`（2026-10-12）。Android 专有能力在这里
-// 逐项注入：系统栏 / 相册选壁纸（launcher + 降采样解码）/ 分享 / 外部分享文件读取 /
-// 节假日提醒重排 / 设置页 8 个平台 dest / 今日助手卡 / 更新 / 位图回收。
-// 模式同 `AndroidSettingsScreen` —— 共享页只认回调，不认平台类型。
+// Android 专有能力在这里逐项注入：系统栏 / 相册选壁纸（launcher + 降采样解码）/ 分享 /
+// 外部分享文件读取 / 节假日提醒重排 / 设置页 8 个平台 dest / 今日助手卡 / 更新 / 位图回收。
+// 共享页只认回调，不认平台类型。
 
 /**
- * 位图回收注入：ImageBitmap 无 recycle()，共享层的快照回收点（原
- * recycleIndependentBitmap 的 22 处调用）经此回调落到 Android Bitmap。
+ * 位图回收注入：ImageBitmap 无 recycle()，共享层的快照回收点经此回调落到 Android Bitmap。
  * isRecycled 检查在这里做，共享层只管「该不该回收」（身份比对）。
  */
 private val SharedBitmapRecycler: (ImageBitmap) -> Unit = { image ->

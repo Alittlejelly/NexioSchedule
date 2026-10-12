@@ -3,7 +3,7 @@ package com.haooz.chedule.data
 import kotlin.concurrent.Volatile
 
 /**
- * 外观存储 —— **跨平台**（第四十二批，`CourseScheduleApp` 迁 `:ui-shared` 的前置）。
+ * 外观存储 —— **跨平台**。
  *
  * ## 为什么要这一层
  *

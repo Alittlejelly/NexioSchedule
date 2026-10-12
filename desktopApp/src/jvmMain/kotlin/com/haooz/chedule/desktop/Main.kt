@@ -158,27 +158,26 @@ private fun DesktopShell() {
                         DesktopPage.License -> LicenseScreen(scrollBehavior)
                         DesktopPage.PrivacyPolicy -> PrivacyPolicyScreen(scrollBehavior)
                         DesktopPage.Communication -> CommunicationScreen(scrollBehavior)
-                        // 第四批迁入：教务导入的学校/适配器选择页（纯 Compose，零平台依赖）
-                        // onAdapterSelected 在 Android 侧接「打开 WebView 导入」；验证阶段给空实现
+                        // 教务导入的学校/适配器选择页；onAdapterSelected 在 Android 侧接「打开 WebView 导入」
                         DesktopPage.SchoolSelection -> SchoolSelectionScreen(
                             scrollBehavior = scrollBehavior,
                             onAdapterSelected = { _, _ -> },
                         )
-                        // 第七批迁入：课表节数与时间（onEditRoutine 指向宿主路由，验证阶段给空实现）
+                        // 课表节数与时间（onEditRoutine 指向宿主路由，桌面端给空实现）
                         DesktopPage.CourseTimeSettings -> CourseTimeSettingsScreen(
                             onEditRoutine = { _, _, _ -> },
                             scrollBehavior = scrollBehavior,
                         )
                         DesktopPage.Home -> Unit // 上面已分流，不可达
-                        // 第十八批迁入：WebDAV 云备份（节假日副作用回调桌面端给空实现）
+                        // WebDAV 云备份（节假日副作用回调桌面端给空实现）
                         DesktopPage.WebDavSettings -> WebDavSettingsScreen(
                             scrollBehavior = scrollBehavior,
                         )
-                        // 第十批迁入：赞赏作者（捐赠明细，走 :core 的 AppreciationFetcher）
+                        // 赞赏作者（捐赠明细，走 :core 的 AppreciationFetcher）
                         DesktopPage.AppreciateAuthor -> AppreciateAuthorScreen(
                             scrollBehavior = scrollBehavior,
                         )
-                        // 第十二批迁入：添加课程弹窗（自带 OverlayDialog 浮层，不套页面脚手架）
+                        // 添加课程弹窗（自带 OverlayDialog 浮层，不套页面脚手架）
                         DesktopPage.AddCourse -> AddCourseDialog(
                             show = true,
                             course = null,
@@ -187,14 +186,14 @@ private fun DesktopShell() {
                             onConfirm = { page = DesktopPage.Home },
                             onDelete = { },
                         )
-                        // 第十四批迁入：桌面小部件介绍页。
+                        // 桌面小部件介绍页。
                         // onRequestWidgetRefresh 是 Android 专有能力（AppWidget + RemoteViews），
                         // 桌面端没有小组件 —— 宿主给空实现，页面本体照样完整渲染。
                         DesktopPage.WidgetIntro -> WidgetIntroScreen(
                             scrollBehavior = scrollBehavior,
                             onRequestWidgetRefresh = { },
                         )
-                        // 第十九批迁入：课程详情页（morph 转场页，自带全屏 Box 脚手架）。
+                        // 课程详情页（morph 转场页，自带全屏 Box 脚手架）。
                         // 快照为 null 时页面只渲染内容层；空课程列表即空列表页。
                         DesktopPage.CourseDetail -> CourseDetailScreen(
                             courses = emptyList(),
@@ -212,7 +211,7 @@ private fun DesktopShell() {
                             onBackStart = { },
                             onBack = { page = DesktopPage.Home },
                         )
-                        // 第十九批迁入：课程编辑页（同为 morph 转场页）。
+                        // 课程编辑页（同为 morph 转场页）。
                         // liquidGlassBackdrop 必须非空（页面内 `!!`），桌面端自建采样层。
                         DesktopPage.CourseEdit -> CourseEditScreen(
                             courses = emptyList(),

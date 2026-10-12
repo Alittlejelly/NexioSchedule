@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 
 /**
- * Android 壁纸后端 —— **全部委托给已有 `ScheduleAppearance`**（第三十九批）。
+ * Android 壁纸后端 —— **全部委托给已有 `ScheduleAppearance`**。
  *
  * ## 为什么不自己解码
  *

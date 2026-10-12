@@ -57,7 +57,7 @@ internal object UpdateChecker {
     data class ApkCheck(val ok: Boolean, val reason: String? = null)
 
     // parseVersion / isBetaVersion / isNewerVersion 已下沉 :core（同包名 VersionCompare.kt，
-    // 2026-07-11 第二十七批）—— 它们一行平台 API 都没有，而 UpdateDialog 迁 :ui-shared 后要用。
+    // —— 它们一行平台 API 都没有，而 UpdateDialog 在 :ui-shared 里要用。
     // 本文件通过同模块顶层的 import 继续调用，行为逐字不变。
 
     // 需在 IO 线程调用。

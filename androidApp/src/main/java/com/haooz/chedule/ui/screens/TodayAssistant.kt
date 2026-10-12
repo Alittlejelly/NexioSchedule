@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.screens
 
 // ════════════════════════════════════════════════════════════════════════
-//  今日助手卡 · Android 侧数据来源（第四十四批拆分后）
+//  今日助手卡 · Android 侧数据来源
 //
 //  卡片本体与纯逻辑已迁 `:ui-shared` 的 `TodayAssistantCard.kt`（同包，不同文件）。
 //  本文件只剩**平台专有部分**：定位（LocationManager / Geocoder / 权限）、

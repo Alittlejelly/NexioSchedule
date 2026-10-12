@@ -6,7 +6,6 @@ import kotlinx.datetime.isoDayNumber
 // ════════════════════════════════════════════════════════════════════════
 //  ICS（`text/calendar`）导入 —— 纯文本解析
 //
-//  2026-10-11 自 `:androidApp` 的 `SettingsScreen.kt` 迁入 `:core`（第二十三批）。
 //  迁移动机：这是**纯字符串处理 + kotlinx-datetime**，一行 Android / java 依赖都没有，
 //  而「课表导入」页要进 `:ui-shared` commonMain —— 留在 Android 模块里那页就迁不动。
 //
