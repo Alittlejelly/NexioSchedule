@@ -20,7 +20,7 @@
 
 ## 1. 接手须知（30 秒版）
 
-**代码状态**：`master` = **`071d7883`**（2026-10-12）。工作区**干净**，动手前 `git status --short` 对齐。
+**代码状态**：`master` = **`846415f4`**（2026-10-12）。工作区**干净**，动手前 `git status --short` 对齐。
 🟡 冲刺期**多会话并发**改同一仓库。
 
 **iOS 状态（2026-10-11 首次真编 + 打通，macOS + Xcode 27）**：四个模块的 `iosArm64` +
@@ -180,7 +180,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `ui/screens` | 13 / 3 | **待迁** —— `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
 | `ui/utils` | 70 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
 | ~~`ui/components`~~ | ✅ **0（已清零）** | 第二十七批 `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 已迁 |
-| `ui/navigation` | 11 / 1 | 待迁（只剩 `AppRouteContent` 的剩余 Route 映射；`AppNavHost` 已迁） |
+| `ui/navigation` | 11 / 1 | 待迁（只剩 `AppRouteContent` 的剩余 Route 映射；`AppNavHost` 已迁，Route 已迁 7/20） |
 | `ui/effects` | 3 / 1 | 待迁（薄，`MiuixVisualEffectsPolicy` —— 本就平台专有） |
 | `data` | 6 / 1 | 待迁（`ScheduleAppearance`） |
 | `reminder` | 46 / 10 | 永不迁移 —— ✅ 提醒时刻算法**已抠进 `:core`**（`DayScheduleResolver`，第十五批） |
@@ -213,7 +213,8 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 **剩余待迁 22 文件 / 13.8k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. **宿主层**（Route 已迁 2/12；`AppNavHost` ✅ 已迁）—— `AppRouteContent` 的其余 Route
+1. **宿主层**（Route 已迁 7/20：About/教务导入 + 5 个文档壳；`AppNavHost` ✅ 已迁）——
+   `AppRouteContent` 的其余 Route
    / `MainActivity` / `NexioApplication`。这些是宿主壳，iOS 重写入口、Android 保留。
    ✅ R13 已解（`cf0d5ee5`）；✅ iOS 入口已接真导航（`071d7883`，与 Android 同一个 AppNavHost）。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
@@ -257,6 +258,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 
 | commit | 一句话 | 日期 |
 |---|---|---|
+| `846415f4` | **第三十三批**：5 个纯文档壳路由（更新日志/协议/隐私/交流/捐赠）迁 `:ui-shared`，Route 进度 7/20；iOS 入口同步接线 | 10-12 |
 | `071d7883` | **第三十二批**：**`AppNavHost` 迁 `:ui-shared`**（navigationevent → `:miuix` 的 `rememberNavigationBack`；屏幕圆角 expect/actual）；**iOS 入口接真导航**（与 Android 同一个导航根） | 10-12 |
 | `cf0d5ee5` | **第三十一批**：**R13 解** —— `miuix-preference` fork 进 `:miuix`（官方 artifact 三处移除）；iOS 入口首屏接真实页面 `AboutRoute`，**模拟器实跑通过** | 10-12 |
 | `a1f7897d` | **第三十批**：宿主层开工 —— `EducationalImportRoute` / `AboutRoute` 进 `:ui-shared`（Android 侧改 `Android*` 注入包装）；修 Xcode 脚本 phase 未声明 Output Files（改了 Kotlin 不重新链接）；暴露 R13 | 10-12 |
@@ -265,9 +267,7 @@ Unresolved** —— 先把数据类拆到 `:core`（依赖 Bitmap 的工厂改 c
 | `4d2d4198` | **第二十七批**：`EducationalImportScreen`（含 `EduImportUpdater`）+ `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 迁 `:ui-shared`；`VersionCompare` 抽到 `:core` 统一 `UpdateChecker`/`AndroidUpdateController`；**修 `internal` 跨模块可见性**（宿主层引用不了）；六目标编译 + iOS framework 链接全绿 | 10-11 |
 | `231c74bc` | **第二十六批**：`WebViewScreen` 外壳迁 `:ui-shared`（1241→893 行）+ 新增 `ui/web/WebHost.kt` 契约 + `AndroidWebHost`（494 行，网页本体）；复核时修回写丢的 `findActivity` 的 `ContextWrapper` 分支 | 10-11 |
 | `bf06b6f9` | **第二十五批**：`CustomizeScheduleScreen` 迁 `:ui-shared`（壁纸/快照重灾区）；`Bitmap`→`ImageBitmap` + `CombinationThumbnail` 投影；`ThemeMode` 下沉 :core；**补扫描器规则抓 `"…".format()` 盲区** | 10-11 |
-| `b3713502` | **第二十四批**：`SettingsScreen` 迁 `:ui-shared` —— **设置链贯通 commonMain**；androidPane 槽位改宿主装配（新增 `AndroidSettingsScreen`）；修 `String.format` 漏网 | 10-11 |
 | `73677f72` | **miuix 补成完整 fork**（119 文件自包含）→ 三处排除官方 `miuix-ui`；**iOS framework 两个目标链接成功**（R10 解）；顺带消掉 Android 侧两份 miuix-ui 混用的 NoSuchMethodError 隐患 | 10-11 |
-| `c4bb6bb9` | **首次真编 iOS**：`:ui-shared` 挂 `iosArm64`/`iosSimulatorArm64` + framework；四模块 iOS 编译全绿、模拟器跑 109 用例；修 4 处 JVM 专有 API；force `kotlinx-datetime` 0.6.2；**暴露 R10（link 阻塞）** | 10-11 |
 
 > 🔑 八条**仍在生效**的经验（踩过才有的，别重蹈）：
 > 1. **Windows 上就能编译 iOS klib**（`-Pnexio.ios=true :core:compileKotlinIosArm64`），
