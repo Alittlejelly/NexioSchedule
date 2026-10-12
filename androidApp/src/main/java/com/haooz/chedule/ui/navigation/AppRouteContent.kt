@@ -15,18 +15,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
@@ -49,16 +42,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
@@ -69,16 +58,10 @@ import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
 import com.haooz.chedule.ui.activities.CourseManageScreen
-import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.TimeConfigCardBounds
-import com.haooz.chedule.ui.activities.HolidaySettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
-import com.haooz.chedule.ui.activities.WebDavSettingsScreen
-import com.haooz.chedule.ui.activities.WidgetIntroScreen
-import com.haooz.chedule.ui.basic.LiquidGlassTextButton
-import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.components.DocumentPageScaffold
@@ -86,7 +69,6 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
-import com.haooz.chedule.ui.activities.EducationalImportScreen
 import com.haooz.chedule.ui.web.rememberAndroidWebHost
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
@@ -96,6 +78,7 @@ import com.haooz.chedule.ui.utils.AndroidReminderController
 import com.haooz.chedule.ui.utils.AndroidBackupFileController
 import com.haooz.chedule.ui.utils.AndroidScheduleFileController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
+import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.ShareCodeApi
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
@@ -107,20 +90,13 @@ import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
-import top.yukonga.miuix.kmp.icon.extended.Ok
-import top.yukonga.miuix.kmp.icon.extended.Play
-import top.yukonga.miuix.kmp.icon.extended.Update
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 /**
  * 子页路由 → 页面的映射表。
@@ -221,8 +197,53 @@ fun AppRouteContent(
         AppRoute.ScheduleBackup -> BackupAndMigrationRoute(router, ScheduleDataManageMode.Backup)
 
         // ── 带额外元素的页面（顶栏按钮 / 底部悬浮按钮 / 弹窗）──
-        AppRoute.WidgetIntro -> WidgetIntroRoute(router)
-        AppRoute.CourseReminder -> CourseReminderRoute(router)
+        // 路由壳已迁 :ui-shared（第三十六批），Android 只注入平台能力。
+        AppRoute.WidgetIntro -> {
+            val context = LocalContext.current
+            WidgetIntroRoute(
+                router = router,
+                onRequestWidgetRefresh = {
+                    com.haooz.chedule.widget.WidgetUpdateCache.clear()
+                    com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(context)
+                },
+            )
+        }
+        AppRoute.CourseReminder -> {
+            val context = LocalContext.current
+            // 开关值必须跟随 ViewModel，否则 remember 无 key 会把初次求值的结果钉死，
+            // 切换开关后按钮文案不会更新；是否支持超级岛是设备静态能力，缓存一次即可
+            val settingsViewModel: SettingsViewModel = viewModel()
+            val islandNotification by settingsViewModel.islandNotification.collectAsState()
+            val islandSupported = remember { IslandNotificationHelper.isIslandSupported(context) }
+            val islandEnabled = islandNotification && islandSupported
+            CourseReminderRoute(
+                router = router,
+                reminderController = remember { AndroidReminderController(context) },
+                testActionLabel = if (islandEnabled) "测试小米超级岛" else "测试实时活动",
+                onSendTestNotification = {
+                    FeatureLog.reminderFlow(
+                        "test_notification",
+                        if (islandEnabled) "island" else "live"
+                    )
+                    if (islandEnabled) {
+                        IslandNotificationHelper.sendTestIslandNotification(context)
+                        FeatureLog.reminderFlow("test_island_sent")
+                        showToast("已发送超级岛测试通知")
+                    } else {
+                        CourseReminderHelper.sendTestLiveNotification(context)
+                        FeatureLog.reminderFlow("test_live_sent")
+                        showToast("已发送实时活动测试通知")
+                    }
+                },
+            )
+        }
+        AppRoute.WebDavSettings -> {
+            val context = LocalContext.current
+            WebDavSettingsRoute(
+                router = router,
+                onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+            )
+        }
         AppRoute.HolidaySettings -> {
             val context = LocalContext.current
             // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
@@ -231,218 +252,9 @@ fun AppRouteContent(
                 onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
             )
         }
-        AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
         AppRoute.EducationalImport -> AndroidEducationalImportRoute(router)
-    }
-}
-
-/** 桌面小部件引导（原 WidgetIntroActivity，168 行，含底部按钮 + 引导弹窗）。 */
-@Composable
-private fun WidgetIntroRoute(router: AppRouter) {
-    val hapticFeedback = LocalHapticFeedback.current
-    val isTablet = isTabletWidth()
-    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
-    var showGuideDialog by remember { mutableStateOf(false) }
-    // 小组件刷新是 Android 专有能力（`widget/WidgetUpdateCache`），留在宿主注入给页面
-    val context = LocalContext.current
-
-    DocumentPageScaffold(
-        title = "桌面小部件",
-        onBack = { router.popBack() },
-        overlay = { backdrop ->
-            LiquidGlassTextButton(
-                text = "添加到桌面",
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                    showGuideDialog = true
-                },
-                backdrop = backdrop,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = tabletHorizontalPadding + 16.dp,
-                        end = tabletHorizontalPadding + 16.dp
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
-            )
-            OverlayDialog(
-                title = "添加桌面小部件",
-                show = showGuideDialog,
-                liquidGlassBackdrop = backdrop,
-                onDismissRequest = { showGuideDialog = false }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加",
-                        fontSize = 14.sp,
-                        lineHeight = 24.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    TextButton(
-                        text = "我知道了",
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            showGuideDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-    ) { scrollBehavior, backdrop ->
-        WidgetIntroScreen(
-            scrollBehavior = scrollBehavior,
-            liquidGlassBackdrop = backdrop,
-            onRequestWidgetRefresh = {
-                com.haooz.chedule.widget.WidgetUpdateCache.clear()
-                com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(context)
-            },
-        )
-    }
-}
-
-/** 课程提醒（原 CourseReminderActivity，155 行，含底部「测试通知」按钮）。 */
-@Composable
-private fun CourseReminderRoute(router: AppRouter) {
-    val context = LocalContext.current
-    val isTablet = isTabletWidth()
-    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
-
-    DocumentPageScaffold(
-        title = "课程提醒",
-        onBack = { router.popBack() },
-        overlay = { backdrop ->
-            // 是否支持超级岛是设备静态能力，缓存一次即可；开关值必须跟随 ViewModel，
-            // 否则 remember 无 key 会把初次求值的结果钉死，切换开关后按钮文案不会更新
-            val settingsViewModel: SettingsViewModel = viewModel()
-            val islandNotification by settingsViewModel.islandNotification.collectAsState()
-            val islandSupported = remember { IslandNotificationHelper.isIslandSupported(context) }
-            val islandEnabled = islandNotification && islandSupported
-            LiquidGlassTextButton(
-                text = if (islandEnabled) "测试小米超级岛" else "测试实时活动",
-                onClick = {
-                    com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(
-                        "test_notification",
-                        if (islandEnabled) "island" else "live"
-                    )
-                    if (islandEnabled) {
-                        IslandNotificationHelper.sendTestIslandNotification(context)
-                        com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
-                        showToast("已发送超级岛测试通知")
-                    } else {
-                        CourseReminderHelper.sendTestLiveNotification(context)
-                        com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
-                        showToast("已发送实时活动测试通知")
-                    }
-                },
-                backdrop = backdrop,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = tabletHorizontalPadding + 16.dp,
-                        end = tabletHorizontalPadding + 16.dp
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
-            )
-        },
-    ) { scrollBehavior, backdrop ->
-        val context = LocalContext.current
-        CourseReminderScreen(
-            scrollBehavior = scrollBehavior,
-            liquidGlassBackdrop = backdrop,
-            // Android 提醒能力（闹钟/电池/权限/设置页跳转）注入
-            reminderController = remember { AndroidReminderController(context) },
-        )
-    }
-}
-
-/**
- * WebDAV 云备份设置（原 WebDavSettingsActivity，170 行）。
- * 顶栏「测试连接」（[endAction]）+ 底部「备份到云端 / 从云端恢复」（[overlay]）。
- * 教训：迁完壳，要按「原 Activity 里的可交互元素逐个对账」，不能只信编译。
- */
-@Composable
-private fun WebDavSettingsRoute(router: AppRouter) {
-    // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入给页面
-    val ctx = LocalContext.current
-    val isTablet = isTabletWidth()
-    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
-    var connected by remember { mutableStateOf(false) }
-    var onTestConnection by remember { mutableStateOf({}) }
-    var backingUp by remember { mutableStateOf(false) }
-    var restoring by remember { mutableStateOf(false) }
-    var onBackup by remember { mutableStateOf({}) }
-    var onRestore by remember { mutableStateOf({}) }
-
-    DocumentPageScaffold(
-        title = "WebDAV 云备份",
-        onBack = { router.popBack() },
-        overlay = { backdrop ->
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = tabletHorizontalPadding + 8.dp,
-                        end = tabletHorizontalPadding + 8.dp
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                LiquidGlassTextButton(
-                    text = if (backingUp) "备份中..." else "备份到云端",
-                    onClick = { onBackup() },
-                    backdrop = backdrop,
-                    modifier = Modifier.weight(1f)
-                )
-                LiquidGlassTextButton(
-                    text = if (restoring) "恢复中..." else "从云端恢复",
-                    onClick = { onRestore() },
-                    backdrop = backdrop,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        },
-        endAction = { backdropAlpha, shadowAlpha ->
-            LiquidTopBarButton(
-                onClick = { onTestConnection() },
-                backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop(),
-                icon = if (connected) MiuixIcons.Ok else MiuixIcons.Play,
-                contentDescription = if (connected) "已连接" else "测试连接",
-                backdropAlpha = backdropAlpha,
-                shadowAlpha = shadowAlpha,
-                iconOffset = if (!connected) DpOffset(x = 2.dp, y = 0.dp) else DpOffset.Zero,
-                iconTint = if (connected) Color(0xFF4CAF50) else Color.Unspecified,
-            )
-        },
-    ) { scrollBehavior, backdrop ->
-        WebDavSettingsScreen(
-            scrollBehavior = scrollBehavior,
-            onConnectedChange = { connected = it },
-            onTestConnectionReady = { onTestConnection = it },
-            onBackupRestoreReady = { backup, restore ->
-                onBackup = backup
-                onRestore = restore
-            },
-            onBusyStateChange = { b, r ->
-                backingUp = b
-                restoring = r
-            },
-            onHolidayDataChanged = {
-                com.haooz.chedule.reminder.CourseReminderHelper.onHolidayDataChanged(ctx)
-            },
-        )
     }
 }
 

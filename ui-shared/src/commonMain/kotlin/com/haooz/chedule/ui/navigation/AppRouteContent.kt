@@ -1,8 +1,17 @@
 package com.haooz.chedule.ui.navigation
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -14,15 +23,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.BackupFileController
 import com.haooz.chedule.data.DiagnosticRecorder
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.HttpTimeouts
 import com.haooz.chedule.data.NoopBackupFileController
 import com.haooz.chedule.data.NoopDiagnosticRecorder
+import com.haooz.chedule.data.NoopReminderController
 import com.haooz.chedule.data.NoopUpdateController
+import com.haooz.chedule.data.ReminderController
 import com.haooz.chedule.data.UpdateController
 import com.haooz.chedule.data.createHttpService
 import com.haooz.chedule.data.ioDispatcher
@@ -32,6 +48,7 @@ import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
+import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.activities.EducationalImportScreen
 import com.haooz.chedule.ui.activities.HolidaySettingsScreen
@@ -40,6 +57,9 @@ import com.haooz.chedule.ui.activities.LocalBackupScreen
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
+import com.haooz.chedule.ui.activities.WebDavSettingsScreen
+import com.haooz.chedule.ui.activities.WidgetIntroScreen
+import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.DocumentPageScaffold
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -50,8 +70,14 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Update
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 路由宿主的**跨平台**部分 —— 从 `:androidApp` 的 `AppRouteContent` 逐批搬过来
@@ -361,6 +387,221 @@ fun HolidaySettingsRoute(
                 reload()
             },
             reload = { reload() },
+            onHolidayDataChanged = onHolidayDataChanged,
+        )
+    }
+}
+
+// ── 带额外元素的页面路由（第三十六批）：底部悬浮按钮 / 引导弹窗 / 顶栏按钮 ──
+// 共同形状：DocumentPageScaffold + 一个已迁 Screen，平台能力全部走参数。
+// Android 注入真实能力；桌面/iOS 用默认值（按钮不显示 / 空实现）。
+
+/**
+ * 桌面小部件引导路由。
+ *
+ * @param onRequestWidgetRefresh 小组件刷新：Android 注入 `WidgetUpdateCache` 的清缓存 +
+ *   更新已安装小部件；桌面/iOS 没有 AppWidget 概念，默认空实现。
+ *
+ * ⚠ 弹窗里的「添加到桌面」引导文案是 **Android 措辞**（长按桌面 → 安卓小部件）。
+ * iOS 若做 WidgetKit，把这段文案提成参数再换 —— 现在 iOS 走不到这一页，先不预留。
+ */
+@Composable
+fun WidgetIntroRoute(
+    router: AppRouter,
+    onRequestWidgetRefresh: () -> Unit = {},
+) {
+    val hapticFeedback = LocalHapticFeedback.current
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+    var showGuideDialog by remember { mutableStateOf(false) }
+
+    DocumentPageScaffold(
+        title = "桌面小部件",
+        onBack = { router.popBack() },
+        overlay = { backdrop ->
+            LiquidGlassTextButton(
+                text = "添加到桌面",
+                onClick = {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                    showGuideDialog = true
+                },
+                backdrop = backdrop,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = tabletHorizontalPadding + 16.dp,
+                        end = tabletHorizontalPadding + 16.dp
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp),
+            )
+            OverlayDialog(
+                title = "添加桌面小部件",
+                show = showGuideDialog,
+                liquidGlassBackdrop = backdrop,
+                onDismissRequest = { showGuideDialog = false }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加",
+                        fontSize = 14.sp,
+                        lineHeight = 24.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    TextButton(
+                        text = "我知道了",
+                        onClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                            showGuideDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+    ) { scrollBehavior, backdrop ->
+        WidgetIntroScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            onRequestWidgetRefresh = onRequestWidgetRefresh,
+        )
+    }
+}
+
+/**
+ * 课程提醒路由。
+ *
+ * @param reminderController 提醒能力（闹钟 / 电池优化 / 权限 / 系统设置页跳转）：
+ *   Android 注入 `AndroidReminderController(context)`；桌面/iOS 用 [NoopReminderController]。
+ * @param testActionLabel 底部测试按钮文案 —— Android 按设备能力在「测试小米超级岛」/
+ *   「测试实时活动」之间切换，由宿主导好再传进来。
+ * @param onSendTestNotification 测试通知。**传 null 表示这一端没有测试能力 → 不渲染按钮**
+ *   （iOS/桌面走不到，别给一个点了没反应的按钮）。
+ */
+@Composable
+fun CourseReminderRoute(
+    router: AppRouter,
+    reminderController: ReminderController = NoopReminderController,
+    testActionLabel: String = "测试通知",
+    onSendTestNotification: (() -> Unit)? = null,
+) {
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+
+    DocumentPageScaffold(
+        title = "课程提醒",
+        onBack = { router.popBack() },
+        overlay = { backdrop ->
+            if (onSendTestNotification != null) {
+                LiquidGlassTextButton(
+                    text = testActionLabel,
+                    onClick = onSendTestNotification,
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(
+                            start = tabletHorizontalPadding + 16.dp,
+                            end = tabletHorizontalPadding + 16.dp
+                        )
+                        .navigationBarsPadding()
+                        .padding(bottom = 20.dp),
+                )
+            }
+        },
+    ) { scrollBehavior, backdrop ->
+        CourseReminderScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            reminderController = reminderController,
+        )
+    }
+}
+
+/**
+ * WebDAV 云备份设置路由。
+ *
+ * 顶栏「测试连接」（[DocumentPageScaffold] 的 endAction）+ 底部「备份到云端 / 从云端恢复」。
+ * 两个按钮的实际实现**由 Screen 反抛给宿主**（`onTestConnectionReady` /
+ * `onBackupRestoreReady`），本路由只持有并渲染它们 —— 这样才能跨端复用。
+ *
+ * @param onHolidayDataChanged 云端恢复后的平台副作用（重排提醒 / 勿扰 / 小组件），
+ *   Android 宿主注入；桌面/iOS 默认空实现。
+ */
+@Composable
+fun WebDavSettingsRoute(
+    router: AppRouter,
+    onHolidayDataChanged: () -> Unit = {},
+) {
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+    var connected by remember { mutableStateOf(false) }
+    var onTestConnection by remember { mutableStateOf({}) }
+    var backingUp by remember { mutableStateOf(false) }
+    var restoring by remember { mutableStateOf(false) }
+    var onBackup by remember { mutableStateOf({}) }
+    var onRestore by remember { mutableStateOf({}) }
+
+    DocumentPageScaffold(
+        title = "WebDAV 云备份",
+        onBack = { router.popBack() },
+        overlay = { backdrop ->
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = tabletHorizontalPadding + 8.dp,
+                        end = tabletHorizontalPadding + 8.dp
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                LiquidGlassTextButton(
+                    text = if (backingUp) "备份中..." else "备份到云端",
+                    onClick = { onBackup() },
+                    backdrop = backdrop,
+                    modifier = Modifier.weight(1f)
+                )
+                LiquidGlassTextButton(
+                    text = if (restoring) "恢复中..." else "从云端恢复",
+                    onClick = { onRestore() },
+                    backdrop = backdrop,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        },
+        endAction = { backdropAlpha, shadowAlpha ->
+            LiquidTopBarButton(
+                onClick = { onTestConnection() },
+                backdrop = rememberLayerBackdrop(),
+                icon = if (connected) MiuixIcons.Ok else MiuixIcons.Play,
+                contentDescription = if (connected) "已连接" else "测试连接",
+                backdropAlpha = backdropAlpha,
+                shadowAlpha = shadowAlpha,
+                iconOffset = if (!connected) DpOffset(x = 2.dp, y = 0.dp) else DpOffset.Zero,
+                iconTint = if (connected) Color(0xFF4CAF50) else Color.Unspecified,
+            )
+        },
+    ) { scrollBehavior, backdrop ->
+        WebDavSettingsScreen(
+            scrollBehavior = scrollBehavior,
+            onConnectedChange = { connected = it },
+            onTestConnectionReady = { onTestConnection = it },
+            onBackupRestoreReady = { backup, restore ->
+                onBackup = backup
+                onRestore = restore
+            },
+            onBusyStateChange = { b, r ->
+                backingUp = b
+                restoring = r
+            },
             onHolidayDataChanged = onHolidayDataChanged,
         )
     }
