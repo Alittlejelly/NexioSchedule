@@ -32,10 +32,10 @@
 
 **一句话现状**：数据层与 UI 框架层已 100% 跨平台；**主页双屏/排班/节假日/偏好/AI 导入/关于页/设置链
 （含本体）/课表导入导出备份页/外观自定义页/教务导入（外壳+本体）/小部件引导/课程提醒/WebDAV/
-AppNavHost 已迁**；`:ui-shared` 111 文件 / 47.4k 行；
-`:androidApp` 剩 48 文件 / 22.0k 行（其中待迁 22 / 13.4k）。
-**应用代码完成度约 81%**（口径见 §3）。**真正的「页面」已全部迁完，宿主层只剩
-`AppRouteContent` 剩余 5 个 Route（Route 已迁 15/20）/ `MainActivity` / `NexioApplication`**。
+课表导入导出备份路由/AppNavHost 已迁**；`:ui-shared` 111 文件 / 47.6k 行；
+`:androidApp` 剩 48 文件 / 21.7k 行（其中待迁 22 / 13.1k）。
+**应用代码完成度约 82%**（口径见 §3）。**真正的「页面」已全部迁完，宿主层只剩
+`AppRouteContent` 剩余 2 个 Route（Route 已迁 18/20）/ `MainActivity` / `NexioApplication`**。
 **R2 序列化全部完成**（读+写）——备份路径 Gson 清零。**能力注入抽象已建 8 个**：DiagnosticRecorder/
 ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/BackupFileController/
 **ScheduleFileController**（SAF 选文件读 / 另存为）。
@@ -130,9 +130,9 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `:core` | 108 (+28 测试) | 18.0k | common **52** / android 8 / ios 2 / jvm 8 / jvmShared 2 / native 6 / **linuxX64 1（门禁）** | **数据层 100%**；14 套跨平台能力 + R2 导入编解码 + ICS 解析 |
 | `:backdrop` | 64 | 6.3k | common 54 / android 5 / skiko 5 | KMP 化；skikoMain 已过 **wasmJs + iOS 编译** |
 | `:miuix` | **119** | 31k | common **98** / android 10 / skiko 9 | KMP 化；**完整 fork、自包含**（不再依赖官方 miuix-ui）；官方子库 **0.9.4** |
-| `:ui-shared` | **111** | **47.4k** | common **104** / android 2 / jvm 2 / ios 3 | 阶段 5 进行中（**宿主层只剩 5 个 Route + MainActivity**） |
+| `:ui-shared` | **111** | **47.6k** | common **104** / android 2 / jvm 2 / ios 3 | 阶段 5 进行中（**宿主层只剩 2 个 Route + MainActivity**） |
 | `:desktopApp` | 1 | ~300 | jvm | 桌面验证壳，能真跑 |
-| `:androidApp` | **48** | **22.0k** | android | 待迁 **22 / 13.4k** + 留守 **26 / 8.6k**；单 Activity（Manifest 23→2） |
+| `:androidApp` | **48** | **21.7k** | android | 待迁 **22 / 13.1k** + 留守 **26 / 8.6k**；单 Activity（Manifest 23→2） |
 
 **`:core` 的 14 套跨平台能力**：`NexioLog` / `KeyValueStore`+`AppStorage` / `HttpService` /
 `JsonSupport` / `PlatformInfo` / `AppFile`+`AppFiles` / `ioDispatcher`（不用 `Dispatchers.IO`，
@@ -149,8 +149,8 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | **待迁** | **23** | **14.2k** | `ui/activities` 1 · `ui/screens` 3 · `ui/utils` 12 · 其余 7 |
 
 **完成度**（引用时注明口径）：
-- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 47.4k = 58.5k，
-  待迁 13.4k ⇒ **约 81%**
+- **只算应用代码**：已迁 `:core` commonMain 11.1k + `:ui-shared` commonMain 47.6k = 58.7k，
+  待迁 13.1k ⇒ **约 82%**
 - **含 `:miuix` + `:backdrop`**：94.8k / 109k ⇒ **约 87%**（那两层是第三方 fork，通常不计）
 
 ### 剩余工作量
@@ -182,7 +182,7 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 | `ui/screens` | 13 / 3 | **待迁** —— `TodayAssistant` / `ClassEndEffects` / `AndroidSettingsScreen`（宿主装配，不迁） |
 | `ui/utils` | 70 / 12 | **逐个判归属**：`CrashLogHelper` / `UpdateChecker` / `UpdateInstaller` / `ActivitySystemBars` / `ApiCompat` 本就平台专有 |
 | ~~`ui/components`~~ | ✅ **0（已清零）** | 第二十七批 `ShareImportDialog` / `TabletNavSideBar` / `UpdateDialog` 已迁 |
-| `ui/navigation` | 6 / 1 | 待迁（只剩 `AppRouteContent` 的剩余 Route 映射；`AppNavHost` 已迁，Route 已迁 15/20） |
+| `ui/navigation` | 6 / 1 | 待迁（只剩 `AppRouteContent` 的 2 个 Route；`AppNavHost` 已迁，Route 已迁 18/20） |
 | `ui/effects` | 3 / 1 | 待迁（薄，`MiuixVisualEffectsPolicy` —— 本就平台专有） |
 | `data` | 6 / 1 | 待迁（`ScheduleAppearance`） |
 | `reminder` | 46 / 10 | 永不迁移 —— ✅ 提醒时刻算法**已抠进 `:core`**（`DayScheduleResolver`，第十五批） |
@@ -215,13 +215,18 @@ ScheduleEffects/PlatformToast/FeatureLog/UpdateController/ReminderController/Bac
 **剩余待迁 22 文件 / 13.8k，全是宿主层与平台专有实现体，没有「页面」了**。
 迁移模式已成熟（页面上 commonMain + 能力接口注入 + Android 包装），剩余按顺序：
 
-1. **宿主层**（Route 已迁 15/20：About/教务导入 + 9 个文档壳 + 节假日 + 小部件引导/课程提醒/WebDAV；
-   `AppNavHost` ✅ 已迁）—— `AppRouteContent` 其余 5 个 Route（CourseTimeSettings/CourseManage +
-   3 个数据管理）/ `MainActivity` / `NexioApplication`。
+1. **宿主层**（Route 已迁 18/20：About/教务导入 + 9 个文档壳 + 节假日 + 小部件引导/课程提醒/WebDAV
+   + 课表导入导出备份；`AppNavHost` ✅ 已迁）—— `AppRouteContent` 只剩 **2 个** Route
+   （`CourseTimeSettings` / `CourseManage`），再往后是 `MainActivity` / `NexioApplication`。
    宿主壳 iOS 重写入口、Android 保留；✅ R13 已解、✅ iOS 入口已接真导航（`071d7883`）。
-   ⚠ 剩下两个是**最难啃的**：都持有 `Bitmap` 卡片快照 + `ApiCompat.blurRenderEffect`（Android 专有）。
+   ⚠ 最后两个是**最难啃的**：都持有 `Bitmap` 卡片快照 + `ApiCompat.blurRenderEffect`（Android 专有）。
    快照**裁剪**没有跨平台 API，但可以用 `Canvas.drawImage(srcOffset/srcSize)` 重绘实现
    （快捷菜单那段已经在这么做了）—— 别再走 expect/actual。
+2. **`CourseScheduleApp` 迁 `:ui-shared`** —— 这是「iOS 的 MainActivity」的最后一块：
+   真课表主界面（双屏 pager + 设置侧栏）目前还在 `:androidApp` 的 `MainActivity.kt`（6070 行）。
+   搬完 iOS 才真正有主界面，临时首页（路由导航台）才能删。
+   依赖的 Android 专有项：`LocalContext` / `Dispatchers.IO` / `CourseReminderHelper` /
+   `MainActivity.resumeCount` / `TodayAssistant` 天气抓取器 —— 逐个走注入。
 2. **iOS 工程**—— A0 三项（framework ✅ / Info.plist CADisableMinimumFrameDurationOnPhone /
    shared scheme）+ 启动注入（A4）+ 真机验证（见 §6 交接清单）。
    ⚠ 网页宿主要另写一份 `IosWebHost`（WKWebView）：契约已就位（`ui/web/WebHost.kt`，7 个方法），
@@ -445,7 +450,7 @@ AppFiles.init(
 | iOS 网络层 | ✅ 已实现并编译通过；运行时待验证 |
 | iOS 文件层（`AppFile`） | ✅ **已实现，且 7 个用例在模拟器上真跑通**（第二十八批） |
 | Windows 能否编译 iOS | ✅ **能编 klib，不能链接** |
-| iOS 已可用 | 🟡 第三十二批已接真导航（`AppNavHost` + `AboutRoute`，与 Android 同一导航根），**构建/启动/主页渲染 OK，压栈出栈交互待人工验证**；主页还是自检页，`IosWebHost` 未写 |
+| iOS 已可用 | 🟡 与 Android 同一导航根（`AppNavHost`），**18/20 路由已接线**并链接成功；首页是**临时路由导航台**（每页一个按钮，供模拟器逐页人工验证）+ 注入自检。真主界面要等 `CourseScheduleApp` 迁完，`IosWebHost` 未写 |
 
 **wasmJs 门禁**：同为非 JVM 目标（没有 `kotlin.jvm.*` 默认导入），能拦 `@Volatile` /
 `synchronized` / `Dispatchers.IO` / `System.currentTimeMillis` 这类污染。
@@ -526,7 +531,7 @@ AppFiles.init(
 | 2 | 时间与序列化换血（`java.time` → kotlinx-datetime） | ✅ 完成 |
 | 3 | 平台能力抽象 + 仓储下沉（8 套 expect/接口 + 启动注入） | ✅ 完成 |
 | 4 | iOS 逻辑层贯通（**先不碰 UI**）—— 网络层 / UserDefaults / AppFile | ✅ A1 A2 A3 全部实现（A3 已在模拟器真跑通 7 个用例）；Native 线程模型（R4）要等真机 |
-| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：framework 已链接成功（R10/R13 已解），iOS 入口已接真导航；**宿主层剩 5 个 Route** |
+| 5 | UI 首版（`:ui-shared` + iOS 壳） | 🟡 **进行中**：framework 已链接成功（R10/R13 已解），iOS 入口已接真导航；**宿主层剩 2 个 Route + `CourseScheduleApp`** |
 | 6 | 全量 UI 迁移与功能补齐 | 长期轨道 |
 
 **分层铁律**：`:core` 内禁止 `android.*`、`java.io.File`、`java.time.*`、反射式序列化。

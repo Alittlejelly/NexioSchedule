@@ -192,9 +192,9 @@ fun AppRouteContent(
         }
 
         // ── 数据管理（导入 / 导出 / 备份，共用 BackupAndMigrationScreen，按 mode 区分）──
-        AppRoute.ScheduleImport -> BackupAndMigrationRoute(router, ScheduleDataManageMode.Import)
-        AppRoute.ScheduleExport -> BackupAndMigrationRoute(router, ScheduleDataManageMode.Export)
-        AppRoute.ScheduleBackup -> BackupAndMigrationRoute(router, ScheduleDataManageMode.Backup)
+        AppRoute.ScheduleImport -> AndroidBackupAndMigrationRoute(router, ScheduleDataManageMode.Import)
+        AppRoute.ScheduleExport -> AndroidBackupAndMigrationRoute(router, ScheduleDataManageMode.Export)
+        AppRoute.ScheduleBackup -> AndroidBackupAndMigrationRoute(router, ScheduleDataManageMode.Backup)
 
         // ── 带额外元素的页面（顶栏按钮 / 底部悬浮按钮 / 弹窗）──
         // 路由壳已迁 :ui-shared（第三十六批），Android 只注入平台能力。
@@ -265,64 +265,50 @@ fun AppRouteContent(
  * 是独立 Activity，`BackupAndMigrationScreen` 里的「本地备份」入口读 [LocalAppRouter]，
  * 而那个 Activity 的 setContent 没有 provide，默认值是 `error(...)` —— 一点开就崩。
  */
+/**
+ * 课表导入 / 导出 / 备份的 **Android 包装**（第三十七批）。
+ *
+ * 路由壳已迁 `:ui-shared` 的 [BackupAndMigrationRoute]，这里只剩四条 Android 专有能力
+ * 的装配：文件选择器 / 提醒重排 / 口令取回与抓取 / 口令分享出图 / 手环推送。
+ * 三者共用同一份装配，只是 `mode` 不同。
+ */
 @Composable
-private fun BackupAndMigrationRoute(router: AppRouter, mode: ScheduleDataManageMode) {
-    val title = when (mode) {
-        ScheduleDataManageMode.Import -> "课表导入"
-        ScheduleDataManageMode.Export -> "课表导出"
-        ScheduleDataManageMode.Backup -> "课表备份"
-    }
-    // 页面已迁 :ui-shared，只剩 Android 专有能力要宿主注入
+private fun AndroidBackupAndMigrationRoute(router: AppRouter, mode: ScheduleDataManageMode) {
     val context = LocalContext.current
     val shareScope = rememberCoroutineScope()
-    DocumentPageScaffold(
-        title = title,
-        onBack = { router.popBack() },
-    ) { scrollBehavior, backdrop ->
-        // 与原 BackupAndMigrationActivity 一致：ViewModel 由宿主创建后传入
-        val courseViewModel: CourseViewModel = viewModel()
-        val scheduleViewModel: ScheduleViewModel = viewModel()
-        val settingsViewModel: SettingsViewModel = viewModel()
-        BackupAndMigrationScreen(
-            scrollBehavior = scrollBehavior,
-            courseViewModel = courseViewModel,
-            scheduleViewModel = scheduleViewModel,
-            settingsViewModel = settingsViewModel,
-            liquidGlassBackdrop = backdrop,
-            mode = mode,
-            // 文件选择器（导入选文件 / 导出另存为）
-            scheduleFileController = remember { AndroidScheduleFileController(context) },
-            // WebDAV 恢复后的提醒重排
-            onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
-            // 分享口令取回（OkHttp + Gson）
-            onFetchShareCode = { code ->
-                ShareCodeApi.fetchShare(code).map {
-                    ShareCodeFetchResult(
-                        code = it.code,
-                        scheduleName = it.scheduleName,
-                        scheduleData = it.scheduleData,
-                    )
-                }
-            },
-            // 第三方口令抓取（无头 WebView + OkHttp + Gson）
-            onImportThirdParty = { source, code ->
-                ThirdPartyShareImporter.import(context, source, code)
-            },
-            // 口令分享（上传 + 出图 + 系统分享）
-            onShareSchedule = { name, onSharingChanged ->
-                performScheduleShare(
-                    context = context,
-                    scope = shareScope,
-                    scheduleName = name,
-                    onSharingChanged = onSharingChanged,
+    BackupAndMigrationRoute(
+        router = router,
+        mode = mode,
+        // 导入选文件 / 导出另存为（SAF）
+        scheduleFileController = remember { AndroidScheduleFileController(context) },
+        // WebDAV 恢复后的提醒重排
+        onHolidayDataChanged = { CourseReminderHelper.onHolidayDataChanged(context) },
+        // 分享口令取回（OkHttp + Gson）
+        onFetchShareCode = { code ->
+            ShareCodeApi.fetchShare(code).map {
+                ShareCodeFetchResult(
+                    code = it.code,
+                    scheduleName = it.scheduleName,
+                    scheduleData = it.scheduleData,
                 )
-            },
-            // 手环推送
-            onExportToWearable = { name ->
-                WearableScheduleSync.exportToWearable(context, name)
-            },
-        )
-    }
+            }
+        },
+        // 第三方口令抓取（无头 WebView + OkHttp + Gson）
+        onImportThirdParty = { source, code ->
+            ThirdPartyShareImporter.import(context, source, code)
+        },
+        // 口令分享（上传 + 出图 + 系统分享）
+        onShareSchedule = { name, onSharingChanged ->
+            performScheduleShare(
+                context = context,
+                scope = shareScope,
+                scheduleName = name,
+                onSharingChanged = onSharingChanged,
+            )
+        },
+        // 手环推送
+        onExportToWearable = { name -> WearableScheduleSync.exportToWearable(context, name) },
+    )
 }
 
 /**

@@ -37,8 +37,10 @@ import com.haooz.chedule.data.HttpTimeouts
 import com.haooz.chedule.data.NoopBackupFileController
 import com.haooz.chedule.data.NoopDiagnosticRecorder
 import com.haooz.chedule.data.NoopReminderController
+import com.haooz.chedule.data.NoopScheduleFileController
 import com.haooz.chedule.data.NoopUpdateController
 import com.haooz.chedule.data.ReminderController
+import com.haooz.chedule.data.ScheduleFileController
 import com.haooz.chedule.data.UpdateController
 import com.haooz.chedule.data.createHttpService
 import com.haooz.chedule.data.ioDispatcher
@@ -46,6 +48,7 @@ import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
+import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseReminderScreen
@@ -56,12 +59,16 @@ import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
+import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.utils.ShareCodeFetchResult
+import com.haooz.chedule.ui.utils.ThirdPartySharePayload
+import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
@@ -603,6 +610,60 @@ fun WebDavSettingsRoute(
                 restoring = r
             },
             onHolidayDataChanged = onHolidayDataChanged,
+        )
+    }
+}
+
+/**
+ * 课表导入 / 导出 / 备份（三者共用 [BackupAndMigrationScreen]，只差 [mode]）。
+ *
+ * ⚠ 这三个入口**必须**走路由，不能再是独立 Activity：原来 `BackupAndMigrationActivity`
+ * 里 `BackupAndMigrationScreen` 的「本地备份」入口读 [LocalAppRouter]，而独立 Activity 的
+ * setContent 没有 provide，默认值是 `error(...)` —— 一点开就崩。
+ *
+ * ## 四条 Android 专有能力全部走注入，且**都有跨平台默认值**
+ *
+ * 口令取回 / 第三方口令抓取 / 口令分享出图 / 手环推送 —— Android 注入真实实现，
+ * iOS 与桌面用默认值（"当前平台不支持"）。**默认值不是偷懒**：这一页在 iOS 上
+ * 仍应能打开（WebDAV 备份、本地备份、文件导入导出都能用），只是口令通道不可用。
+ *
+ * @param scheduleFileController 文件选择器（导入选文件 / 导出另存为）：
+ *   Android 注入 `AndroidScheduleFileController(context)`；iOS/桌面用
+ *   [NoopScheduleFileController]（没有系统文件选择器，点导入会提示不可用）。
+ */
+@Composable
+fun BackupAndMigrationRoute(
+    router: AppRouter,
+    mode: ScheduleDataManageMode,
+    scheduleFileController: ScheduleFileController = NoopScheduleFileController,
+    onHolidayDataChanged: () -> Unit = {},
+    onFetchShareCode: suspend (code: String) -> Result<ShareCodeFetchResult> =
+        { Result.failure(IllegalStateException("当前平台不支持口令导入")) },
+    onImportThirdParty: suspend (source: ThirdPartyShareSource, code: String)
+    -> Result<ThirdPartySharePayload> =
+        { source, _ -> Result.failure(IllegalStateException("当前平台不支持${source.displayName}")) },
+    onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
+    onExportToWearable: suspend (scheduleName: String) -> String? = { null },
+) {
+    val title = when (mode) {
+        ScheduleDataManageMode.Import -> "课表导入"
+        ScheduleDataManageMode.Export -> "课表导出"
+        ScheduleDataManageMode.Backup -> "课表备份"
+    }
+    DocumentPageScaffold(
+        title = title,
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        BackupAndMigrationScreen(
+            scrollBehavior = scrollBehavior,
+            liquidGlassBackdrop = backdrop,
+            mode = mode,
+            scheduleFileController = scheduleFileController,
+            onHolidayDataChanged = onHolidayDataChanged,
+            onFetchShareCode = onFetchShareCode,
+            onImportThirdParty = onImportThirdParty,
+            onShareSchedule = onShareSchedule,
+            onExportToWearable = onExportToWearable,
         )
     }
 }

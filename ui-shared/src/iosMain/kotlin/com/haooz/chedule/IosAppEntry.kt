@@ -3,10 +3,14 @@ package com.haooz.chedule
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,13 +32,16 @@ import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.navigation.AboutRoute
 import com.haooz.chedule.ui.navigation.AiImportRoute
 import com.haooz.chedule.ui.navigation.AppreciateAuthorRoute
 import com.haooz.chedule.ui.navigation.AppNavHost
 import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.BackupAndMigrationRoute
 import com.haooz.chedule.ui.navigation.ChangelogRoute
 import com.haooz.chedule.ui.navigation.CommunicationRoute
+import com.haooz.chedule.ui.navigation.CourseReminderRoute
 import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
@@ -42,6 +49,8 @@ import com.haooz.chedule.ui.navigation.MainLayerTransition
 import com.haooz.chedule.ui.navigation.PreferenceSettingsRoute
 import com.haooz.chedule.ui.navigation.PrivacyPolicyRoute
 import com.haooz.chedule.ui.navigation.UpdateSettingsRoute
+import com.haooz.chedule.ui.navigation.WebDavSettingsRoute
+import com.haooz.chedule.ui.navigation.WidgetIntroRoute
 import com.haooz.chedule.ui.navigation.rememberAppRouter
 import com.haooz.chedule.ui.navigation.rememberNavTransitionState
 import platform.Foundation.NSBundle
@@ -104,6 +113,37 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
 }
 
 /**
+ * iOS 宿主首页当前能进的路由清单。
+ *
+ * 真课表主界面（`CourseScheduleApp`）还在 `:androidApp` 的 `MainActivity` 里，
+ * 迁过来之前，首页就是这个**路由导航台** —— 每个已迁路由都能从这儿点进去，
+ * 便于在模拟器里逐页人工验证（尤其是 `@Composable` 里那些编译期查不出的东西：
+ * 玻璃采样、折叠顶栏、对话框、文件选择器降级提示）。
+ *
+ * ⚠ 这是**临时页**，等 `CourseScheduleApp` 迁进 `:ui-shared` 就整块删掉
+ * （连同 [NexioIosSmokeHome]），换成真主界面。
+ */
+private val IOS_HOME_ROUTES: List<Pair<String, AppRoute>> = listOf(
+    "关于" to AppRoute.About,
+    "应用偏好设置" to AppRoute.PreferenceSettings,
+    "更新设置" to AppRoute.UpdateSettings,
+    "课程提醒" to AppRoute.CourseReminder,
+    "节假日与调休" to AppRoute.HolidaySettings,
+    "WebDAV 云备份" to AppRoute.WebDavSettings,
+    "课表导入" to AppRoute.ScheduleImport,
+    "课表导出" to AppRoute.ScheduleExport,
+    "课表备份" to AppRoute.ScheduleBackup,
+    "本地备份" to AppRoute.LocalBackup,
+    "AI 文本导入" to AppRoute.AiImport,
+    "桌面小部件" to AppRoute.WidgetIntro,
+    "更新日志" to AppRoute.Changelog,
+    "开源协议" to AppRoute.License,
+    "隐私政策" to AppRoute.PrivacyPolicy,
+    "交流与反馈" to AppRoute.Communication,
+    "捐赠支持" to AppRoute.AppreciateAuthor,
+)
+
+/**
  * iOS 的导航根 —— 对应 MainActivity 的 `Box { MainLayerTransition + AppNavHost }`。
  *
  * iOS 没有系统返回键，`rememberNavigationBack` 的 skiko 侧 handler 是空实现；
@@ -116,9 +156,9 @@ private fun NexioIosRoot() {
         initialValue = if (router.hasOverlay) 1f else 0f,
     )
     Box(Modifier.fillMaxSize()) {
-        // 主界面常驻底座（当前是注入自检页，见 NexioIosSmokeHome）
+        // 主界面常驻底座（当前是路由导航台，见 NexioIosSmokeHome）
         MainLayerTransition(mainTransition) {
-            NexioIosSmokeHome(onOpenAbout = { router.navigate(AppRoute.About) })
+            NexioIosSmokeHome(onNavigate = { router.navigate(it) })
         }
         // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
         AppNavHost(router, mainTransition = mainTransition) { route ->
@@ -145,7 +185,28 @@ private fun NexioIosRoot() {
                 )
                 // 节假日（第三十五批）：网络拉取已是跨平台 HttpService（iOS = NSURLSession）
                 AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
-                // 其余路由等对应页面/能力迁齐后在此接线
+                // 小部件引导（第三十六批）：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
+                AppRoute.WidgetIntro -> WidgetIntroRoute(router)
+                // 课程提醒（第三十六批）：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
+                // 测试通知不注入 → 底部按钮不渲染（宁可不给，也不给点了没反应的）
+                AppRoute.CourseReminder -> CourseReminderRoute(router)
+                // WebDAV（第三十六批）：备份/恢复本体已在 :core，只差提醒重排副作用
+                AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
+                // 课表导入/导出/备份（第三十七批）：iOS 无系统文件选择器，
+                // 走默认 NoopScheduleFileController；口令通道四条都用默认「不支持」
+                AppRoute.ScheduleImport -> BackupAndMigrationRoute(
+                    router = router,
+                    mode = ScheduleDataManageMode.Import,
+                )
+                AppRoute.ScheduleExport -> BackupAndMigrationRoute(
+                    router = router,
+                    mode = ScheduleDataManageMode.Export,
+                )
+                AppRoute.ScheduleBackup -> BackupAndMigrationRoute(
+                    router = router,
+                    mode = ScheduleDataManageMode.Backup,
+                )
+                // 剩下的 CourseTimeSettings / CourseManage 等路由壳迁完再接线
                 else -> {}
             }
         }
@@ -153,14 +214,20 @@ private fun NexioIosRoot() {
 }
 
 /**
- * 注入自检：存储和文件各做一次 round-trip。
+ * iOS 临时首页：**注入自检** + **路由导航台**。
  *
- * 为什么首屏要显示这个 —— `AppStorage` / `AppFiles` 的 iOS 实现是**新写的**，
- * 编译通过不代表落盘位置与还原类型正确（`UserDefaultsStore` 的 Int/Long 不分
- * 是已知雷区）。与其等真机调试时才发现，不如让首屏自己报出来。
+ * ## 上半部分为什么还在
+ *
+ * `AppStorage` / `AppFiles` 的 iOS 实现是**新写的**，编译通过不代表落盘位置与还原
+ * 类型正确（`UserDefaultsStore` 的 Int/Long 不分是已知雷区）。与其等真机调试时才发现，
+ * 不如让首屏自己报出来 —— 这两行是**唯一的运行时证据**，别删。
+ *
+ * ## 下半部分
+ *
+ * 每个已迁路由一个按钮，模拟器里能逐页点进去人工验证。
  */
 @Composable
-private fun NexioIosSmokeHome(onOpenAbout: () -> Unit) {
+private fun NexioIosSmokeHome(onNavigate: (AppRoute) -> Unit) {
     var storeProbe by remember { mutableStateOf("检查中…") }
     var fileProbe by remember { mutableStateOf("检查中…") }
 
@@ -179,16 +246,25 @@ private fun NexioIosSmokeHome(onOpenAbout: () -> Unit) {
         }.getOrElse { "失败：${it.message}" }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(48.dp))
         Text("Nexio课程表 · iOS", style = MaterialTheme.typography.headlineMedium)
         Text("版本 ${AppInfo.version}", style = MaterialTheme.typography.bodyMedium)
-        Text("存储(AppStorage/UserDefaults)：$storeProbe")
-        Text("文件(AppFiles/NSFileManager)：$fileProbe")
+        Spacer(Modifier.height(8.dp))
+        Text("存储(AppStorage/UserDefaults)：$storeProbe", style = MaterialTheme.typography.bodySmall)
+        Text("文件(AppFiles/NSFileManager)：$fileProbe", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onOpenAbout) { Text("打开关于页") }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 32.dp),
+        ) {
+            items(IOS_HOME_ROUTES) { (label, route) ->
+                Button(
+                    onClick = { onNavigate(route) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(label) }
+            }
+        }
     }
 }
