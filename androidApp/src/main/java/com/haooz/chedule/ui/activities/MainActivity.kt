@@ -817,6 +817,7 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
                 onScrollYChanged = args.onScrollYChanged,
                 settingsScrollBehavior = args.settingsScrollBehavior,
                 liquidGlassBackdrop = args.liquidGlassBackdrop,
+                showUpdateSettings = args.showUpdateSettings,
             )
         },
         todayAssistantCard = { d ->

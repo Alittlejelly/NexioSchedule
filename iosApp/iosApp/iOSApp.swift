@@ -14,6 +14,12 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // 外部分享进来的文件：在「文件」App 或其它 app 里选「用 Nexio课程表 打开」
+                // 会走这里。Kotlin 侧 `IosSharedFileReceiver` 用 Compose 的 mutableStateOf
+                // 存，所以这里更新后主界面会自动重组并弹出导入确认框。
+                .onOpenURL { url in
+                    IosSharedFileReceiver.shared.onOpenURL(url: url.absoluteString)
+                }
         }
     }
 }

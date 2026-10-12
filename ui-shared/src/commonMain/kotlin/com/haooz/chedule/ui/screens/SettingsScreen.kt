@@ -162,6 +162,13 @@ fun SettingsScreen(
     onHolidayDataChanged: () -> Unit = {},
     /** 节假日 API 拉取（Android 宿主实现）；null 时返回 emptyList */
     fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
+    /**
+     * 是否显示「更新设置」入口。
+     *
+     * iOS 走 App Store 更新、没有应用内检查更新/APK 安装能力 —— 宿主传 false 把入口整个去掉，
+     * 而不是留一个点进去什么都做不了的页面（同「null = 该端无此能力就不渲染」的既定原则）。
+     */
+    showUpdateSettings: Boolean = true,
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
     val currentWeek by viewModel.currentWeek.collectAsState()
@@ -553,13 +560,16 @@ fun SettingsScreen(
                                         appRouter.navigate(AppRoute.PreferenceSettings)
                                     }
                                 )
-                                ArrowPreference(
-                                    title = "更新设置",
-                                    onClick = {
-                                        FeatureLog.update("open")
-                                        appRouter.navigate(AppRoute.UpdateSettings)
-                                    }
-                                )
+                                // iOS 走 App Store 更新 → 宿主传 showUpdateSettings=false，入口整个不渲染
+                                if (showUpdateSettings) {
+                                    ArrowPreference(
+                                        title = "更新设置",
+                                        onClick = {
+                                            FeatureLog.update("open")
+                                            appRouter.navigate(AppRoute.UpdateSettings)
+                                        }
+                                    )
+                                }
                                 ArrowPreference(
                                     title = "关于应用",
                                     onClick = {

@@ -71,6 +71,8 @@ fun AndroidSettingsScreen(
     onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /** 是否显示「更新设置」入口（Android 恒 true；iOS 走 App Store 传 false） */
+    showUpdateSettings: Boolean = true,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -85,6 +87,7 @@ fun AndroidSettingsScreen(
         isShiftMode = isShiftMode,
         onExitShiftMode = onExitShiftMode,
         onEnterShiftMode = onEnterShiftMode,
+        showUpdateSettings = showUpdateSettings,
         navBarStyle = navBarStyle,
         onScrollYChanged = onScrollYChanged,
         settingsScrollBehavior = settingsScrollBehavior,

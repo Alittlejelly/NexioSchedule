@@ -12,7 +12,9 @@ import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.IosScheduleFileController
 import com.haooz.chedule.data.IosWallpaperBackend
+import com.haooz.chedule.data.IosWallpaperPicker
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.UserDefaultsStore
@@ -21,6 +23,10 @@ import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.activities.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
+import com.haooz.chedule.ui.utils.IosSharedFileReceiver
+import com.haooz.chedule.ui.utils.rememberIosShareAction
+import com.haooz.chedule.ui.utils.IosSystemBars
+import com.haooz.chedule.ui.utils.IosToast
 import com.haooz.chedule.ui.navigation.AboutRoute
 import com.haooz.chedule.ui.navigation.AiImportRoute
 import com.haooz.chedule.ui.navigation.AppreciateAuthorRoute
@@ -90,7 +96,23 @@ fun bootstrapNexioIos() {
     // 壁纸后端：iOS 用 UIImage（JPEG 编码）+ 共享的 AppFiles 落盘路径。
     // 与 Android 同一条「接口 + 启动注入」链路，只是实现在 iosMain 里。
     WallpaperStore.backend = IosWallpaperBackend()
+
+    // 原生提示条：把 `showToast` 接到 UIKit HUD。导入/导出/分享/选壁纸全靠它给反馈，
+    // 不注入的话 native actual 只打日志 → 用户看到的是「点了没反应」。
+    IosToast.install()
 }
+
+/**
+ * 文件选择/另存实现，全 app 共用一个。
+ *
+ * ⚠ 必须**全局单例**：它的 delegate 靠自身字段强引用（`UIDocumentPickerViewController.delegate`
+ * 是弱引用），每次新建实例也能用，但共用一个更好排查；更要紧的是别让实例在 picker
+ * 弹出后被回收 —— 所以挂在顶层 val 上，生命周期跟 app 一样长。
+ */
+private val fileController = IosScheduleFileController()
+
+/** 相册选壁纸实现，全 app 共用一个（delegate 强引用同上） */
+private val wallpaperPicker = IosWallpaperPicker()
 
 /**
  * iOS 的 Compose 根容器 —— Swift 侧用 `UIViewControllerRepresentable` 包它。
@@ -146,10 +168,26 @@ private fun NexioIosRoot() {
     }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
-            // 主界面常驻底座：**真课表界面**（第四十三批）。iOS 不注入任何平台能力
-            // —— 分享/选壁纸/更新/今日助手卡走默认「无此能力」，入口不渲染或降级。
+            // 主界面常驻底座：**真课表界面**（第四十三批）。尚未接的宿主能力
+            // （分享/选壁纸/今日助手卡）走默认「无此能力」，入口不渲染而不是留个死按钮。
             MainLayerTransition(mainTransition) {
-                CourseScheduleApp(privacyConsented = true)
+                CourseScheduleApp(
+                    privacyConsented = true,
+                    onSystemBarsChanged = { statusDark, _ ->
+                        IosSystemBars.update(statusDark)
+                    },
+                    // 相册选壁纸：PHPicker → UIImage（系统已按 EXIF 校正方向）→ 降到屏幕像素
+                    // → skia 解码成 ImageBitmap。必须在 iOS 侧降采样：共享层拿到位图直接原样用。
+                    onPickWallpaperImage = { onPicked -> wallpaperPicker.pick(onPicked) },
+                    // 分享课表：上传生成口令 → 复制剪贴板 → 模板图绘口令 → 系统分享面板
+                    onShareSchedule = rememberIosShareAction(),
+                    // 外部分享进来的文件（Swift 侧 .onOpenURL → IosSharedFileReceiver）
+                    sharedFileIntent = IosSharedFileReceiver.pending,
+                    onShareIntentConsumed = { IosSharedFileReceiver.clear() },
+                    onReadSharedFileText = { uri -> IosSharedFileReceiver.readText(uri) },
+                    // iOS 走 App Store 更新 → 设置页的「更新设置」入口整个不渲染
+                    showUpdateSettings = false,
+                )
             }
             // 子页叠加层：整栈常驻 + 转场 —— 与 Android 同一个 AppNavHost
             AppNavHost(router, mainTransition = mainTransition) { route ->
@@ -183,19 +221,22 @@ private fun NexioIosRoot() {
                     AppRoute.CourseReminder -> CourseReminderRoute(router)
                     // WebDAV（第三十六批）：备份/恢复本体已在 :core，只差提醒重排副作用
                     AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
-                    // 课表导入/导出/备份（第三十七批）：iOS 无系统文件选择器，
-                    // 走默认 NoopScheduleFileController；口令通道四条都用默认「不支持」
+                    // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）。
+                    // 口令导入/第三方导入（要服务端接口 + 平台分享能力）仍走默认「不支持」。
                     AppRoute.ScheduleImport -> BackupAndMigrationRoute(
                         router = router,
                         mode = ScheduleDataManageMode.Import,
+                        scheduleFileController = fileController,
                     )
                     AppRoute.ScheduleExport -> BackupAndMigrationRoute(
                         router = router,
                         mode = ScheduleDataManageMode.Export,
+                        scheduleFileController = fileController,
                     )
                     AppRoute.ScheduleBackup -> BackupAndMigrationRoute(
                         router = router,
                         mode = ScheduleDataManageMode.Backup,
+                        scheduleFileController = fileController,
                     )
                     // 课表节数与时间 / 课程管理（第三十八批）：iOS 没有自由小窗，传 false
                     AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)

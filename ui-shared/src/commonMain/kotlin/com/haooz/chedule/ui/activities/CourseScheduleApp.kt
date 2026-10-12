@@ -323,6 +323,8 @@ data class SettingsPaneArgs(
     val onScrollYChanged: (Int) -> Unit,
     val settingsScrollBehavior: SharedScrollBehavior?,
     val liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    /** 是否显示「更新设置」入口（iOS 走 App Store → false） */
+    val showUpdateSettings: Boolean = true,
 )
 
 /**
@@ -350,6 +352,7 @@ internal fun RenderSettingsPane(
             onScrollYChanged = args.onScrollYChanged,
             settingsScrollBehavior = args.settingsScrollBehavior,
             liquidGlassBackdrop = args.liquidGlassBackdrop,
+            showUpdateSettings = args.showUpdateSettings,
         )
     }
 }
@@ -944,6 +947,12 @@ fun CourseScheduleApp(
     todayAssistantCard: (@Composable (TodayAssistantCardData) -> Unit)? = null,
     /** 更新能力（检查/下载/安装）；null = NoopUpdateController（不弹更新） */
     updateController: UpdateController? = null,
+    /**
+     * 是否显示设置页的「更新设置」入口。
+     *
+     * iOS 走 App Store 更新 → 传 false，入口整个不渲染（不是留个点进去没反应的页）。
+     */
+    showUpdateSettings: Boolean = true,
 ) {
 
 
@@ -3644,6 +3653,7 @@ fun CourseScheduleApp(
                                                 onScrollYChanged = { _ -> },
                                                 settingsScrollBehavior = settingsScrollBehavior,
                                                 liquidGlassBackdrop = liquidGlassBackdrop,
+                                                showUpdateSettings = showUpdateSettings,
                                             )
                                         )
                                             }
@@ -3715,6 +3725,7 @@ fun CourseScheduleApp(
                                             onScrollYChanged = { _ -> },
                                             settingsScrollBehavior = settingsScrollBehavior,
                                             liquidGlassBackdrop = liquidGlassBackdrop,
+                                            showUpdateSettings = showUpdateSettings,
                                         )
                                     )
                                 }

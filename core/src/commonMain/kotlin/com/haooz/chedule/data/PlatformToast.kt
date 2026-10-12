@@ -24,3 +24,14 @@ package com.haooz.chedule.data
  *    不走这里，别拿它当通用语义。）
  */
 expect fun showToast(message: String, longDuration: Boolean = false)
+
+/**
+ * 非 Android 平台的提示条实现钩子。
+ *
+ * Android 的 `actual` 走真 `Toast`，不看这里；iOS 在启动注入时把它设成原生 HUD
+ * （`IosToast`），桌面/linuxX64 留 null 就落到日志 —— 这样 `showToast` 的
+ * 调用方一行都不用改，各端自己决定要有视觉反馈还是只记日志。
+ *
+ * ⚠ 和 [showToast] 一样是**全局可变状态**，只在启动注入阶段写一次，之后只读。
+ */
+var toastHandler: ((message: String, longDuration: Boolean) -> Unit)? = null

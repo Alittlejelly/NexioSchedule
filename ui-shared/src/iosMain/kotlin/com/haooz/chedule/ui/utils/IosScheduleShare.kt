@@ -1,0 +1,237 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
+package com.haooz.chedule.ui.utils
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.HttpService
+import com.haooz.chedule.data.HttpTimeouts
+import com.haooz.chedule.data.createHttpService
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.jsonObjectOf
+import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.optString
+import com.haooz.chedule.data.parseJsonElement
+import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.toJsonElement
+import com.haooz.chedule.data.toNSData
+import com.haooz.chedule.uishared.resources.Res
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Font
+import org.jetbrains.skia.FontMgr
+import org.jetbrains.skia.FontStyle
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.Paint
+import platform.Foundation.NSData
+import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSURL
+import platform.Foundation.writeToFile
+import platform.UIKit.UIActivityViewController
+import platform.UIKit.UIImage
+import platform.UIKit.UIPasteboard
+import platform.UIKit.UIPopoverPresentationController
+import platform.UIKit.popoverPresentationController
+
+/**
+ * iOS 的「分享课表」全流程（对应 Android `ScheduleExport.performScheduleShare`）。
+ *
+ * ## 流程（与 Android 逐步对齐）
+ *
+ * 1. `buildShareScheduleMap`（**共享层**，`ShareScheduleCodec.kt`）读课表 → Map
+ * 2. 序列化成 JSON（共享 `toJsonElement`，等价 Android 的 Gson）
+ * 3. POST 到口令服务（共享 `HttpService`，iOS 实现是 NSURLSession）
+ * 4. 口令复制到剪贴板（`UIPasteboard`）
+ * 5. 在模板图上绘出口令 → PNG → `UIActivityViewController` 分享
+ *
+ * ## 为什么不在 `:ui-shared` commonMain 里做
+ *
+ * 上传 + JSON 那半确实是跨平台的，但那需要一个共享的 `ShareCodeApi`；Android 现有的
+ * 那份（`ScheduleExport.kt` 里的 `ShareCodeApi`）还在用 OkHttp + `JSONObject`。
+ * 为了让**Android 零回归**，这里只在 iOS 侧重写一份、复用共享的网络与 JSON 层，
+ * 不去动 Android 那份。将来若要把 Android 也切过来，把本文件的上传部分上提即可。
+ *
+ * ## 出图必须用 skia
+ *
+ * Android 是 `Canvas` + `TextPaint`；iOS 没有 `android.graphics`，用 skia 在同一张
+ * 模板图、同一组坐标上绘字（模板尺寸 1417×1417，口令框 (121,600)-(1296,775)，
+ * 与 Android `ShareImageGenerator` 的常量逐字一致，保证两端出图观感一致）。
+ */
+object IosScheduleShare {
+
+    private const val BASE_URL = "http://182.92.193.223:3000/api/share"
+
+    // 与 Android ShareCodeApi 的连接池配置对齐
+    private val http: HttpService by lazy {
+        createHttpService(HttpTimeouts(connectSeconds = 12, readSeconds = 20, callSeconds = 30))
+    }
+
+    // ── 模板常量：与 Android ShareImageGenerator 逐字一致 ──
+    private const val TEMPLATE_ASSET = "drawable/share_card_template.png"
+    private const val CODE_BOX_LEFT = 121f
+    private const val CODE_BOX_TOP = 600f
+    private const val CODE_BOX_RIGHT = 1296f
+    private const val CODE_BOX_BOTTOM = 775f
+
+    /**
+     * 全流程：上传课表生成口令并唤起系统分享。
+     *
+     * @param scope 调用方（组合层）的协程作用域
+     * @param onSharingChanged 分享进行中标志（页面据此禁用按钮）
+     */
+    fun perform(
+        scheduleName: String,
+        scope: CoroutineScope,
+        onSharingChanged: (Boolean) -> Unit,
+    ) {
+        val scheduleMap = buildShareScheduleMap(CourseRepository.getInstance(), scheduleName)
+        if (scheduleMap == null) {
+            showToast("「$scheduleName」课表为空，无法分享")
+            return
+        }
+        onSharingChanged(true)
+        scope.launch {
+            try {
+                showToast("正在生成分享口令…")
+                val json = toJsonElement(scheduleMap).toString()
+                createShare(scheduleName, json).fold(
+                    onSuccess = { created ->
+                        UIPasteboard.generalPasteboard.string = created
+                        val ok = shareCard(created, scheduleName)
+                        if (ok) {
+                            showToast("口令已复制：「$created」30 分钟内有效", longDuration = true)
+                        } else {
+                            showToast("口令已复制「$created」，但生成图片失败", longDuration = true)
+                        }
+                    },
+                    onFailure = { e ->
+                        showToast("分享失败：${e.message ?: "网络错误"}")
+                    },
+                )
+            } finally {
+                onSharingChanged(false)
+            }
+        }
+    }
+
+    /** 上传课表创建分享口令；失败返回带原文案原因的 failure（与 Android 同一套文案） */
+    private suspend fun createShare(scheduleName: String, scheduleJson: String): Result<String> =
+        withContext(ioDispatcher) {
+            try {
+                val payload = jsonObjectOf(
+                    "schedule_name" to scheduleName,
+                    "schedule_data" to parseJsonElement(scheduleJson),
+                ).toString()
+                val resp = http.post(BASE_URL, payload)
+                val text = resp.text
+                if (!resp.isSuccessful) {
+                    val err = runCatching { parseJsonObject(text).optString("error") }.getOrDefault("")
+                    return@withContext Result.failure(
+                        IllegalStateException(err.ifBlank { "服务器错误 HTTP ${resp.code}" })
+                    )
+                }
+                val code = runCatching { parseJsonObject(text).optString("code") }.getOrDefault("")
+                if (code.isBlank()) {
+                    return@withContext Result.failure(IllegalStateException("服务器未返回口令"))
+                }
+                Result.success(code)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /** 在模板上绘出口令并唤起系统分享面板；返回是否成功拉起 */
+    private suspend fun shareCard(code: String, scheduleName: String): Boolean {
+        val png = try {
+            renderCardPng(code)
+        } catch (e: Exception) {
+            NexioLog.e("Share", "出图失败：${e.message}", e)
+            null
+        } ?: return false
+        return presentShareSheet(png, code, scheduleName)
+    }
+
+    /** 模板 + 口令 → PNG 字节（skia 绘制） */
+    private suspend fun renderCardPng(code: String): ByteArray? {
+        val templateBytes = Res.readBytes(TEMPLATE_ASSET)
+        val template = Image.makeFromEncoded(templateBytes)
+        val w = template.width
+        val h = template.height
+        if (w <= 0 || h <= 0) return null
+
+        val bitmap = Bitmap().apply {
+            allocN32Pixels(w, h)
+        }
+        val canvas = Canvas(bitmap)
+        canvas.drawImage(template, 0f, 0f)
+
+        // 与 Android 同一套尺寸推算：先按框高给上限，再按字数收缩，下限 36
+        val boxWidth = CODE_BOX_RIGHT - CODE_BOX_LEFT
+        val boxHeight = CODE_BOX_BOTTOM - CODE_BOX_TOP
+        val centerX = (CODE_BOX_LEFT + CODE_BOX_RIGHT) / 2f
+        val centerY = (CODE_BOX_TOP + CODE_BOX_BOTTOM) / 2f
+        val heightCap = boxHeight * 0.52f
+        val widthCap = if (code.isNotEmpty()) boxWidth / (code.length * 0.95f) else heightCap
+        val textSize = minOf(heightCap, widthCap).coerceAtLeast(36f)
+
+        // skiko 没有 makeFromName/makeDefault（实测 Unresolved），走 FontMgr 匹配：
+        // 传 null 家族名 = 系统默认字体，只指定 bold 字重
+        val typeface = FontMgr.default.matchFamilyStyle(null, FontStyle.BOLD)
+        val font = Font(typeface, textSize)
+        val paint = Paint().apply { color = 0xFF1C1C1E.toInt() }
+
+        // 垂直居中：skia 用 metrics 的 ascent/descent 算中心，对应 Android 的 exactCenterY
+        val metrics = font.metrics
+        val textCenterOffset = (metrics.ascent + metrics.descent) / 2f
+        val baselineY = centerY - textCenterOffset
+        val textWidth = font.measureTextWidth(code)
+        canvas.drawString(code, centerX - textWidth / 2f, baselineY, font, paint)
+
+        return Image.makeFromBitmap(bitmap).encodeToData()?.bytes
+    }
+
+    /** PNG 字节 → UIImage → 系统分享面板；文本与 Android 的分享文案逐字一致 */
+    private fun presentShareSheet(png: ByteArray, code: String, scheduleName: String): Boolean {
+        val host = IosUiHost.topViewController() ?: return false
+        val tmpPath = NSTemporaryDirectory() + "share_$code.png"
+        val nsData = png.toNSData()
+        if (!nsData.writeToFile(tmpPath, atomically = true)) return false
+        val image = UIImage.imageWithContentsOfFile(tmpPath) ?: return false
+
+        val text = buildString {
+            append("我分享了课表「").append(scheduleName).append("」\n")
+            append("口令：").append(code).append("\n")
+            append("打开 Nexio课程表，用口令导入即可（30 分钟内有效）")
+        }
+        val controller = UIActivityViewController(
+            activityItems = listOf(image, text),
+            applicationActivities = null,
+        )
+        // iPad 上 UIActivityViewController 是 popover，不给锚点会直接崩
+        controller.popoverPresentationController?.let { popover ->
+            popover.setSourceView(host.view)
+            val bounds = host.view.bounds
+            popover.setSourceRect(bounds)
+        }
+        host.presentViewController(controller, animated = true, completion = null)
+        return true
+    }
+}
+
+/**
+ * 组合层拿分享入口的便捷封装：内部记住作用域，页面侧只写
+ * `onShareSchedule = { name, changed -> rememberIosShareAction()(name, changed) }` 这种形态。
+ */
+@Composable
+fun rememberIosShareAction(): (String, (Boolean) -> Unit) -> Unit {
+    val scope = rememberCoroutineScope()
+    return remember(scope) {
+        { name, changed -> IosScheduleShare.perform(name, scope, changed) }
+    }
+}
