@@ -357,7 +357,9 @@ object CourseReminderHelper {
         val end = parseTimeToTodayMillis(endTime)
         if (end <= 0L) return end
         val start = parseTimeToTodayMillis(startTime)
-        return if (start in 1..end) end + 24L * 60L * 60L * 1000L else end
+        // 跨午夜 = 结束不晚于开始（23:00-00:30 的 end 时间戳落在当天 00:30，早于 start），
+        // 此时顺延一天；普通同日课（end > start）原样返回。
+        return if (start > 0L && end <= start) end + 24L * 60L * 60L * 1000L else end
     }
 
     /**

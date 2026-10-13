@@ -152,6 +152,24 @@ object CourseTimeSpan {
     }
 }
 
+/**
+ * 课程时段（允许跨午夜）此刻是否进行中。
+ *
+ * 同日课（end > start）为 `now ∈ [start, end)`；
+ * 跨午夜课（end ≤ start）在「当天」只覆盖 start→午夜段——凌晨 `[0, end)` 那段
+ * 属于**前一天**的那一节，而当天列表在零点后已整体换成新的一天，不能再往前认领，
+ * 否则 23:00-00:30 的课会在凌晨 00:10 被当成"进行中"。
+ */
+fun coursePeriodOngoing(start: LocalTime, end: LocalTime, now: LocalTime): Boolean =
+    if (end > start) now >= start && now < end else now >= start
+
+/**
+ * 课程时段此刻是否已结束。跨午夜课的结束点在次日，当天内永不结束——
+ * 不能拿 `now > end(00:30)` 当"已上完"，否则白天全程误判。
+ */
+fun coursePeriodCompleted(start: LocalTime, end: LocalTime, now: LocalTime): Boolean =
+    end > start && now > end
+
 private fun pad2(value: Int): String = value.toString().padStart(2, '0')
 
 /** `MM/dd`。 */

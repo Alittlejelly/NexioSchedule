@@ -71,6 +71,8 @@ import com.haooz.chedule.data.CourseScheduleDateBounds
 import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCountdown
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.coursePeriodCompleted
+import com.haooz.chedule.data.coursePeriodOngoing
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -1049,7 +1051,8 @@ private fun parseQuoteTime(timeStr: String): LocalTime? {
 }
 
 private fun ceilQuoteMinutes(from: LocalTime, to: LocalTime): Int {
-    val remain = millisBetween(from, to)
+    // 跨午夜课（23:00-00:30）在课中时 to(00:30) < from(23:50)，按次日结束回卷
+    val remain = millisBetween(from, to, allowRollover = true)
     if (remain <= 0L) return 0
     return ((remain + 59_999L) / 60_000L).toInt()
 }
@@ -1067,8 +1070,9 @@ private fun buildQuoteRanges(
         val start = parseQuoteTime(course.getEffectiveStartTime(sectionTimes) ?: return@mapNotNull null)
         val end = parseQuoteTime(course.getEffectiveEndTime(sectionTimes) ?: return@mapNotNull null)
         if (start == null || end == null) return@mapNotNull null
-        // 跨午夜课（结束不晚于开始）在当天的引言时段里匹配不到，丢掉
-        if (end <= start) return@mapNotNull null
+        // 起止相同仍是脏数据；跨午夜课（end < start）保留，由 coursePeriodOngoing
+        // 按「start→午夜」段判定，晚课时段的引言不再永远匹配不到
+        if (start == end) return@mapNotNull null
         QuoteTimeRange(start, end)
     }.sortedBy { it.start }
 }
@@ -1087,8 +1091,8 @@ private fun computeQuoteScene(
         return if (courses.isEmpty()) QuoteScene.NO_CLASS else QuoteScene.SCHEDULE_BROKEN
     }
 
-    val ongoing = ranges.find { now >= it.start && now < it.end }
-    // 深夜优先让给「没在上课」的状态；晚课拖到 23 点仍按上课中
+    val ongoing = ranges.find { coursePeriodOngoing(it.start, it.end, now) }
+    // 深夜优先让给「没在上课」的状态；晚课拖到 23 点仍按上课中（含跨午夜晚课）
     if (ongoing == null && now.hour in 23..4) return QuoteScene.DEEP_NIGHT
 
     if (ongoing != null) {
@@ -1103,7 +1107,8 @@ private fun computeQuoteScene(
     val next = ranges.find { now < it.start }
     if (next != null) {
         val remain = ceilQuoteMinutes(now, next.start)
-        val prev = ranges.lastOrNull { now >= it.end }
+        // 跨午夜课结束点在次日，当天内不算「已上过课」
+        val prev = ranges.lastOrNull { coursePeriodCompleted(it.start, it.end, now) }
         // 当天还没上过任何课 → 课前；否则是课间
         if (prev == null) return QuoteScene.BEFORE_FIRST
         return if (remain <= 15) QuoteScene.SHORT_BREAK else QuoteScene.LONG_BREAK

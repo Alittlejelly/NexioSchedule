@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.coursePeriodCompleted
+import com.haooz.chedule.data.coursePeriodOngoing
 import com.haooz.chedule.data.millisBetween
 import com.haooz.chedule.data.nowLocalTime
 import com.haooz.chedule.data.parseHourMinute
@@ -140,8 +142,9 @@ private fun rememberCourseStatus(
     LaunchedEffect(ranges) {
         while (true) {
             val now = nowLocalTime()
-            // 与 generateSmartTip 同一判定：开始含、结束不含，避免整点卡在「正在上课」
-            val current = ranges.find { now >= it.start && now < it.end }
+            // 与 generateSmartTip 同一判定：开始含、结束不含，避免整点卡在「正在上课」。
+            // 跨午夜课（23:00-00:30）由 coursePeriodOngoing 按「start→午夜」段判定
+            val current = ranges.find { coursePeriodOngoing(it.start, it.end, now) }
             val next = ranges.find { now < it.start }
             val message = when {
                 current != null -> formatRemainingUntil(now, current.end, isCountdownToStart = false)
@@ -291,9 +294,9 @@ private fun generateSmartTip(
         return pickTip(pool, seed = hour) + note
     }
 
-    val ongoing = ranges.find { now >= it.start && now < it.end }
+    val ongoing = ranges.find { coursePeriodOngoing(it.start, it.end, now) }
     val next = ranges.find { now < it.start }
-    val prev = ranges.lastOrNull { now > it.end }
+    val prev = ranges.lastOrNull { coursePeriodCompleted(it.start, it.end, now) }
 
     val eveningCount = courses.count {
         it.periodIndex(sectionTimes, morningSections, afternoonSections) == Course.PERIOD_EVENING
@@ -302,12 +305,15 @@ private fun generateSmartTip(
         it.periodIndex(sectionTimes, morningSections, afternoonSections) == Course.PERIOD_AFTERNOON
     }
     val totalCount = courses.size
-    val completedCount = ranges.count { now > it.end }
+    val completedCount = ranges.count { coursePeriodCompleted(it.start, it.end, now) }
 
     return when {
         // 正在上课：剩余 + 连堂，多套冷静说法
         ongoing != null -> {
-            val nextAfter = ranges.find { it.start > ongoing.end }
+            // 连堂判断只对同日课有意义；跨午夜课结束点在次日，当天没有「下一节」
+            val nextAfter = if (ongoing.end > ongoing.start) {
+                ranges.find { it.start > ongoing.end }
+            } else null
             val gap = nextAfter?.let { ceilMinutesUntil(ongoing.end, it.start) }
             val gapPart = when {
                 gap != null && gap <= 3 -> " · 连堂只歇 $gap 分钟，东西别收太彻底"
