@@ -120,6 +120,12 @@ fun CourseReminderScreen(
     var shizukuRunning by remember { mutableStateOf(false) }
     var shizukuAuthorized by remember { mutableStateOf(false) }
     var isIslandSupported by remember { mutableStateOf(false) }
+    //
+    // Live container gate: Android HyperOS super island OR iOS Live Activity.
+    // Kept separate from isIslandSupported (HyperOS-only probe) so iOS does not
+    // show Xiaomi-specific sub-options (Shizuku, left/right slot, AOD).
+    var showIslandCard by remember { mutableStateOf(false) }
+    val isHyperIsland = isIslandSupported
 
     // 实况通知右侧显示：0=课程名称，1=上课地点，2=倒计时
     var liveRightMode by remember { mutableIntStateOf(reminderPrefs.getInt("live_right_mode", 0)) }
@@ -207,10 +213,12 @@ fun CourseReminderScreen(
             shizukuRunning = reminderController.isShizukuRunning()
             shizukuAuthorized = reminderController.isShizukuAuthorized()
             isIslandSupported = reminderController.isIslandSupported()
+            showIslandCard = isIslandSupported || reminderController.supportsLiveActivity()
             dndPermissionGranted = reminderController.isDndPermissionGranted()
             notificationGranted = reminderController.hasNotificationPermission()
-            // 非 HyperOS 设备不支持超级岛，若存在残留开关则自动关闭，避免隐藏入口又残留脏数据
-            if (!isIslandSupported && islandNotification) {
+            // Clear leftover state on devices without any live-container capability.
+            // iOS retains the switch through supportsLiveActivity.
+            if (!isIslandSupported && !reminderController.supportsLiveActivity() && islandNotification) {
                 settingsViewModel.setIslandNotification(false)
             }
         }
@@ -546,8 +554,8 @@ fun CourseReminderScreen(
                         }
                     }
 
-                    // 超级岛设置（仅支持超级岛的设备且开启提醒才渲染，非 HyperOS 完全隐藏不占高度，避免空白区域）
-                    if (isIslandSupported && masterEnabled) {
+                    // Live container card: HyperOS super island or iOS Live Activity.
+                    if (showIslandCard && masterEnabled) {
                         item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -557,11 +565,18 @@ fun CourseReminderScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 SwitchPreference(
-                                    title = "小米超级岛",
-                                    summary = if (islandNotification) "已开启，课程提醒将以超级岛样式显示" else "关闭后使用实时动态通知",
+                                    title = if (isHyperIsland) "小米超级岛" else "灵动岛",
+                                    summary = when {
+                                        islandNotification && isHyperIsland ->
+                                            "已开启，课程提醒将以超级岛样式显示"
+                                        islandNotification ->
+                                            "已开启，点击上课提醒将启动实时活动"
+                                        isHyperIsland -> "关闭后使用实时动态通知"
+                                        else -> "关闭后点击提醒仅打开应用"
+                                    },
                                     checked = islandNotification,
                                     onCheckedChange = {
-                                        rlog("island_switch", "on=$it supported=$isIslandSupported")
+                                        rlog("island_switch", "on=$it hyper=$isHyperIsland")
                                         settingsViewModel.setIslandNotification(it)
                                     }
                                 )
@@ -576,6 +591,8 @@ fun CourseReminderScreen(
                                             .padding(horizontal = 16.dp)
                                             .padding(bottom = 16.dp)
                                     ) {
+                                        // Shizuku state: HyperOS-only, omitted on iOS.
+                                        if (isHyperIsland) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically
@@ -628,6 +645,7 @@ fun CourseReminderScreen(
                                             )
                                         }
                                     }
+                                        }
                                 }
                             }
                         }
@@ -772,8 +790,8 @@ fun CourseReminderScreen(
                             ),
                         )
 
-                        if (!islandNotification || !isIslandSupported) {
-                            // 原生实况：只保留右侧缩略内容；课中开关已在上方勿扰卡片
+                        if (!showIslandCard) {
+                            // No live container on either side: fallback to standard notification slot.
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
@@ -787,43 +805,44 @@ fun CourseReminderScreen(
                                 )
                             }
                         } else {
-                            // 开启超级岛：显示"超级岛左侧"、"超级岛右侧"和"息屏显示"
+                            // Slot customization for both HyperOS and iOS Live Activity.
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                             ) {
                                 OverlayDropdownMenu(
-                                    title = "超级岛左侧",
+                                    title = if (isHyperIsland) "超级岛左侧" else "灵动岛左侧",
                                     entry = DropdownEntry(items = islandLeftOptions),
                                     collapseOnSelection = true,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
                                 OverlayDropdownMenu(
-                                    title = "超级岛右侧",
+                                    title = if (isHyperIsland) "超级岛右侧" else "灵动岛右侧",
                                     entry = DropdownEntry(items = islandRightOptions),
                                     collapseOnSelection = true,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
-                                // 课中专用：未开课中提醒时整页不出现这一项
-                                if (inClassEnabled) {
+                                if (inClassEnabled || !isHyperIsland) {
                                     OverlayDropdownMenu(
-                                        title = "课中岛右侧",
+                                        title = if (isHyperIsland) "课中岛右侧" else "课中灵动岛右侧",
                                         entry = DropdownEntry(items = islandInClassRightOptions),
                                         collapseOnSelection = true,
                                         liquidGlassBackdrop = liquidGlassBackdrop,
                                         dropdownColors = liquidGlassDropdownColors,
                                     )
                                 }
-                                OverlayDropdownMenu(
-                                    title = "息屏显示",
-                                    summary = "全天候显示时无效",
-                                    entry = DropdownEntry(items = islandAodOptions),
-                                    collapseOnSelection = true,
-                                    liquidGlassBackdrop = liquidGlassBackdrop,
-                                    dropdownColors = liquidGlassDropdownColors,
-                                )
+                                if (isHyperIsland) {
+                                    OverlayDropdownMenu(
+                                        title = "息屏显示",
+                                        summary = "全天候显示时无效",
+                                        entry = DropdownEntry(items = islandAodOptions),
+                                        collapseOnSelection = true,
+                                        liquidGlassBackdrop = liquidGlassBackdrop,
+                                        dropdownColors = liquidGlassDropdownColors,
+                                    )
+                                }
                             }
                         }
                     }
