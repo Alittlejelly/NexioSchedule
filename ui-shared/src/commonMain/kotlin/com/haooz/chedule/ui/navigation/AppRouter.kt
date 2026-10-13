@@ -38,6 +38,12 @@ class AppRouter {
 
     private val stack = mutableStateListOf<AppRoute>()
 
+    /** An optional platform owner can consume selected routes without changing this stack. */
+    internal var nativeRouteHandler: ((AppRoute) -> Boolean)? = null
+
+    /** A platform-owned page can consume programmatic completion/back without popping this stack. */
+    internal var nativeBackHandler: (() -> Boolean)? = null
+
     /** 是否有子页叠加在主界面之上。false 时返回键交给 Android 宿主自己处理。 */
     val hasOverlay: Boolean get() = stack.isNotEmpty()
 
@@ -68,6 +74,7 @@ class AppRouter {
 
     /** 入栈。同一个路由重复入栈是允许的。 */
     fun navigate(route: AppRoute) {
+        if (nativeRouteHandler?.invoke(route) == true) return
         stack.add(route)
         lastDirection = NavDirection.Push
     }
@@ -77,6 +84,7 @@ class AppRouter {
      *（MainActivity 的预测性返回 /「退出即隐藏后台」）。
      */
     fun popBack(): Boolean {
+        if (nativeBackHandler?.invoke() == true) return true
         if (stack.isEmpty()) return false
         lastPopped = stack.removeAt(stack.lastIndex)
         lastDirection = NavDirection.Pop

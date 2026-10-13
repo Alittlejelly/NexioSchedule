@@ -510,16 +510,16 @@ private fun inverseEasingTime(easing: Easing, progress: Float): Float {
 }
 
 /** 二级页转场参数 */
-private const val NAV_ENTER_DURATION = 600
-private const val NAV_EXIT_DURATION = 320
+internal const val NAV_ENTER_DURATION = 600
+internal const val NAV_EXIT_DURATION = 320
 // NAV_PARALLAX 在同包的 NavTransitionState.kt（本模块），无需 import。
 // 压暗只在本文件用，保持 internal。
 internal const val NAV_BG_DIM = 0.42f
 
 /** 入场：更晚进入减速，尾段拖得更长更慢 */
-private val NAV_ENTER_EASING = OobeQuartOutSoftStartEasing
+internal val NAV_ENTER_EASING = OobeQuartOutSoftStartEasing
 /** 退出：起步更缓，后段正常滑出 */
-private val NAV_EXIT_EASING = SecondaryPageExitEasing
+internal val NAV_EXIT_EASING = SecondaryPageExitEasing
 
 private const val MIN_GESTURE_SETTLE_MS = 100
 private const val MIN_GESTURE_RESTORE_MS = 200

@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Navigation chrome owned by a native host, scoped to one app instance. */
@@ -86,10 +87,23 @@ fun BoxScope.HostedOverlay(
 }
 
 @Composable
-fun HostOverlayContent(state: HostOverlayState) {
+fun HostOverlayContent(
+    state: HostOverlayState,
+    drawInactiveEntries: () -> Boolean = { true },
+) {
     Box(Modifier.fillMaxSize()) {
         for (entry in state.entries) {
-            androidx.compose.runtime.key(entry) { entry.content() }
+            androidx.compose.runtime.key(entry) {
+                // Keep the composition alive without drawing or hit-testing hidden root chrome.
+                Box(Modifier.fillMaxSize().layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) {
+                        if (entry.active || drawInactiveEntries()) placeable.place(0, 0)
+                    }
+                }) {
+                    entry.content()
+                }
+            }
         }
     }
 }
