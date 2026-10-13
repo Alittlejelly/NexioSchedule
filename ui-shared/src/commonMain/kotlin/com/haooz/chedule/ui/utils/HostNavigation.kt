@@ -41,6 +41,12 @@ class HostNavigationState {
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
+    /** Root-hosted library keeps the existing card morph instead of pushing a document. */
+    val scheduleLibraryChrome = NativeDocumentChrome()
+    /** iOS installs a root overlay destination beneath its native navigation bar. */
+    var scheduleLibraryOverlays: HostOverlayState? = null
+    var scheduleLibraryActive by mutableStateOf(false)
+    var scheduleLibraryTransitionActive by mutableStateOf(false)
     var onOpenSwitchSchedule: (() -> Unit)? = null
     var onJumpWeek: (() -> Unit)? = null
     var onCourseManage: (() -> Unit)? = null

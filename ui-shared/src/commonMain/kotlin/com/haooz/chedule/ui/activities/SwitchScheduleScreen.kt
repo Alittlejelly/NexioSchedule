@@ -19,6 +19,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +60,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,6 +81,12 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
+import com.haooz.chedule.ui.utils.NativeDocumentLeadingActionEffect
+import com.haooz.chedule.ui.utils.NativeDocumentSecondaryActionEffect
+import com.haooz.chedule.ui.utils.NativeDocumentOverlayEffect
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.ScheduleFolder
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
@@ -140,6 +148,7 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
 @Composable
 fun SwitchScheduleScreen(
     onBack: (androidx.compose.ui.graphics.ImageBitmap?) -> Unit = { _ -> },
+    onBackStart: () -> Unit = {},
     onScheduleChanged: () -> Unit = {},
     onCardClick: (androidx.compose.ui.geometry.Rect) -> Unit = { _ -> onBack(null) },
     onCardSnapshot: (screenBitmap: androidx.compose.ui.graphics.ImageBitmap, cardBitmap: androidx.compose.ui.graphics.ImageBitmap, bounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _, _ -> },
@@ -166,6 +175,9 @@ fun SwitchScheduleScreen(
     /** 内嵌编辑模式状态：外层标题栏可据此显示 Close 并退出编辑 */
     externalIsEditMode: androidx.compose.runtime.MutableState<Boolean>? = null,
 ) {
+    val nativeChrome = if (embedded) null else LocalNativeDocumentChrome.current
+    val nativeNavigation = nativeChrome != null
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
     val density = androidx.compose.ui.platform.LocalDensity.current
     val repository = remember { CourseRepository() }
     val scrollBehavior = rememberSharedScrollBehavior()
@@ -273,6 +285,7 @@ fun SwitchScheduleScreen(
     val dismissKeepCurrent = {
         com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("select_current", currentScheduleId)
         if (!embedded) {
+            onBackStart()
             scope.launch {
                 onBack(capturePageBitmap())
             }
@@ -292,6 +305,7 @@ fun SwitchScheduleScreen(
         onScheduleChanged()
         // 内嵌分栏：切换后留在当前页，不做卡片形变
         if (embedded) return
+        onBackStart()
         if (bounds != null) {
             scope.launch {
                 val fullBitmap = capturePageBitmap()
@@ -467,22 +481,53 @@ fun SwitchScheduleScreen(
         onBackCancelled = { }
     )
 
-    var displayTitle by remember { mutableStateOf("全部课表") }
-    LaunchedEffect(isEditMode) {
-        displayTitle = if (isEditMode) {
-            "编辑课表"
-        } else {
-            "全部课表"
-        }
+    val displayTitle = if (isEditMode) "编辑课表" else "全部课表"
+
+    val modalActive = showAddDialog || showEditDialog || showDeleteDialog ||
+        showAddFolderDialog || showEditFolderDialog || showMoveDialog ||
+        showShareConfirmDialog || isSharingSchedule
+    val tintArgb = MiuixTheme.colorScheme.primary.toArgb().toLong()
+    SideEffect {
+        nativeChrome?.title = displayTitle
+        nativeChrome?.tintArgb = tintArgb
+    }
+    if (nativeNavigation) {
+        NativeDocumentOverlayEffect(isEditMode || modalActive)
+        NativeDocumentLeadingActionEffect(NativeDocumentAction(
+            symbol = if (isEditMode) "xmark" else "chevron.backward",
+            label = if (isEditMode) "关闭编辑" else "返回",
+            enabled = !modalActive,
+            onClick = { if (isEditMode) exitEditMode() else dismissKeepCurrent() },
+        ))
+        NativeDocumentActionEffect(NativeDocumentAction(
+            symbol = if (isEditMode) "" else "plus",
+            label = "添加课表",
+            enabled = !isEditMode && !modalActive,
+            onClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                showAddDialog = true
+            },
+        ))
+        NativeDocumentSecondaryActionEffect(if (isEditMode) null else NativeDocumentAction(
+            symbol = "folder.badge.plus",
+            label = "新建文件夹",
+            enabled = !modalActive,
+            onClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                showAddFolderDialog = true
+            },
+        ))
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
+            modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
             topBar = {
                 // 内嵌分栏：标题/操作由外层顶栏承载，这里不画系统式顶栏
                 if (!embedded) {
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
+                    topInsetAdjustment = nativeBarInset,
                 ) {
                     CollapsibleTopAppBar(
                         title = displayTitle,
@@ -490,7 +535,7 @@ fun SwitchScheduleScreen(
                         modifier = Modifier,
                         scrollBehavior = scrollBehavior,
                         contentPadding = {},
-                        startAction = { backdropAlpha, shadowAlpha ->
+                        startAction = if (nativeNavigation) null else { backdropAlpha, shadowAlpha ->
                             LiquidTopBarButton(
                                 onClick = {
                                     if (isEditMode) {
@@ -512,7 +557,7 @@ fun SwitchScheduleScreen(
                                 shadowAlpha = shadowAlpha,
                             )
                         },
-                        endAction = if (!isEditMode) { backdropAlpha, shadowAlpha ->
+                        endAction = if (!isEditMode && !nativeNavigation) { backdropAlpha, shadowAlpha ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 LiquidTopBarButton(
                                     onClick = {

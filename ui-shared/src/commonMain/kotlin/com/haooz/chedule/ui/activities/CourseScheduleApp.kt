@@ -1465,16 +1465,16 @@ fun CourseScheduleApp(
     }
     val mainSnapshotRequester = remember { MainSnapshotRequester() }
     var mainSnapshotToken by remember { mutableIntStateOf(0) }
-    val captureMainContentBitmap: suspend () -> ImageBitmap? = {
+    suspend fun captureMainContentBitmap(includeNativeChrome: Boolean = true): ImageBitmap? {
         mainSnapshotToken++
         // 等两帧：draw 录制完成 + 帧已提交
         withFrameNanos { }
         withFrameNanos { }
         // 必须单独 catch OutOfMemoryError：Bitmap 像素在 native 堆，全屏 toImageBitmap
-        try {
+        return try {
             // 有原生 chrome 时（iOS）优先用原生整屏截图：GraphicsLayer.record()
             // 只录 Compose 绘制的内容，底部原生 TabBar 会整条缺失。
-            com.haooz.chedule.ui.utils.captureScreenWithNativeChrome()
+            (if (includeNativeChrome) com.haooz.chedule.ui.utils.captureScreenWithNativeChrome() else null)
                 ?: screenGraphicsLayer.toImageBitmap()
         } catch (_: OutOfMemoryError) {
             FeatureLog.t("主页", "main_snapshot_oom")
@@ -2343,6 +2343,8 @@ fun CourseScheduleApp(
 
     var showSwitchSchedule by remember { mutableStateOf(false) }
     var switchPendingReverse by remember { mutableStateOf(false) }
+    var switchExiting by remember { mutableStateOf(false) }
+    var switchMainSnapshotJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     // 截图期间先隐藏切换页
     var switchCapturingSnapshot by remember { mutableStateOf(false) }
     // 改过课表则退出前重截主内容
@@ -2365,9 +2367,39 @@ fun CourseScheduleApp(
 
     val isViewingCurrentWeek = currentViewingWeek == currentWeek
 
+    fun openScheduleLibrary() {
+        if (isShiftMode || (showSwitchSchedule && !switchExiting)) return
+        switchExiting = false
+        switchAnimForward = true
+        if (showSwitchSchedule) {
+            // Interrupt the exit at its current progress; keep the live page and snapshots.
+            switchAnimJob?.cancel()
+            switchPendingReverse = false
+            switchCapturingSnapshot = false
+            switchAnimRunning = true
+            switchAnimJob = coroutineScope.launch {
+                switchAnimProgress.animateTo(0f, tween(350, easing = OobeCubicOutEasing))
+                switchOverlayActive = false
+                switchCardSnapshot = null
+                switchCardBounds = null
+                switchAnimRunning = false
+            }
+        } else {
+            switchPendingReverse = true
+            switchCapturingSnapshot = true
+            showSwitchSchedule = true
+            switchMainSnapshotJob = coroutineScope.launch {
+                // Snapshot the existing Compose layer, not UIKit's live Skia hierarchy.
+                mainContentSnapshot = captureMainContentBitmap(includeNativeChrome = false)
+            }
+        }
+    }
+
     DisposableEffect(hostNavigation) {
         onDispose {
             hostNavigation?.let { host ->
+                host.scheduleLibraryActive = false
+                host.scheduleLibraryTransitionActive = false
                 host.onOpenSwitchSchedule = null
                 host.onJumpWeek = null
                 host.onCourseManage = null
@@ -2378,18 +2410,12 @@ fun CourseScheduleApp(
     }
     SideEffect {
         hostNavigation?.let { host ->
+            host.scheduleLibraryActive = nativeBottomBar && !isTablet && showSwitchSchedule && !switchExiting
+            host.scheduleLibraryTransitionActive = switchCapturingSnapshot || switchAnimRunning || switchPendingReverse ||
+                (showSwitchSchedule && switchExiting)
             host.showsNativeHeader = nativeBottomBar && !isTablet && !isWindowCutoutActive &&
-                !showCustomizePage && !showSwitchSchedule && !showDetail
-            host.onOpenSwitchSchedule = {
-                if (!isShiftMode && !showSwitchSchedule) {
-                    coroutineScope.launch {
-                        switchPendingReverse = true
-                        switchCapturingSnapshot = true
-                        showSwitchSchedule = true
-                        mainContentSnapshot = captureMainContentBitmap()
-                    }
-                }
-            }
+                !showCustomizePage && (!showSwitchSchedule || switchExiting) && !showDetail
+            host.onOpenSwitchSchedule = { openScheduleLibrary() }
             host.onJumpWeek = { viewModel.showJumpWeekDialog() }
             host.onCourseManage = {
                 router.navigate(AppRoute.CourseManage)
@@ -2423,10 +2449,8 @@ fun CourseScheduleApp(
         // 顶栏/底栏必须采主内容 liquidGlass，否则玻璃退化成纯色
         val chromeBackdrop: com.kyant.backdrop.Backdrop = liquidGlassBackdrop
         val isEntryAnimating = showSwitchSchedule && switchAnimForward && switchAnimRunning
-        val mainContentAlpha = when {
-            showSwitchSchedule && switchOverlayActive -> 0f
-            else -> 1f
-        }
+        // The source remains rendered underneath the morph, including across controller frames.
+        val mainContentAlpha = 1f
         val mainContentBlurDp =
             if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value.dp
             else managePageBlurRadius.value.dp
@@ -2720,33 +2744,7 @@ fun CourseScheduleApp(
                                                     pagerState.animateScrollToPage(targetPage)
                                                 }
                                             },
-                                            onOpenSwitchSchedule = {
-                                                if (!isShiftMode && !showSwitchSchedule) {
-                                                    FeatureLog.t(
-                                                        "切换课表", "open",
-                                                        "shift=$isShiftMode tab=$selectedTab"
-                                                    )
-                                                    coroutineScope.launch {
-                                                        // 切换页组合与快照截取并行，避免串行等待导致界面无响应
-                                                        switchPendingReverse = true
-                                                        switchCapturingSnapshot = true
-                                                        showSwitchSchedule = true
-                                                        mainContentSnapshot = try {
-                                                            captureMainContentBitmap()
-                                                        } catch (e: Exception) {
-                                                            FeatureLog.t(
-                                                                "切换课表", "open_snapshot_fail",
-                                                                e::class.simpleName ?: "Exception"
-                                                            )
-                                                            null
-                                                        }
-                                                        FeatureLog.t(
-                                                            "切换课表", "open_snapshot_ok",
-                                                            "bmp=${mainContentSnapshot != null}"
-                                                        )
-                                                    }
-                                                }
-                                            },
+                                            onOpenSwitchSchedule = { openScheduleLibrary() },
                                             onJumpWeek = { viewModel.showJumpWeekDialog() },
                                             onEnterCustomize = {
                                                 coroutineScope.launch {
@@ -4310,7 +4308,7 @@ fun CourseScheduleApp(
                 }
             }
             // The snapshot cover must also cover native chrome until it is released.
-            HostedOverlay(active = mainContentSnapshot != null) {
+            HostedOverlay(active = mainContentSnapshot != null && !showSwitchSchedule && !switchAnimRunning) {
             val snapshotTransform = if (hostNavigation != null) {
                 Modifier
                     .then(mainContentBlurModifier)
@@ -4343,7 +4341,7 @@ fun CourseScheduleApp(
                         } else drawContent()
                     }
             } else Modifier
-            if (mainContentSnapshot != null) {
+            if (mainContentSnapshot != null && !showSwitchSchedule && !switchAnimRunning) {
                 // remember 固定包装对象身份：asImageBitmap() 每帧新建会让 Image 的位图纹理
                 // 缓存每帧失效，全屏快照每帧重传纹理
                 val mainSnapshotImage = remember(mainContentSnapshot) {
@@ -4363,7 +4361,6 @@ fun CourseScheduleApp(
                 shortcutMenuVisible || shortcutMenuCourse != null || emptyCellMenuTarget != null ||
                 showCustomizePage || isCustomizeExiting || isWindowCutoutActive || customizeCoverActive ||
                 snapshotCoverBitmap != null || showDetail || detailSnapshot != null ||
-                showSwitchSchedule || switchAnimRunning || switchOverlayActive ||
                 showShiftLoading || shiftLoadingActive,
         ) {
         // 浮层主题跟壁纸/应用设置
@@ -4675,19 +4672,6 @@ fun CourseScheduleApp(
                         emptyCellMenuTarget = null
                     }
                 }
-            )
-        }
-        if (isEntryAnimating) {
-            // alpha 必须走 graphicsLayer：在组合期读 scrim.value 会让进场动画 350ms 里
-            // 每帧令整棵内容树（pager + 顶栏底栏 + 卡片）重组。视觉等价：黑底 + 层透明度。
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-                    .graphicsLayer {
-                        alpha = if (isDark) switchReturnBgScrim.value
-                        else switchReturnBgScrim.value * 0.6f
-                    }
             )
         }
         if (showCustomizePage && customizeSnapshot != null) {
@@ -5150,6 +5134,19 @@ fun CourseScheduleApp(
                 }
             )
         }
+        }
+        // Retain the card morph below native navigation chrome, not in the modal layer.
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.haooz.chedule.ui.utils.LocalHostOverlays provides
+                (hostNavigation?.scheduleLibraryOverlays ?: com.haooz.chedule.ui.utils.LocalHostOverlays.current),
+        ) {
+        HostedOverlay(active = showSwitchSchedule || switchAnimRunning || switchOverlayActive) {
+        // Entry shading belongs below native controls, never in the modal layer.
+        if (isEntryAnimating) {
+            Box(Modifier.fillMaxSize().background(Color.Black).graphicsLayer {
+                alpha = switchReturnBgScrim.value * if (isDark) 1f else 0.6f
+            })
+        }
         // 切换课表：p 在卡片↔全屏之间形变；进入 p:1→0，退出 p:0→1
         if (showSwitchSchedule) {
 
@@ -5157,12 +5154,23 @@ fun CourseScheduleApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        alpha = if (switchCapturingSnapshot) 0f else 1f
+                        // A zero-alpha layer may skip recording its target snapshot on iOS.
+                        alpha = if (switchCapturingSnapshot) 0.001f else 1f
                     }
             ) {
                 val switchShareRepository = remember { CourseRepository() }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.haooz.chedule.ui.utils.LocalNativeDocumentChrome provides
+                        if (nativeBottomBar && !isTablet) hostNavigation?.scheduleLibraryChrome else null,
+                ) {
                 SwitchScheduleScreen(
+                    onBackStart = {
+                        switchExiting = true
+                        switchPendingReverse = false
+                        switchCapturingSnapshot = false
+                    },
                     onBack = { switchPageBitmap ->
+                        if (!switchExiting) return@SwitchScheduleScreen
                         // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
                         val switchPageBitmapBmp = switchPageBitmap
                         if (switchAnimRunning && !switchAnimForward) {
@@ -5187,7 +5195,7 @@ fun CourseScheduleApp(
                                 // withFrameNanos 返回的是上一帧，需多等一帧；只等 1 帧仍有录到旧课表的隐患
                                 withFrameNanos { }
                                 mainContentSnapshot = try {
-                                    captureMainContentBitmap()
+                                    captureMainContentBitmap(includeNativeChrome = false)
                                 } catch (_: Exception) {
                                     mainContentSnapshot
                                 }
@@ -5280,7 +5288,7 @@ fun CourseScheduleApp(
                         // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
                         val fullBitmapBmp = fullBitmap
                         val cardBitmapBmp = cardBitmap
-                        if (switchAnimJob?.isActive == true) {
+                        if (!switchExiting || (switchAnimJob?.isActive == true && !switchAnimForward)) {
                             // 退出动画已在跑：卡片快照和它裁自的整屏截图都无人消费。
                             // 互为 keep，裁剪区等于整图时两者同一对象，天然都不回收
                             coroutineScope.launch {
@@ -5302,7 +5310,7 @@ fun CourseScheduleApp(
                                 // withFrameNanos 返回的是上一帧，需多等一帧
                                 withFrameNanos { }
                                 mainContentSnapshot = try {
-                                    captureMainContentBitmap()
+                                    captureMainContentBitmap(includeNativeChrome = false)
                                 } catch (_: Exception) {
                                     mainContentSnapshot
                                 }
@@ -5345,7 +5353,7 @@ fun CourseScheduleApp(
                     onScreenReady = { screenBitmap, cardBounds ->
                         // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
                         val screenBitmapBmp = screenBitmap
-                        if (!switchPendingReverse) {
+                        if (!switchPendingReverse || switchExiting) {
                             // 锚点 bounds 后续再变会重复回调（见 SwitchScheduleScreen 里的上闩），
                             // 走到这里说明动画早已启动：这张全屏截图没人要，直接回收
                             FeatureLog.t(
@@ -5396,6 +5404,7 @@ fun CourseScheduleApp(
                                 recycleSnapshot(screenBitmapBmp, cardSnap, switchCardSnapshot)
                             }
                             switchAnimJob = coroutineScope.launch {
+                                switchMainSnapshotJob?.join()
                                 switchAnimProgress.snapTo(1f)
                                 switchReturnBgScrim.snapTo(0.4f)
                                 switchCapturingSnapshot = false
@@ -5446,6 +5455,7 @@ fun CourseScheduleApp(
                     initialCurrentScheduleId = scheduleViewModel.currentScheduleName.collectAsState().value,
                     initialScheduleSummaries = scheduleViewModel.scheduleSummaries.collectAsState().value
                 )
+                }
             }
             // p 在卡片矩形↔全屏插值，卡片/主内容快照交叉淡入淡出
             SwitchMorphOverlay(
@@ -5459,6 +5469,9 @@ fun CourseScheduleApp(
             )
         }
 
+        }
+        }
+        HostedOverlay(active = showShiftLoading || shiftLoadingActive) {
         ShiftLoadingOverlay(
             show = showShiftLoading,
             onShiftReady = {

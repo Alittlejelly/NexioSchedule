@@ -10,6 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
+import com.haooz.chedule.ui.utils.HostOverlayEntry
 
 class NativeDocumentHostTest {
     @Test
@@ -391,6 +392,166 @@ class NativeDocumentHostTest {
         chrome.contentOverlayActive = false
         host.reconcileNativeEditorExit()
         assertEquals(emptyList(), host.nativeRouteIds)
+    }
+
+    @Test
+    fun rootScheduleLibraryPublishesChromeWithoutChangingNavigationAndSharesInsets() {
+        val host = IosAppHost()
+        val chrome = host.navigation.scheduleLibraryChrome
+        host.navigation.scheduleLibraryActive = true
+        host.updateTopBarInset(44.0)
+        assertTrue(host.scheduleLibraryActive)
+        assertEquals("全部课表", host.scheduleLibraryTitle)
+        assertEquals(44.0, chrome.barInset)
+        assertEquals(44.0, host.navigation.topBarInset)
+        assertFalse(host.nativePageActive)
+        assertEquals(0, host.router.depth)
+        var closed = 0
+        chrome.leading = NativeDocumentAction("chevron.backward", "返回") { closed++ }
+        assertEquals("chevron.backward", host.scheduleLibraryLeadingSymbol())
+        assertEquals("返回", host.scheduleLibraryLeadingLabel())
+        host.performScheduleLibraryLeadingAction()
+        assertEquals(1, closed)
+        assertFalse(host.nativePopPending)
+    }
+
+    @Test
+    fun rootScheduleLibraryLayerIsBelowNativeChromeInsteadOfAFloatingOverlay() {
+        val host = IosAppHost()
+        val layer = checkNotNull(host.navigation.scheduleLibraryOverlays)
+        val entry = HostOverlayEntry()
+        layer.entries.add(entry)
+        host.navigation.scheduleLibraryActive = true
+        var clicks = 0
+        host.navigation.scheduleLibraryChrome.leading = NativeDocumentAction("chevron.backward", "返回") { clicks++ }
+        host.navigation.scheduleLibraryChrome.action = NativeDocumentAction("plus", "添加课表") { clicks++ }
+        host.navigation.scheduleLibraryChrome.secondaryAction = NativeDocumentAction("folder.badge.plus", "新建文件夹") { clicks++ }
+        assertFalse(host.overlayActive)
+        entry.active = true
+        assertTrue(host.overlayActive)
+        assertFalse(host.floatingOverlayActive)
+        assertFalse(host.nativePageActive)
+        assertTrue(host.scheduleLibraryLeadingEnabled())
+        assertTrue(host.scheduleLibraryActionEnabled())
+        assertTrue(host.scheduleLibrarySecondaryActionEnabled())
+        host.performScheduleLibraryLeadingAction()
+        host.performScheduleLibraryAction()
+        host.performScheduleLibrarySecondaryAction()
+        assertEquals(3, clicks)
+        entry.active = false
+        assertFalse(host.overlayActive)
+        assertFalse(host.floatingOverlayActive)
+    }
+
+    @Test
+    fun rootScheduleLibraryEditCanCloseWhileTrailingActionsAreBlocked() {
+        val host = IosAppHost()
+        host.navigation.scheduleLibraryActive = true
+        val chrome = host.navigation.scheduleLibraryChrome
+        var exits = 0
+        var added = 0
+        chrome.title = "编辑课表"
+        chrome.contentOverlayActive = true
+        chrome.leading = NativeDocumentAction("xmark", "退出编辑") {
+            exits++
+            chrome.contentOverlayActive = false
+        }
+        chrome.action = NativeDocumentAction("plus", "添加课表") { added++ }
+        chrome.secondaryAction = NativeDocumentAction("folder.badge.plus", "新建文件夹") { added++ }
+        assertEquals("编辑课表", host.scheduleLibraryTitle)
+        assertEquals("xmark", host.scheduleLibraryLeadingSymbol())
+        assertTrue(host.scheduleLibraryLeadingEnabled())
+        assertFalse(host.scheduleLibraryActionEnabled())
+        assertFalse(host.scheduleLibrarySecondaryActionEnabled())
+        host.performScheduleLibraryAction()
+        host.performScheduleLibrarySecondaryAction()
+        assertEquals(0, added)
+        host.performScheduleLibraryLeadingAction()
+        assertEquals(1, exits)
+        assertTrue(host.scheduleLibraryActionEnabled())
+        assertTrue(host.scheduleLibrarySecondaryActionEnabled())
+        assertFalse(host.nativePopPending)
+    }
+
+    @Test
+    fun rootScheduleLibraryControlsRemainEnabledDuringMorphButNotWhenCoveredOrInactive() {
+        val host = IosAppHost()
+        val navigation = host.navigation
+        val chrome = navigation.scheduleLibraryChrome
+        var calls = 0
+        chrome.leading = NativeDocumentAction("chevron.backward", "返回") { calls++ }
+        chrome.action = NativeDocumentAction("plus", "添加课表") { calls++ }
+        chrome.secondaryAction = NativeDocumentAction("folder.badge.plus", "新建文件夹") { calls++ }
+        fun invokeAll() {
+            host.performScheduleLibraryLeadingAction()
+            host.performScheduleLibraryAction()
+            host.performScheduleLibrarySecondaryAction()
+        }
+        invokeAll()
+        assertEquals(0, calls)
+        navigation.scheduleLibraryActive = true
+        navigation.scheduleLibraryTransitionActive = true
+        assertTrue(host.scheduleLibraryLeadingEnabled())
+        assertTrue(host.scheduleLibraryActionEnabled())
+        assertTrue(host.scheduleLibrarySecondaryActionEnabled())
+        invokeAll()
+        assertEquals(3, calls)
+        navigation.scheduleLibraryTransitionActive = false
+        invokeAll()
+        assertEquals(6, calls)
+        host.router.navigate(AppRoute.License)
+        invokeAll()
+        assertEquals(6, calls)
+        assertFalse(host.scheduleLibraryLeadingEnabled())
+        host.completeNativePop(0)
+        invokeAll()
+        assertEquals(9, calls)
+        navigation.scheduleLibraryActive = false
+        invokeAll()
+        assertEquals(9, calls)
+    }
+
+    @Test
+    fun rootScheduleLibraryUsesLatestCallbacksAndHonorsBusyAndEnabledState() {
+        val host = IosAppHost()
+        host.navigation.scheduleLibraryActive = true
+        val chrome = host.navigation.scheduleLibraryChrome
+        var calls = 0
+        val leading = NativeDocumentAction("xmark", "退出编辑") { calls++ }
+        val action = NativeDocumentAction("plus", "添加课表") { calls++ }
+        val secondary = NativeDocumentAction("folder.badge.plus", "新建文件夹") { calls++ }
+        chrome.leading = leading.copy(enabled = false)
+        chrome.action = action.copy(enabled = false)
+        chrome.secondaryAction = secondary.copy(enabled = false)
+        host.performScheduleLibraryLeadingAction()
+        host.performScheduleLibraryAction()
+        host.performScheduleLibrarySecondaryAction()
+        assertEquals(0, calls)
+        chrome.leading = leading.copy(busy = true)
+        chrome.action = action.copy(busy = true)
+        chrome.secondaryAction = secondary.copy(busy = true)
+        assertFalse(host.scheduleLibraryLeadingEnabled())
+        assertFalse(host.scheduleLibraryActionEnabled())
+        assertFalse(host.scheduleLibrarySecondaryActionEnabled())
+        assertTrue(host.scheduleLibraryActionBusy())
+        assertTrue(host.scheduleLibrarySecondaryActionBusy())
+        host.performScheduleLibraryLeadingAction()
+        host.performScheduleLibraryAction()
+        host.performScheduleLibrarySecondaryAction()
+        assertEquals(0, calls)
+        chrome.leading = leading.copy(onClick = { calls += 10 })
+        chrome.action = action.copy(successful = true, onClick = { calls += 20 })
+        chrome.secondaryAction = secondary.copy(successful = true, onClick = { calls += 30 })
+        assertEquals("plus", host.scheduleLibraryActionSymbol())
+        assertEquals("添加课表", host.scheduleLibraryActionLabel())
+        assertEquals("folder.badge.plus", host.scheduleLibrarySecondaryActionSymbol())
+        assertEquals("新建文件夹", host.scheduleLibrarySecondaryActionLabel())
+        assertTrue(host.scheduleLibraryActionSuccessful())
+        assertTrue(host.scheduleLibrarySecondaryActionSuccessful())
+        host.performScheduleLibraryLeadingAction()
+        host.performScheduleLibraryAction()
+        host.performScheduleLibrarySecondaryAction()
+        assertEquals(60, calls)
     }
 
     @Test

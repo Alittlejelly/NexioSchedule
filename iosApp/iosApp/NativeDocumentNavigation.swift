@@ -224,6 +224,18 @@ private final class NativeDocumentPageController: UIViewController {
     private lazy var actionItem = UIBarButtonItem(
         image: nil, style: .plain, target: self, action: #selector(performPageAction)
     )
+    private lazy var secondaryActionItem = UIBarButtonItem(
+        image: nil, style: .plain, target: self, action: #selector(performSecondaryPageAction)
+    )
+    private lazy var secondaryActivityIndicator = UIActivityIndicatorView(style: .medium)
+    private lazy var secondaryActivityItem: UIBarButtonItem = {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
+        secondaryActivityIndicator.center = CGPoint(x: 22, y: 22)
+        container.addSubview(secondaryActivityIndicator)
+        container.isAccessibilityElement = true
+        container.accessibilityTraits = [.staticText]
+        return UIBarButtonItem(customView: container)
+    }()
     private lazy var activityIndicator = UIActivityIndicatorView(style: .medium)
     private lazy var activityItem: UIBarButtonItem = {
         let container = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
@@ -270,6 +282,11 @@ private final class NativeDocumentPageController: UIViewController {
             enabled: interactionAllowed && host.nativePageActionEnabled(routeId: routeId),
             busy: host.nativePageActionBusy(routeId: routeId),
             successful: host.nativePageActionSuccessful(routeId: routeId),
+            secondarySymbol: host.nativePageSecondaryActionSymbol(routeId: routeId),
+            secondaryLabel: host.nativePageSecondaryActionLabel(routeId: routeId),
+            secondaryEnabled: interactionAllowed && host.nativePageSecondaryActionEnabled(routeId: routeId),
+            secondaryBusy: host.nativePageSecondaryActionBusy(routeId: routeId),
+            secondarySuccessful: host.nativePageSecondaryActionSuccessful(routeId: routeId),
             tintArgb: host.nativePageTintArgb(routeId: routeId)
         )
         guard appliedActionState != state else { return }
@@ -277,41 +294,54 @@ private final class NativeDocumentPageController: UIViewController {
         let animated = viewIfLoaded?.window != nil && !UIAccessibility.isReduceMotionEnabled
         if !state.leadingSymbol.isEmpty {
             navigationItem.hidesBackButton = true
-            let leadingItem = state.editorActive ? cancelItem : backItem
+            let leadingItem = state.leadingSymbol == "xmark" ? cancelItem : backItem
+            leadingItem.image = UIImage(systemName: state.leadingSymbol)
             leadingItem.accessibilityLabel = state.leadingLabel
             leadingItem.isEnabled = state.leadingEnabled
             if navigationItem.leftBarButtonItem !== leadingItem {
                 navigationItem.setLeftBarButtonItems([leadingItem], animated: animated)
             }
         }
-        guard !state.symbol.isEmpty else {
-            activityIndicator.stopAnimating()
-            if navigationItem.rightBarButtonItem != nil {
-                navigationItem.setRightBarButtonItems(nil, animated: animated)
-            }
-            return
-        }
         if #available(iOS 26.0, *) {
             actionItem.identifier = "document-trailing"
             actionItem.style = state.editorActive ? .prominent : .plain
+            secondaryActionItem.identifier = "document-secondary-trailing"
         }
-        if state.busy {
+        var trailingItems: [UIBarButtonItem] = []
+        if state.symbol.isEmpty {
+            activityIndicator.stopAnimating()
+        } else if state.busy {
             activityIndicator.color = chromeTint
             activityIndicator.startAnimating()
             activityItem.customView?.accessibilityLabel = state.label
             activityItem.isEnabled = false
-            if navigationItem.rightBarButtonItem !== activityItem {
-                navigationItem.setRightBarButtonItems([activityItem], animated: animated)
-            }
+            trailingItems.append(activityItem)
         } else {
             activityIndicator.stopAnimating()
             actionItem.image = UIImage(systemName: state.symbol)
             actionItem.accessibilityLabel = state.label
             actionItem.isEnabled = state.enabled
             actionItem.tintColor = state.successful ? .systemGreen : chromeTint
-            if navigationItem.rightBarButtonItem !== actionItem {
-                navigationItem.setRightBarButtonItems([actionItem], animated: animated)
-            }
+            trailingItems.append(actionItem)
+        }
+        if state.secondarySymbol.isEmpty {
+            secondaryActivityIndicator.stopAnimating()
+        } else if state.secondaryBusy {
+            secondaryActivityIndicator.color = chromeTint
+            secondaryActivityIndicator.startAnimating()
+            secondaryActivityItem.customView?.accessibilityLabel = state.secondaryLabel
+            secondaryActivityItem.isEnabled = false
+            trailingItems.append(secondaryActivityItem)
+        } else {
+            secondaryActivityIndicator.stopAnimating()
+            secondaryActionItem.image = UIImage(systemName: state.secondarySymbol)
+            secondaryActionItem.accessibilityLabel = state.secondaryLabel
+            secondaryActionItem.isEnabled = state.secondaryEnabled
+            secondaryActionItem.tintColor = state.secondarySuccessful ? .systemGreen : chromeTint
+            trailingItems.append(secondaryActionItem)
+        }
+        if (navigationItem.rightBarButtonItems ?? []) != trailingItems {
+            navigationItem.setRightBarButtonItems(trailingItems.isEmpty ? nil : trailingItems, animated: animated)
         }
     }
 
@@ -323,6 +353,11 @@ private final class NativeDocumentPageController: UIViewController {
     @objc private func performPageAction() {
         guard appliedActionState?.enabled == true, appliedActionState?.busy == false else { return }
         host.performNativePageAction(routeId: routeId)
+    }
+
+    @objc private func performSecondaryPageAction() {
+        guard appliedActionState?.secondaryEnabled == true, appliedActionState?.secondaryBusy == false else { return }
+        host.performNativePageSecondaryAction(routeId: routeId)
     }
 
     override func viewDidLoad() {
@@ -375,6 +410,11 @@ private struct NativeActionState: Equatable {
     let enabled: Bool
     let busy: Bool
     let successful: Bool
+    let secondarySymbol: String
+    let secondaryLabel: String
+    let secondaryEnabled: Bool
+    let secondaryBusy: Bool
+    let secondarySuccessful: Bool
     let tintArgb: Int64
 }
 

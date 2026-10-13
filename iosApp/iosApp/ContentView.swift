@@ -79,8 +79,9 @@ private final class NativeSessionController: UIViewController {
         if overrideUserInterfaceStyle != style {
             overrideUserInterfaceStyle = style
         }
-        rootController.applyState()
         documentNavigation.applyHostState()
+        // Apply the retained root's library label after native navigation updates its chrome.
+        rootController.applyState()
         let active = host.floatingOverlayActive
         floatingContainer.overlayActive = active
         floatingContainer.accessibilityElementsHidden = !active
@@ -153,6 +154,24 @@ private final class AppHostController: UIViewController {
         item.tintColor = .label
         return item
     }()
+
+    private lazy var libraryBackItem = makeLibraryLeadingItem(symbol: "chevron.backward")
+    private lazy var libraryCloseItem = makeLibraryLeadingItem(symbol: "xmark")
+    private lazy var libraryAddItem = UIBarButtonItem(
+        image: nil, style: .plain, target: self, action: #selector(handleLibraryAddTap)
+    )
+    private lazy var libraryFolderItem = UIBarButtonItem(
+        image: nil, style: .plain, target: self, action: #selector(handleLibraryFolderTap)
+    )
+
+    private func makeLibraryLeadingItem(symbol: String) -> UIBarButtonItem {
+        let item = UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain,
+                                  target: self, action: #selector(handleLibraryLeadingTap))
+        if #available(iOS 26.0, *) { item.identifier = "schedule-library-leading" }
+        return item
+    }
+
+    private var libraryTint: UIColor { .label }
 
     init(host: IosAppHost) {
         self.host = host
@@ -235,7 +254,8 @@ private final class AppHostController: UIViewController {
         let overlayActive = host.overlayActive
         host.overlayController.view.isUserInteractionEnabled = overlayActive
         host.overlayController.view.accessibilityElementsHidden = !overlayActive
-        host.overlayController.view.accessibilityViewIsModal = overlayActive
+        host.overlayController.view.accessibilityViewIsModal = overlayActive &&
+            !host.scheduleLibraryActive && !host.scheduleLibraryTransitionActive
         mainContainer.isUserInteractionEnabled = !overlayActive
         mainContainer.accessibilityElementsHidden = overlayActive
         updateMainHeaderControls()
@@ -246,6 +266,17 @@ private final class AppHostController: UIViewController {
     }
 
     private func updateMainHeaderControls() {
+        let animated = viewIfLoaded?.window != nil && !UIAccessibility.isReduceMotionEnabled
+        if host.scheduleLibraryActive && !host.nativePageActive {
+            updateLibraryHeaderControls(animated: animated)
+            return
+        }
+        if !host.nativePageActive {
+            navigationController?.navigationBar.accessibilityLabel = nil
+        }
+        if navigationItem.leftBarButtonItem != nil {
+            navigationItem.setLeftBarButtonItems(nil, animated: animated)
+        }
         let showHeader = host.showsNativeHeader && !host.nativePageActive
         let targetItems: [UIBarButtonItem]
         if showHeader {
@@ -262,13 +293,69 @@ private final class AppHostController: UIViewController {
         } else {
             targetItems = []
         }
-        let interactionAllowed = !host.floatingOverlayActive && !host.overlayActive
+        let returningToMain = host.scheduleLibraryTransitionActive && !host.scheduleLibraryActive
+        let interactionAllowed = !host.floatingOverlayActive && !host.nativePageActive &&
+            (!host.overlayActive || returningToMain)
         mainMoreItem.isEnabled = interactionAllowed
         mainSwitchItem.isEnabled = interactionAllowed
-        let animated = viewIfLoaded?.window != nil && !UIAccessibility.isReduceMotionEnabled
         if (navigationItem.rightBarButtonItems ?? []) != targetItems {
             navigationItem.setRightBarButtonItems(targetItems, animated: animated)
         }
+    }
+
+    private func updateLibraryHeaderControls(animated: Bool) {
+        navigationController?.navigationBar.accessibilityLabel = host.scheduleLibraryTitle
+        let leadingSymbol = host.scheduleLibraryLeadingSymbol()
+        if leadingSymbol.isEmpty {
+            if navigationItem.leftBarButtonItem != nil {
+                navigationItem.setLeftBarButtonItems(nil, animated: animated)
+            }
+        } else {
+            let item = leadingSymbol == "xmark" ? libraryCloseItem : libraryBackItem
+            item.image = UIImage(systemName: leadingSymbol)
+            item.accessibilityLabel = host.scheduleLibraryLeadingLabel()
+            item.isEnabled = host.scheduleLibraryLeadingEnabled()
+            item.tintColor = libraryTint
+            if navigationItem.leftBarButtonItem !== item {
+                navigationItem.setLeftBarButtonItems([item], animated: animated)
+            }
+        }
+        if #available(iOS 26.0, *) {
+            libraryAddItem.identifier = "schedule-library-add"
+            libraryFolderItem.identifier = "schedule-library-folder"
+        }
+        var items: [UIBarButtonItem] = []
+        let symbol = host.scheduleLibraryActionSymbol()
+        if !symbol.isEmpty {
+            libraryAddItem.image = UIImage(systemName: host.scheduleLibraryActionBusy() ? "hourglass" : symbol)
+            libraryAddItem.accessibilityLabel = host.scheduleLibraryActionLabel()
+            libraryAddItem.isEnabled = host.scheduleLibraryActionEnabled()
+            libraryAddItem.tintColor = host.scheduleLibraryActionSuccessful() ? .systemGreen : libraryTint
+            items.append(libraryAddItem)
+        }
+        let secondarySymbol = host.scheduleLibrarySecondaryActionSymbol()
+        if !secondarySymbol.isEmpty {
+            libraryFolderItem.image = UIImage(systemName: host.scheduleLibrarySecondaryActionBusy() ? "hourglass" : secondarySymbol)
+            libraryFolderItem.accessibilityLabel = host.scheduleLibrarySecondaryActionLabel()
+            libraryFolderItem.isEnabled = host.scheduleLibrarySecondaryActionEnabled()
+            libraryFolderItem.tintColor = host.scheduleLibrarySecondaryActionSuccessful() ? .systemGreen : libraryTint
+            items.append(libraryFolderItem)
+        }
+        if (navigationItem.rightBarButtonItems ?? []) != items {
+            navigationItem.setRightBarButtonItems(items.isEmpty ? nil : items, animated: animated)
+        }
+    }
+
+    @objc private func handleLibraryLeadingTap() {
+        host.performScheduleLibraryLeadingAction()
+    }
+
+    @objc private func handleLibraryAddTap() {
+        host.performScheduleLibraryAction()
+    }
+
+    @objc private func handleLibraryFolderTap() {
+        host.performScheduleLibrarySecondaryAction()
     }
 
     @objc private func handleSwitchScheduleTap() {
@@ -348,7 +435,7 @@ private final class AppHostController: UIViewController {
         // Keep the retained root's geometry stable while a document covers it.
         // Hiding its controls must not clear the Compose header's reserved space.
         guard !host.nativePageActive else { return }
-        let showHeader = host.showsNativeHeader
+        let showHeader = host.showsNativeHeader || host.scheduleLibraryActive
         let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
         guard abs(lastTopInset - inset) > 0.5 else { return }
         lastTopInset = inset

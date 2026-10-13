@@ -47,6 +47,7 @@ class IosAppHost {
     internal var navigationOverlayActive by mutableStateOf(false)
     internal val navigation = HostNavigationState()
     private val overlays = HostOverlayState()
+    private val scheduleLibraryOverlays = HostOverlayState()
     private val popupHost = MiuixOverlayHostState()
     private val nativePages = mutableStateListOf<NativeDocumentPage>()
     private var nextNativePageId = 0L
@@ -57,6 +58,7 @@ class IosAppHost {
     private var deferredEditorPopRouteId: String? = null
 
     init {
+        navigation.scheduleLibraryOverlays = scheduleLibraryOverlays
         router.nativeRouteHandler = { route ->
             if (route.isNativeDocument()) {
                 navigateNativeDocument(route.id)
@@ -139,17 +141,23 @@ class IosAppHost {
         pageControlsAllowed(routeId) && nativePage(routeId).chrome.effectiveAction?.enabled == true
     fun nativePageActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.effectiveAction?.busy == true
     fun nativePageActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.effectiveAction?.successful == true
+    fun nativePageSecondaryActionSymbol(routeId: String): String = nativePage(routeId).chrome.effectiveSecondaryAction?.symbol.orEmpty()
+    fun nativePageSecondaryActionLabel(routeId: String): String = nativePage(routeId).chrome.effectiveSecondaryAction?.label.orEmpty()
+    fun nativePageSecondaryActionEnabled(routeId: String): Boolean =
+        pageControlsAllowed(routeId) && nativePage(routeId).chrome.effectiveSecondaryAction?.enabled == true
+    fun nativePageSecondaryActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.effectiveSecondaryAction?.busy == true
+    fun nativePageSecondaryActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.effectiveSecondaryAction?.successful == true
     fun nativePageTintArgb(routeId: String): Long = nativePage(routeId).chrome.tintArgb
 
     // Match the leading slot across list/editor configurations using UIKit item identity.
     fun nativePageLeadingSymbol(routeId: String): String = nativePage(routeId).let {
-        it.chrome.editor?.cancel?.symbol ?: if (it.route == AppRoute.CourseTimeSettings || it.route == AppRoute.CourseManage) "chevron.backward" else ""
+        it.chrome.effectiveLeading?.symbol ?: if (it.route == AppRoute.CourseTimeSettings || it.route == AppRoute.CourseManage) "chevron.backward" else ""
     }
     fun nativePageLeadingLabel(routeId: String): String =
-        nativePage(routeId).chrome.editor?.cancel?.label ?: "返回"
+        nativePage(routeId).chrome.effectiveLeading?.label ?: "返回"
     fun nativePageLeadingEnabled(routeId: String): Boolean =
         pageVisibleAndInteractive(routeId) &&
-            nativePage(routeId).chrome.editor?.cancel?.let { it.enabled && !it.busy } != false
+            nativePage(routeId).chrome.effectiveLeading?.let { it.enabled && !it.busy } != false
 
     private fun pageVisibleAndInteractive(routeId: String): Boolean =
         !nativeTransitionInFlight && requestedPopDepth == null && !floatingOverlayActive &&
@@ -165,10 +173,16 @@ class IosAppHost {
         if (action.enabled && !action.busy) action.onClick()
     }
 
+    fun performNativePageSecondaryAction(routeId: String) {
+        if (!pageControlsAllowed(routeId)) return
+        val action = nativePage(routeId).chrome.effectiveSecondaryAction ?: return
+        if (action.enabled && !action.busy) action.onClick()
+    }
+
     fun performNativePageLeadingAction(routeId: String) {
         if (!nativePageLeadingEnabled(routeId)) return
-        val editor = nativePage(routeId).chrome.editor
-        if (editor != null) editor.cancel.onClick()
+        val leading = nativePage(routeId).chrome.effectiveLeading
+        if (leading != null) leading.onClick()
         else if (nativeContentOverlayActive) {
             // The parent back button is already visible during the reverse morph.
             // Accept the tap now, but let save/disposal finish before popping its page.
@@ -207,6 +221,44 @@ class IosAppHost {
 
     var onStateChanged: (() -> Unit)? = null
 
+    val scheduleLibraryActive: Boolean get() = navigation.scheduleLibraryActive
+    val scheduleLibraryTransitionActive: Boolean get() = navigation.scheduleLibraryTransitionActive
+    val scheduleLibraryTitle: String get() = navigation.scheduleLibraryChrome.title.ifEmpty { "全部课表" }
+    val scheduleLibraryTintArgb: Long get() = navigation.scheduleLibraryChrome.tintArgb
+    fun scheduleLibraryLeadingSymbol(): String = navigation.scheduleLibraryChrome.effectiveLeading?.symbol.orEmpty()
+    fun scheduleLibraryLeadingLabel(): String = navigation.scheduleLibraryChrome.effectiveLeading?.label.orEmpty()
+    fun scheduleLibraryLeadingEnabled(): Boolean = scheduleLibraryControlsAllowed() &&
+        navigation.scheduleLibraryChrome.effectiveLeading?.let { it.enabled && !it.busy } == true
+    fun scheduleLibraryActionSymbol(): String = navigation.scheduleLibraryChrome.effectiveAction?.symbol.orEmpty()
+    fun scheduleLibraryActionLabel(): String = navigation.scheduleLibraryChrome.effectiveAction?.label.orEmpty()
+    fun scheduleLibraryActionEnabled(): Boolean = scheduleLibraryTrailingAllowed() &&
+        navigation.scheduleLibraryChrome.effectiveAction?.let { it.enabled && !it.busy } == true
+    fun scheduleLibraryActionBusy(): Boolean = navigation.scheduleLibraryChrome.effectiveAction?.busy == true
+    fun scheduleLibraryActionSuccessful(): Boolean = navigation.scheduleLibraryChrome.effectiveAction?.successful == true
+    fun scheduleLibrarySecondaryActionSymbol(): String = navigation.scheduleLibraryChrome.effectiveSecondaryAction?.symbol.orEmpty()
+    fun scheduleLibrarySecondaryActionLabel(): String = navigation.scheduleLibraryChrome.effectiveSecondaryAction?.label.orEmpty()
+    fun scheduleLibrarySecondaryActionEnabled(): Boolean = scheduleLibraryTrailingAllowed() &&
+        navigation.scheduleLibraryChrome.effectiveSecondaryAction?.let { it.enabled && !it.busy } == true
+    fun scheduleLibrarySecondaryActionBusy(): Boolean = navigation.scheduleLibraryChrome.effectiveSecondaryAction?.busy == true
+    fun scheduleLibrarySecondaryActionSuccessful(): Boolean = navigation.scheduleLibraryChrome.effectiveSecondaryAction?.successful == true
+
+    private fun scheduleLibraryControlsAllowed(): Boolean = scheduleLibraryActive &&
+        !floatingOverlayActive && !nativePageActive
+    private fun scheduleLibraryTrailingAllowed(): Boolean = scheduleLibraryControlsAllowed() &&
+        !navigation.scheduleLibraryChrome.contentOverlayActive
+
+    fun performScheduleLibraryLeadingAction() {
+        if (scheduleLibraryLeadingEnabled()) navigation.scheduleLibraryChrome.effectiveLeading?.onClick?.invoke()
+    }
+
+    fun performScheduleLibraryAction() {
+        if (scheduleLibraryActionEnabled()) navigation.scheduleLibraryChrome.effectiveAction?.onClick?.invoke()
+    }
+
+    fun performScheduleLibrarySecondaryAction() {
+        if (scheduleLibrarySecondaryActionEnabled()) navigation.scheduleLibraryChrome.effectiveSecondaryAction?.onClick?.invoke()
+    }
+
     val selectedTab: Int get() = navigation.selectedTab
     val tabCount: Int get() = navigation.tabCount
     val shiftMode: Boolean get() = navigation.shiftMode
@@ -214,7 +266,7 @@ class IosAppHost {
     val showsNativeHeader: Boolean get() = navigation.showsNativeHeader
     val isDark: Boolean get() = navigation.isDark
     val overlayActive: Boolean
-        get() = router.hasOverlay || navigationOverlayActive || overlays.isActive || popupHost.isActive
+        get() = router.hasOverlay || navigationOverlayActive || overlays.isActive || popupHost.isActive || scheduleLibraryOverlays.isActive
     val mainProgress: Double get() = mainTransition.value.toDouble()
     val cutoutScale: Float get() = navigation.cutoutScale
     val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
@@ -232,6 +284,7 @@ class IosAppHost {
             HostEnvironment {
                 Box(Modifier.fillMaxSize()) {
                     NexioIosNavigation(this@IosAppHost)
+                    HostOverlayContent(scheduleLibraryOverlays)
                 }
             }
         }
@@ -263,16 +316,23 @@ class IosAppHost {
                             nativePages.map { page ->
                                 val action = page.chrome.effectiveAction
                                 val editor = page.chrome.editor
+                                val leading = page.chrome.effectiveLeading
+                                val secondary = page.chrome.effectiveSecondaryAction
                                 NativeDocumentChromeSnapshot(
                                     editor?.title ?: page.chrome.title, page.chrome.tintArgb,
                                     action?.symbol, action?.label, action?.enabled,
                                     action?.busy, action?.successful, page.chrome.contentOverlayActive,
-                                    editor != null, editor?.cancel?.symbol, editor?.cancel?.label,
-                                    editor?.cancel?.enabled,
+                                    editor != null, leading?.symbol, leading?.label,
+                                    leading?.enabled, leading?.busy,
+                                    secondary?.symbol, secondary?.label, secondary?.enabled,
+                                    secondary?.busy, secondary?.successful,
                                 )
                             },
                             nativeTransitionInFlight,
                             showsNativeHeader,
+                            scheduleLibraryActive,
+                            scheduleLibraryTransitionActive,
+                            navigation.scheduleLibraryChrome.snapshot(),
                         )
                     }.collect { onStateChanged?.invoke() }
                 }
@@ -305,6 +365,10 @@ class IosAppHost {
 
     fun updateTopBarInset(points: Double) {
         val inset = points.coerceAtLeast(0.0)
+        // The retained content controller inherits the navigation bar's safe-area overlap.
+        if (kotlin.math.abs(navigation.scheduleLibraryChrome.barInset - inset) > 0.5) {
+            navigation.scheduleLibraryChrome.barInset = inset
+        }
         if (kotlin.math.abs(navigation.topBarInset - inset) > 0.5) {
             navigation.topBarInset = inset
         }
@@ -340,6 +404,9 @@ private data class NativeHostSnapshot(
     val nativeChrome: List<NativeDocumentChromeSnapshot>,
     val nativeTransitionInFlight: Boolean,
     val showsNativeHeader: Boolean,
+    val scheduleLibraryActive: Boolean,
+    val scheduleLibraryTransitionActive: Boolean,
+    val scheduleLibraryChrome: NativeDocumentChromeSnapshot,
 )
 
 private data class NativeDocumentChromeSnapshot(
@@ -355,7 +422,26 @@ private data class NativeDocumentChromeSnapshot(
     val leadingSymbol: String?,
     val leadingLabel: String?,
     val leadingEnabled: Boolean?,
+    val leadingBusy: Boolean?,
+    val secondarySymbol: String?,
+    val secondaryLabel: String?,
+    val secondaryEnabled: Boolean?,
+    val secondaryBusy: Boolean?,
+    val secondarySuccessful: Boolean?,
 )
+
+private fun NativeDocumentChrome.snapshot(): NativeDocumentChromeSnapshot {
+    val action = effectiveAction
+    val leading = effectiveLeading
+    val secondary = effectiveSecondaryAction
+    return NativeDocumentChromeSnapshot(
+        editor?.title ?: title, tintArgb,
+        action?.symbol, action?.label, action?.enabled, action?.busy, action?.successful,
+        contentOverlayActive, editor != null,
+        leading?.symbol, leading?.label, leading?.enabled, leading?.busy,
+        secondary?.symbol, secondary?.label, secondary?.enabled, secondary?.busy, secondary?.successful,
+    )
+}
 
 internal class NativeDocumentPage(
     val id: String,

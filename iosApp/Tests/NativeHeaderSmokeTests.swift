@@ -553,6 +553,91 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.navigationBars.count, 0)
     }
 
+    func testScheduleLibraryNativeActionsAndReturn() throws {
+        let scheduleTab = app.tabBars.buttons["课程表"]
+        XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
+        scheduleTab.tap()
+        settle()
+        let switchButton = app.navigationBars.buttons["课表切换"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        switchButton.tap()
+        settle()
+        requireNativeHeader("全部课表")
+        XCTAssertFalse(app.navigationBars.buttons["更多"].exists)
+        XCTAssertFalse(app.navigationBars.buttons["课表切换"].exists)
+        let add = app.navigationBars.buttons["添加课表"]
+        let folder = app.navigationBars.buttons["新建文件夹"]
+        XCTAssertTrue(add.exists && add.isHittable, app.debugDescription)
+        XCTAssertTrue(folder.exists && folder.isHittable, app.debugDescription)
+        XCTAssertEqual(app.navigationBars.buttons.count, 3)
+        capture("Schedule library - native controls")
+
+        let currentSchedule = item("当前课表")
+        XCTAssertTrue(currentSchedule.waitForExistence(timeout: 5), app.debugDescription)
+        currentSchedule.press(forDuration: 1.2)
+        settle()
+        XCTAssertTrue(item("编辑课表").exists, app.debugDescription)
+        XCTAssertFalse(add.exists)
+        XCTAssertFalse(folder.exists)
+        let close = app.navigationBars.buttons["关闭编辑"]
+        XCTAssertTrue(close.exists && close.isHittable, app.debugDescription)
+        capture("Schedule library - native edit close")
+        close.tap()
+        settle()
+        requireNativeHeader("全部课表")
+        XCTAssertTrue(add.exists && folder.exists)
+
+        add.tap()
+        settle()
+        XCTAssertTrue(item("新建课表").exists)
+        open("取消")
+        requireNativeHeader("全部课表")
+        XCTAssertTrue(add.isEnabled)
+
+        folder.tap()
+        settle()
+        XCTAssertTrue(item("新建文件夹").exists)
+        open("取消")
+        requireNativeHeader("全部课表")
+        XCTAssertTrue(folder.isEnabled)
+        nativeBack()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5))
+
+        switchButton.tap()
+        settle()
+        requireNativeHeader("全部课表")
+        XCTAssertTrue(add.exists && folder.exists)
+        capture("Schedule library - reopened")
+        nativeBack()
+    }
+
+    func testScheduleLibraryTransitionControlsAllowRapidReopen() throws {
+        let scheduleTab = app.tabBars.buttons["课程表"]
+        XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
+        scheduleTab.tap()
+        let switchButton = app.navigationBars.buttons["课表切换"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        switchButton.tap()
+        let back = app.navigationBars.buttons["返回"]
+        let add = app.navigationBars.buttons["添加课表"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(back.isEnabled && add.isEnabled, "Entry must not disable destination controls")
+        for _ in 0..<3 {
+            back.tap()
+            XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(switchButton.isEnabled, "Exit must immediately restore enabled home controls")
+            switchButton.tap()
+            XCTAssertTrue(back.waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(back.isEnabled && add.isEnabled, "Reopening must not disable destination controls")
+        }
+        settle()
+        requireNativeHeader("全部课表")
+        capture("Schedule library - rapid reopen")
+        nativeBack()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(switchButton.isEnabled)
+    }
+
     func testMainScreenNativeHeaderTransitionsAndMenu() throws {
         if app.tabBars.buttons["课程表"].waitForExistence(timeout: 5) {
             app.tabBars.buttons["课程表"].tap()

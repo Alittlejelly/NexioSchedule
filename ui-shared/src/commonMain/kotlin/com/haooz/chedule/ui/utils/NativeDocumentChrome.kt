@@ -16,11 +16,15 @@ class NativeDocumentChrome {
     var title by mutableStateOf("")
     var tintArgb by mutableStateOf(0L)
     var action by mutableStateOf<NativeDocumentAction?>(null)
+    var leading by mutableStateOf<NativeDocumentAction?>(null)
+    var secondaryAction by mutableStateOf<NativeDocumentAction?>(null)
     /** Outer navigation waits for the editor's save and reverse morph to finish. */
     var contentOverlayActive by mutableStateOf(false)
     /** Editor controls override the retained parent's chrome without competing publishers. */
     var editor by mutableStateOf<NativeDocumentEditorChrome?>(null)
     val effectiveAction: NativeDocumentAction? get() = editor?.save ?: action
+    val effectiveLeading: NativeDocumentAction? get() = editor?.cancel ?: leading
+    val effectiveSecondaryAction: NativeDocumentAction? get() = if (editor == null) secondaryAction else null
 }
 
 /** A route-local editor owns native controls, but keeps its original content transition. */
@@ -58,6 +62,26 @@ fun NativeDocumentOverlayEffect(active: Boolean) {
     SideEffect { chrome.contentOverlayActive = active }
     DisposableEffect(chrome) {
         onDispose { chrome.contentOverlayActive = false }
+    }
+}
+
+/** A page may handle leading taps locally while keeping outer swipe navigation blocked. */
+@Composable
+fun NativeDocumentLeadingActionEffect(action: NativeDocumentAction?) {
+    val chrome = LocalNativeDocumentChrome.current ?: return
+    SideEffect { chrome.leading = action }
+    DisposableEffect(chrome) {
+        onDispose { chrome.leading = null }
+    }
+}
+
+/** Publish an optional second operation without replacing the primary trailing action. */
+@Composable
+fun NativeDocumentSecondaryActionEffect(action: NativeDocumentAction?) {
+    val chrome = LocalNativeDocumentChrome.current ?: return
+    SideEffect { chrome.secondaryAction = action }
+    DisposableEffect(chrome) {
+        onDispose { chrome.secondaryAction = null }
     }
 }
 
