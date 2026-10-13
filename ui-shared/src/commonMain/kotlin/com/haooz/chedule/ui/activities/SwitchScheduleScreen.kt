@@ -91,6 +91,7 @@ import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.cropImageBitmap
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.isRenderEffectSupported
@@ -170,12 +171,9 @@ fun SwitchScheduleScreen(
     val scrollBehavior = rememberSharedScrollBehavior()
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val screenGraphicsLayer = rememberGraphicsLayer()
-    // 卡片快照裁剪层：把整屏快照按 bounds 重录成小图（跨平台，替代 Bitmap.createBitmap 区域拷贝）
-    val cardLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
-    // 页面快照「按需录制」：record() 会把整页（液态玻璃顶栏 + LazyColumn + backdrop 录制）再离屏
-    // 完整画一遍，常驻每帧录制等于把每帧绘制成本翻倍，进/退动画期间必掉帧。
-    // 只在真正要 toImageBitmap() 前录一帧，其余帧完全不录（与 MainActivity 主内容快照同一套做法）。
+    // 页面快照「按需录制」：record() 会把整页再离屏完整画一遍，常驻每帧录制等于把每帧
+    // 绘制成本翻倍，进/退动画期间必掉帧；只在真正 toImageBitmap() 前录一帧。
     val lastRecordedSnapshotToken = remember { intArrayOf(0) }
     var snapshotToken by remember { mutableIntStateOf(0) }
     val capturePageBitmap: suspend () -> androidx.compose.ui.graphics.ImageBitmap? = {
@@ -306,18 +304,11 @@ fun SwitchScheduleScreen(
                             .coerceIn(0, fullBitmap.height - 1)
                         val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
                         val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
-                        // 跨平台裁剪：把全屏快照按 bounds 重录进一个小 layer
-                        //（等价原 Bitmap.createBitmap 区域拷贝）。
-                        // ⚠ record 的便捷重载只在 DrawScope 接收者内可见，协程里要显式传
-                        // density/layoutDirection（成员版）；纯像素拷贝与布局方向无关。
-                        cardLayer.record(
-                            density = density,
-                            layoutDirection = LayoutDirection.Ltr,
-                            size = IntSize(w, h),
-                        ) {
-                            drawImage(fullBitmap, topLeft = Offset(-x.toFloat(), -y.toFloat()))
-                        }
-                        cardLayer.toImageBitmap()
+                        // ⚠ 走 cropImageBitmap，不要「record 进小 layer 再 toImageBitmap」：Android 上
+                        // toImageBitmap() 读回的是硬件位图（Config.HARDWARE），再录进 layer / 画进软件
+                        // canvas 会抛 "Software rendering doesn't support hardware bitmaps"，
+                        // 表现就是退出形变的卡片快照永远为 null。详见 cropImageBitmap 的 KDoc。
+                        cropImageBitmap(fullBitmap, x, y, w, h)
                     } catch (_: Exception) {
                         null
                     } catch (_: OutOfMemoryError) {
@@ -569,7 +560,6 @@ fun SwitchScheduleScreen(
                     }
                 }
                 
-                // 胶囊本体
                 AnimatedVisibility(
                     visible = navBarVisible,
                     enter = EnterTransition.None,
@@ -602,9 +592,8 @@ fun SwitchScheduleScreen(
                         if (!isAppDarkTheme()) Color(0xFFFFFFFF).copy(0.6f)
                         else Color(0xFF121212).copy(0.54f)
 
-                    // 按压高光：整条胶囊按哪亮哪（与主页底栏同一套，直接用组件默认配色）。
-                    // 触发挂整条胶囊；下面的总手势会消费事件，但 gestureModifier 是
-                    // observeConsumed=true 的纯视觉观察者，照常跟手。
+                    // 按压高光：整条胶囊按哪亮哪。触发挂整条胶囊；下面的总手势会消费事件，
+                    // 但 gestureModifier 是 observeConsumed=true 的纯视觉观察者，照常跟手。
                     val bottomBarScope = rememberCoroutineScope()
                     val interactiveHighlight = remember(bottomBarScope) {
                         InteractiveHighlight(animationScope = bottomBarScope)
@@ -638,9 +627,8 @@ fun SwitchScheduleScreen(
                             modifier = Modifier
                                 .fillMaxWidth(0.72f)
                                 .height(56.dp)
-                                // 与主页底栏同一套形变（公式/常数逐字一致）：
-                                // 按住 → 放大 16dp/宽；左右滑 → 推移，按栏宽归一化后 EaseOut 压到 ±4dp。
-                                // 放在 drawBackdrop 之前 = 包住材质、高光与条目，整条一起动。
+                                // 与主页底栏同一套形变：按住放大 16dp/宽，左右滑按栏宽归一化后
+                                // EaseOut 压到 ±4dp。放在 drawBackdrop 之前 = 包住材质、高光与条目一起动。
                                 .graphicsLayer {
                                     val fraction =
                                         (barDragOffset.value / size.width).coerceIn(-1f, 1f)
@@ -670,10 +658,8 @@ fun SwitchScheduleScreen(
                                 // 且被 drawBackdrop 的 clipPath 裁进胶囊外形
                                 .then(interactiveHighlight.modifier)
                                 .then(interactiveHighlight.gestureModifier)
-                                // 底栏唯一手势：滑动选择 + 左右跟手推移 + 松手回弹。
-                                // 单一状态（与 LiquidGlassDropdownMenu 同款）：按下即命中，
-                                // 点按就是「滑动距离为 0 的滑选」，两者同一条路径，
-                                // 所以条目上不再有自己的手势。消费事件防止外层也来一份。
+                                // 底栏唯一手势：滑动选择 + 左右跟手推移 + 松手回弹。单一状态：按下即
+                                // 命中，点按 = 滑动距离为 0 的滑选，故条目上不再有自己的手势。
                                 .pointerInput(bottomBarScope) {
                                     val touchSlop = viewConfiguration.touchSlop
                                     awaitEachGesture {
@@ -860,11 +846,9 @@ fun SwitchScheduleScreen(
                         }.collect { offset -> currentOnScrollYChanged(offset) }
                     }
                 }
-                // 进场形变锚点：当前课表卡片（不是列表第一项）
-                // 一页只截一次：currentCardBounds 之后每次变化（文件夹展开动画、列表滚动、
-                // 顶部折叠标题高度变化…）都会重跑这个 effect，而每次 capturePageBitmap()
-                // 都是一张全屏 toImageBitmap。宿主此时 switchPendingReverse 早已是 false，
-                // 回调会被直接忽略——纯浪费一张全屏位图，动画收尾时正好和别的快照叠峰值。
+                // 进场形变锚点：当前课表卡片（不是列表第一项）。一页只截一次：currentCardBounds
+                // 每次变化都会重跑本 effect，而每次 capturePageBitmap() 都是一张全屏 toImageBitmap，
+                // 宿主此时 switchPendingReverse 早已 false、回调被忽略，纯浪费且与别的快照叠峰值。
                 val switchSnapshotDelivered = remember { intArrayOf(0) }
                 LaunchedEffect(currentCardBounds) {
                     if (embedded) return@LaunchedEffect
@@ -935,9 +919,8 @@ fun SwitchScheduleScreen(
                     ) {
                         // 根目录：文件夹（可原地展开）+ 未归档课表；文件夹内课表紧跟其文件夹卡片
                         folders.forEachIndexed { folderIndex, folder ->
-                            // 文件夹卡片与它的课表放同一个 item：高度逐帧变化，
-                            // 展开/收回时下方卡片跟着一起被推走，而不是先消失再出现
-                            // key 带序号：即便数据层出现重复 id，也不至于 LazyColumn 闪退
+                            // 文件夹卡片与它的课表放同一个 item：展开/收回时下方卡片跟着一起被推走。
+                            // key 带序号：即便数据层出现重复 id，也不至于 LazyColumn 闪退。
                             item(key = "folder:${folder.id}#$folderIndex") {
                                 Column(modifier = Modifier.animateItem()) {
                                     FolderItem(folder = folder, itemModifier = Modifier)
@@ -1731,8 +1714,7 @@ private fun MoveTargetRow(
 
 /**
  * 底栏滑动选择的单项登记：松手时要执行的动作 + 是否可用。
- *
- * 不登记位置区间 —— 四个条目都是 `weight(1f)` 等宽格，命中由手势侧按格下标换算。
+ * 不登记位置区间 —— 条目都是 `weight(1f)` 等宽格，命中由手势侧按格下标换算。
  */
 private class BottomBarItemEntry {
     var enabled = true
@@ -1740,12 +1722,10 @@ private class BottomBarItemEntry {
 }
 
 /**
- * 底栏滑动选择状态，与 `LiquidGlassDropdownMenu` 的跟手滑选同款**单一状态**设计：
- * 按下即命中 → 逐帧改命中 → 松手执行命中项；**点按 = 滑动距离为 0 的滑选**，
- * 两者共用同一条路径。
- *
- * 因此条目上不能再挂 detectTapGestures/clickable —— 两个手势状态互相抢事件，
- * 正是菜单版「先按住再滑动会跳状态」的根因（无障碍改走 semantics onClick）。
+ * 底栏滑动选择状态，与 `LiquidGlassDropdownMenu` 的跟手滑选同款单一状态设计：
+ * 按下即命中 → 逐帧改命中 → 松手执行；点按 = 滑动距离为 0 的滑选，共用同一条路径。
+ * 因此条目上不能再挂 detectTapGestures/clickable：两个手势状态互相抢事件会跳状态
+ * （无障碍改走 semantics onClick）。
  */
 private class BottomBarDragSelectState {
     /** 按格下标登记；map 而非 list：下标由调用方显式给，不依赖组合顺序 */
@@ -1813,9 +1793,8 @@ private fun RowScope.BottomBarItem(
     else ComposeColor.Black.copy(alpha = 0.06f * pressAlpha)
     Column(
         modifier = Modifier
-            // 条目自己不挂手势（单一状态，见 BottomBarDragSelectState）：
-            // 点按与滑选统一由胶囊上的总手势处理，这里只补无障碍语义。
-            // semantics onClick 不产生手势、不抢事件；禁用时动作直接不执行。
+            // 条目自己不挂手势（见 BottomBarDragSelectState）：点按与滑选统一由胶囊上的
+            // 总手势处理，这里只补无障碍语义。semantics onClick 不产生手势、不抢事件。
             .semantics {
                 role = Role.Button
                 onSemanticsClick(label = label) {

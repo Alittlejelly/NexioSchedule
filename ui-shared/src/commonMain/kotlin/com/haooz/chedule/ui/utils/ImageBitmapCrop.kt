@@ -8,23 +8,25 @@ import androidx.compose.ui.unit.IntSize
 
 /**
  * `ImageBitmap` 的**跨平台裁剪** —— `Bitmap.createBitmap(src, x, y, w, h)` 的替身。
+ * 二级编辑页拿的是裁好的卡片快照，用 `fillMaxWidth + ContentScale.FillWidth` 显示，
+ * 传整屏快照会拉伸变形，必须裁。
  *
- * ## 为什么要有这个
+ * ⚠ **Android 必须走原生裁剪**，纯 Compose 的 `drawImageRect` 重绘在 Android 上必然失败，
+ * 表现是「morph 展开动画里原卡片快照永远不出现」：
+ * - `GraphicsLayer.toImageBitmap()` 在 Android 上走 `Bitmap.createBitmap(Picture)`，
+ *   内部固定用 `Config.HARDWARE` → 读回的是**硬件位图**；
+ * - 重绘裁剪的目标是 `ImageBitmap(width, height)`（**软件**位图），Android 的
+ *   `Canvas.throwIfCannotDraw` 遇「HARDWARE 源 + 软件 canvas」直接抛
+ *   `IllegalArgumentException: Software rendering doesn't support hardware bitmaps`；
+ * - 异常被 `runCatching { }.getOrNull()` 兜住 → 静默返回 null → 卡片底图没了。
+ *   整屏快照直接 `drawImage` 那条路（快捷菜单）走**硬件** canvas，一切正常 ——
+ *   所以现象只在**需要裁剪**的页面上出现，也只有 Android 端有。
+ * - iOS/桌面（skiko）没有硬件位图概念，重绘那条路本来就没问题。
  *
- * `android.graphics.Bitmap.createBitmap(...)` 的**四参裁剪重载**在 Compose 里没有跨平台
- * 等价物（`ImageBitmap` 只有 `toImageBitmap()` / `asAndroidBitmap()`，没有 crop）。
- * 二级编辑页（课程卡片展开、`TimeConfigEditScreen`）拿的都是**裁好的卡片快照**，
- * 它们用 `fillMaxWidth + ContentScale.FillWidth` 显示，传整屏快照会拉伸变形 —— 必须裁。
+ * 原生 `Bitmap.createBitmap(src, x, y, w, h)` **原生支持 HARDWARE 源**（内部先落到软件位图
+ * 再取子集），所以 Android 侧走原生裁剪，其余平台继续重绘。
  *
- * ## 为什么不再走 expect/actual
- *
- * 2026-10-11 曾误判这个需求，在 `:core` 建了个 `expect class SnapshotBitmap`
- * （`820bd00`，已撤销）—— 双重错误：方向错（砍掉桌面端功能），位置也错（`:core`
- * 不依赖 Compose）。**裁剪是纯 Compose 层的绘制操作，用 `Canvas.drawImage` 重绘即可**，
- * 快捷菜单那段（`ShortcutMenu` 的卡片快照）早就在这么做了。
- *
- * @return 裁剪后的新位图；区域非法或 OOM 时返回 null（调用方按「没快照」处理，
- *   表现为展开动画少了卡片底图，不会崩）
+ * @return 裁剪后的新位图；区域非法或 OOM 时返回 null（调用方按「没快照」处理，不会崩）。
  */
 fun cropImageBitmap(
     source: ImageBitmap,
@@ -36,30 +38,47 @@ fun cropImageBitmap(
     if (width <= 0 || height <= 0) return null
     if (x < 0 || y < 0) return null
     if (x + width > source.width || y + height > source.height) return null
-    return runCatching {
-        val dst = ImageBitmap(width, height)
-        val canvas = Canvas(dst)
-        // ⚠ 这是 `androidx.compose.ui.graphics.Canvas` 的 `drawImageRect`，
-        //   不是 DrawScope 的 `drawImage` —— 前者是 5 参数版（src + dst 各一组），
-        //   后者才有 srcOffset/srcSize/dstSize 这组命名参数。混用会报
-        //   "No parameter with name 'srcOffset'"。
-        canvas.drawImageRect(
-            image = source,
-            srcOffset = IntOffset(x, y),
-            srcSize = IntSize(width, height),
-            dstOffset = IntOffset.Zero,
-            dstSize = IntSize(width, height),
-            paint = Paint(),
-        )
-        dst
-    }.getOrNull()
+    return cropImageBitmapImpl(source, x, y, width, height)
 }
+
+/** 平台裁剪实现：Android 走原生 `Bitmap.createBitmap`，其余平台重绘（见 [cropImageBitmap]）。 */
+internal expect fun cropImageBitmapImpl(
+    source: ImageBitmap,
+    x: Int,
+    y: Int,
+    width: Int,
+    height: Int,
+): ImageBitmap?
+
+/**
+ * 重绘裁剪：新建目标位图把源区域画进去（Android 以外的平台实现）。
+ *
+ * ⚠ 这里是 `androidx.compose.ui.graphics.Canvas` 的 `drawImageRect`（src + dst 各一组），
+ *   不是 DrawScope 的 `drawImage`；混用会报 "No parameter with name 'srcOffset'"。
+ */
+internal fun cropByRedraw(
+    source: ImageBitmap,
+    x: Int,
+    y: Int,
+    width: Int,
+    height: Int,
+): ImageBitmap? = runCatching {
+    val dst = ImageBitmap(width, height)
+    val canvas = Canvas(dst)
+    canvas.drawImageRect(
+        image = source,
+        srcOffset = IntOffset(x, y),
+        srcSize = IntSize(width, height),
+        dstOffset = IntOffset.Zero,
+        dstSize = IntSize(width, height),
+        paint = Paint(),
+    )
+    dst
+}.getOrNull()
 
 /**
  * 按**浮点边界**（屏幕坐标 px）裁剪，越界自动夹到源图范围内。
- *
- * 卡片边界来自 `onGloballyPositioned` 的原始坐标，理论上可能超出一两个像素 ——
- * 逐处 `coerceIn` 太啰嗦，集中在这里夹一次。
+ * 卡片边界来自 `onGloballyPositioned` 的原始坐标，可能超出一两个像素，集中夹一次。
  */
 fun cropImageBitmapClamped(
     source: ImageBitmap,
