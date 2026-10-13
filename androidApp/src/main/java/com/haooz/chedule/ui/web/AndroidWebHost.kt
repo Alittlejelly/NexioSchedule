@@ -17,6 +17,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -40,11 +41,11 @@ import com.haooz.chedule.data.showToast
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
-private const val DESKTOP_USER_AGENT =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
 /** 顶栏色条采样高度：只取页面最顶部几行，用来统计主导底色 */
 private const val TOP_MIRROR_SAMPLE_HEIGHT_PX = 12
+
+/** JS 报"基础库没定义"的特征：站点脚本没加载全（多因 `X-Requested-With` 被判非浏览器） */
+private val JS_LIB_MISSING = Regex("""(\$|jQuery) is not defined|requires jQuery""")
 
 /** 主导色与上一帧接近时的通道阈值，低于此视为同一颜色 */
 private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
@@ -339,11 +340,24 @@ fun rememberAndroidWebHost(
         webView.addJavascriptInterface(androidBridge, "AndroidBridge")
         webView.addJavascriptInterface(WebPostBridge(), "WebPostService")
     }
+    // 本轮是否已试过切到转发通道；每轮模式切换重置，避免反复重载打转。
+    val forwardSwitched = remember { AtomicBoolean(false) }
+    /** 对该 host 开转发后重载一次自救；已开过则不动 —— 那就不是 `X-Requested-With` 的问题。 */
+    val tryForwardAndReload: () -> Unit = remember(webView) {
+        {
+            if (WebForwardHosts.enable(webView.url?.toUri()?.host)) {
+                showToast("正在换一种方式重新加载该站点…", longDuration = true)
+                webView.post { webView.reload() }
+            }
+        }
+    }
     LaunchedEffect(config.isDesktopMode) {
+        forwardSwitched.set(false)
         compatDelegate.enhanceSettings(config.isDesktopMode)
         // 视口覆盖必须赶在页面自身脚本之前注册，晚了站点就把像素尺寸写死了（登录弹窗会留在屏外）
         compatDelegate.applyDesktopViewportOverride(config.isDesktopMode)
-        webView.settings.userAgentString = if (config.isDesktopMode) DESKTOP_USER_AGENT
+        webView.settings.userAgentString = if (config.isDesktopMode)
+            com.haooz.chedule.ui.web.buildDesktopUserAgent(context)
         else WebSettings.getDefaultUserAgent(context)
 
         webView.webViewClient = compatDelegate.wrapWebViewClient(
@@ -378,6 +392,9 @@ fun rememberAndroidWebHost(
 
                 @SuppressLint("WebViewClientOnReceivedSslError")
                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                    // ⚠ 子资源的证书错误 Chromium 不回调这里（只回调主框架）、直接静默丢弃，
+                    // 所以子资源失败只能靠 onReceivedHttpError 与 onConsoleMessage 兜。
+                    NexioLog.w("EduImport", "SSL 错误已放行: ${error.url} primaryError=${error.primaryError}")
                     handler.proceed()
                 }
 
@@ -395,6 +412,36 @@ fun rememberAndroidWebHost(
                                 showToast("加载失败: ${error.description}", longDuration = true)
                             }
                         }
+                    } else {
+                        // ⚠ 此前完全静默：主框架照样 onPageFinished，页面表现为
+                        // "没样式 / 图片空白 / 按钮点了没反应"，日志里一个字都没有。
+                        NexioLog.w(
+                            "EduImport",
+                            "子资源加载失败[${error.errorCode}]: ${request.url} —— ${error.description}"
+                        )
+                    }
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: WebResourceResponse
+                ) {
+                    // 4xx/5xx 只走这里（onReceivedError 只报网络层失败）：
+                    // 静态资源被 WAF 拦、防盗链、路径改版 404，都在这里现形。
+                    val frame = if (request.isForMainFrame) "main" else "sub"
+                    NexioLog.w(
+                        "EduImport",
+                        "HTTP ${errorResponse.statusCode} [$frame] ${request.url} " +
+                            "mime=${errorResponse.mimeType} enc=${errorResponse.encoding}"
+                    )
+                    // 脚本/样式拿不到 → 换转发通道重试。favicon 的 dest 是 image，不会误触发。
+                    val dest = request.requestHeaders["Sec-Fetch-Dest"]?.lowercase()
+                    if (errorResponse.statusCode >= 400 &&
+                        (dest == "script" || dest == "style") &&
+                        forwardSwitched.compareAndSet(false, true)
+                    ) {
+                        tryForwardAndReload()
                     }
                 }
             },
@@ -412,6 +459,14 @@ fun rememberAndroidWebHost(
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                     consoleMessage?.let {
                         NexioLog.d("EduImport", "JS [${it.messageLevel()}]: ${it.message()} (${it.sourceId()}:${it.lineNumber()})")
+                        // 站点脚本库没加载全（典型是 WebView 的 X-Requested-With 被当成
+                        // 非浏览器而降级）：对该 host 开启 OkHttp 转发并重载一次自救。
+                        if (it.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
+                            JS_LIB_MISSING.containsMatchIn(it.message().orEmpty()) &&
+                            forwardSwitched.compareAndSet(false, true)
+                        ) {
+                            tryForwardAndReload()
+                        }
                     }
                     return true
                 }

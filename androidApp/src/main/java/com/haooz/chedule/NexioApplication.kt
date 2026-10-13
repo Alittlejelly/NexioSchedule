@@ -88,6 +88,7 @@ class NexioApplication : Application() {
         warmUpSharedPreferences()
         cleanupTransientFiles()
         initWearableSync()
+        enableWebViewRemoteDebugging()
         // 调休映射迁移：旧版存「第几周+星期几」，周次相对课表，换课表就错位。
         // 一次性换算成绝对日期（followDate），之后按当前课表实时折算。走后台线程避免拖慢冷启动。
         Thread {
@@ -100,6 +101,18 @@ class NexioApplication : Application() {
                 }
             }
         }.start()
+    }
+
+    /**
+     * 打开 WebView 远程调试（chrome://inspect），仅 debuggable 包。
+     * 排查"网页某些资源加载不出来"时，这是唯一能直接看到每个请求状态码 / MIME 的手段。
+     */
+    private fun enableWebViewRemoteDebugging() {
+        runCatching {
+            val debuggable =
+                (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            if (debuggable) android.webkit.WebView.setWebContentsDebuggingEnabled(true)
+        }
     }
 
     /** 手表课表推送：启动注册，课程变更走 CourseRepository 监听 */

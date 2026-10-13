@@ -4,6 +4,7 @@ package com.haooz.chedule.ui.web
 import android.graphics.Bitmap
 import android.os.Build
 import com.haooz.chedule.data.NexioLog
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
@@ -22,6 +23,20 @@ private const val TAG = "WebCompatDelegate"
 
 /** 桌面模式下使用的页面布局宽度（CSS px），见 desktopViewportContent() 的说明 */
 private const val DESKTOP_LAYOUT_WIDTH = 1280
+
+/**
+ * 桌面模式 UA 模板。
+ *
+ * ⚠ 版本号从系统 WebView 实际 UA 里抠，不能写死：写死时 `Sec-Ch-Ua`（真实版本）与
+ * `User-Agent`（写死版本）对不上，部分 WAF 会判 bot 并返回 HTML 挑战页 ——
+ * 表现为页面渲染了但 CSS 没生效（"Refused to apply style … MIME type ('text/html')"）。
+ */
+internal fun buildDesktopUserAgent(context: android.content.Context): String {
+    val realUA = WebSettings.getDefaultUserAgent(context)
+    val chromeVer = Regex("Chrome/(\\d+)").find(realUA)?.groupValues?.getOrNull(1) ?: "120"
+    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/$chromeVer.0.0.0 Safari/537.36"
+}
 
 /**
  * 桌面模式视口覆盖脚本（document-start 注入，先于页面自身脚本执行）。
@@ -182,6 +197,8 @@ class WebCompatDelegate(private val webView: WebView) {
      * 包装 WebViewClient，统一控制 JS 注入流程
      */
     fun wrapWebViewClient(original: WebViewClient, isDesktopMode: Boolean): WebViewClient {
+        // 转发通道的响应不进 WebView 缓存，靠 OkHttp 侧的 Cache 补回来（见 installCache 的说明）
+        WebViewRequestInterceptor.installCache(webView.context.applicationContext)
         val interceptor = WebViewRequestInterceptor()
         // 在 UI 线程读取当前用户代理并缓存：shouldInterceptRequest 在后台线程执行，
         // 后台线程访问 WebView settings 会抛异常，故不能在那里获取 UA
@@ -196,6 +213,26 @@ class WebCompatDelegate(private val webView: WebView) {
                 }
                 return super.shouldInterceptRequest(view, request)
             }
+
+            // ⚠ 两个重载都必须转发给 original：自定义 scheme 外跳（intent://、market://）写在那里。
+            // 漏了转发 = WebView 按默认行为当 URL 加载 → 失败 → 被 onReceivedError 当成"回退上一页"，
+            // 表现就是点了支付/跳转没反应。外壳迁 :ui-shared 时这一支漏了。
+            @Deprecated("Deprecated in Java")
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
+                original.shouldOverrideUrlLoading(view, url)
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
+                original.shouldOverrideUrlLoading(view, request)
+
+            // ⚠ 同样必须转发：4xx/5xx 只走这一个回调（onReceivedError 只报网络层失败）。
+            // 静态资源被 WAF 拦（403）、防盗链、路径变更导致 404，全靠它现形。
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse
+            ) = original.onReceivedHttpError(view, request, errorResponse)
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 original.onPageStarted(view, url, favicon)
@@ -279,6 +316,11 @@ class WebCompatDelegate(private val webView: WebView) {
             }
 
             override fun onReceivedTitle(v: WebView?, t: String?) = original.onReceivedTitle(v, t)
+
+            // ⚠ 必须转发：Chromium 自己的诊断信息（"Refused to apply style ... MIME type"、
+            // "Mixed Content ... was blocked"）只走 onConsoleMessage。漏了转发 = 静态资源
+            // 为什么没生效一行日志都没有，只能看到"页面没样式"。
+            override fun onConsoleMessage(m: ConsoleMessage?): Boolean = original.onConsoleMessage(m)
         }
     }
 }

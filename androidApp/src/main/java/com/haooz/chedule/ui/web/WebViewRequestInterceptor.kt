@@ -6,6 +6,7 @@ import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -19,18 +20,37 @@ import java.util.concurrent.TimeUnit
 class WebViewRequestInterceptor {
 
     companion object {
-        private val clientWithRedirects = OkHttpClient.Builder()
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        /**
+         * ⚠ 转发响应不进 WebView 的 HTTP 缓存，必须靠这层补，否则二次打开全量重下。
+         * 响应头原样复制（含 Cache-Control/ETag），缓存语义与浏览器一致。
+         */
+        private var httpCache: Cache? = null
 
-        private val clientNoRedirects = clientWithRedirects.newBuilder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .build()
+        /** 在首次 `intercept()` 之前调用一次即可（client 是 lazy 的）。 */
+        fun installCache(context: android.content.Context) {
+            if (httpCache != null) return
+            httpCache = runCatching {
+                Cache(java.io.File(context.cacheDir, "webview-okhttp"), 32L * 1024 * 1024)
+            }.getOrNull()
+        }
+
+        private val clientWithRedirects by lazy {
+            OkHttpClient.Builder()
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .apply { httpCache?.let { cache(it) } }
+                .build()
+        }
+
+        private val clientNoRedirects by lazy {
+            clientWithRedirects.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+        }
 
         // JS 注册了但请求未发出时 body 会残留；封顶并允许页面销毁时清空
         private const val MAX_POST_REGISTRY = 32
@@ -98,29 +118,50 @@ class WebViewRequestInterceptor {
 
         val registeredData = requestId?.let { postBodyRegistry.remove(it) }
 
-        // 仅在确实捕获到 POST 请求体时才用 OkHttp 转发。
-        // 普通 GET 页面加载/跳转直接交回 WebView 原生处理：原生请求带浏览器 UA、Referer、Origin
-        // 等完整属性，若也用 OkHttp 重发，会因缺这些属性被目标站点 WAF 判定为“非法参数”而拦截。
-        if (registeredData == null) {
-            return null
-        }
+        // 转发条件：捕获到 POST body 必须转发（X-WebView-Post-Id 只有这里能剔除）；
+        // 其余**只对开启过的 host** 转发 —— ⚠ 不能无条件转发，另一类站点的 WAF 会拦（见 WebForwardHosts）。
+        // 覆盖口径用黑名单：只排掉 XHR/fetch（教务接口原生就是 200，动它徒增 CORS 变数）
+        // 与音视频（流式 + Range 续传）。⚠ 写白名单会漏掉字体和图片。
+        val fetchDest = request.requestHeaders["Sec-Fetch-Dest"]?.lowercase()
+        val isXhr = fetchDest == "empty"
+        val isMedia = fetchDest == "video" || fetchDest == "audio"
+        val viaProxy = registeredData != null ||
+            (WebForwardHosts.isEnabled(request.url.host) &&
+                (request.isForMainFrame || (!isXhr && !isMedia)))
+        if (!viaProxy) return null
+
+        NexioLog.d(
+            "WebViewInterceptor",
+            "转发 ${request.method} dest=${fetchDest ?: "main"} $url"
+        )
 
         val client = if (request.isForMainFrame) clientNoRedirects else clientWithRedirects
 
         try {
             val builder = Request.Builder().url(url)
 
-            val mediaType = registeredData.contentType
-                .ifBlank { "application/x-www-form-urlencoded" }
-                .toMediaTypeOrNull()
-            // 叫 requestBody 而非 body：同一个 try 块下方还有一次响应体的 val body
-            val requestBody = registeredData.body.toRequestBody(mediaType)
-            builder.method(request.method, requestBody)
+            if (registeredData != null) {
+                val mediaType = registeredData.contentType
+                    .ifBlank { "application/x-www-form-urlencoded" }
+                    .toMediaTypeOrNull()
+                // 叫 requestBody 而非 body：同一个 try 块下方还有一次响应体的 val body
+                val requestBody = registeredData.body.toRequestBody(mediaType)
+                builder.method(request.method, requestBody)
+            } else {
+                // GET / HEAD 无请求体。OkHttp 的 method(...) 对不允许带体的方法会校验，
+                // 所以这里必须显式传 null 而不是复用上面的分支。
+                builder.method(request.method, null)
+            }
 
-            // 复制头部，剔除特殊头部
+            // 复制头部，剔除特殊头部：
+            // ⚠ Accept-Encoding 必须剔 —— 原样带上时 OkHttp 不再透明解压，而下面又摘掉
+            //   Content-Encoding，交给 WebView 的是 gzip 原文（页面全乱码、MIME 还写着 text/html）。
+            // ⚠ Content-Length 同理 —— 请求体在这里重建，旧长度不符会让服务器挂起或截断。
             request.requestHeaders.forEach { (key, value) ->
                 if (!key.equals("X-Requested-With", ignoreCase = true) &&
-                    !key.equals("X-WebView-Post-Id", ignoreCase = true)
+                    !key.equals("X-WebView-Post-Id", ignoreCase = true) &&
+                    !key.equals("Accept-Encoding", ignoreCase = true) &&
+                    !key.equals("Content-Length", ignoreCase = true)
                 ) {
                     builder.addHeader(key, value)
                 }
@@ -138,6 +179,10 @@ class WebViewRequestInterceptor {
             }
 
             val response = client.newCall(builder.build()).execute()
+            NexioLog.d(
+                "WebViewInterceptor",
+                "转发结果 ${response.code} ${response.header("Content-Type")} ${response.body?.contentLength()}B $url"
+            )
 
             // 同步 Set-Cookie 回 WebView
             response.headers.values("Set-Cookie").forEach {
