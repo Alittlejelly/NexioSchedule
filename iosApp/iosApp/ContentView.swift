@@ -345,7 +345,10 @@ private final class AppHostController: UIViewController {
 
     private func reportTopInset() {
         guard isViewLoaded, let window = view.window else { return }
-        let showHeader = host.showsNativeHeader && !host.nativePageActive
+        // Keep the retained root's geometry stable while a document covers it.
+        // Hiding its controls must not clear the Compose header's reserved space.
+        guard !host.nativePageActive else { return }
+        let showHeader = host.showsNativeHeader
         let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
         guard abs(lastTopInset - inset) > 0.5 else { return }
         lastTopInset = inset
