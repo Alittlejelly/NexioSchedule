@@ -54,6 +54,7 @@ final class NativeDocumentNavigationController: UINavigationController,
         if interactiveBack == nil {
             edgeBack.edges = view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? .right : .left
         }
+        host.reconcileNativeEditorExit()
         updateChromeState()
         // Reconcile programmatic requests only after the current transition settles.
         synchronizeStack()
@@ -64,15 +65,12 @@ final class NativeDocumentNavigationController: UINavigationController,
         view.isUserInteractionEnabled = !floatingActive
         view.accessibilityElementsHidden = floatingActive
         retainedRoot.viewIfLoaded?.accessibilityElementsHidden = topViewController !== retainedRoot
-        // Preserve the safe-area overlap and card geometry during a route-local morph.
-        // Hiding the navigation controller's bar would relayout both parent and editor.
-        let contentOverlayActive = host.nativeContentOverlayActive
-        navigationBar.alpha = contentOverlayActive ? 0 : 1
-        navigationBar.accessibilityElementsHidden = contentOverlayActive
-        navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight && !contentOverlayActive
+        // A route-local editor changes native items, never the bar's geometry or alpha.
+        // Its Compose card morph runs entirely below this persistent control layer.
+        navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight
         for controller in viewControllers {
             (controller as? NativeDocumentPageController)?.applyChromeState(
-                interactionAllowed: !floatingActive && !transitionInFlight && !contentOverlayActive
+                interactionAllowed: !floatingActive && !transitionInFlight
             )
         }
         if let page = topViewController as? NativeDocumentPageController {
@@ -213,6 +211,17 @@ private final class NativeDocumentPageController: UIViewController {
     private let host: IosAppHost
     private let contentController: UIViewController
     private var appliedActionState: NativeActionState?
+    private lazy var backItem = makeLeadingItem(symbol: "chevron.backward")
+    private lazy var cancelItem = makeLeadingItem(symbol: "xmark")
+
+    private func makeLeadingItem(symbol: String) -> UIBarButtonItem {
+        let item = UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain,
+                                 target: self, action: #selector(performLeadingAction))
+        // UIKit matches these two native configurations and owns their entire transition.
+        if #available(iOS 26.0, *) { item.identifier = "time-settings-leading" }
+        item.tintColor = .label
+        return item
+    }
     private lazy var actionItem = UIBarButtonItem(
         image: nil, style: .plain, target: self, action: #selector(performPageAction)
     )
@@ -253,6 +262,10 @@ private final class NativeDocumentPageController: UIViewController {
 
     func applyChromeState(interactionAllowed: Bool) {
         let state = NativeActionState(
+            leadingSymbol: host.nativePageLeadingSymbol(routeId: routeId),
+            leadingLabel: host.nativePageLeadingLabel(routeId: routeId),
+            leadingEnabled: interactionAllowed && host.nativePageLeadingEnabled(routeId: routeId),
+            editorActive: host.nativePageEditorActive(routeId: routeId),
             symbol: host.nativePageActionSymbol(routeId: routeId),
             label: host.nativePageActionLabel(routeId: routeId),
             enabled: interactionAllowed && host.nativePageActionEnabled(routeId: routeId),
@@ -262,10 +275,26 @@ private final class NativeDocumentPageController: UIViewController {
         )
         guard appliedActionState != state else { return }
         appliedActionState = state
+        let animated = viewIfLoaded?.window != nil && !UIAccessibility.isReduceMotionEnabled
+        if !state.leadingSymbol.isEmpty {
+            navigationItem.hidesBackButton = true
+            let leadingItem = state.editorActive ? cancelItem : backItem
+            leadingItem.accessibilityLabel = state.leadingLabel
+            leadingItem.isEnabled = state.leadingEnabled
+            if navigationItem.leftBarButtonItem !== leadingItem {
+                navigationItem.setLeftBarButtonItems([leadingItem], animated: animated)
+            }
+        }
         guard !state.symbol.isEmpty else {
             activityIndicator.stopAnimating()
-            navigationItem.rightBarButtonItem = nil
+            if navigationItem.rightBarButtonItem != nil {
+                navigationItem.setRightBarButtonItems(nil, animated: animated)
+            }
             return
+        }
+        if #available(iOS 26.0, *) {
+            actionItem.identifier = "document-trailing"
+            actionItem.style = state.editorActive ? .prominent : .plain
         }
         if state.busy {
             activityIndicator.color = chromeTint
@@ -273,7 +302,7 @@ private final class NativeDocumentPageController: UIViewController {
             activityItem.customView?.accessibilityLabel = state.label
             activityItem.isEnabled = false
             if navigationItem.rightBarButtonItem !== activityItem {
-                navigationItem.rightBarButtonItem = activityItem
+                navigationItem.setRightBarButtonItems([activityItem], animated: animated)
             }
         } else {
             activityIndicator.stopAnimating()
@@ -282,9 +311,14 @@ private final class NativeDocumentPageController: UIViewController {
             actionItem.isEnabled = state.enabled
             actionItem.tintColor = state.successful ? .systemGreen : chromeTint
             if navigationItem.rightBarButtonItem !== actionItem {
-                navigationItem.rightBarButtonItem = actionItem
+                navigationItem.setRightBarButtonItems([actionItem], animated: animated)
             }
         }
+    }
+
+    @objc private func performLeadingAction() {
+        guard appliedActionState?.leadingEnabled == true else { return }
+        host.performNativePageLeadingAction(routeId: routeId)
     }
 
     @objc private func performPageAction() {
@@ -333,6 +367,10 @@ private final class NativeDocumentPageController: UIViewController {
 }
 
 private struct NativeActionState: Equatable {
+    let leadingSymbol: String
+    let leadingLabel: String
+    let leadingEnabled: Bool
+    let editorActive: Bool
     let symbol: String
     let label: String
     let enabled: Bool

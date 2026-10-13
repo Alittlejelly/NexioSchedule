@@ -59,6 +59,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
+import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -275,6 +278,7 @@ fun TimeConfigEditScreen(
     var listScrollY by remember { mutableIntStateOf(0) }
 
     val screenTitle = "编辑作息"
+    val usesNativeControls = LocalNativeDocumentChrome.current != null
     var routineName by remember(timeConfig) { mutableStateOf(timeConfig.safeRoutines.firstOrNull { it.id == routineId }?.name ?: "") }
 
     var morningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.morningSections) }
@@ -468,6 +472,8 @@ fun TimeConfigEditScreen(
     LaunchedEffect(Unit) {
         if (hasCardBounds) {
             delay(12.milliseconds)
+            // A native cancel/save can arrive before the delayed opening starts.
+            if (animating) return@LaunchedEffect
             launch {
                 scaleProgress.animateTo(
                     targetValue = 1f,
@@ -722,6 +728,38 @@ fun TimeConfigEditScreen(
         triggerExitAndBack(onSavePending = { onSave(newConfig) })
     }
 
+    fun requestSave() {
+        if (animating) return
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+        val check = checkTimeOverlap()
+        when {
+            check.hasBlocking -> {
+                overlapMessage = check.blocking!!
+                showOverlapDialog = true
+            }
+            check.hasWarnings -> {
+                overlapMessage = check.warnings.joinToString("\n")
+                showOverlapWarningDialog = true
+            }
+            else -> commitSave()
+        }
+    }
+
+    // Chrome follows destination intent, not animation completion. Opening remains
+    // interruptible; closing restores the parent controls on its very first frame.
+    NativeDocumentEditorEffect(
+        if (animating) null else NativeDocumentEditorChrome(
+            title = screenTitle,
+            cancel = NativeDocumentAction("xmark", "取消") {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                triggerExitAndBack()
+            },
+            save = NativeDocumentAction("checkmark", "保存并关闭") {
+                requestSave()
+            },
+        )
+    )
+
     val backgroundColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(backgroundColor)
@@ -789,7 +827,7 @@ fun TimeConfigEditScreen(
                     topBar = {
                         ProgressiveBlurTopBar(
                             backdrop = liquidGlassBackdrop!!,
-                            // Raw statusBars still includes the visually hidden UIKit bar.
+                            // Native controls stay above the morph; preserve the existing inset contract.
                             topInsetAdjustment = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp,
                         ) {
                             CollapsibleTopAppBar(
@@ -798,7 +836,7 @@ fun TimeConfigEditScreen(
                                 modifier = Modifier,
                                 scrollBehavior = scrollBehavior,
                                 contentPadding = {},
-                                startAction = { backdropAlpha, shadowAlpha ->
+                                startAction = if (usesNativeControls) null else { backdropAlpha, shadowAlpha ->
                                     LiquidTopBarButton(
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -812,23 +850,9 @@ fun TimeConfigEditScreen(
                                         shadowAlpha = shadowAlpha,
                                     )
                                 },
-                                endAction = { backdropAlpha, shadowAlpha ->
+                                endAction = if (usesNativeControls) null else { backdropAlpha, shadowAlpha ->
                                     LiquidTopBarButton(
-                                        onClick = {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                            val check = checkTimeOverlap()
-                                            when {
-                                                check.hasBlocking -> {
-                                                    overlapMessage = check.blocking!!
-                                                    showOverlapDialog = true
-                                                }
-                                                check.hasWarnings -> {
-                                                    overlapMessage = check.warnings.joinToString("\n")
-                                                    showOverlapWarningDialog = true
-                                                }
-                                                else -> commitSave()
-                                            }
-                                        },
+                                        onClick = { requestSave() },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.Ok,
                                         contentDescription = "保存并关闭",

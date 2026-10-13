@@ -737,6 +737,7 @@ fun CourseTimeSettingsRoute(
     var currentPage by remember { mutableStateOf("select") }
     NativeDocumentOverlayEffect(currentPage == "edit")
     val nativeBarInset = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp
+    var editingExitStarted by remember { mutableStateOf(false) }
     var editingConfig by remember { mutableStateOf<TimeConfig?>(null) }
     var editingRoutineId by remember { mutableStateOf<Long?>(null) }
     var editingCardBounds by remember { mutableStateOf<TimeConfigCardBounds?>(null) }
@@ -802,6 +803,7 @@ fun CourseTimeSettingsRoute(
                     CourseTimeSettingsScreen(
                         onEditRoutine = { routine, baseConfig, bounds ->
                             // 二级页面只编辑这一个作息：把该作息的时间叠加上去
+                            editingExitStarted = false
                             editingConfig = baseConfig.effectiveFor(routine.id)
                             editingRoutineId = routine.id
                             editingCardBounds = bounds
@@ -819,6 +821,7 @@ fun CourseTimeSettingsRoute(
                             // 等待一帧后启动背景动画
                             coroutineScope.launch {
                                 delay(12.milliseconds)
+                                if (editingExitStarted || currentPage != "edit") return@launch
                                 launch {
                                     backgroundScale.animateTo(
                                         targetValue = 0.92f,
@@ -847,13 +850,14 @@ fun CourseTimeSettingsRoute(
         if (currentPage == "edit") {
             editingConfig?.let { config ->
                 val bounds = editingCardBounds
-                // The bar stays in UIKit's safe area while visually hidden. Consume only
-                // its extra overlap so the original editor and card bounds do not shift.
+                // Native controls stay above the morph. Consume only their extra overlap
+                // so the original editor layout and card bounds do not shift.
                 Box(Modifier.fillMaxSize().consumeWindowInsets(PaddingValues(top = nativeBarInset))) {
                     TimeConfigEditScreen(
                         timeConfig = config,
                         routineId = editingRoutineId ?: 0L,
                         onBackStart = {
+                            editingExitStarted = true
                             coroutineScope.launch {
                                 launch {
                                     backgroundScale.animateTo(

@@ -52,6 +52,7 @@ class IosAppHost {
     private val savedDocumentStates = mutableMapOf<String, Map<String, List<Any?>>>()
     private var requestedPopDepth by mutableStateOf<Int?>(null)
     private var nativeTransitionInFlight by mutableStateOf(false)
+    private var deferredEditorPopRouteId: String? = null
 
     init {
         router.nativeRouteHandler = { route ->
@@ -72,10 +73,12 @@ class IosAppHost {
     val nativePageActive: Boolean get() = nativePages.isNotEmpty()
     val nativePopPending: Boolean get() = requestedPopDepth != null
     val nativeContentOverlayActive: Boolean
-        get() = nativePages.lastOrNull()?.chrome?.contentOverlayActive == true
+        get() = nativePages.lastOrNull()?.chrome?.let { it.contentOverlayActive || it.editor != null } == true
 
     fun nativeRouteTitle(routeId: String): String =
-        nativePage(routeId).let { it.chrome.title.ifEmpty { it.route.nativeDocumentTitle().orEmpty() } }
+        nativePage(routeId).let {
+            it.chrome.editor?.title ?: it.chrome.title.ifEmpty { it.route.nativeDocumentTitle().orEmpty() }
+        }
 
     fun navigateNativeDocument(routeId: String) {
         val route = AppRoute.fromId(routeId) ?: return
@@ -127,21 +130,58 @@ class IosAppHost {
         if (kotlin.math.abs(page.chrome.barInset - inset) > 0.5) page.chrome.barInset = inset
     }
 
-    fun nativePageActionSymbol(routeId: String): String = nativePage(routeId).chrome.action?.symbol.orEmpty()
-    fun nativePageActionLabel(routeId: String): String = nativePage(routeId).chrome.action?.label.orEmpty()
+    fun nativePageEditorActive(routeId: String): Boolean = nativePage(routeId).chrome.editor != null
+    fun nativePageActionSymbol(routeId: String): String = nativePage(routeId).chrome.effectiveAction?.symbol.orEmpty()
+    fun nativePageActionLabel(routeId: String): String = nativePage(routeId).chrome.effectiveAction?.label.orEmpty()
     fun nativePageActionEnabled(routeId: String): Boolean =
-        nativePage(routeId).chrome.action?.enabled == true && !nativeTransitionInFlight &&
-            !nativeContentOverlayActive
-    fun nativePageActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.action?.busy == true
-    fun nativePageActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.action?.successful == true
+        pageControlsAllowed(routeId) && nativePage(routeId).chrome.effectiveAction?.enabled == true
+    fun nativePageActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.effectiveAction?.busy == true
+    fun nativePageActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.effectiveAction?.successful == true
     fun nativePageTintArgb(routeId: String): Long = nativePage(routeId).chrome.tintArgb
 
+    // Match the leading slot across list/editor configurations using UIKit item identity.
+    fun nativePageLeadingSymbol(routeId: String): String = nativePage(routeId).let {
+        it.chrome.editor?.cancel?.symbol ?: if (it.route == AppRoute.CourseTimeSettings) "chevron.backward" else ""
+    }
+    fun nativePageLeadingLabel(routeId: String): String =
+        nativePage(routeId).chrome.editor?.cancel?.label ?: "返回"
+    fun nativePageLeadingEnabled(routeId: String): Boolean =
+        pageVisibleAndInteractive(routeId) &&
+            nativePage(routeId).chrome.editor?.cancel?.let { it.enabled && !it.busy } != false
+
+    private fun pageVisibleAndInteractive(routeId: String): Boolean =
+        !nativeTransitionInFlight && requestedPopDepth == null && !floatingOverlayActive &&
+            nativePages.lastOrNull()?.id == routeId
+
+    private fun pageControlsAllowed(routeId: String): Boolean =
+        pageVisibleAndInteractive(routeId) &&
+            (!nativeContentOverlayActive || nativePageEditorActive(routeId))
+
     fun performNativePageAction(routeId: String) {
-        if (nativeTransitionInFlight || requestedPopDepth != null || floatingOverlayActive ||
-            nativeContentOverlayActive ||
-            nativePages.lastOrNull()?.id != routeId) return
-        val action = nativePage(routeId).chrome.action ?: return
+        if (!pageControlsAllowed(routeId)) return
+        val action = nativePage(routeId).chrome.effectiveAction ?: return
         if (action.enabled && !action.busy) action.onClick()
+    }
+
+    fun performNativePageLeadingAction(routeId: String) {
+        if (!nativePageLeadingEnabled(routeId)) return
+        val editor = nativePage(routeId).chrome.editor
+        if (editor != null) editor.cancel.onClick()
+        else if (nativeContentOverlayActive) {
+            // The parent back button is already visible during the reverse morph.
+            // Accept the tap now, but let save/disposal finish before popping its page.
+            deferredEditorPopRouteId = routeId
+        } else requestNativePop()
+    }
+
+    fun reconcileNativeEditorExit() {
+        val id = deferredEditorPopRouteId ?: return
+        if (nativePages.lastOrNull()?.id != id) {
+            deferredEditorPopRouteId = null
+        } else if (!nativeContentOverlayActive && pageVisibleAndInteractive(id)) {
+            deferredEditorPopRouteId = null
+            requestNativePop()
+        }
     }
 
     fun makeNativePageController(routeId: String): UIViewController {
@@ -211,11 +251,14 @@ class IosAppHost {
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
                             nativeRouteIds, floatingOverlayActive,
                             nativePages.map { page ->
-                                val action = page.chrome.action
+                                val action = page.chrome.effectiveAction
+                                val editor = page.chrome.editor
                                 NativeDocumentChromeSnapshot(
-                                    page.chrome.title, page.chrome.tintArgb,
+                                    editor?.title ?: page.chrome.title, page.chrome.tintArgb,
                                     action?.symbol, action?.label, action?.enabled,
                                     action?.busy, action?.successful, page.chrome.contentOverlayActive,
+                                    editor != null, editor?.cancel?.symbol, editor?.cancel?.label,
+                                    editor?.cancel?.enabled,
                                 )
                             },
                             nativeTransitionInFlight,
@@ -279,6 +322,10 @@ private data class NativeDocumentChromeSnapshot(
     val busy: Boolean?,
     val successful: Boolean?,
     val contentOverlayActive: Boolean,
+    val editorActive: Boolean,
+    val leadingSymbol: String?,
+    val leadingLabel: String?,
+    val leadingEnabled: Boolean?,
 )
 
 internal class NativeDocumentPage(

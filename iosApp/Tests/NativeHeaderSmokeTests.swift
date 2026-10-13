@@ -464,26 +464,76 @@ final class NativeHeaderSmokeTests: XCTestCase {
         settle()
         requireNativeHeader("课表节数与时间")
         XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3)
+        let leadingFrame = app.navigationBars.buttons.element(boundBy: 0).frame
         let routineSummary = app.staticTexts.matching(NSPredicate(format:
             "label == %@ OR label ENDSWITH %@", "始终生效", "生效")).firstMatch
         XCTAssertTrue(routineSummary.exists && routineSummary.isHittable, app.debugDescription)
         routineSummary.tap()
         settle()
         XCTAssertTrue(item("编辑作息").waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertEqual(app.navigationBars.count, 0, "Native bar must not cover the existing morph editor")
-        XCTAssertTrue(item("取消").isHittable, app.debugDescription)
-        capture("Time settings - existing Compose morph editor")
+        requireNativeHeader("编辑作息")
+        XCTAssertEqual(app.navigationBars.buttons.count, 2, "Editor must have only native cancel and save")
+        let cancel = app.navigationBars.buttons["取消"]
+        let save = app.navigationBars.buttons["保存并关闭"]
+        XCTAssertTrue(cancel.isHittable && save.isHittable, app.debugDescription)
+        XCTAssertEqual(cancel.frame.minX, leadingFrame.minX, accuracy: 1)
+        XCTAssertEqual(cancel.frame.minY, leadingFrame.minY, accuracy: 1,
+                       "Leading item moved from the fixed native control plane")
+        capture("Time settings - original morph with native editor buttons")
+        app.swipeUp()
+        settle()
+        XCTAssertEqual(cancel.frame.minY, leadingFrame.minY, accuracy: 1,
+                       "Native cancel moved with editor scrolling")
+        app.swipeDown()
+        settle()
+        _ = stableFrame(of: app.textViews.firstMatch)
         app.textViews.firstMatch.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
-        item("取消").tap()
+        cancel.tap()
         settle()
         requireNativeHeader("课表节数与时间")
         XCTAssertEqual(app.keyboards.count, 0, "Morph editor keyboard remained after cancellation")
         XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3,
                        "Editor exit changed retained settings geometry")
         capture("Time settings - native header restored after morph exit")
+        XCTAssertEqual(app.navigationBars.buttons.count, 1)
+        XCTAssertFalse(app.navigationBars.buttons["保存并关闭"].exists)
+        // Reopen the same source card and exercise the real save callback without edits.
+        routineSummary.tap()
+        settle()
+        requireNativeHeader("编辑作息")
+        app.navigationBars.buttons["保存并关闭"].tap()
+        settle()
+        requireNativeHeader("课表节数与时间")
+        XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3,
+                       "Save exit changed the source-card layout")
+        capture("Time settings - native save completed original reverse morph")
         nativeBack()
         XCTAssertEqual(app.navigationBars.count, 0)
+    }
+
+    func testTimeEditorRapidCancelAndParentBack() throws {
+        showSettings()
+        open("课表节数与时间")
+        let routine = app.staticTexts.matching(NSPredicate(format:
+            "label == %@ OR label ENDSWITH %@", "始终生效", "生效")).firstMatch
+        XCTAssertTrue(routine.exists && routine.isHittable)
+        routine.tap()
+        // No explicit settle between opening, cancellation, and parent back.
+        let cancel = app.navigationBars.buttons["取消"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        XCTAssertTrue(cancel.isEnabled)
+        XCTAssertTrue(app.navigationBars.buttons["保存并关闭"].isEnabled)
+        cancel.tap()
+        let back = app.navigationBars.buttons["返回"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        XCTAssertTrue(back.isEnabled)
+        XCTAssertFalse(app.navigationBars.buttons["保存并关闭"].exists)
+        back.tap()
+        settle()
+        XCTAssertEqual(app.navigationBars.count, 0,
+                       "Parent back tap during editor exit was swallowed")
+        capture("Time settings - rapid native cancel and parent back without disabled controls")
     }
 
     func testWidgetGuideDialogAboveNativeChrome() throws {

@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 
 class NativeDocumentHostTest {
     @Test
@@ -265,6 +266,107 @@ class NativeDocumentHostTest {
         assertTrue(host.nativePopPending)
         host.completeNativePop(0)
         assertFalse(host.nativePageActive)
+    }
+
+    @Test
+    fun nativeEditorOverridesRetainedParentAndRestoresItsLatestChrome() {
+        val host = IosAppHost()
+        host.router.navigate(AppRoute.CourseTimeSettings)
+        val id = host.nativeRouteIds.single()
+        val chrome = host.nativePage(id).chrome
+        var cancelled = 0
+        var saved = 0
+        var parentClicks = 0
+        chrome.title = "课表节数与时间"
+        chrome.contentOverlayActive = true
+        chrome.editor = NativeDocumentEditorChrome(
+            "编辑作息",
+            NativeDocumentAction("xmark", "取消") { cancelled++ },
+            NativeDocumentAction("checkmark", "保存并关闭") { saved++ },
+        )
+        // The live parent can publish again without taking ownership from the editor.
+        chrome.action = NativeDocumentAction("arrow.clockwise", "Parent") { parentClicks++ }
+        assertEquals("编辑作息", host.nativeRouteTitle(id))
+        assertEquals("xmark", host.nativePageLeadingSymbol(id))
+        assertEquals("checkmark", host.nativePageActionSymbol(id))
+        assertTrue(host.nativePageActionEnabled(id))
+        host.performNativePageAction(id)
+        host.performNativePageLeadingAction(id)
+        assertEquals(1, saved)
+        assertEquals(1, cancelled)
+        assertEquals(0, parentClicks)
+        assertTrue(host.router.popBack())
+        assertFalse(host.nativePopPending)
+        host.router.navigate(AppRoute.License)
+        assertEquals(listOf(id), host.nativeRouteIds)
+        // The editor owns back even if the parent flag has already been cleared.
+        chrome.contentOverlayActive = false
+        assertTrue(host.nativeContentOverlayActive)
+        chrome.editor = null
+        assertEquals("课表节数与时间", host.nativeRouteTitle(id))
+        assertEquals("chevron.backward", host.nativePageLeadingSymbol(id))
+        assertEquals("arrow.clockwise", host.nativePageActionSymbol(id))
+        host.performNativePageLeadingAction(id)
+        assertTrue(host.nativePopPending)
+    }
+
+    @Test
+    fun nativeEditorControlsAreGuardedDuringClosingAndOuterTransitions() {
+        val host = IosAppHost()
+        host.router.navigate(AppRoute.CourseTimeSettings)
+        val id = host.nativeRouteIds.single()
+        val chrome = host.nativePage(id).chrome
+        var clicks = 0
+        val cancel = NativeDocumentAction("xmark", "取消") { clicks++ }
+        val save = NativeDocumentAction("checkmark", "保存并关闭") { clicks++ }
+        chrome.editor = NativeDocumentEditorChrome("编辑作息", cancel, save)
+        host.setNativeTransitionInFlight(true)
+        assertFalse(host.nativePageLeadingEnabled(id))
+        assertFalse(host.nativePageActionEnabled(id))
+        host.performNativePageLeadingAction(id)
+        host.performNativePageAction(id)
+        host.setNativeTransitionInFlight(false)
+        chrome.editor = NativeDocumentEditorChrome(
+            "编辑作息", cancel.copy(enabled = false), save.copy(enabled = false),
+        )
+        host.performNativePageLeadingAction(id)
+        host.performNativePageAction(id)
+        assertEquals(0, clicks)
+        assertFalse(host.nativePopPending)
+    }
+
+    @Test
+    fun parentBackAcceptsClosingMorphTapAndPopsOnlyAfterSaveAndExit() {
+        val host = IosAppHost()
+        host.router.navigate(AppRoute.CourseTimeSettings)
+        val id = host.nativeRouteIds.single()
+        val chrome = host.nativePage(id).chrome
+        chrome.contentOverlayActive = true
+        chrome.editor = NativeDocumentEditorChrome(
+            "编辑作息",
+            NativeDocumentAction("xmark", "取消") {},
+            NativeDocumentAction("checkmark", "保存并关闭") {},
+        )
+        // Entering chrome is usable from the first frame, without progress thresholds.
+        assertTrue(host.nativePageActionEnabled(id))
+        assertTrue(host.nativePageLeadingEnabled(id))
+        // Closing intent restores the parent's back item immediately.
+        chrome.editor = null
+        assertEquals("chevron.backward", host.nativePageLeadingSymbol(id))
+        assertTrue(host.nativePageLeadingEnabled(id))
+        host.performNativePageLeadingAction(id)
+        host.performNativePageLeadingAction(id)
+        host.reconcileNativeEditorExit()
+        assertFalse(host.nativePopPending)
+        assertEquals(listOf(id), host.nativeRouteIds)
+        // The original save callback runs before the content overlay is disposed.
+        chrome.contentOverlayActive = false
+        host.reconcileNativeEditorExit()
+        assertTrue(host.nativePopPending)
+        assertEquals(emptyList(), host.nativeRouteIds)
+        host.completeNativePop(0)
+        host.reconcileNativeEditorExit()
+        assertFalse(host.nativePopPending)
     }
 
     @Test
