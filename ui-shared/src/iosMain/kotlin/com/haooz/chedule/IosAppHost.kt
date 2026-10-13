@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,7 @@ import com.haooz.chedule.ui.navigation.AppRouter
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.NavTransitionState
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
+import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.HostNavigationState
 import com.haooz.chedule.ui.utils.HostOverlayContent
 import com.haooz.chedule.ui.utils.HostOverlayState
@@ -243,6 +245,13 @@ class IosAppHost {
                         nativePages.isEmpty() && !router.hasOverlay && !navigationOverlayActive
                     }
                     MiuixPopupHost()
+                }
+                val appDark = isAppDarkTheme()
+                val hasNativePages = nativePages.isNotEmpty()
+                SideEffect {
+                    if (hasNativePages) {
+                        navigation.isDark = appDark
+                    }
                 }
                 LaunchedEffect(this@IosAppHost) {
                     snapshotFlow {

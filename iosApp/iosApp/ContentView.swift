@@ -75,6 +75,10 @@ private final class NativeSessionController: UIViewController {
 
     private func applyState() {
         guard isViewLoaded else { return }
+        let style: UIUserInterfaceStyle = host.isDark ? .dark : .light
+        if overrideUserInterfaceStyle != style {
+            overrideUserInterfaceStyle = style
+        }
         rootController.applyState()
         documentNavigation.applyHostState()
         let active = host.floatingOverlayActive
@@ -184,6 +188,9 @@ private final class AppHostController: UIViewController {
             view.setNeedsLayout()
         }
         let chromeStyle: UIUserInterfaceStyle = host.isDark ? .dark : .light
+        if overrideUserInterfaceStyle != chromeStyle {
+            overrideUserInterfaceStyle = chromeStyle
+        }
         if chromeController.overrideUserInterfaceStyle != chromeStyle {
             chromeController.overrideUserInterfaceStyle = chromeStyle
         }

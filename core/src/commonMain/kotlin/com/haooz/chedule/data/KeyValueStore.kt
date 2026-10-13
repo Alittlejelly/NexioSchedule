@@ -44,7 +44,10 @@ interface KeyValueStore {
 
     fun clear()
 
-    /** 变更监听。iOS 无等价能力，实现可返回 null。 */
+    /**
+     * 变更监听。iOS 侧只有「不带 key」的通知（传 [KEY_CHANGED_ANYWHERE]），
+     * 见 [UserDefaultsStore.registerListener]；确实没有等价能力的平台才返回 null。
+     */
     fun registerListener(listener: (String) -> Unit): Any?
 
     fun unregisterListener(token: Any?)

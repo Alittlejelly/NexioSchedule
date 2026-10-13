@@ -87,23 +87,21 @@ class UserDefaultsStore(
      * ⚠ 返回值是 NotificationCenter 内部持有的 handle（不是 token），`removeObserver` 要传的就是它。
      */
     override fun registerListener(listener: (String) -> Unit): Any? =
-        observerCenter.addObserverForName(
+        NSNotificationCenter.defaultCenter.addObserverForName(
             name = NSUserDefaultsDidChangeNotification,
-            `object` = null,
+            // ⚠ 必须传本实例的 defaults 作为 object：系统只往 **defaultCenter** 派发这条通知
+            //   （私有 `NSNotificationCenter()` 永远收不到，实测 iOS 27 模拟器确认）。
+            //   带上 object 则只收本 suite 的变更，17 个 store 不会互相串台 ——
+            //   早先担心的正是这个，但解法是过滤而不是换私有 center。
+            `object` = defaults,
             // ⚠ NSUserDefaults 通知在**任意线程**投递，必须指定队列；listener 会写非线程安全的 Compose 状态
             queue = NSOperationQueue.mainQueue,
             usingBlock = { _ -> listener(KEY_CHANGED_ANYWHERE) },
         )
 
     override fun unregisterListener(token: Any?) {
-        if (token != null) observerCenter.removeObserver(token)
+        if (token != null) NSNotificationCenter.defaultCenter.removeObserver(token)
     }
-
-    /**
-     * 每个 store 实例一个中心。
-     * ⚠ 不用全局单例 `defaultCenter`：多个 store 的监听会互相收到对方通知，`removeObserver` 也会误删。
-     */
-    private val observerCenter = NSNotificationCenter()
 
     /** 按调用方期望的类型读 NSNumber —— 这是单键读取不需要类型标记的原因。 */
     private fun number(key: String): NSNumber? = defaults.objectForKey(key) as? NSNumber
