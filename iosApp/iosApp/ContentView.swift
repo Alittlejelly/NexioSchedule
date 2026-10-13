@@ -11,8 +11,7 @@ struct ContentView: View {
     }
 }
 
-/// Embeds one retained Kotlin app session using separate main and overlay controllers.
-/// Native chrome stays between those controllers instead of above the entire app.
+/// Retains the original Compose app beneath native document navigation.
 private struct ComposeRootRepresentable: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         // 状态栏样式：**交给系统自适应**，App 侧不接管。
@@ -24,7 +23,7 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
         //
         // Info.plist 的 `UIViewControllerBasedStatusBarAppearance=false` 也已删 ——
         // 那个键会让系统去读已废弃的全局 API（就是刷屏警告的来源）。
-        return AppHostController(host: IosAppHost())
+        return NativeSessionController(host: IosAppHost())
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
@@ -32,7 +31,84 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
     }
 }
 
-/// Keeps native navigation between the main content and full-screen Compose overlays.
+/// The floating Compose surface sits above both native navigation and the retained root.
+private final class NativeSessionController: UIViewController {
+    private let host: IosAppHost
+    private let rootController: AppHostController
+    private let documentNavigation: NativeDocumentNavigationController
+    private let floatingContainer = FloatingOverlayPassthroughView()
+
+    init(host: IosAppHost) {
+        self.host = host
+        rootController = AppHostController(host: host)
+        documentNavigation = NativeDocumentNavigationController(host: host, root: rootController)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        embed(documentNavigation, in: view)
+        floatingContainer.backgroundColor = .clear
+        pin(floatingContainer, to: view)
+        embed(host.floatingController, in: floatingContainer)
+        host.onStateChanged = { [weak self] in
+            if Thread.isMainThread {
+                self?.applyState()
+            } else {
+                DispatchQueue.main.async { [weak self] in self?.applyState() }
+            }
+        }
+        applyState()
+    }
+
+    private func applyState() {
+        guard isViewLoaded else { return }
+        rootController.applyState()
+        documentNavigation.applyHostState()
+        let active = host.floatingOverlayActive
+        floatingContainer.overlayActive = active
+        floatingContainer.accessibilityElementsHidden = !active
+        host.floatingController.view.isUserInteractionEnabled = active
+        host.floatingController.view.accessibilityViewIsModal = active
+        host.floatingController.view.accessibilityElementsHidden = !active
+    }
+
+    private func embed(_ controller: UIViewController, in container: UIView) {
+        addChild(controller)
+        pin(controller.view, to: container)
+        controller.didMove(toParent: self)
+    }
+
+    private func pin(_ child: UIView, to parent: UIView) {
+        child.translatesAutoresizingMaskIntoConstraints = false
+        parent.addSubview(child)
+        NSLayoutConstraint.activate([
+            child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            child.topAnchor.constraint(equalTo: parent.topAnchor),
+            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor)
+        ])
+    }
+
+    deinit {
+        host.onStateChanged = nil
+    }
+}
+
+private final class FloatingOverlayPassthroughView: UIView {
+    var overlayActive = false
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        overlayActive ? super.hitTest(point, with: event) : nil
+    }
+}
+
+/// Keeps the original main, tab bar and legacy navigation overlay together as one root page.
 private final class AppHostController: UIViewController {
     private let host: IosAppHost
     private let mainContainer = UIView()
@@ -69,18 +145,10 @@ private final class AppHostController: UIViewController {
         chromeController.onLayout = { [weak self] in
             self?.reportBottomInset()
         }
-        host.onStateChanged = { [weak self] in
-            if Thread.isMainThread {
-                self?.applyState()
-            } else {
-                DispatchQueue.main.async { [weak self] in self?.applyState() }
-            }
-        }
         // 原生截屏桥：把含 TabBar 的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
             IosNativeCapture.shared.store(data: self?.captureScreenPNG())
         }
-
         applyState()
     }
 
@@ -96,7 +164,7 @@ private final class AppHostController: UIViewController {
         reportBottomInset()
     }
 
-    private func applyState() {
+    func applyState() {
         guard isViewLoaded else { return }
         chromeController.configure(
             tabCount: Int(host.tabCount),
@@ -197,10 +265,6 @@ private final class AppHostController: UIViewController {
             view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
         }
         return image.pngData()
-    }
-
-    deinit {
-        host.onStateChanged = nil
     }
 }
 

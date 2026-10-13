@@ -12,11 +12,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentChrome
+import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.AppRouter
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.NavTransitionState
@@ -27,11 +33,12 @@ import com.haooz.chedule.ui.utils.HostOverlayState
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.LocalHostOverlays
 import platform.UIKit.UIViewController
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixOverlayHostProvider
 import top.yukonga.miuix.kmp.utils.MiuixOverlayHostState
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
 
-/** One retained app session shared by the fixed main and overlay controllers. */
+/** One retained app session shared by native document and Compose controllers. */
 class IosAppHost {
     internal val router = AppRouter()
     internal val mainTransition = NavTransitionState()
@@ -39,6 +46,116 @@ class IosAppHost {
     private val navigation = HostNavigationState()
     private val overlays = HostOverlayState()
     private val popupHost = MiuixOverlayHostState()
+    private val nativePages = mutableStateListOf<NativeDocumentPage>()
+    private var nextNativePageId = 0L
+    // Mirror AppNavHost's route/occurrence saveable keys without retaining popped controllers.
+    private val savedDocumentStates = mutableMapOf<String, Map<String, List<Any?>>>()
+    private var requestedPopDepth by mutableStateOf<Int?>(null)
+    private var nativeTransitionInFlight by mutableStateOf(false)
+
+    init {
+        router.nativeRouteHandler = { route ->
+            if (route.isNativeDocument()) {
+                navigateNativeDocument(route.id)
+                true
+            } else {
+                false
+            }
+        }
+        router.nativeBackHandler = ::requestNativePop
+    }
+
+    /** Instance IDs, not route kinds: pushing the same document twice keeps independent state. */
+    val nativeRouteIds: List<String>
+        get() = nativePages.take(requestedPopDepth ?: nativePages.size).map { it.id }
+    val floatingOverlayActive: Boolean get() = overlays.isActive || popupHost.isActive
+    val nativePageActive: Boolean get() = nativePages.isNotEmpty()
+    val nativePopPending: Boolean get() = requestedPopDepth != null
+
+    fun nativeRouteTitle(routeId: String): String =
+        nativePage(routeId).let { it.chrome.title.ifEmpty { it.route.nativeDocumentTitle().orEmpty() } }
+
+    fun navigateNativeDocument(routeId: String) {
+        val route = AppRoute.fromId(routeId) ?: return
+        if (!route.isNativeDocument() || floatingOverlayActive ||
+            nativeTransitionInFlight || requestedPopDepth != null) return
+        val usedKeys = nativePages.map { it.stateKey }.toSet()
+        var stateKey = route.id
+        var occurrence = 2
+        while (stateKey in usedKeys) stateKey = "${route.id}#${occurrence++}"
+        nativePages.add(NativeDocumentPage(
+            id = "native-document-${++nextNativePageId}",
+            route = route,
+            stateKey = stateKey,
+            restoredValues = savedDocumentStates[stateKey],
+        ))
+    }
+
+    /** Request a UIKit pop; keep the page, its registry, and business state alive until didShow. */
+    private fun requestNativePop(): Boolean {
+        if (nativePages.isEmpty()) return false
+        if (!nativeTransitionInFlight && requestedPopDepth == null) {
+            requestedPopDepth = nativePages.lastIndex
+        }
+        return true
+    }
+
+    fun setNativeTransitionInFlight(inFlight: Boolean) {
+        nativeTransitionInFlight = inFlight
+    }
+
+    /** UIKit calls this only after a successful pop; an interactive cancellation changes nothing. */
+    fun completeNativePop(depth: Int) {
+        if (depth !in 0..nativePages.size) return
+        while (nativePages.size > depth) {
+            val page = nativePages.removeAt(nativePages.lastIndex)
+            savedDocumentStates[page.stateKey] = page.registry.performSave()
+            // Do not cache live compositions: page disposal retains its original exit semantics.
+            page.controller = null
+        }
+        requestedPopDepth = null
+    }
+
+    fun updateNativePageBarInset(routeId: String, points: Double) {
+        val page = nativePages.firstOrNull { it.id == routeId } ?: return
+        if (!points.isFinite()) return
+        val inset = points.coerceAtLeast(0.0)
+        if (kotlin.math.abs(page.chrome.barInset - inset) > 0.5) page.chrome.barInset = inset
+    }
+
+    fun nativePageActionSymbol(routeId: String): String = nativePage(routeId).chrome.action?.symbol.orEmpty()
+    fun nativePageActionLabel(routeId: String): String = nativePage(routeId).chrome.action?.label.orEmpty()
+    fun nativePageActionEnabled(routeId: String): Boolean =
+        nativePage(routeId).chrome.action?.enabled == true && !nativeTransitionInFlight
+    fun nativePageActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.action?.busy == true
+    fun nativePageActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.action?.successful == true
+    fun nativePageTintArgb(routeId: String): Long = nativePage(routeId).chrome.tintArgb
+
+    fun performNativePageAction(routeId: String) {
+        if (nativeTransitionInFlight || requestedPopDepth != null || floatingOverlayActive ||
+            nativePages.lastOrNull()?.id != routeId) return
+        val action = nativePage(routeId).chrome.action ?: return
+        if (action.enabled && !action.busy) action.onClick()
+    }
+
+    fun makeNativePageController(routeId: String): UIViewController {
+        val page = nativePage(routeId)
+        return page.controller ?: ComposeUIViewController {
+            HostEnvironment {
+                CompositionLocalProvider(
+                    LocalNativeDocumentChrome provides page.chrome,
+                    LocalSaveableStateRegistry provides page.registry,
+                ) {
+                    Surface(Modifier.fillMaxSize(), color = MiuixTheme.colorScheme.surface) {
+                        NexioIosRouteContent(router, page.route)
+                    }
+                }
+            }
+        }.also { page.controller = it }
+    }
+
+    internal fun nativePage(id: String): NativeDocumentPage =
+        nativePages.firstOrNull { it.id == id } ?: error("Unknown native document instance: $id")
 
     var onStateChanged: (() -> Unit)? = null
 
@@ -65,8 +182,20 @@ class IosAppHost {
         ComposeUIViewController(configure = { opaque = false }) {
             HostEnvironment {
                 Box(Modifier.fillMaxSize()) {
-                    HostOverlayContent(overlays)
                     NexioIosNavigation(this@IosAppHost)
+                }
+            }
+        }
+    }
+
+    /** Popups remain above both legacy Compose routes and native navigation chrome. */
+    val floatingController: UIViewController by lazy {
+        ComposeUIViewController(configure = { opaque = false }) {
+            HostEnvironment {
+                Box(Modifier.fillMaxSize()) {
+                    HostOverlayContent(overlays) {
+                        nativePages.isEmpty() && !router.hasOverlay && !navigationOverlayActive
+                    }
                     MiuixPopupHost()
                 }
                 LaunchedEffect(this@IosAppHost) {
@@ -74,6 +203,16 @@ class IosAppHost {
                         NativeHostSnapshot(
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
+                            nativeRouteIds, floatingOverlayActive,
+                            nativePages.map { page ->
+                                val action = page.chrome.action
+                                NativeDocumentChromeSnapshot(
+                                    page.chrome.title, page.chrome.tintArgb,
+                                    action?.symbol, action?.label, action?.enabled,
+                                    action?.busy, action?.successful,
+                                )
+                            },
+                            nativeTransitionInFlight,
                         )
                     }.collect { onStateChanged?.invoke() }
                 }
@@ -82,7 +221,7 @@ class IosAppHost {
     }
 
     fun selectTab(index: Int) {
-        if (!overlayActive && showsNativeTabBar && index in 0 until tabCount) {
+        if (!overlayActive && !nativePageActive && showsNativeTabBar && index in 0 until tabCount) {
             navigation.onTabSelected?.invoke(index)
         }
     }
@@ -119,4 +258,54 @@ private data class NativeHostSnapshot(
     val mainProgress: Double,
     val cutoutScale: Float,
     val cutoutCenterYRatio: Float,
+    val nativeRouteIds: List<String>,
+    val floatingOverlayActive: Boolean,
+    val nativeChrome: List<NativeDocumentChromeSnapshot>,
+    val nativeTransitionInFlight: Boolean,
 )
+
+private data class NativeDocumentChromeSnapshot(
+    val title: String,
+    val tintArgb: Long,
+    val symbol: String?,
+    val label: String?,
+    val enabled: Boolean?,
+    val busy: Boolean?,
+    val successful: Boolean?,
+)
+
+internal class NativeDocumentPage(
+    val id: String,
+    val route: AppRoute,
+    val stateKey: String,
+    restoredValues: Map<String, List<Any?>>?,
+) {
+    val chrome = NativeDocumentChrome()
+    // Values remain in memory, just like AppNavHost's SaveableStateHolder on iOS.
+    val registry = SaveableStateRegistry(restoredValues = restoredValues, canBeSaved = { true })
+    var controller: UIViewController? = null
+}
+
+internal fun AppRoute.isNativeDocument(): Boolean = nativeDocumentTitle() != null
+
+internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
+    AppRoute.Changelog -> "更新日志"
+    AppRoute.License -> "开源协议"
+    AppRoute.PrivacyPolicy -> "隐私政策"
+    AppRoute.Communication -> "交流与反馈"
+    AppRoute.AppreciateAuthor -> "捐赠支持"
+    AppRoute.PreferenceSettings -> "应用偏好设置"
+    AppRoute.UpdateSettings -> "更新设置"
+    AppRoute.LocalBackup -> "本地备份"
+    AppRoute.AiImport -> "AI 文本导入"
+    AppRoute.WidgetIntro -> "桌面小部件"
+    AppRoute.CourseReminder -> "课程提醒"
+    AppRoute.HolidaySettings -> "节假日与调休"
+    AppRoute.WebDavSettings -> "WebDAV 云备份"
+    AppRoute.ScheduleExport -> "课表导出"
+    AppRoute.ScheduleBackup -> "课表备份"
+    // Import still reaches EducationalImport, whose iOS WebHost is not implemented.
+    AppRoute.ScheduleImport, AppRoute.EducationalImport -> null
+    // These pages retain their existing Compose chrome, morphs and lifecycle.
+    AppRoute.About, AppRoute.CourseManage, AppRoute.CourseTimeSettings -> null
+}

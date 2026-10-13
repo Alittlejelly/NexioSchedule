@@ -2,11 +2,16 @@ package com.haooz.chedule.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -58,6 +63,14 @@ fun DocumentPageScaffold(
         liquidGlassBackdrop: com.kyant.backdrop.Backdrop,
     ) -> Unit,
 ) {
+    val nativeChrome = LocalNativeDocumentChrome.current
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
+    val showNavigationActions = nativeChrome == null
+    val tintArgb = MiuixTheme.colorScheme.primary.toArgb().toLong()
+    SideEffect {
+        nativeChrome?.title = title
+        nativeChrome?.tintArgb = tintArgb
+    }
     val backgroundColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(backgroundColor)
@@ -74,9 +87,11 @@ fun DocumentPageScaffold(
 
     CompositionLocalProvider(LocalOverScrollState provides pageOverScrollState) {
         Scaffold(
+            modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
             topBar = {
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
+                    topInsetAdjustment = nativeBarInset,
                 ) {
                     CollapsibleTopAppBar(
                         title = title,
@@ -84,20 +99,22 @@ fun DocumentPageScaffold(
                         modifier = Modifier,
                         scrollBehavior = scrollBehavior,
                         contentPadding = {},
-                        startAction = { backdropAlpha, shadowAlpha ->
-                            LiquidTopBarButton(
-                                onClick = onBack,
-                                backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.ChevronBackward,
-                                contentDescription = "返回",
-                                performHapticFeedback = false,
-                                iconSize = 25.dp,
-                                iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
-                                backdropAlpha = backdropAlpha,
-                                shadowAlpha = shadowAlpha,
-                            )
-                        },
-                        endAction = endAction,
+                        startAction = if (showNavigationActions) {
+                            { backdropAlpha, shadowAlpha ->
+                                LiquidTopBarButton(
+                                    onClick = onBack,
+                                    backdrop = liquidGlassBackdrop,
+                                    icon = MiuixIcons.ChevronBackward,
+                                    contentDescription = "返回",
+                                    performHapticFeedback = false,
+                                    iconSize = 25.dp,
+                                    iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
+                                    backdropAlpha = backdropAlpha,
+                                    shadowAlpha = shadowAlpha,
+                                )
+                            }
+                        } else null,
+                        endAction = if (showNavigationActions) endAction else null,
                     )
                 }
             }

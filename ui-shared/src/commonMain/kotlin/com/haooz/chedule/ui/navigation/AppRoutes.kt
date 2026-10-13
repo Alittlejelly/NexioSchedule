@@ -103,6 +103,8 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
+import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
@@ -386,6 +388,14 @@ fun HolidaySettingsRoute(
         }
     }
 
+    NativeDocumentActionEffect(NativeDocumentAction(
+        symbol = "arrow.clockwise",
+        label = if (loading) "更新中" else "更新",
+        enabled = !loading,
+        busy = loading,
+        onClick = { requestYear(year) },
+    ))
+
     DocumentPageScaffold(
         title = "节假日与调休",
         onBack = { router.popBack() },
@@ -575,6 +585,13 @@ fun WebDavSettingsRoute(
     var restoring by remember { mutableStateOf(false) }
     var onBackup by remember { mutableStateOf({}) }
     var onRestore by remember { mutableStateOf({}) }
+
+    NativeDocumentActionEffect(NativeDocumentAction(
+        symbol = if (connected) "checkmark" else "play.fill",
+        label = if (connected) "已连接" else "测试连接",
+        successful = connected,
+        onClick = { onTestConnection() },
+    ))
 
     DocumentPageScaffold(
         title = "WebDAV 云备份",

@@ -137,13 +137,16 @@ fun ProgressiveBlurTopBar(
      * 传稳定 lambda（如 tabletNavExpandSampleTrack），避免参数每帧更新触发整树重组。
      */
     sampleTrack: () -> Float = NoSampleTrack,
+    /** An overlaid native toolbar inset already consumed by the surrounding scaffold. */
+    topInsetAdjustment: Dp = 0.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     val density = LocalDensity.current
     val totalHeight = if (height != Dp.Unspecified) {
         height
     } else {
-        val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
+            topInsetAdjustment).coerceAtLeast(0.dp)
         if (statusBarHeight > 0.dp) 80.dp + statusBarHeight else 120.dp
     }
 
