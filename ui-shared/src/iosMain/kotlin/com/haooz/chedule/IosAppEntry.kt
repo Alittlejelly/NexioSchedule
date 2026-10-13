@@ -245,6 +245,10 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.About -> AboutRoute(
             router = router,
             appVersion = AppInfo.version,
+            // 「撤回同意」确认后退出应用：iOS 无 finishAffinity 等价物，
+            // 与隐私同意弹窗的拒绝路径一致用 exit(0)。不传的话默认空实现，
+            // 撤回只清状态不退出，本该退出的语义就丢了。
+            onExitApp = { platform.posix.exit(0) },
         )
         // 纯文档壳路由，iOS 直接可用
         AppRoute.Changelog -> ChangelogRoute(router)
