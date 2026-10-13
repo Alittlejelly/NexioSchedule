@@ -1,17 +1,22 @@
 package top.yukonga.miuix.kmp.internal
 
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 
 /**
- * Skia（iOS / Desktop / wasm）实现 —— **尚未实现，见下**。
+ * Skia（iOS / Desktop / wasm）实现：环形路径交给 [drawBlurredPathShadow]。
  *
- * 为什么留空：SkSL 版的模糊描边需要在 Skia 侧把「环形路径」喂给 RuntimeEffect，
- * 实现方式可参照 backdrop 的 skikoMain（ImageFilter.makeRuntimeShader + SDF）。
- * 但 iOS target 在 Windows 上无法编译验证（无 macOS / 无 .konan），
- * 与其提交一段无法验证的盲代码，不如把 expect 留在编译期暴露出来，
- * 等真正加 iOS target 时由能跑 macOS 的人补齐 —— 那时会在编译期立刻报错，不会漏。
+ * 环形 = 外圈 CW 减内圈 CCW（nonzero winding 差集），再整体模糊 —— 与 Android 侧
+ * `BlurMaskFilter` 的语义一致。
+ *
+ * ⚠ 底层刻意复用 [drawBlurredPathShadow] 而不是另写一套 Skia Paint：app 层
+ * `LiquidGlassDropdownMenu` 的阴影就是这么画的，两处共用同一实现才能保证
+ * iOS 上两种下拉菜单的阴影观感一致（参数本来就逐字同值）。
  */
 actual fun DrawScope.drawBlurredRingShadow(
     size: Size,
@@ -24,7 +29,34 @@ actual fun DrawScope.drawBlurredRingShadow(
     blurRadius: Float,
     color: Color,
 ) {
-    // TODO(iOS): 用 SkSL 模糊描边实现，或降级为无模糊的半透明环形填充。
-    // 降级路径与 backdrop 的 isRenderEffectSupported() 守卫同一思路：
-    // 拿不到模糊能力时，宁可少一层阴影，也不要整个面板不画。
+    if (blurRadius <= 0f) return
+
+    val ringPath = Path().apply {
+        addRoundRect(
+            RoundRect(
+                rect = Rect(
+                    left - spread,
+                    top - spread,
+                    left + width + spread,
+                    top + height + spread,
+                ),
+                cornerRadius = CornerRadius(radius + spread, radius + spread),
+            ),
+            Path.Direction.Clockwise,
+        )
+        addRoundRect(
+            RoundRect(
+                rect = Rect(left, top, left + width, top + height),
+                cornerRadius = CornerRadius(radius, radius),
+            ),
+            Path.Direction.CounterClockwise,
+        )
+    }
+
+    drawBlurredPathShadow(
+        path = ringPath,
+        color = color,
+        // Skia 的 makeBlur 不接受 0（会退化），与 Android 侧的 coerceAtLeast(0.1f) 对齐
+        blurRadius = blurRadius.coerceAtLeast(0.1f),
+    )
 }

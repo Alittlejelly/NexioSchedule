@@ -2,7 +2,7 @@
 //
 // expect/actual：
 //   androidMain —— BlurMaskFilter（逐像素与 Android 原生路径一致）
-//   skikoMain   —— SkSL 模糊描边（backdrop 的 skikoMain 已有同套路范例）
+//   skikoMain   —— 构造环形路径后复用 [drawBlurredPathShadow]（Skia MaskFilter）
 //
 // 形状语义：环形路径（外圈 CW 减内圈 CCW）再整体模糊 = 圆角矩形描边的模糊。
 // 为什么不用 backdrop 的 shadow：它的 ShadowModifier 走 Paint().blur()，
