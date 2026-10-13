@@ -46,6 +46,7 @@ class IosAppHost {
     internal val mainTransition = NavTransitionState()
     internal var navigationOverlayActive by mutableStateOf(false)
     internal val navigation = HostNavigationState()
+    private var systemDarkTheme by mutableStateOf<Boolean?>(null)
     private val overlays = HostOverlayState()
     private val scheduleLibraryOverlays = HostOverlayState()
     private val popupHost = MiuixOverlayHostState()
@@ -259,6 +260,11 @@ class IosAppHost {
         if (scheduleLibrarySecondaryActionEnabled()) navigation.scheduleLibraryChrome.effectiveSecondaryAction?.onClick?.invoke()
     }
 
+    /** System appearance comes from SwiftUI above all app and wallpaper style overrides. */
+    fun updateSystemDarkTheme(isDark: Boolean) {
+        systemDarkTheme = isDark
+    }
+
     val selectedTab: Int get() = navigation.selectedTab
     val tabCount: Int get() = navigation.tabCount
     val shiftMode: Boolean get() = navigation.shiftMode
@@ -376,7 +382,7 @@ class IosAppHost {
 
     @Composable
     private fun HostEnvironment(content: @Composable () -> Unit) {
-        CourseScheduleTheme {
+        CourseScheduleTheme(systemDarkTheme = systemDarkTheme) {
             MiuixOverlayHostProvider(popupHost) {
                 CompositionLocalProvider(
                     LocalAppRouter provides router,
