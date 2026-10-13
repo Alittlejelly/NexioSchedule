@@ -294,7 +294,8 @@ fun MainScheduleScreen(
     val latestIsWallpaperEditing by rememberUpdatedState(isWallpaperEditing)
     val latestDraggingCourseIds by rememberUpdatedState(draggingCourseIds)
     // 由顶栏自身几何纯计算（切页不变），避免 paddingValues 随 tab 变化导致位移
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
     val contentTopPaddingDp = remember(statusBarHeight) { scheduleContentTopPadding(statusBarHeight) }
 
     // 填满短边不露底；最小缩放 = cover/fit

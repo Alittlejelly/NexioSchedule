@@ -124,6 +124,8 @@ fun ShiftScheduleScreen(
     ) { page ->
         val week = page + 1
         val scrollState = rememberScrollState()
+        val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
+        val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
 
         Column(
             modifier = Modifier
@@ -136,7 +138,7 @@ fun ShiftScheduleScreen(
                 .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove)
                 .verticalScroll(scrollState)
                 .padding(
-                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                    top = statusBarHeight +
                         if (isInFreeformWindow) titleBarHeight + 40.dp else 96.dp,
                     bottom = nativeChromeInset?.plus(24.dp) ?: 140.dp
                 )
