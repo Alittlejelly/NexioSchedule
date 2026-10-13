@@ -143,7 +143,7 @@ class IosAppHost {
 
     // Match the leading slot across list/editor configurations using UIKit item identity.
     fun nativePageLeadingSymbol(routeId: String): String = nativePage(routeId).let {
-        it.chrome.editor?.cancel?.symbol ?: if (it.route == AppRoute.CourseTimeSettings) "chevron.backward" else ""
+        it.chrome.editor?.cancel?.symbol ?: if (it.route == AppRoute.CourseTimeSettings || it.route == AppRoute.CourseManage) "chevron.backward" else ""
     }
     fun nativePageLeadingLabel(routeId: String): String =
         nativePage(routeId).chrome.editor?.cancel?.label ?: "返回"
@@ -391,6 +391,5 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.CourseTimeSettings -> "课表节数与时间"
     // Import still reaches EducationalImport, whose iOS WebHost is not implemented.
     AppRoute.ScheduleImport, AppRoute.EducationalImport -> null
-    // These pages retain their existing Compose chrome, morphs and lifecycle.
-    AppRoute.CourseManage -> null
+    AppRoute.CourseManage -> "课程管理"
 }

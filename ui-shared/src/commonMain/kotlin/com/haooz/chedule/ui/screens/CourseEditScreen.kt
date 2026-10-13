@@ -10,6 +10,11 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.consumeWindowInsets
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
+import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -432,6 +437,36 @@ fun CourseEditScreen(
 
     var showAddCourseSheet by remember { mutableStateOf(false) }
     var showEditCourseSheet by remember { mutableStateOf(false) }
+    val nativeChrome = if (embedded) null else LocalNativeDocumentChrome.current
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
+    var exiting by remember { mutableStateOf(false) }
+
+    fun closeEditor() {
+        if (exiting) return
+        exiting = true
+        onBackStart()
+        scope.launch {
+            coroutineScope {
+                launch { scaleProgress.animateTo(0f, tween(350, easing = morphExitEase)) }
+                launch { animProgress.animateTo(0f, tween(350, easing = morphExitEase)) }
+                launch { animTransY.animateTo(0f, tween(transExitMillis, easing = transExitEase)) }
+            }
+            onBack()
+        }
+    }
+
+    if (!embedded) {
+        NativeDocumentEditorEffect(
+            if (exiting) null else NativeDocumentEditorChrome(
+                title = courseName,
+                cancel = NativeDocumentAction("chevron.backward", "返回", enabled = !showAddCourseSheet && !showEditCourseSheet) { closeEditor() },
+                save = NativeDocumentAction("plus", "添加课程", enabled = !showAddCourseSheet && !showEditCourseSheet) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                    showAddCourseSheet = true
+                },
+            )
+        )
+    }
     var editingGroup by remember { mutableStateOf<CourseGroup?>(null) }
     // 待添加课程（弹窗关闭后再添加，触发淡入动画）
     var pendingAddCourse by remember { mutableStateOf<Course?>(null) }
@@ -558,10 +593,12 @@ fun CourseEditScreen(
                     .graphicsLayer { alpha = s.contentAlpha }
             ) {
                 Scaffold(
+                    modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
                     topBar = {
 
                         ProgressiveBlurTopBar(
                             backdrop = liquidGlassBackdrop!!,
+                            topInsetAdjustment = nativeBarInset,
                         ) {
                             CollapsibleTopAppBar(
                                 title = courseName,
@@ -569,7 +606,7 @@ fun CourseEditScreen(
                                 modifier = Modifier,
                                 scrollBehavior = scrollBehavior,
                                 contentPadding = {},
-                                startAction = if (embedded) null else {
+                                startAction = if (embedded || nativeChrome != null) null else {
                                     { backdropAlpha, shadowAlpha ->
                                     LiquidTopBarButton(
                                         onClick = {
@@ -618,7 +655,7 @@ fun CourseEditScreen(
                                     )
                                     }
                                 },
-                                endAction = { backdropAlpha, shadowAlpha ->
+                                endAction = if (nativeChrome != null) null else { backdropAlpha, shadowAlpha ->
                                     LiquidTopBarButton(
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)

@@ -967,6 +967,9 @@ fun CourseManageRoute(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
 
+    var courseDialogVisible by remember { mutableStateOf(false) }
+    NativeDocumentOverlayEffect(showEditScreen || showShortcutMenu || showDeleteConfirmDialog || courseDialogVisible)
+
     // 本次新建的课程 id，退出本页时清理
     var createdCourseIds by remember { mutableStateOf(setOf<String>()) }
     // 打开过编辑的课程 id，避免误删已修改的
@@ -1070,6 +1073,7 @@ fun CourseManageRoute(
                         hiddenCourseIds = hiddenCourseIds,
                         shrinkingCourseIds = shrinkingCourseIds,
                         sectionTimes = sectionTimes,
+                        onDialogVisibilityChanged = { courseDialogVisible = it },
                         onNewCourseCreated = { course ->
                             courseViewModel.addCourse(course)
                             createdCourseIds = createdCourseIds + course.id

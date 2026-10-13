@@ -123,6 +123,7 @@ fun CourseManageScreen(
     selectedCourseName: String? = null,
     /** 全局绝对节次号 -> "HH:mm-HH:mm"，用于把同一天内的时段按真实时刻排序 */
     sectionTimes: Map<Int, String> = emptyMap(),
+    onDialogVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val courses by viewModel.courses.collectAsState()
@@ -146,6 +147,11 @@ fun CourseManageScreen(
     var showCustomColorDialog by remember { mutableStateOf(false) }
     var customColor by remember { mutableStateOf(ComposeColor(Course.courseColors.first())) }
     var editingCourse by remember { mutableStateOf<Course?>(null) }
+
+    val currentOnDialogVisibilityChanged by rememberUpdatedState(onDialogVisibilityChanged)
+    LaunchedEffect(showNewCourseDialog, showCustomColorDialog) {
+        currentOnDialogVisibilityChanged(showNewCourseDialog || showCustomColorDialog)
+    }
 
     // 接收外部传入的编辑课程
     LaunchedEffect(pendingEditCourse) {

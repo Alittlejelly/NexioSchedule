@@ -193,9 +193,9 @@ class NativeDocumentHostTest {
     }
 
     @Test
-    fun importAndComplexMorphRoutesRemainComposeOwned() {
+    fun importRoutesRemainComposeOwned() {
         for (route in listOf(
-            AppRoute.ScheduleImport, AppRoute.EducationalImport, AppRoute.CourseManage,
+            AppRoute.ScheduleImport, AppRoute.EducationalImport,
         )) {
             val host = IosAppHost()
             assertFalse(route.isNativeDocument())
@@ -373,10 +373,24 @@ class NativeDocumentHostTest {
     fun unknownOrUnmigratedRoutesDoNotEnterTheNativeStack() {
         val host = IosAppHost()
         host.navigateNativeDocument("missing")
-        host.navigateNativeDocument("course_manage")
         assertEquals(emptyList(), host.nativeRouteIds)
+    }
+
+    @Test
+    fun courseManagementUsesNativeStackAndBlocksPopDuringMorph() {
+        val host = IosAppHost()
         host.router.navigate(AppRoute.CourseManage)
-        assertSame(AppRoute.CourseManage, host.router.current)
+        val id = host.nativeRouteIds.single()
+        assertEquals("课程管理", host.nativeRouteTitle(id))
+        assertEquals("chevron.backward", host.nativePageLeadingSymbol(id))
+        assertEquals(0, host.router.depth)
+        val chrome = host.nativePage(id).chrome
+        chrome.contentOverlayActive = true
+        host.performNativePageLeadingAction(id)
+        assertEquals(listOf(id), host.nativeRouteIds)
+        chrome.contentOverlayActive = false
+        host.reconcileNativeEditorExit()
+        assertEquals(emptyList(), host.nativeRouteIds)
     }
 
     @Test
