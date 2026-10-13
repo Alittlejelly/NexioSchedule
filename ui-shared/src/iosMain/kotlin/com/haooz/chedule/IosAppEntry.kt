@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.IosBackupFileController
 import com.haooz.chedule.data.IosScheduleFileController
 import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.IosWallpaperPicker
@@ -109,6 +110,9 @@ private val fileController = IosScheduleFileController()
 /** 相册选壁纸实现，全 app 共用一个（delegate 强引用同上） */
 private val wallpaperPicker = IosWallpaperPicker()
 
+/** 本地备份的文件读写（Documents/Neixo_Schedule 扫描 + UIDocumentPicker 选文件） */
+private val backupFileController = IosBackupFileController()
+
 /** The retained main content; UIKit applies the shared main-layer transition. */
 @Composable
 internal fun NexioIosMain(host: IosAppHost) {
@@ -204,7 +208,13 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                     // 带注入的文档壳：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
                     AppRoute.PreferenceSettings -> PreferenceSettingsRoute(router)
                     AppRoute.UpdateSettings -> UpdateSettingsRoute(router)
-                    AppRoute.LocalBackup -> LocalBackupRoute(router)
+                    // 本地备份：目录扫描 + 「手动选择文件」都要原生文件能力。
+                    // ⚠ 不传的话会落到默认的 NoopBackupFileController ——
+                    // 点「手动选择文件」直接静默回调 null，什么都不发生。
+                    AppRoute.LocalBackup -> LocalBackupRoute(
+                        router = router,
+                        backupFileController = backupFileController,
+                    )
                     AppRoute.AiImport -> AiImportRoute(
                         router = router,
                         onCopyToClipboard = { text ->
