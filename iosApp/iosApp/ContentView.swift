@@ -24,6 +24,13 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
         //
         // Info.plist 的 `UIViewControllerBasedStatusBarAppearance=false` 也已删 ——
         // 那个键会让系统去读已废弃的全局 API（就是刷屏警告的来源）。
+
+        // 原生 toast（液态玻璃）：渲染放 Swift 侧（见 NativeToast），Kotlin 只留注入点。
+        // ⚠ `longDuration` 是 `KotlinBoolean` 而不是 `Bool` —— Kotlin/Native 导出**函数类型**时
+        // 会把基本类型 boxed，必须 `.boolValue` 拆箱。
+        IosToast.shared.nativeShow = { message, longDuration in
+            NativeToast.show(message, longDuration: longDuration.boolValue)
+        }
         return AppHostController(host: IosAppHost())
     }
 
@@ -273,5 +280,137 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
     ) {
         guard let index = viewControllers?.firstIndex(of: viewController) else { return }
         onUserSelection?(index)
+    }
+}
+
+/// 原生提示条（对应 Android 的 `Toast`）—— **液态玻璃**渲染。
+///
+/// ⚠ 渲染刻意放 Swift 侧（Kotlin 侧只留一个注入点 `IosToast.nativeShow`）：
+///  1. iOS 26 的 `UIGlassEffect` 在 Kotlin/Native 的 UIKit 绑定里虽然编译得过，
+///     但运行期行为不可控；
+///  2. 取 window 必须走 `connectedScenes` —— `UIApplication.windows` 在 iOS 13+ 已废弃，
+///     **启动早期会返回空**（Kotlin 侧原来的写法就踩了这个，表现为「启动时的提示条不见」）。
+///
+/// 出现/消失带缩放动画：0.85 → 1 弹簧弹入（轻微过冲）配淡入，1 → 0.9 缩回配淡出。
+/// 时长对齐 `LENGTH_SHORT`(2s) / `LENGTH_LONG`(3.5s)；**不合并**，连续调用弹两条、上下错开堆叠；
+/// 不拦截触摸（`isUserInteractionEnabled = false`）。
+enum NativeToast {
+
+    private static let shortSeconds: TimeInterval = 2.0
+    private static let longSeconds: TimeInterval = 3.5
+    private static let maxWidth: CGFloat = 280
+    private static let hPadding: CGFloat = 14
+    private static let vPadding: CGFloat = 10
+    private static let bottomInset: CGFloat = 140
+    private static let stackGap: CGFloat = 8
+    private static let cornerRadius: CGFloat = 16
+
+    /// 正在显示的提示条，用于上下错开堆叠（各自独立计时）
+    private static var active: [UIView] = []
+
+    static func show(_ message: String, longDuration: Bool) {
+        guard !message.isEmpty else { return }
+        // 可能从协程/回调线程调用，UI 操作统一回主队列
+        DispatchQueue.main.async {
+            guard let window = keyWindow() else { return }
+            let toast = makeToast(message)
+            let w = toast.frame.width
+            let h = toast.frame.height
+
+            // 已有提示条时往上错开，避免叠在一起
+            var y = window.bounds.height - bottomInset
+            for existing in active {
+                y = min(y, existing.frame.minY - stackGap - h)
+            }
+            toast.frame = CGRect(x: (window.bounds.width - w) / 2, y: y, width: w, height: h)
+            window.addSubview(toast)
+            active.append(toast)
+
+            // 出现：从 0.85 弹回 1（弹簧带轻微过冲）+ 淡入。
+            // ⚠ transform 要在设完 frame 之后再改 —— 反过来 frame 会被缩放影响。
+            toast.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+            toast.alpha = 0
+            UIView.animate(
+                withDuration: 0.34,
+                delay: 0,
+                usingSpringWithDamping: 0.78,
+                initialSpringVelocity: 0,
+                options: [.allowUserInteraction, .beginFromCurrentState]
+            ) {
+                toast.transform = .identity
+                toast.alpha = 1
+            }
+
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + (longDuration ? longSeconds : shortSeconds)
+            ) {
+                // 消失：缩回 0.9 并淡出，动画结束再摘视图
+                UIView.animate(
+                    withDuration: 0.22,
+                    delay: 0,
+                    options: [.allowUserInteraction, .beginFromCurrentState]
+                ) {
+                    toast.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+                    toast.alpha = 0
+                } completion: { _ in
+                    toast.removeFromSuperview()
+                    active.removeAll { $0 === toast }
+                }
+            }
+        }
+    }
+
+    /// 组装提示条（尺寸与子视图位置都已摆好，调用方直接设 frame 定位即可）。
+    private static func makeToast(_ message: String) -> UIView {
+        let label = UILabel()
+        label.text = message
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.font = .systemFont(ofSize: 14)
+        label.isUserInteractionEnabled = false
+
+        // 内边距靠实测后手动加（attributed string 太重）
+        let textSize = label.sizeThatFits(
+            CGSize(width: maxWidth - hPadding * 2, height: .greatestFiniteMagnitude)
+        )
+        let w = textSize.width + hPadding * 2
+        let h = textSize.height + vPadding * 2
+
+        let container: UIView
+        if #available(iOS 26.0, *) {
+            // Liquid Glass 自带边缘光与背景折射，不用再自己描边
+            label.textColor = .label
+            let glass = UIVisualEffectView(effect: UIGlassEffect())
+            glass.isUserInteractionEnabled = false
+            glass.clipsToBounds = true
+            glass.layer.cornerRadius = cornerRadius
+            // 连续曲率，对齐 Compose 侧的 ContinuousRoundedRectangle
+            glass.layer.cornerCurve = .continuous
+            // 直接加到 effectView 上会被效果层盖住，必须走 contentView
+            glass.contentView.addSubview(label)
+            container = glass
+        } else {
+            label.textColor = .white
+            let plain = UIView()
+            plain.isUserInteractionEnabled = false
+            plain.backgroundColor = UIColor(white: 0, alpha: 0.82)
+            plain.clipsToBounds = true
+            plain.layer.cornerRadius = cornerRadius
+            plain.layer.cornerCurve = .continuous
+            plain.addSubview(label)
+            container = plain
+        }
+        label.frame = CGRect(x: hPadding, y: vPadding, width: textSize.width, height: textSize.height)
+        container.frame = CGRect(x: 0, y: 0, width: w, height: h)
+        return container
+    }
+
+    /// ⚠ 必须用 `connectedScenes`：`UIApplication.shared.windows` 在 iOS 13+ 已废弃，
+    /// 多场景下**启动早期可能为空**（那时弹的提示条会直接不见）。
+    private static func keyWindow() -> UIWindow? {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        return windows.first { $0.isKeyWindow } ?? windows.first
     }
 }
