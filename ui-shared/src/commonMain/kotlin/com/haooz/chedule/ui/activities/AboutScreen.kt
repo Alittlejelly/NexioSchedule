@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,6 +62,7 @@ import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.data.changelogData
 import com.haooz.chedule.ui.effects.background.BgEffectBackground
 import com.haooz.chedule.ui.effects.miuix.rememberBlurBackdrop
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
@@ -128,6 +132,15 @@ fun AboutScreen(
     /** 诊断录制控制器（Android = CrashLogHelper 包装）；桌面/iOS 用 NoopDiagnosticRecorder */
     diagnosticRecorder: DiagnosticRecorder = NoopDiagnosticRecorder,
 ) {
+    // Embedded panes keep their own chrome even when an ancestor has a native page.
+    val nativeChrome = LocalNativeDocumentChrome.current.takeUnless { embedded }
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
+    val tintArgb = MiuixTheme.colorScheme.primary.toArgb().toLong()
+    SideEffect {
+        nativeChrome?.title = "关于应用"
+        nativeChrome?.tintArgb = tintArgb
+    }
+
     // 弹窗默认跟随自身玻璃层；内嵌时由外层指定全屏层
     val dialogGlass: Backdrop = dialogBackdrop ?: liquidGlassBackdrop
     val hapticFeedback = LocalHapticFeedback.current
@@ -221,11 +234,13 @@ fun AboutScreen(
     }
 
     Scaffold(
+        modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
         topBar = {
             // 内嵌到 pad 设置页右栏时，About 仍自绘顶栏糊层/遮罩/标题，仅隐藏返回按钮
             ProgressiveBlurTopBar(
                 backdrop = liquidGlassBackdrop,
                 tintIntensity = scrollProgress * 0.2f,
+                topInsetAdjustment = nativeBarInset,
             ) {
                 CollapsibleTopAppBar(
                     title = "关于应用",
@@ -238,7 +253,7 @@ fun AboutScreen(
                     modifier = Modifier,
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},
-                    startAction = if (embedded) null else { backdropAlpha, shadowAlpha ->
+                    startAction = if (embedded || nativeChrome != null) null else { backdropAlpha, shadowAlpha ->
                         LiquidTopBarButton(
                             onClick = { onBack() },
                             backdrop = liquidGlassBackdrop,
@@ -372,7 +387,7 @@ fun AboutScreen(
                     contentPadding = PaddingValues(
                         top = innerPadding.calculateTopPadding() +
                                 if (WindowInsets.statusBars.asPaddingValues()
-                                        .calculateTopPadding() > 0.dp
+                                        .calculateTopPadding() - nativeBarInset > 0.dp
                                 ) (-8).dp else (-20).dp,
                         start = WindowInsets.displayCutout.asPaddingValues()
                             .calculateLeftPadding(LayoutDirection.Ltr) + tabletHorizontalPadding,

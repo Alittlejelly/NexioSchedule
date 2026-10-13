@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -788,6 +789,8 @@ fun TimeConfigEditScreen(
                     topBar = {
                         ProgressiveBlurTopBar(
                             backdrop = liquidGlassBackdrop!!,
+                            // Raw statusBars still includes the visually hidden UIKit bar.
+                            topInsetAdjustment = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp,
                         ) {
                             CollapsibleTopAppBar(
                                 title = screenTitle,

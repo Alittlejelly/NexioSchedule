@@ -20,18 +20,23 @@ The trial ellipsis menu is removed. The three trial Screens have their original 
 
 ## Enabled routes and rollout status
 
-Fifteen ordinary document routes are enabled after core acceptance:
+Seventeen route kinds are enabled; About and CourseTimeSettings were added after the original fifteen-route rollout:
 
 - Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor
 - PreferenceSettings, UpdateSettings, LocalBackup, AiImport
 - WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings
 - ScheduleExport, ScheduleBackup
+- About, CourseTimeSettings
 
 The full shared Screens and route callbacks are reused; only chrome is native. Expanded UI acceptance is run separately from the initial three-page gate. The first cancelled-pop anchor failure and the initial About footer tap failure were test synchronization issues: Compose fling motion is not included in XCTest's UIKit-idle detection. Tests now wait for stable geometry before sampling or tapping; no production safe-area workaround or relaxed assertion tolerance was applied.
 
 ## Migration boundary
 
-About, CourseManage, CourseTimeSettings and EducationalImport remain in the retained Compose navigation stack. Main headers, course detail/edit morphs, wallpaper cutout and schedule-switch animations are not migrated.
+CourseManage and EducationalImport remain in the retained Compose navigation stack. Main headers (including the schedule week header), course detail/edit morphs, wallpaper cutout and schedule-switch animations are not migrated.
+
+About publishes page chrome directly and retains its original background, scroll state and Compose titles. Its five document children stay in the same native navigation stack. Embedded tablet About does not consume ancestor native chrome.
+
+CourseTimeSettings reuses DocumentPageScaffold. Its existing TimeConfigEditScreen remains a route-local Compose morph, not a native push. NativeDocumentOverlayEffect suppresses native bar drawing, accessibility, edge-pop, page actions and outer programmatic pops until the editor finishes exiting. The native bar remains in the safe-area geometry (alpha zero, not setNavigationBarHidden), so the parent card anchors do not relayout. The editor consumes the extra bar overlap and also subtracts it from ProgressiveBlurTopBar's raw status-bar height. Dialogs continue to use the floating Compose surface. Android/desktop and the existing wide-screen embedded settings paths are unchanged.
 
 The Import variant of BackupAndMigration has a live EducationalImport entry, but iOS has no WebHost and currently renders that route as empty Compose content. Migrating ScheduleImport would push this legacy page behind the native Import page. Therefore **ScheduleImport must remain Compose** until that boundary is explicitly resolved. The entry is not hidden and no new blank native page is introduced.
 
@@ -60,7 +65,16 @@ Unit checks cover unhosted semantics, native dispatch, native programmatic compl
 
 The repository includes a test-only XCTest project in `iosApp/Tests/NativeHeaderSmoke.xcodeproj`; it drives an independently built/installed application and does not link production Swift or Kotlin sources. `iosApp/Tests/run-native-header-smoke.sh` installs the simulator build and records screenshots/results under a fresh temporary artifacts directory. Core acceptance must include original 28 pt title padding, one native back button with no trial menu, fixed chrome during scroll, cancelled/completed edge back, retained About layout, and saveable scroll restoration on reentry.
 
-### Recorded results
+### About and course-time follow-up
+
+- `iosSimulatorArm64Test`: 22 tests, zero failures; `jvmTest`: seven tests, zero failures (`/tmp/nexio-about-time-tests.log`). The tests now use retained Import as the legacy parent and separately verify nested native About and editor pop/action gating.
+- Integrated simulator build and Android/desktop compilation passed (`/tmp/nexio-about-time-build.log`, `/tmp/nexio-about-time-platforms.log`).
+- First phone batch: four methods, three passed; the time-settings method reached the editor but failed because the test looked for “返回” instead of its existing “取消” control (`/tmp/nexio-about-time-phone-pass1/Smoke.xcresult`). About -> Changelog cancelled/completed pop, restored scrolling, License/Privacy and Communication/Donation passed.
+- Bounded phone confirmation: two methods, zero failures (`/tmp/nexio-about-time-phone-confirm/Smoke.xcresult`). Verified About -> leaf -> About -> settings, section dialog cancellation, existing time-editor morph, explicit keyboard focus, cancellation dismissing the keyboard, restored native header and parent coordinates within 3 pt, then settings return. No user data was edited or saved.
+- A subsequent read-only review found that the editor's raw status-bar blur height still counted the hidden native bar. The final fix passes `topInsetAdjustment` to that editor; final compilation/unit checks cover the fix (`/tmp/nexio-about-time-tests-final.log`, `/tmp/nexio-about-time-platforms-final.log`, `/tmp/nexio-about-time-build-final.log`), but the recorded UI screenshots above precede it. No further UI rerun is claimed.
+- Existing iPad wide-screen settings dispatch remains embedded rather than routed; its About pane is still unavailable without platform injection. This follow-up does not claim native headers for those embedded panes, iPad UI acceptance, dark mode, Dynamic Type or real hardware.
+
+### Original fifteen-route recorded results
 
 - Expanded `iosSimulatorArm64Test`: 20 tests, zero failures; `jvmTest`: seven tests, zero failures (`/tmp/nexio-native-header-expanded-tests.log`).
 - `checkKmpPurity`, Android shared-UI compilation and desktop compilation passed.

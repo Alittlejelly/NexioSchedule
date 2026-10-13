@@ -140,7 +140,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     func testDocumentHeaderScrollRestorationAndEdgeBack() throws {
         showSettings()
         open("关于应用")
-        XCTAssertEqual(app.navigationBars.count, 0, "About must keep its Compose header")
+        requireNativeHeader("关于应用")
         let aboutChangelogY = open("更新日志")
         requireNativeHeader("更新日志")
         XCTAssertEqual(app.navigationBars.buttons.count, 1, "Document has only native back")
@@ -199,7 +199,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
                    thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.42)),
                    withVelocity: .slow, thenHoldForDuration: 0.2)
         settle()
-        XCTAssertEqual(app.navigationBars.count, 0, "Completed edge back did not return to About")
+        requireNativeHeader("关于应用")
         XCTAssertEqual(item("更新日志").frame.minY, aboutChangelogY, accuracy: 3,
                        "Retained About layout changed")
         capture("Document - returned to retained About")
@@ -211,7 +211,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
                        "Reopened document did not restore the original scroll position")
         capture("Document - reopened saveable scroll state")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
     }
 
     func testDocumentCompletedEdgeBackAndReopenWithoutCancellation() throws {
@@ -235,7 +235,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
                    thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.42)),
                    withVelocity: .slow, thenHoldForDuration: 0.2)
         settle()
-        XCTAssertEqual(app.navigationBars.count, 0, "Completed edge back did not return to About")
+        requireNativeHeader("关于应用")
         XCTAssertEqual(item("更新日志").frame.minY, aboutChangelogY, accuracy: 3,
                        "Retained About layout changed")
         capture("Document - completed pop without preceding cancellation")
@@ -248,7 +248,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(item(anchorLabel).frame.minY, anchorY, accuracy: 3,
                        "Reopened document did not restore original scroll position")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
     }
 
     func testLicenseAndPrivacyUseOriginalAboutEntries() throws {
@@ -261,7 +261,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.keyboards.count, 0)
         capture("License - native back from original About entry")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
         open("《隐私政策》")
         requireNativeHeader("隐私政策")
         XCTAssertEqual(app.navigationBars.buttons.count, 1)
@@ -269,7 +269,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.keyboards.count, 0)
         capture("Privacy - native back from original About entry")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
     }
 
     func testPreferenceHeaderPreservesOriginalControlsAndLegacyReturn() throws {
@@ -378,13 +378,15 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertTrue(item("加入交流群").exists)
         capture("Communication - native header with original entry actions")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
         open("捐赠支持")
         requireNativeHeader("捐赠支持")
         XCTAssertGreaterThan(app.staticTexts.count, 2, "Original donation content missing")
         capture("Donation - native header with original Compose content")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        requireNativeHeader("关于应用")
+        nativeBack()
+        XCTAssertEqual(app.navigationBars.count, 0, "About did not return to settings")
     }
 
     func testCourseReminderNativeLeafPreservesOriginalControls() throws {
@@ -446,6 +448,42 @@ final class NativeHeaderSmokeTests: XCTestCase {
                        "Returning from AI changed retained Compose Import state")
         XCTAssertTrue(item("教务系统导入").exists, "Original unsupported entry was silently changed")
         capture("Import - returned to original Compose entries without importing")
+    }
+
+    func testTimeSettingsNativeHeaderDialogsAndComposeEditorReturn() throws {
+        showSettings()
+        open("课表节数与时间")
+        requireNativeHeader("课表节数与时间")
+        XCTAssertEqual(app.navigationBars.buttons.count, 1)
+        XCTAssertTrue(item("作息方案").exists)
+        let sectionY = open("课表节数")
+        XCTAssertTrue(item("课表节数设置").exists)
+        XCTAssertTrue(item("取消").isHittable, "Section dialog is covered by native chrome")
+        capture("Time settings - section dialog above native chrome")
+        item("取消").tap()
+        settle()
+        requireNativeHeader("课表节数与时间")
+        XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3)
+        let routineSummary = app.staticTexts.matching(NSPredicate(format:
+            "label == %@ OR label ENDSWITH %@", "始终生效", "生效")).firstMatch
+        XCTAssertTrue(routineSummary.exists && routineSummary.isHittable, app.debugDescription)
+        routineSummary.tap()
+        settle()
+        XCTAssertTrue(item("编辑作息").waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(app.navigationBars.count, 0, "Native bar must not cover the existing morph editor")
+        XCTAssertTrue(item("取消").isHittable, app.debugDescription)
+        capture("Time settings - existing Compose morph editor")
+        app.textViews.firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        item("取消").tap()
+        settle()
+        requireNativeHeader("课表节数与时间")
+        XCTAssertEqual(app.keyboards.count, 0, "Morph editor keyboard remained after cancellation")
+        XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3,
+                       "Editor exit changed retained settings geometry")
+        capture("Time settings - native header restored after morph exit")
+        nativeBack()
+        XCTAssertEqual(app.navigationBars.count, 0)
     }
 
     func testWidgetGuideDialogAboveNativeChrome() throws {

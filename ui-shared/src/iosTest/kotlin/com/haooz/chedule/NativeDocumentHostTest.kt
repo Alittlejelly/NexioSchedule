@@ -14,9 +14,9 @@ class NativeDocumentHostTest {
     @Test
     fun legacyPageRemainsRetainedBehindTheNativeDocumentStack() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.About)
+        host.router.navigate(AppRoute.ScheduleImport)
         host.router.navigate(AppRoute.Changelog)
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
         assertEquals(1, host.router.depth)
         assertEquals(1, host.nativeRouteIds.size)
         assertEquals("更新日志", host.nativeRouteTitle(host.nativeRouteIds.single()))
@@ -36,22 +36,22 @@ class NativeDocumentHostTest {
     @Test
     fun completedPopOnlyRemovesNativePagesAboveTheConfirmedDepth() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.About)
+        host.router.navigate(AppRoute.ScheduleImport)
         host.navigateNativeDocument("changelog")
         host.navigateNativeDocument("privacy_policy")
         val first = host.nativeRouteIds.first()
         host.completeNativePop(1)
         assertEquals(listOf(first), host.nativeRouteIds)
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
         host.completeNativePop(0)
         assertEquals(emptyList(), host.nativeRouteIds)
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
     }
 
     @Test
     fun programmaticCompletionRetainsStateUntilUIKitConfirmsThePop() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.About)
+        host.router.navigate(AppRoute.ScheduleImport)
         host.navigateNativeDocument("changelog")
         val id = host.nativeRouteIds.single()
         val page = host.nativePage(id)
@@ -60,7 +60,7 @@ class NativeDocumentHostTest {
         assertTrue(host.router.popBack())
         assertEquals(emptyList(), host.nativeRouteIds)
         assertSame(page, host.nativePage(id))
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
         value = "saved after completion request"
         host.completeNativePop(0)
         host.navigateNativeDocument("changelog")
@@ -107,7 +107,7 @@ class NativeDocumentHostTest {
     @Test
     fun inFlightAndCancelledTransitionsDoNotChangeNativeOrLegacyState() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.About)
+        host.router.navigate(AppRoute.ScheduleImport)
         host.navigateNativeDocument("privacy_policy")
         val ids = host.nativeRouteIds
         host.setNativeTransitionInFlight(true)
@@ -116,7 +116,7 @@ class NativeDocumentHostTest {
         assertEquals(ids, host.nativeRouteIds)
         host.setNativeTransitionInFlight(false)
         assertEquals(ids, host.nativeRouteIds)
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
         host.completeNativePop(-1)
         host.completeNativePop(100)
         assertEquals(ids, host.nativeRouteIds)
@@ -158,12 +158,14 @@ class NativeDocumentHostTest {
             AppRoute.WebDavSettings to "WebDAV 云备份",
             AppRoute.ScheduleExport to "课表导出",
             AppRoute.ScheduleBackup to "课表备份",
+            AppRoute.About to "关于应用",
+            AppRoute.CourseTimeSettings to "课表节数与时间",
         )
         for ((route, title) in documents) {
             val host = IosAppHost()
-            host.router.navigate(AppRoute.About)
+            host.router.navigate(AppRoute.ScheduleImport)
             host.router.navigate(route)
-            assertSame(AppRoute.About, host.router.current)
+            assertSame(AppRoute.ScheduleImport, host.router.current)
             assertEquals(1, host.router.depth)
             assertEquals(title, host.nativeRouteTitle(host.nativeRouteIds.single()))
             host.completeNativePop(0)
@@ -175,7 +177,7 @@ class NativeDocumentHostTest {
     @Test
     fun backupChildPagesShareOnlyTheNativeStack() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.About)
+        host.router.navigate(AppRoute.ScheduleImport)
         host.router.navigate(AppRoute.ScheduleBackup)
         val backup = host.nativeRouteIds.single()
         host.router.navigate(AppRoute.WebDavSettings)
@@ -185,15 +187,14 @@ class NativeDocumentHostTest {
         host.completeNativePop(1)
         host.router.navigate(AppRoute.LocalBackup)
         assertEquals(2, host.nativeRouteIds.size)
-        assertSame(AppRoute.About, host.router.current)
+        assertSame(AppRoute.ScheduleImport, host.router.current)
         assertEquals(1, host.router.depth)
     }
 
     @Test
     fun importAndComplexMorphRoutesRemainComposeOwned() {
         for (route in listOf(
-            AppRoute.About, AppRoute.ScheduleImport, AppRoute.EducationalImport,
-            AppRoute.CourseManage, AppRoute.CourseTimeSettings,
+            AppRoute.ScheduleImport, AppRoute.EducationalImport, AppRoute.CourseManage,
         )) {
             val host = IosAppHost()
             assertFalse(route.isNativeDocument())
@@ -221,6 +222,49 @@ class NativeDocumentHostTest {
         assertEquals("已连接", host.nativePageActionLabel(id))
         host.performNativePageAction(id)
         assertEquals("latest callback", result)
+    }
+
+    @Test
+    fun aboutChildrenAndReturnStayWithinTheNativeStack() {
+        val host = IosAppHost()
+        host.router.navigate(AppRoute.About)
+        val about = host.nativeRouteIds.single()
+        host.router.navigate(AppRoute.Changelog)
+        assertEquals(2, host.nativeRouteIds.size)
+        assertFalse(host.router.hasOverlay)
+        assertTrue(host.router.popBack())
+        host.completeNativePop(1)
+        assertEquals(listOf(about), host.nativeRouteIds)
+        assertTrue(host.router.popBack())
+        host.completeNativePop(0)
+        assertFalse(host.nativePageActive)
+        assertFalse(host.router.hasOverlay)
+    }
+
+    @Test
+    fun timeEditorOwnsChromeAndBackUntilItsMorphExitCompletes() {
+        val host = IosAppHost()
+        host.router.navigate(AppRoute.CourseTimeSettings)
+        val id = host.nativeRouteIds.single()
+        val chrome = host.nativePage(id).chrome
+        var clicks = 0
+        chrome.action = NativeDocumentAction("play.fill", "Test") { clicks++ }
+        chrome.contentOverlayActive = true
+        assertTrue(host.nativeContentOverlayActive)
+        assertFalse(host.nativePageActionEnabled(id))
+        host.performNativePageAction(id)
+        assertEquals(0, clicks)
+        assertTrue(host.router.popBack())
+        assertFalse(host.nativePopPending)
+        host.router.navigate(AppRoute.License)
+        assertEquals(listOf(id), host.nativeRouteIds)
+        chrome.contentOverlayActive = false
+        assertFalse(host.nativeContentOverlayActive)
+        assertTrue(host.nativePageActionEnabled(id))
+        assertTrue(host.router.popBack())
+        assertTrue(host.nativePopPending)
+        host.completeNativePop(0)
+        assertFalse(host.nativePageActive)
     }
 
     @Test

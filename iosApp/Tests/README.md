@@ -25,9 +25,18 @@ NATIVE_HEADER_EXPANDED_ROUTES=1 bash iosApp/Tests/run-native-header-smoke.sh
 
 They also explicitly skip when invoked directly without the opt-in XCTest runner environment.
 
-Production currently enables 15 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, and ScheduleBackup. About, CourseManage, CourseTimeSettings, ScheduleImport, and EducationalImport retain Compose navigation. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
+Production currently enables 17 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, ScheduleBackup, About, and CourseTimeSettings. CourseManage, ScheduleImport, and EducationalImport retain Compose navigation. CourseTimeSettings retains its existing route-local Compose time editor; native chrome is suppressed until the morph editor exits. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
 
-## Verification results
+## About and course-time follow-up
+
+- `/tmp/nexio-about-time-phone-pass1/Smoke.xcresult`: four selected methods, three passed. The new time-settings test failed only at a nonexistent “返回” selector after entering the original editor; its close control is “取消”.
+- `/tmp/nexio-about-time-phone-confirm/Smoke.xcresult`: two selected methods, both passed. About -> Communication/Donation -> About -> settings; time-settings native header -> section dialog cancellation -> original editor -> explicit keyboard -> cancel -> keyboard dismissed -> native parent restored within 3 pt -> settings. No configuration was edited or saved.
+- The first batch additionally passed Changelog scroll restoration and cancelled/completed edge-pop, plus License/Privacy from native About. Assertions now expect native About on child return, not disappearance of all native bars.
+- Actual screenshots inspected: first batch `Attachments/9B4C48F8-A287-4648-BE0B-6C7AF1873053.png` (native About); confirmation `Attachments/93CC23DB-32C5-405A-94C2-05927E1416D9.png` (restored time settings), `Attachments/D373BCC1-C654-4BCB-9E82-7D785FFF38E1.png` (Compose editor), `Attachments/FBDDC7A7-7BED-4A95-BD27-FFAF4CB32206.png` (section dialog).
+- Final review then corrected the editor's raw status-bar blur-height calculation with native `topInsetAdjustment`. Compilation/unit tests are rerun for the final fix; these UI screenshots precede that adjustment and no third UI pass is claimed.
+- The full 12-method suite was not rerun. The original iPad embedded-pane limitation below remains; wide-screen settings do not push these routes. No new dark-mode, Dynamic Type or hardware verification is claimed.
+
+## Original fifteen-route verification results
 
 All runs below used the real simulator app, not a mocked page. Result bundles contain `Info.plist`, logs, and exported `Attachments/manifest.json` unless explicitly noted.
 

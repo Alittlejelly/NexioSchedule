@@ -16,6 +16,8 @@ class NativeDocumentChrome {
     var title by mutableStateOf("")
     var tintArgb by mutableStateOf(0L)
     var action by mutableStateOf<NativeDocumentAction?>(null)
+    /** A route-local full-screen editor owns back and chrome until its exit completes. */
+    var contentOverlayActive by mutableStateOf(false)
 }
 
 /** The operation stays in the existing route; UIKit only renders its presentation. */
@@ -29,6 +31,16 @@ data class NativeDocumentAction(
 )
 
 val LocalNativeDocumentChrome = staticCompositionLocalOf<NativeDocumentChrome?> { null }
+
+/** Keep native chrome out of an existing Compose morph without disposing its parent page. */
+@Composable
+fun NativeDocumentOverlayEffect(active: Boolean) {
+    val chrome = LocalNativeDocumentChrome.current ?: return
+    SideEffect { chrome.contentOverlayActive = active }
+    DisposableEffect(chrome) {
+        onDispose { chrome.contentOverlayActive = false }
+    }
+}
 
 /** Publish the same operation that the Compose endAction invokes, scoped to this live page. */
 @Composable

@@ -71,13 +71,15 @@ class IosAppHost {
     val floatingOverlayActive: Boolean get() = overlays.isActive || popupHost.isActive
     val nativePageActive: Boolean get() = nativePages.isNotEmpty()
     val nativePopPending: Boolean get() = requestedPopDepth != null
+    val nativeContentOverlayActive: Boolean
+        get() = nativePages.lastOrNull()?.chrome?.contentOverlayActive == true
 
     fun nativeRouteTitle(routeId: String): String =
         nativePage(routeId).let { it.chrome.title.ifEmpty { it.route.nativeDocumentTitle().orEmpty() } }
 
     fun navigateNativeDocument(routeId: String) {
         val route = AppRoute.fromId(routeId) ?: return
-        if (!route.isNativeDocument() || floatingOverlayActive ||
+        if (!route.isNativeDocument() || floatingOverlayActive || nativeContentOverlayActive ||
             nativeTransitionInFlight || requestedPopDepth != null) return
         val usedKeys = nativePages.map { it.stateKey }.toSet()
         var stateKey = route.id
@@ -94,6 +96,8 @@ class IosAppHost {
     /** Request a UIKit pop; keep the page, its registry, and business state alive until didShow. */
     private fun requestNativePop(): Boolean {
         if (nativePages.isEmpty()) return false
+        // Route-local morph editors must finish their own back/save path first.
+        if (nativeContentOverlayActive) return true
         if (!nativeTransitionInFlight && requestedPopDepth == null) {
             requestedPopDepth = nativePages.lastIndex
         }
@@ -126,13 +130,15 @@ class IosAppHost {
     fun nativePageActionSymbol(routeId: String): String = nativePage(routeId).chrome.action?.symbol.orEmpty()
     fun nativePageActionLabel(routeId: String): String = nativePage(routeId).chrome.action?.label.orEmpty()
     fun nativePageActionEnabled(routeId: String): Boolean =
-        nativePage(routeId).chrome.action?.enabled == true && !nativeTransitionInFlight
+        nativePage(routeId).chrome.action?.enabled == true && !nativeTransitionInFlight &&
+            !nativeContentOverlayActive
     fun nativePageActionBusy(routeId: String): Boolean = nativePage(routeId).chrome.action?.busy == true
     fun nativePageActionSuccessful(routeId: String): Boolean = nativePage(routeId).chrome.action?.successful == true
     fun nativePageTintArgb(routeId: String): Long = nativePage(routeId).chrome.tintArgb
 
     fun performNativePageAction(routeId: String) {
         if (nativeTransitionInFlight || requestedPopDepth != null || floatingOverlayActive ||
+            nativeContentOverlayActive ||
             nativePages.lastOrNull()?.id != routeId) return
         val action = nativePage(routeId).chrome.action ?: return
         if (action.enabled && !action.busy) action.onClick()
@@ -209,7 +215,7 @@ class IosAppHost {
                                 NativeDocumentChromeSnapshot(
                                     page.chrome.title, page.chrome.tintArgb,
                                     action?.symbol, action?.label, action?.enabled,
-                                    action?.busy, action?.successful,
+                                    action?.busy, action?.successful, page.chrome.contentOverlayActive,
                                 )
                             },
                             nativeTransitionInFlight,
@@ -272,6 +278,7 @@ private data class NativeDocumentChromeSnapshot(
     val enabled: Boolean?,
     val busy: Boolean?,
     val successful: Boolean?,
+    val contentOverlayActive: Boolean,
 )
 
 internal class NativeDocumentPage(
@@ -304,8 +311,10 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.WebDavSettings -> "WebDAV 云备份"
     AppRoute.ScheduleExport -> "课表导出"
     AppRoute.ScheduleBackup -> "课表备份"
+    AppRoute.About -> "关于应用"
+    AppRoute.CourseTimeSettings -> "课表节数与时间"
     // Import still reaches EducationalImport, whose iOS WebHost is not implemented.
     AppRoute.ScheduleImport, AppRoute.EducationalImport -> null
     // These pages retain their existing Compose chrome, morphs and lifecycle.
-    AppRoute.About, AppRoute.CourseManage, AppRoute.CourseTimeSettings -> null
+    AppRoute.CourseManage -> null
 }

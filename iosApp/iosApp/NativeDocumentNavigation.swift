@@ -64,10 +64,15 @@ final class NativeDocumentNavigationController: UINavigationController,
         view.isUserInteractionEnabled = !floatingActive
         view.accessibilityElementsHidden = floatingActive
         retainedRoot.viewIfLoaded?.accessibilityElementsHidden = topViewController !== retainedRoot
-        navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight
+        // Preserve the safe-area overlap and card geometry during a route-local morph.
+        // Hiding the navigation controller's bar would relayout both parent and editor.
+        let contentOverlayActive = host.nativeContentOverlayActive
+        navigationBar.alpha = contentOverlayActive ? 0 : 1
+        navigationBar.accessibilityElementsHidden = contentOverlayActive
+        navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight && !contentOverlayActive
         for controller in viewControllers {
             (controller as? NativeDocumentPageController)?.applyChromeState(
-                interactionAllowed: !floatingActive && !transitionInFlight
+                interactionAllowed: !floatingActive && !transitionInFlight && !contentOverlayActive
             )
         }
         if let page = topViewController as? NativeDocumentPageController {
@@ -166,7 +171,7 @@ final class NativeDocumentNavigationController: UINavigationController,
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === edgeBack, viewControllers.count > 1,
-              !transitionInFlight, !host.floatingOverlayActive,
+              !transitionInFlight, !host.floatingOverlayActive, !host.nativeContentOverlayActive,
               presentedViewController == nil else { return false }
         let velocity = edgeBack.velocity(in: view)
         let direction: CGFloat = edgeBack.edges == .right ? -1 : 1
@@ -179,7 +184,8 @@ final class NativeDocumentNavigationController: UINavigationController,
         let progress = min(1, max(0, gesture.translation(in: view).x * direction / width))
         switch gesture.state {
         case .began:
-            guard !transitionInFlight, viewControllers.count > 1, !host.floatingOverlayActive else { return }
+            guard !transitionInFlight, viewControllers.count > 1, !host.floatingOverlayActive,
+                  !host.nativeContentOverlayActive else { return }
             let driver = UIPercentDrivenInteractiveTransition()
             driver.completionCurve = .easeOut
             interactiveBack = driver

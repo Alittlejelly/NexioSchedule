@@ -9,6 +9,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -103,6 +105,8 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentOverlayEffect
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
@@ -731,6 +735,8 @@ fun CourseTimeSettingsRoute(
 
     // 页面状态管理
     var currentPage by remember { mutableStateOf("select") }
+    NativeDocumentOverlayEffect(currentPage == "edit")
+    val nativeBarInset = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp
     var editingConfig by remember { mutableStateOf<TimeConfig?>(null) }
     var editingRoutineId by remember { mutableStateOf<Long?>(null) }
     var editingCardBounds by remember { mutableStateOf<TimeConfigCardBounds?>(null) }
@@ -841,62 +847,66 @@ fun CourseTimeSettingsRoute(
         if (currentPage == "edit") {
             editingConfig?.let { config ->
                 val bounds = editingCardBounds
-                TimeConfigEditScreen(
-                    timeConfig = config,
-                    routineId = editingRoutineId ?: 0L,
-                    onBackStart = {
-                        coroutineScope.launch {
-                            launch {
-                                backgroundScale.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                )
+                // The bar stays in UIKit's safe area while visually hidden. Consume only
+                // its extra overlap so the original editor and card bounds do not shift.
+                Box(Modifier.fillMaxSize().consumeWindowInsets(PaddingValues(top = nativeBarInset))) {
+                    TimeConfigEditScreen(
+                        timeConfig = config,
+                        routineId = editingRoutineId ?: 0L,
+                        onBackStart = {
+                            coroutineScope.launch {
+                                launch {
+                                    backgroundScale.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                    )
+                                }
+                                launch {
+                                    managePageBlurRadius.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                    )
+                                }
                             }
-                            launch {
-                                managePageBlurRadius.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                )
+                        },
+                        onBack = {
+                            currentPage = "select"
+                            editingConfig = null
+                            editingRoutineId = null
+                            editingCardBounds = null
+                            cardSnapshot = null
+                        },
+                        onSave = { savedConfig ->
+                            // 只替换这一个作息；节次骨架由一级页面管理，这里不碰。
+                            // 顶层 name 是用户在这一页改的作息名，要带回去。
+                            val saved = editingRoutineId?.let { routineId ->
+                                repository.saveRoutine(routineId, savedConfig, savedConfig.name)
+                            } ?: false
+                            if (!saved) {
+                                // 保存被丢弃必须让用户看见，否则表现成「改完保存、重开还是原来的」
+                                showToast("保存失败，请重试")
                             }
-                        }
-                    },
-                    onBack = {
-                        currentPage = "select"
-                        editingConfig = null
-                        editingRoutineId = null
-                        editingCardBounds = null
-                        cardSnapshot = null
-                    },
-                    onSave = { savedConfig ->
-                        // 只替换这一个作息；节次骨架由一级页面管理，这里不碰。
-                        // 顶层 name 是用户在这一页改的作息名，要带回去。
-                        val saved = editingRoutineId?.let { routineId ->
-                            repository.saveRoutine(routineId, savedConfig, savedConfig.name)
-                        } ?: false
-                        if (!saved) {
-                            // 保存被丢弃必须让用户看见，否则表现成「改完保存、重开还是原来的」
-                            showToast("保存失败，请重试")
-                        }
-                        listRefreshTrigger++
-                    },
-                    cardLeft = bounds?.left ?: 0f,
-                    cardTop = bounds?.top ?: 0f,
-                    cardWidth = bounds?.width ?: screenWidth,
-                    cardHeight = bounds?.height ?: (screenHeight * 0.2f),
-                    screenWidth = screenWidth,
-                    screenHeight = screenHeight,
-                    screenCornerRadius = screenCornerRadius,
-                    cardStartCornerRadius = 20f,
-                    cardSnapshot = cardSnapshot,
-                    // 新建配置的 FAB 形态已移除，二级页永远从列表卡片展开
-                    isFabCreation = false,
-                    onDeleteRoutine = { routineId ->
-                        // 删除会换掉生效作息，重排提醒等都在 repository 里一并做完
-                        repository.deleteRoutine(routineId)
-                        listRefreshTrigger++
-                    },
-                    liquidGlassBackdrop = editLiquidGlassBackdrop,
-                )
+                            listRefreshTrigger++
+                        },
+                        cardLeft = bounds?.left ?: 0f,
+                        cardTop = bounds?.top ?: 0f,
+                        cardWidth = bounds?.width ?: screenWidth,
+                        cardHeight = bounds?.height ?: (screenHeight * 0.2f),
+                        screenWidth = screenWidth,
+                        screenHeight = screenHeight,
+                        screenCornerRadius = screenCornerRadius,
+                        cardStartCornerRadius = 20f,
+                        cardSnapshot = cardSnapshot,
+                        // 新建配置的 FAB 形态已移除，二级页永远从列表卡片展开
+                        isFabCreation = false,
+                        onDeleteRoutine = { routineId ->
+                            // 删除会换掉生效作息，重排提醒等都在 repository 里一并做完
+                            repository.deleteRoutine(routineId)
+                            listRefreshTrigger++
+                        },
+                        liquidGlassBackdrop = editLiquidGlassBackdrop,
+                    )
+                }
             }
         }
     }
