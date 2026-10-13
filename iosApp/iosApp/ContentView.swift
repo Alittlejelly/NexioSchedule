@@ -7,7 +7,7 @@ import NexioShared
 struct ContentView: View {
     var body: some View {
         ComposeRootRepresentable()
-            .ignoresSafeArea()   // Compose 自己管状态栏与安全区，别让 SwiftUI 再叠一层
+            .ignoresSafeArea()   // Compose 自己管状态栏与安全区
     }
 }
 
@@ -15,15 +15,15 @@ struct ContentView: View {
 /// Native chrome stays between those controllers instead of above the entire app.
 private struct ComposeRootRepresentable: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        // 状态栏样式：Kotlin 侧（`IosSystemBars`）只持状态，真正调用必须在 Swift 做 ——
-        // `UIApplication.setStatusBarStyle` 是 iOS 9 起废弃的 API，Kotlin/Native 的
-        // UIKit 绑定没有生成它（实测 Unresolved reference）。配合 Info.plist 的
-        // `UIViewControllerBasedStatusBarAppearance=false` 才生效。
-        IosSystemBars.shared.onApply = {
-            let style: UIStatusBarStyle =
-                IosSystemBars.shared.statusBarDark ? .lightContent : .darkContent
-            UIApplication.shared.setStatusBarStyle(style, animated: true)
-        }
+        // 状态栏样式：**交给系统自适应**，App 侧不接管。
+        //
+        // ⚠ 两条自己接管的路都不通，别再试：
+        //  1. `UIApplication.setStatusBarStyle` 自 iOS 27 起是 no-op；
+        //  2. 把 SwiftUI 的 root VC 包一层、在 wrapper 上覆写 `preferredStatusBarStyle`
+        //     → 直接崩：UIKit 禁止把 root VC 加为 child，而 `UIHostingController` 正是 root。
+        //
+        // Info.plist 的 `UIViewControllerBasedStatusBarAppearance=false` 也已删 ——
+        // 那个键会让系统去读已废弃的全局 API（就是刷屏警告的来源）。
         return AppHostController(host: IosAppHost())
     }
 
