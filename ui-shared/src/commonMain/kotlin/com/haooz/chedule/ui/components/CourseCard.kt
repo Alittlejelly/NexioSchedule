@@ -315,8 +315,6 @@ fun CourseCard(
                         effects = backdropEffects,
                         highlight = null,
                         shadow = null,
-                        downsampleScale = 0.48f,
-                        viewport = com.kyant.backdrop.LocalBackdropViewport.current,
                         onDrawSurface = onCardSurface
                     )
                     .drawWithContent {

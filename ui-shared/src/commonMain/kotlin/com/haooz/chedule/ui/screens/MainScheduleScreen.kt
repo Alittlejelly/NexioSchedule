@@ -223,7 +223,7 @@ fun MainScheduleScreen(
     dropHighlightOrigin: Pair<Int, IntRange>? = null,
     onGridGeometryChange: (ScheduleGridGeometry) -> Unit = {},
     scheduleScrollBehavior: SharedScrollBehavior? = null,
-    // Activity 层提升，return@Scaffold 不会销毁
+    // 由 Activity 层传入：不是防销毁，是液态玻璃重录要在外层读滚动状态 / 弹窗开合
     externalScrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
     externalShowCourseDetail: MutableState<Boolean> = mutableStateOf(false),
     externalSelectedCourse: MutableState<Course?> = mutableStateOf(null),
@@ -314,14 +314,6 @@ fun MainScheduleScreen(
     var pendingDay by remember { mutableIntStateOf(-1) }
     var pendingSection by remember { mutableIntStateOf(-1) }
     var viewingWeek by remember { mutableIntStateOf(currentWeek) }
-
-    // 从详情页返回重建时弹窗已打开，跳过 reveal 重播
-    var skipSheetReveal by remember { mutableStateOf(showCourseDetail) }
-    LaunchedEffect(showCourseDetail) {
-        if (!showCourseDetail) {
-            skipSheetReveal = false
-        }
-    }
 
     LaunchedEffect(showAddDialog) {
         if (showAddDialog && pendingDay != -1) {
@@ -836,7 +828,6 @@ fun MainScheduleScreen(
                     .graphicsLayer { alpha = 0f }
                     .then(sharedBlurManager.preRenderModifier(
                         blurRadiusPx = with(density) { cardBlurRadius.dp.toPx() },
-                        downsampleScale = 0.48f,
                         sourceKey = wallpaperRecordKey
                     ))
             )
@@ -920,16 +911,6 @@ fun MainScheduleScreen(
                     .scrollEndHaptic(
                         hapticFeedbackType = HapticFeedbackType.TextHandleMove
                     )
-                    .onGloballyPositioned { coordinates ->
-                        // 横滑时 Y 不变，跳过写入，省掉每帧两次回调体
-                        if (touchState.scrolling && pagerState.isScrollInProgress) return@onGloballyPositioned
-                        val pos = coordinates.positionInWindow()
-                        scheduleViewport.topPx = pos.y
-                        scheduleViewport.bottomPx = pos.y + coordinates.size.height
-                        // 横轴裁剪用屏幕可见区（不是本页 bounds），邻页屏外课卡才能被跳过
-                        scheduleViewport.leftPx = 0f
-                        scheduleViewport.rightPx = screenWidthPx
-                    }
                     .verticalScroll(scrollState)
                     // 底部留白直接计入滚动内容高度；强制无界测量，避免 fillMaxSize/测量链把内容压回视口高
                     .layout { measurable, constraints ->
@@ -1337,8 +1318,6 @@ fun MainScheduleScreen(
                                             effects = dividerEffects,
                                             highlight = null,
                                             shadow = null,
-                                            downsampleScale = 0.48f,
-                                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
                                             onDrawSurface = remember(dividerFgSurface) {
                                                 {
                                                     drawRect(dividerFgSurface)
@@ -1463,10 +1442,6 @@ fun MainScheduleScreen(
             // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁
             var revealCount by remember { mutableIntStateOf(0) }
             LaunchedEffect(coursesToShow.size) {
-                if (skipSheetReveal) {
-                    revealCount = coursesToShow.size
-                    return@LaunchedEffect
-                }
                 revealCount = 0
                 delay(120.milliseconds)
                 for (i in 1..coursesToShow.size) {
@@ -1503,13 +1478,13 @@ fun MainScheduleScreen(
                     val isHidden = course.id in hiddenCourseIds
                     // 普通 holder 零重组；key 用 course.id 防列表重排错位
                     val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
-                    // 动画结束后去掉离屏层；skipSheetReveal 时直接全显不播淡入
+                    // 动画结束后去掉离屏层
                     val appear by animateFloatAsState(
                         targetValue = if (index < revealCount) 1f else 0f,
                         animationSpec = tween(220),
                         label = "reveal$index",
                     )
-                    val shown = if (skipSheetReveal) 1f else appear
+                    val shown = appear
                     val revealAnimating = shown < 1f
                     val revealDensity = LocalDensity.current
                     Column(
@@ -1718,13 +1693,6 @@ private fun CourseDetailSheet(
     content: @Composable () -> Unit,
 ) {
     var show by showState
-    // 重建时若已打开则跳过进入动画；关闭后重置
-    var skipSheetEnterAnimation by remember { mutableStateOf(show) }
-    LaunchedEffect(show) {
-        if (!show) {
-            skipSheetEnterAnimation = false
-        }
-    }
     if (isTablet) {
         BlurBottomSheetTablet(
             show = show,
@@ -1734,7 +1702,6 @@ private fun CourseDetailSheet(
             onDismissRequest = onDismiss,
             liquidGlassBackdrop = liquidGlassBackdrop,
             endAction = endAction,
-            skipEnterAnimation = skipSheetEnterAnimation,
             content = content,
         )
     } else {
@@ -1745,7 +1712,6 @@ private fun CourseDetailSheet(
             dimBackground = true,
             onDismissRequest = onDismiss,
             endAction = endAction,
-            skipEnterAnimation = skipSheetEnterAnimation,
             content = content,
         )
     }
@@ -1913,7 +1879,6 @@ private fun AnimatedDropTargetMask(
                         effects = maskEffects,
                         highlight = null,
                         shadow = null,
-                        downsampleScale = 0.48f,
                         onDrawSurface = maskSurface
                     )
             )

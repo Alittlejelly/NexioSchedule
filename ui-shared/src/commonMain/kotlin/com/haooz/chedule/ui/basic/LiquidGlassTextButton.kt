@@ -19,7 +19,6 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -113,11 +112,9 @@ fun LiquidGlassTextButton(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // 整个按钮（玻璃+采样+文字）一起放大：不走 layerBlock，
-            // 避免库对 scale 做反变换导致背景采样被压小
+            // 位移放外层：阴影(drawBehind)与玻璃一起跟手，拖动时阴影不脱落。
             .graphicsLayer {
                 clip = false
-                transformOrigin = TransformOrigin.Center
 
                 // 与下拉菜单面板共用同一套形变算法（computeDragTransform），跟手手感一致。
                 // shapeAspectRatio = 1f：本按钮是 fillMaxWidth 的长条（360x40），
@@ -131,8 +128,6 @@ fun LiquidGlassTextButton(
                     density = this,
                     shapeAspectRatio = 1f,
                 )
-                scaleX = drag.scaleX
-                scaleY = drag.scaleY
                 translationX = drag.translationX
                 translationY = drag.translationY
             }
@@ -155,39 +150,56 @@ fun LiquidGlassTextButton(
                     // 原实现对 BlurMaskFilter 半径有 coerceAtLeast(0.1f)，保留
                     blurRadius = blurRadius.coerceAtLeast(0.1f),
                 )
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                enabled = enabled,
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onClick()
-                }
-            )
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = buttonShapeBlock,
-                effects = buttonEffects,
-                highlight = null,
-                shadow = null,
-                // 不传 layerBlock：采样与玻璃同步由外层 graphicsLayer 缩放，不会反向压小
-                layerBlock = null,
-                onDrawSurface = buttonOnDrawSurface
-            )
-            .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
-            .then(interactiveHighlight.modifier)
-            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
-            .defaultMinSize(minHeight = minHeight)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            },
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            style = MiuixTheme.textStyles.button,
-            fontWeight = FontWeight.Medium,
-            color = textColor.copy(alpha = if (enabled) 1f else 0.4f)
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    role = Role.Button,
+                    enabled = enabled,
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onClick()
+                    }
+                )
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = buttonShapeBlock,
+                    effects = buttonEffects,
+                    highlight = null,
+                    shadow = null,
+                    layerBlock = {
+                        val drag = computeDragTransform(
+                            width = size.width,
+                            height = size.height,
+                            fraction = 1f,
+                            pressProgress = interactiveHighlight.pressProgress,
+                            offset = interactiveHighlight.offset,
+                            density = this,
+                            shapeAspectRatio = 1f,
+                        )
+                        scaleX = drag.scaleX
+                        scaleY = drag.scaleY
+                    },
+                    onDrawSurface = buttonOnDrawSurface
+                )
+                .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
+                .then(interactiveHighlight.modifier)
+                .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
+                .defaultMinSize(minHeight = minHeight)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                style = MiuixTheme.textStyles.button,
+                fontWeight = FontWeight.Medium,
+                color = textColor.copy(alpha = if (enabled) 1f else 0.4f)
+            )
+        }
     }
 }

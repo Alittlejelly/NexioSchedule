@@ -1430,7 +1430,8 @@ fun CourseScheduleApp(
     // 页面坐标系 → 窗口坐标系的换算偏移
     var switchContentRootX by remember { mutableFloatStateOf(0f) }
 
-    // 状态提升到 Activity 层，return@Scaffold 不会销毁
+    // 保留在 Activity 层不是为了防止销毁（详情页期间主内容已不再移出组合），
+    // 而是液态玻璃重录要读它们的「滚动中 / 弹窗开合」（liquidGlassMustRecord、liquidGlassRecordKey）
     val scheduleScrollState = rememberScrollState()
     val scheduleSelectedCourse = remember { mutableStateOf<Course?>(null) }
     val scheduleSelectedCourses = remember { mutableStateOf<List<Course>>(emptyList()) }
@@ -2936,15 +2937,19 @@ fun CourseScheduleApp(
                     }
                 ) { paddingValues ->
                     // 详情动画期间用快照占位；占位须吃满触摸，避免事件穿到卡片
-                    if (showDetail && mainContentSnapshot != null) {
-                        Box(modifier = Modifier.fillMaxSize().consumeAllTouches())
-                        return@Scaffold
-                    }
+                    val mainContentHidden = showDetail && mainContentSnapshot != null
                     // 不门控 combinations.isEmpty()：网格只依赖 viewModel，与壁纸加载解耦
                     // backdrop 挂在未 padding 的全屏层：录制原点固定在屏幕
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .then(
+                                if (mainContentHidden) {
+                                    Modifier
+                                        .consumeAllTouches()
+                                        .drawWithContent { }
+                                } else Modifier
+                            )
                             // 开洞时 mustRecord 恒 true：停录会让顶栏/底栏玻璃采样空内容
                             .liquidGlassLayerBackdrop(
                                 backdrop = liquidGlassBackdrop,
@@ -4200,7 +4205,6 @@ fun CourseScheduleApp(
                                 effects = { colorControls(saturation = 1.5f) },
                                 highlight = null,
                                 shadow = null,
-                                downsampleScale = 1f,
                             )
                     )
                 }

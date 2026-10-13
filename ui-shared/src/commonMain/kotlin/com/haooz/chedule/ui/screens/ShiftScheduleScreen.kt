@@ -95,12 +95,6 @@ fun ShiftScheduleScreen(
 
     var showDetail by remember { mutableStateOf(false) }
     var detailCourses by remember { mutableStateOf<List<Pair<String, Course>>>(emptyList()) }
-    var skipSheetEnterAnimation by remember { mutableStateOf(showDetail) }
-    androidx.compose.runtime.LaunchedEffect(showDetail) {
-        if (!showDetail) {
-            skipSheetEnterAnimation = false
-        }
-    }
 
     val maxMorning = remember(shiftScheduleSections) {
         shiftScheduleSections.values.maxOfOrNull { it.first } ?: 4
@@ -290,7 +284,6 @@ fun ShiftScheduleScreen(
             isBottomAligned = true,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showDetail = false },
-            skipEnterAnimation = skipSheetEnterAnimation,
             content = detailContent
         )
     } else {
@@ -300,7 +293,6 @@ fun ShiftScheduleScreen(
             liquidGlassBackdrop = liquidGlassBackdrop,
             dimBackground = true,
             onDismissRequest = { showDetail = false },
-            skipEnterAnimation = skipSheetEnterAnimation,
             content = detailContent
         )
     }

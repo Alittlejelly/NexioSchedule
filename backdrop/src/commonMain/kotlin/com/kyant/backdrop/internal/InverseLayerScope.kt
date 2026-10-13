@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawTransform
 import androidx.compose.ui.unit.Density
+import com.kyant.backdrop.BackdropEffectScope
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -52,7 +53,16 @@ internal class InverseLayerScope : GraphicsLayerScope {
         density: Density,
         layerBlock: GraphicsLayerScope.() -> Unit
     ) {
-        this@InverseLayerScope.size = size
+        // 这里的 receiver 是**离屏采样缓冲**的 DrawScope：缓冲 = 节点尺寸 + 2*padding
+        // 结果就是「按压放大倍率 ≠ 采样缩小倍率」。这里先减回节点尺寸再求值。
+        val contentSize = (density as? BackdropEffectScope)?.let { scope ->
+            Size(
+                (size.width - 2f * scope.padding).coerceAtLeast(1f),
+                (size.height - 2f * scope.padding).coerceAtLeast(1f)
+            )
+        } ?: size
+
+        this@InverseLayerScope.size = contentSize
         this@InverseLayerScope.density = density.density
         fontScale = density.fontScale
 

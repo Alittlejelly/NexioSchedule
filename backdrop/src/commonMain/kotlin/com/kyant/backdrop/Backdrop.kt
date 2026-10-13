@@ -12,14 +12,14 @@ interface Backdrop {
 
     /**
      * 共享降采样+预模糊层。
-     * 非 null 时，DrawBackdropNode 跳过独立壁纸录制，
-     * 直接从此层采样对应区域，实现多卡片共享同一底采样图。
+     * 保留仅为兼容：采样链路已回退到源库实现（每帧独立录制），
+     * DrawBackdropNode 不再读取它。
      */
     val sharedSampledLayer: GraphicsLayer? get() = null
 
     /**
-     * 源内容版本号。Backdrop 重新录制像素内容时递增；
-     * 采样侧可据此跳过「内容与偏移均未变」的重录。
+     * 源内容版本号。
+     * 保留仅为兼容：采样链路已回退到源库实现（每帧独立录制），不再用它做跳过判断。
      */
     val contentVersion: Int get() = 0
 

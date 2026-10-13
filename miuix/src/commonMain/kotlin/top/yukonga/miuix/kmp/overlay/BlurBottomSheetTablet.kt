@@ -117,7 +117,6 @@ fun BlurBottomSheetTablet(
     endAction: @Composable (() -> Unit)? = null,
     liquidGlassBackdrop: Backdrop? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
-    skipEnterAnimation: Boolean = false,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -156,7 +155,6 @@ fun BlurBottomSheetTablet(
             endAction = endAction,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onSheetContentBackdropCreated = onSheetContentBackdropCreated,
-            skipEnterAnimation = skipEnterAnimation,
             content = content,
         )
     }
@@ -180,7 +178,6 @@ private fun BlurBottomSheetTabletContent(
     endAction: @Composable (() -> Unit)? = null,
     liquidGlassBackdrop: Backdrop? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
-    skipEnterAnimation: Boolean = false,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -191,7 +188,7 @@ private fun BlurBottomSheetTabletContent(
     }
     CompositionLocalProvider(LocalForcedDarkTheme provides null) {
         MiuixTheme(controller = sheetAppController) {
-            val animationProgress = remember { Animatable(if (show && skipEnterAnimation) 1f else 0f) }
+            val animationProgress = remember { Animatable(0f) }
     val density = LocalDensity.current
     val windowInfo = LocalWindowInfo.current
     // 滑入动画用的窗口高度：在组合期读取一次，避免进入动画期间逐帧做密度换算
@@ -215,17 +212,13 @@ private fun BlurBottomSheetTabletContent(
         if (show) {
             if (enableContentHeightSnap) detentState.reset()
             backProgress.snapTo(0f)
-            if (skipEnterAnimation) {
-                animationProgress.snapTo(1f)
-            } else {
-                animationProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = 500,
-                        easing = CubicBezierEasing(0.34f, 1.12f, 0.3f, 1f)
-                    )
+            animationProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 500,
+                    easing = CubicBezierEasing(0.34f, 1.12f, 0.3f, 1f)
                 )
-            }
+            )
         } else {
             animationProgress.animateTo(0f, animationSpec = tween(380, easing = CubicBezierEasing(0.34f, 1f, 0.3f, 1f)))
             visibleState.value = false
@@ -399,9 +392,9 @@ private fun BlurBottomSheetTabletContent(
                 }
 
                 // 进入动画早期挂载，避免 AGSL 编译卡顿落在动画刚结束、用户准备点遮罩的窗口
-                var sheetBackdropMounted by remember { mutableStateOf(skipEnterAnimation) }
+                var sheetBackdropMounted by remember { mutableStateOf(false) }
                 LaunchedEffect(show) {
-                    if (show && !skipEnterAnimation) {
+                    if (show) {
                         delay(80)
                         sheetBackdropMounted = true
                     }

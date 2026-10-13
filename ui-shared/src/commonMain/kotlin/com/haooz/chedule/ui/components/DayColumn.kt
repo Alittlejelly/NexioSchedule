@@ -602,7 +602,6 @@ private fun PendingSectionBox(
                             effects = pendingEffects,
                             highlight = null,
                             shadow = null,
-                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
                             onDrawSurface = pendingOnSurface
                         )
                         .edgeLight(shape = edgeLightShape, edgeLight = rememberCourseCardEdgeLight(baseColor = surfaceColor))
@@ -854,8 +853,6 @@ fun SpecialBandOverlay(
                         effects = bandEffects,
                         highlight = null,
                         shadow = null,
-                        downsampleScale = 0.48f,
-                        viewport = com.kyant.backdrop.LocalBackdropViewport.current,
                         onDrawSurface = onBandSurface
                     )
                     .drawWithContent {

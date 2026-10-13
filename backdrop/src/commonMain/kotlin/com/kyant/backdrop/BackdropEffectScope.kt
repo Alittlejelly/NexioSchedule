@@ -18,8 +18,9 @@ sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
     /**
      * 当前离屏模糊缓冲的降采样比例。
      *
-     * 当 effect（尤其自定义 runtimeShader）以像素坐标在缓冲上计算时，
-     * 需据此把 size/offset 等均匀缩放，保证放大回原尺寸后视觉效果一致。
+     * 采样链路已回退到源库实现：缓冲是 1:1 全分辨率（只外扩 padding），
+     * 因此固定为 1f —— effect（尤其 lens 的 runtimeShader）的像素 uniform
+     * 不再需要缩放。保留这个字段只是为了让 lens() 不用改签名。
      */
     val downsampleScale: Float
 
@@ -52,7 +53,7 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
     override var lensRefractionHeight: Float = 0f
     override var lensRefractionAmount: Float = 0f
     override var lensCornerRadii: FloatArray? = null
-    override val downsampleScale: Float = DOWNSAMPLE_SCALE
+    override val downsampleScale: Float = 1f
 
     private val runtimeShaderCache = RuntimeShaderCacheImpl()
 

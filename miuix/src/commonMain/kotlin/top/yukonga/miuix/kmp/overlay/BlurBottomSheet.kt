@@ -160,7 +160,6 @@ class BackdropHolder {
  * @param startAction 标题栏左侧操作按钮
  * @param endAction 标题栏右侧操作按钮
  * @param onSheetContentBackdropCreated 弹窗内容 backdrop 创建回调
- * @param skipEnterAnimation 是否跳过进入动画
  * @param content 内容区域
  */
 @Composable
@@ -179,7 +178,6 @@ fun BlurBottomSheet(
     startAction: @Composable (() -> Unit)? = null,
     endAction: @Composable (() -> Unit)? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
-    skipEnterAnimation: Boolean = false,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -219,7 +217,6 @@ fun BlurBottomSheet(
             sheetOffsetDp = sheetOffsetDp,
             sheetMaxWidth = sheetMaxWidth,
             fillMaxHeight = fillMaxHeight,
-            skipEnterAnimation = skipEnterAnimation,
             content = content,
         )
     }
@@ -242,7 +239,6 @@ private fun BlurBottomSheetContent(
     startAction: @Composable (() -> Unit)? = null,
     endAction: @Composable (() -> Unit)? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
-    skipEnterAnimation: Boolean = false,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -253,7 +249,7 @@ private fun BlurBottomSheetContent(
     }
     CompositionLocalProvider(LocalForcedDarkTheme provides null) {
         MiuixTheme(controller = sheetAppController) {
-            val animationProgress = remember { Animatable(if (show && skipEnterAnimation) 1f else 0f) }
+            val animationProgress = remember { Animatable(0f) }
     // 拖拽位移用 floatState（graphicsLayer 在绘制期读取，拖拽期间零重组、零协程分配）；
     // 松手后的 spring 回弹单独用 Animatable，与拖拽位移相加得到总位移。
     val dragOffsetY = remember { mutableFloatStateOf(0f) }
@@ -293,18 +289,14 @@ private fun BlurBottomSheetContent(
             settleOffsetY.stop()
             settleOffsetY.snapTo(0f)
             backProgress.snapTo(0f)
-            if (skipEnterAnimation) {
-                animationProgress.snapTo(1f)
-            } else {
-                // 进入动画：使用 CubicBezier 带回弹效果
-                animationProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = 480,
-                        easing = CubicBezierEasing(0.34f, 1.12f, 0.3f, 1f)
-                    )
+            // 进入动画：使用 CubicBezier 带回弹效果
+            animationProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 480,
+                    easing = CubicBezierEasing(0.34f, 1.12f, 0.3f, 1f)
                 )
-            }
+            )
         } else {
             // 退出动画
             animationProgress.animateTo(0f, animationSpec = tween(320, easing = CubicBezierEasing(0.34f, 1f, 0.3f, 1f)))
@@ -540,9 +532,9 @@ private fun BlurBottomSheetContent(
 
                 // 原先等 enterDone 再挂 backdrop/AGSL，编译卡顿正好落在「动画刚结束、用户准备点遮罩」的窗口，
                 // 表现为遮罩暂时点不动、返回键却可以。改为进入动画早期挂载，让卡顿被滑入过程盖住。
-                var sheetBackdropMounted by remember { mutableStateOf(skipEnterAnimation) }
+                var sheetBackdropMounted by remember { mutableStateOf(false) }
                 LaunchedEffect(show) {
-                    if (show && !skipEnterAnimation) {
+                    if (show) {
                         delay(80)
                         sheetBackdropMounted = true
                     }

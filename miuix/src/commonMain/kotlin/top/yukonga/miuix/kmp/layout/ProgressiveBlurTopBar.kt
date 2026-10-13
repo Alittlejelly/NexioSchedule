@@ -203,8 +203,7 @@ fun ProgressiveBlurTopBar(
                             shape = blurShapeBlock,
                             effects = blurEffects,
                             highlight = null,
-                            shadow = null,
-                            downsampleScale = 1f
+                            shadow = null
                         )
                 )
             } else if (isRenderEffectSupported()) {
@@ -243,7 +242,6 @@ fun ProgressiveBlurTopBar(
                             },
                             highlight = null,
                             shadow = null,
-                            downsampleScale = 1f,
                             onDrawSurface = {
                                 drawRect(tintColor.copy(alpha = tintIntensity))
                             },

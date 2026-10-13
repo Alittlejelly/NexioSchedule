@@ -315,7 +315,6 @@ fun LiquidBottomTabs(
                     // 且它自身除光晕外全透明，不会遮掉前两层
                     backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop, glowBackdrop),
                     shape = { ContinuousCapsule() },
-                    downsampleScale = 1f,
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         lens(

@@ -50,9 +50,6 @@ import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
  *
  * 拖拽时沿拖动方向拉伸、抬手回弹，机制与 BackToNowFloatingButton 一致：
  * 按压反馈（[InteractiveHighlight] 的高光 + 高光跟随）、图标随动、阴影同步变形。
- *
- * 拉伸/缩放统一放在**外层** graphicsLayer（而非 drawBackdrop 的 layerBlock），
- * 这样图标和阴影才会跟着一起变形；layerBlock 只保留 alpha。
  */
 @Composable
 fun LiquidTopBarButton(
