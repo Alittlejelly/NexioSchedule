@@ -14,8 +14,6 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSData
 import platform.Foundation.NSOperationQueue
-import platform.Foundation.NSURL
-import platform.Foundation.dataWithContentsOfFile
 import platform.PhotosUI.PHPickerConfiguration
 import platform.PhotosUI.PHPickerFilter
 import platform.PhotosUI.PHPickerResult
@@ -29,26 +27,34 @@ import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIScreen
 import platform.darwin.NSObject
 
+private const val TAG = "WallpaperPicker"
+
 /**
  * iOS 相册选壁纸（对应 Android 的 `ActivityResultContracts.PickVisualMedia` + 降采样解码）。
  *
  * ## 流水线
  *
  * `PHPickerViewController` → `PHPickerResult.itemProvider`
- * → `loadItemForTypeIdentifier("public.image")` → `UIImage`（Photos 走这条）
- * → **`UIGraphics` 降到屏幕像素** → JPEG NSData → skia `Image.makeFromEncoded` → `ImageBitmap`
+ * → `loadDataRepresentationForTypeIdentifier("public.image")` → `NSData`
+ * → `UIImage` 解码 + `UIGraphics` 降到屏幕像素 → JPEG `NSData`
+ * → skia `Image.makeFromEncoded` → `ImageBitmap`
  *
  * ## 三个必须记住的点
  *
- * 1. **必须在 iOS 侧降采样**：共享层的 `applyPickedWallpaper` 拿到位图后**直接原样用**
- *    （只算 `minScale` 做显示缩放，不重采样），Android 是靠宿主在解码阶段三级降采样来压内存的。
- *    iOS 相册原图动辄 4000×3000，不降采样直接把内存顶爆。
- * 2. **回调必须回主线程**：`loadItem…` 的 completion 在后台队列，而共享层
- *    `applyPickedWallpaper` 会写 Compose 状态，后台写会崩。
- * 3. **不能用 `loadObjectOfClass(UIImage, …)`**：那个方法要的是 `Class<NSItemProviderReading>`
- *    协议对象，Kotlin/Native 侧只能拿 `UIImage.Companion` 硬转协议实例 ——
- *    编译期只报「This cast can never succeed」警告，**运行期直接抛**。
- *    改用 `loadItemForTypeIdentifier` + 类型分发（见 [PickerDelegate.picker]）。
+ * 1. **必须用 `loadDataRepresentation…`，不能用 `loadItemForTypeIdentifier`**：
+ *    后者对相册图返回 `PLSandboxedURL`（Photos 的沙盒 URL），拿它的 `path` 去
+ *    `NSData.dataWithContentsOfFile(...)` 读出来是 **0 字节**（App 没有那个沙盒的读权限，
+ *    也不是 security-scoped）—— 表现就是「选完图没反应」。前者由系统把数据读好再交给我们。
+ * 2. **必须在 iOS 侧降采样**：共享层的 `applyPickedWallpaper` 拿到位图后**直接原样用**
+ *    （只算 `minScale` 做显示缩放，不重采样），Android 是靠宿主在解码阶段三级降采样压内存的。
+ *    相册原图动辄 4000×3000，不降采样直接把内存顶爆。
+ * 3. **解码必须回主线程**：`loadDataRepresentation…` 的 completion 在**后台队列**，
+ *    而解码用的 `UIGraphics*` / `UIScreen` 是 UIKit 的图形 API（非线程安全），
+ *    且共享层会写 Compose 状态 —— 后台跑会静默失败或崩。
+ *
+ * ⚠ 另：不能用 `loadObjectOfClass(UIImage, …)` —— 它要 `Class<NSItemProviderReading>`
+ * 协议对象，Kotlin/Native 侧只能硬转：编译期只报「This cast can never succeed」警告，
+ * **运行期直接抛**。
  */
 class IosWallpaperPicker {
 
@@ -67,6 +73,7 @@ class IosWallpaperPicker {
         delegate = d
         val host = IosUiHost.topViewController()
         if (host == null) {
+            NexioLog.e(TAG, "topViewController() 为 null，相册拉不起来")
             delegate = null
             onResult(null)
             return
@@ -85,29 +92,55 @@ class IosWallpaperPicker {
                 .firstOrNull()
                 ?.itemProvider
             if (provider == null) {
+                // 用户直接取消（没选任何图）
                 onResult(null)
                 return
             }
-            // 不请求具体类型，拿到什么处理什么：Photos 一般给 UIImage（已按 EXIF 校正方向），
-            // 也可能给 NSData / NSURL。三种都兜住，避免「某些相册源选不了」。
-            provider.loadItemForTypeIdentifier("public.image", options = null) { item, _ ->
-                val bitmap = when (item) {
-                    is UIImage -> decodeToImageBitmap(item)
-                    is NSData -> decodeBytes(item.toByteArray())
-                    is NSURL -> item.path
-                        ?.let { NSData.dataWithContentsOfFile(it) }
-                        ?.let { decodeBytes(it.toByteArray()) }
-                    else -> null
+            provider.loadDataRepresentationForTypeIdentifier("public.image") { data, error ->
+                if (data == null) {
+                    NexioLog.e(
+                        TAG,
+                        "loadData 没拿到数据" + (error?.let { "：${it.localizedDescription}" } ?: ""),
+                    )
                 }
-                // 回主线程：共享层要写 Compose 状态
+                // ⚠ 解码必须回主线程，见类 KDoc 第 3 点
                 NSOperationQueue.mainQueue.addOperationWithBlock {
-                    onResult(bitmap)
+                    onResult(data?.let { decodeViaUIImage(it) })
                 }
             }
         }
     }
 
     companion object {
+
+        /**
+         * `NSData` → `ImageBitmap`：**必须先过 `UIImage`**。
+         *
+         * ⚠ 相册原图多是 **HEIC**（iOS 默认拍照格式），而 skia 的
+         * `Image.makeFromEncoded` **不带 HEIC 解码器** —— 直接把字节喂给它会抛
+         * `Failed to Image::makeFromEncoded`。`UIImage` 支持系统全部图片格式，
+         * 让它解码 + 降采样 + 转 JPEG 后 skia 才认。
+         *
+         * 兜底保留 skia 直解：万一 `UIImage` 也解不开（如非图片字节）再试一次。
+         */
+        fun decodeViaUIImage(data: NSData): ImageBitmap? {
+            val bytes = data.toByteArray()
+            if (bytes.isEmpty()) {
+                NexioLog.e(TAG, "相册返回的 NSData 长度为 0")
+                return null
+            }
+            // 路 1：UIImage（系统全部图片格式）。类方法与构造器都试 ——
+            // 不同 iOS / Kotlin 绑定版本暴露的形态不一样。
+            val image = UIImage.imageWithData(data) ?: UIImage(data = data)
+            if (image == null) {
+                NexioLog.w(TAG, "UIImage 解不开这份数据，回退 skia 直解")
+            } else {
+                decodeToImageBitmap(image)?.let { return it }
+                NexioLog.w(TAG, "UIImage 解出来了但转 ImageBitmap 失败，回退 skia 直解")
+            }
+            // 路 2：skia 直解（PNG/JPEG/WebP…，不含 HEIC）
+            return decodeBytes(bytes)
+        }
 
         /**
          * `UIImage` → 屏幕大小的 `ImageBitmap`。
@@ -119,12 +152,18 @@ class IosWallpaperPicker {
             val (targetW, targetH) = screenPixelSize()
             val scaled = downscale(image, targetW.toDouble(), targetH.toDouble())
             val data = UIImageJPEGRepresentation(scaled, 0.9)
-            if (data == null) null else decodeBytes(data.toByteArray())
-        } catch (_: Exception) {
+            if (data == null) {
+                NexioLog.e(TAG, "UIImageJPEGRepresentation 返回 null（图可能不是 CGImage-backed）")
+                null
+            } else {
+                decodeBytes(data.toByteArray())
+            }
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "decodeToImageBitmap 抛异常：${e.message}", e)
             null
         }
 
-        /** 直接给编码字节（JPEG/PNG/HEIC…）时：skia 解码 + 按屏幕降采样 */
+        /** 直接给编码字节（JPEG/PNG/WebP…）时：skia 解码 + 按屏幕降采样。⚠ skia 不认 HEIC。 */
         fun decodeBytes(bytes: ByteArray): ImageBitmap? = try {
             val src = Image.makeFromEncoded(bytes)
             val (targetW, targetH) = screenPixelSize()
@@ -146,7 +185,8 @@ class IosWallpaperPicker {
                 )
                 Image.makeFromBitmap(dst).toComposeImageBitmap()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "skia 解码失败：${e.message}", e)
             null
         }
 
