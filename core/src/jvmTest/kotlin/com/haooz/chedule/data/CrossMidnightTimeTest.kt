@@ -138,4 +138,50 @@ class CrossMidnightTimeTest {
         assertTrue(restored.crossesMidnightCustomTime())
         assertEquals(90, restored.customDurationMinutes())
     }
+
+    @Test
+    fun `进行中判定_跨午夜课只认当天晚上段`() {
+        val start = kotlinx.datetime.LocalTime(23, 0)
+        val end = kotlinx.datetime.LocalTime(0, 30)
+        // 当天晚上的 [start, 午夜) 段：进行中
+        assertTrue(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(23, 0)))
+        assertTrue(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(23, 50)))
+        // 凌晨 [0, end) 段属于「前一天」的那一节；当天列表在零点已换日，不能再认领
+        assertFalse(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(0, 10)))
+        assertFalse(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(22, 59)))
+    }
+
+    @Test
+    fun `进行中判定_普通课与边界`() {
+        val start = kotlinx.datetime.LocalTime(8, 0)
+        val end = kotlinx.datetime.LocalTime(8, 45)
+        assertTrue(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(8, 0)))
+        assertTrue(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(8, 44)))
+        assertFalse(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(8, 45)))
+        assertFalse(coursePeriodOngoing(start, end, kotlinx.datetime.LocalTime(7, 59)))
+    }
+
+    @Test
+    fun `已结束判定_跨午夜课当天内永不结束`() {
+        val start = kotlinx.datetime.LocalTime(23, 0)
+        val end = kotlinx.datetime.LocalTime(0, 30)
+        // 白天/晚上都不能因为 now > 00:30 而误判成「已上完」
+        assertFalse(coursePeriodCompleted(start, end, kotlinx.datetime.LocalTime(10, 0)))
+        assertFalse(coursePeriodCompleted(start, end, kotlinx.datetime.LocalTime(22, 0)))
+        // 普通课正常判定
+        assertTrue(
+            coursePeriodCompleted(
+                kotlinx.datetime.LocalTime(8, 0),
+                kotlinx.datetime.LocalTime(8, 45),
+                kotlinx.datetime.LocalTime(10, 0),
+            )
+        )
+        assertFalse(
+            coursePeriodCompleted(
+                kotlinx.datetime.LocalTime(8, 0),
+                kotlinx.datetime.LocalTime(8, 45),
+                kotlinx.datetime.LocalTime(8, 45),
+            )
+        )
+    }
 }

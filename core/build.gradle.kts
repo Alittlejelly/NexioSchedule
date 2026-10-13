@@ -29,8 +29,18 @@ kotlin {
     //   ./gradlew -Pnexio.ios=true :core:compileKotlinIosArm64
     val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
     if (enableIos) {
-        iosArm64()
-        iosSimulatorArm64()
+        val iosTargets = listOf(iosArm64(), iosSimulatorArm64())
+        // sysctl/sysctlbyname 被 Apple 弃用，Kotlin/Native 的 Apple 预置库已不导出；
+        // 自定义 cinterop 重新暴露 sys/sysctl.h，PlatformInfo.ios 靠它读真机数据。
+        iosTargets.forEach { target ->
+            target.compilations.getByName("main") {
+                cinterops.create("applesysctl") {
+                    defFile = project.file("src/nativeInterop/cinterop/apple-sysctl.def")
+                    // 默认包名取 def 文件名（"apple-sysctl"），带连字符不是合法包名，显式指定
+                    packageName = "applesysctl"
+                }
+            }
+        }
     }
     // 仅作**编译门禁**：linuxX64 同为 Kotlin/Native 目标，没有 `kotlin.jvm.*`
     // 默认导入，能拦下 @Volatile / synchronized / System.currentTimeMillis /

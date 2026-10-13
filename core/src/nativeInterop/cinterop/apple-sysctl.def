@@ -1,0 +1,10 @@
+// 重新暴露 sysctlbyname —— Apple 平台的 Kotlin/Native 预置库已把弃用的
+// sysctl 系列函数移除；直接声明头文件时该函数又带弃用标注，cinterop 会滤掉，
+// 所以用 static inline 包装强制绑定（只用了 oldp/oldlenp，newp 恒为 NULL）。
+headers = sys/sysctl.h
+headerFilter = sys/sysctl.h
+---
+
+static inline int nexio_sysctlbyname(const char* name, void* oldp, size_t* oldlenp) {
+    return sysctlbyname(name, oldp, oldlenp, NULL, 0);
+}

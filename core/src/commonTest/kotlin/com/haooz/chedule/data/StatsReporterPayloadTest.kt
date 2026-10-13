@@ -40,7 +40,7 @@ class StatsReporterPayloadTest {
         parseJsonObject(StatsReporter.buildPayload(eventType))
 
     @Test
-    fun `九个上报字段一个都不能少`() {
+    fun `十个上报字段一个都不能少`() {
         val expected = setOf(
             "device_id",
             "event_type",
@@ -51,8 +51,23 @@ class StatsReporterPayloadTest {
             "manufacturer",
             "android_version",
             "sdk_level",
+            // 新增平台维度；服务端旧版本会忽略，不破坏旧口径
+            "platform",
         )
         assertEquals(expected, payload("install").keys, "上报字段集合变化，需同步服务端统计口径")
+    }
+
+    /** 平台标签按 sdk_level / brand 推导，与后端 derivePlatform 的兜底口径一致。 */
+    @Test
+    fun `platform 标签推导`() {
+        fun tag(sdk: Int, brand: String) =
+            StatsReporter.platformTag(DeviceInfo("m", brand, brand, "1.0", sdk))
+        assertEquals("android", tag(35, "Xiaomi"))
+        assertEquals("ios", tag(0, "Apple"))
+        // 老版 iOS 客户端的 brand 是 osFamily 名，也要归进 iOS
+        assertEquals("ios", tag(0, "IOS"))
+        assertEquals("desktop", tag(0, "Mac OS X"))
+        assertEquals("desktop", tag(0, "Linux"))
     }
 
     @Test
