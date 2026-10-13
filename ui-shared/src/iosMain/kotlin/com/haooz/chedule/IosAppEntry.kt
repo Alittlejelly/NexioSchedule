@@ -24,6 +24,7 @@ import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.screens.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeatherIos
 import com.haooz.chedule.ui.utils.IosSharedFileReceiver
+import com.haooz.chedule.ui.utils.IosShareImport
 import com.haooz.chedule.ui.utils.rememberIosShareAction
 import com.haooz.chedule.ui.utils.IosSystemBars
 import com.haooz.chedule.ui.utils.IosToast
@@ -240,22 +241,29 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.CourseReminder -> CourseReminderRoute(router)
         // WebDAV：备份/恢复本体已在 :core，只差提醒重排副作用
         AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
-        // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）。
-        // 口令导入/第三方导入（要服务端接口 + 平台分享能力）仍走默认「不支持」。
+        // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）+ 三条口令导入。
+        // 口令取回与星链是纯 HTTP（共享 HttpService = NSURLSession），WakeUp 走无头
+        // WKWebView（IosWakeUpImport）。口令**导出**与手环推送仍是 Android 专有。
         AppRoute.ScheduleImport -> BackupAndMigrationRoute(
             router = router,
             mode = ScheduleDataManageMode.Import,
             scheduleFileController = fileController,
+            onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
+            onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
         AppRoute.ScheduleExport -> BackupAndMigrationRoute(
             router = router,
             mode = ScheduleDataManageMode.Export,
             scheduleFileController = fileController,
+            onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
+            onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
         AppRoute.ScheduleBackup -> BackupAndMigrationRoute(
             router = router,
             mode = ScheduleDataManageMode.Backup,
             scheduleFileController = fileController,
+            onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
+            onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
         // 课表节数与时间 / 课程管理：iOS 没有自由小窗，传 false
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)

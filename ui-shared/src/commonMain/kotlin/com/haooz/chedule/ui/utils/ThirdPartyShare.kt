@@ -70,3 +70,92 @@ data class ShareCodeFetchResult(
     val scheduleName: String,
     val scheduleData: Map<String, Any>,
 )
+
+/**
+ * 与适配脚本一致：合并连续节次与同节次周次。
+ *
+ * 原先是 androidApp `ThirdPartyShareImporter` 的成员方法，2026-10-13 上提到这里 ——
+ * iOS 的星链导入要用同一套合并规则，两边各写一份必然漂移。纯函数，搬过来逐字未改。
+ *
+ * 两步合并：
+ * 1. 同课程（名称/教师/地点/星期/周次全同）且节次连续 → 合成一节（1-2 + 3-4 → 1-4）；
+ *    完全相同的一对去重。
+ * 2. 同课程同节次 → 周次取并集（星链会把 1-8 周拆成多条下发）。
+ */
+fun mergeAndDistinctCourses(courses: List<ThirdPartyCourse>): List<ThirdPartyCourse> {
+    if (courses.size <= 1) return courses
+    val list = courses.map { c ->
+        c.copy(
+            name = c.name.trim(),
+            teacher = c.teacher.trim(),
+            position = c.position.trim(),
+            weeks = c.weeks.sorted(),
+        )
+    }
+
+    val sorted1 = list.sortedWith(
+        compareBy(
+            { it.name },
+            { it.teacher },
+            { it.position },
+            { it.day },
+            { it.weeks.joinToString(",") },
+            { it.startSection },
+        )
+    )
+    val step1 = mutableListOf<ThirdPartyCourse>()
+    var current = sorted1.first()
+    for (i in 1 until sorted1.size) {
+        val next = sorted1[i]
+        val sameCourseAndWeeks =
+            current.name == next.name &&
+                current.teacher == next.teacher &&
+                current.position == next.position &&
+                current.day == next.day &&
+                current.weeks == next.weeks
+        val continuous = current.endSection + 1 == next.startSection
+        val duplicate = current.startSection == next.startSection &&
+            current.endSection == next.endSection
+        when {
+            sameCourseAndWeeks && continuous ->
+                current = current.copy(endSection = next.endSection)
+            sameCourseAndWeeks && duplicate -> Unit
+            else -> {
+                step1.add(current)
+                current = next
+            }
+        }
+    }
+    step1.add(current)
+
+    val sorted2 = step1.sortedWith(
+        compareBy(
+            { it.name },
+            { it.teacher },
+            { it.position },
+            { it.day },
+            { it.startSection },
+            { it.endSection },
+        )
+    )
+    val step2 = mutableListOf<ThirdPartyCourse>()
+    var cur = sorted2.first()
+    for (i in 1 until sorted2.size) {
+        val nxt = sorted2[i]
+        val same =
+            cur.name == nxt.name &&
+                cur.teacher == nxt.teacher &&
+                cur.position == nxt.position &&
+                cur.day == nxt.day &&
+                cur.startSection == nxt.startSection &&
+                cur.endSection == nxt.endSection
+        if (same) {
+            cur = cur.copy(weeks = (cur.weeks + nxt.weeks).distinct().sorted())
+        } else {
+            step2.add(cur)
+            cur = nxt
+        }
+    }
+    step2.add(cur)
+    return step2
+}
