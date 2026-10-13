@@ -100,6 +100,8 @@ fun ScheduleTopBar(
 ) {
     if (!visible || liquidGlassBackdrop == null) return
     val hostedMore = LocalHostNavigation.current != null
+    val nativeHeader = LocalHostNavigation.current?.showsNativeHeader == true
+    val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
 
     val titleText = when {
         isHoliday -> "放假中"
@@ -107,12 +109,13 @@ fun ScheduleTopBar(
         else -> "第${pagerCurrentPage + 1}周"
     }
 
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
     val topBarHeight = if (statusBarHeight > 0.dp) 120.dp + statusBarHeight else 160.dp
     // 组合期读 currentHeightPx 会拿到未测量的值，星期行会慢一帧就位；改布局期读
     ProgressiveBlurTopBar(
         backdrop = liquidGlassBackdrop,
         height = topBarHeight,
+        topInsetAdjustment = nativeBarInset,
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,
     ) {
@@ -163,7 +166,7 @@ fun ScheduleTopBar(
                                     shadowAlpha = shadowAlpha,
                                 )
                             } else {
-                                if (!isShiftMode) {
+                                if (!isShiftMode && !nativeHeader) {
                                     LiquidTopBarButton(
                                         onClick = {
                                             onOpenSwitchSchedule()
@@ -181,7 +184,7 @@ fun ScheduleTopBar(
                                     modifier = Modifier
                                         .size(42.dp)
                                         .then(
-                                            if (hostedMore) Modifier
+                                            if (hostedMore && !nativeHeader) Modifier
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null,

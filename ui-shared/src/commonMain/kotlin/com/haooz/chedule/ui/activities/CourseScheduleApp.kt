@@ -23,10 +23,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -948,6 +950,7 @@ fun CourseScheduleApp(
     val settingsViewModel: SettingsViewModel = settingsViewModel()
     val shiftViewModel: ShiftViewModel = shiftViewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
+    val router = LocalAppRouter.current
     var selectedTab by remember { mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1) }
     val hostNavigation = LocalHostNavigation.current
     var showShiftLoading by remember { mutableStateOf(false) }
@@ -2362,6 +2365,45 @@ fun CourseScheduleApp(
 
     val isViewingCurrentWeek = currentViewingWeek == currentWeek
 
+    DisposableEffect(hostNavigation) {
+        onDispose {
+            hostNavigation?.let { host ->
+                host.onOpenSwitchSchedule = null
+                host.onJumpWeek = null
+                host.onCourseManage = null
+                host.onEnterCustomize = null
+                host.onJumpToDate = null
+            }
+        }
+    }
+    SideEffect {
+        hostNavigation?.let { host ->
+            host.showsNativeHeader = nativeBottomBar && !isTablet && !isWindowCutoutActive &&
+                !showCustomizePage && !showSwitchSchedule && !showDetail
+            host.onOpenSwitchSchedule = {
+                if (!isShiftMode && !showSwitchSchedule) {
+                    coroutineScope.launch {
+                        switchPendingReverse = true
+                        switchCapturingSnapshot = true
+                        showSwitchSchedule = true
+                        mainContentSnapshot = captureMainContentBitmap()
+                    }
+                }
+            }
+            host.onJumpWeek = { viewModel.showJumpWeekDialog() }
+            host.onCourseManage = {
+                router.navigate(AppRoute.CourseManage)
+            }
+            host.onEnterCustomize = {
+                coroutineScope.launch {
+                    delay(200.milliseconds)
+                    enterCustomizePage()
+                }
+            }
+            host.onJumpToDate = { todayJumpToDateTrigger++ }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2561,8 +2603,11 @@ fun CourseScheduleApp(
                     }
                 )
         ) {
+            val hostNav = LocalHostNavigation.current
+            val nativeBarInset = (hostNav?.topBarInset ?: 0.0).dp
             val scaffoldContent = @Composable {
                 Scaffold(
+                    modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
                     bottomBar = {
                         // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动
                         if (navBarStyle != "rail" && !nativeBottomBar) {
@@ -2869,8 +2914,8 @@ fun CourseScheduleApp(
                                     todayMaterialAlpha = todayMaterialAlpha.value,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     isShiftMode = isShiftMode,
-                                    // 平板（rail）右上角不显示「更多」
-                                    enabled = navBarStyle != "rail",
+                                    // 平板（rail）右上角不显示「更多」；原生 Header 激活时由系统 UIMenu 接管
+                                    enabled = navBarStyle != "rail" && hostNavigation?.showsNativeHeader != true,
                                     // 预测性返回由 LiquidGlassDropdownMenu 内部驱动同一个 fraction Animatable，
                                     // 外面再 snapTo/animateTo 会和它互相 cancel，动画直接卡死。
                                     onJumpWeek = { viewModel.showJumpWeekDialog() },
@@ -5565,10 +5610,12 @@ private fun SettingsTopBar(
         if (settingsBarDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
 
     // 平板设置：渐变画在 TabletSettingsScreen 内容层，这里不再叠全宽遮罩
+    val settingsNativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
     MiuixTheme(controller = settingsBarController) {
         ProgressiveBlurTopBar(
             backdrop = liquidGlassBackdrop,
             blurAlpha = if (isTablet) 0f else 1f,
+            topInsetAdjustment = settingsNativeBarInset,
             resampleKey = blurResampleKey,
             sampleTrack = blurSampleTrack,
         ) {
@@ -5610,6 +5657,7 @@ private fun TodayTopBar(
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
     val hostedMore = LocalHostNavigation.current != null
+    val nativeHeader = LocalHostNavigation.current?.showsNativeHeader == true
     // 平板：标题避让侧栏后左对齐用的附加修饰符
     val titleRailPadding = if (isTabletLiquidGlass) {
         com.haooz.chedule.ui.components.tabletNavRailStartPadding().padding(start = 12.dp)
@@ -5619,10 +5667,12 @@ private fun TodayTopBar(
     val dayOfWeekNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     val dayOfWeekName = if (currentDayOfWeek in 1..7) dayOfWeekNames[currentDayOfWeek - 1] else ""
     val titleText = if (isToday) "今天是$dayOfWeekName" else dayOfWeekName
+    val todayNativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
 
     // 隐藏时 alpha=0 但仍测量，保证 currentHeightPx 启动即就位
     ProgressiveBlurTopBar(
         backdrop = liquidGlassBackdrop,
+        topInsetAdjustment = todayNativeBarInset,
         modifier = Modifier.graphicsLayer { alpha = if (visible) 1f else 0f },
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,
@@ -5674,7 +5724,7 @@ private fun TodayTopBar(
                             modifier = Modifier
                                 .size(42.dp)
                                 .then(
-                                    if (hostedMore) Modifier
+                                    if (hostedMore && !nativeHeader) Modifier
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,

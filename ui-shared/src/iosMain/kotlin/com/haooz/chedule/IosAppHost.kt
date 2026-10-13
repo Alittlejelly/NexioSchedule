@@ -45,7 +45,7 @@ class IosAppHost {
     internal val router = AppRouter()
     internal val mainTransition = NavTransitionState()
     internal var navigationOverlayActive by mutableStateOf(false)
-    private val navigation = HostNavigationState()
+    internal val navigation = HostNavigationState()
     private val overlays = HostOverlayState()
     private val popupHost = MiuixOverlayHostState()
     private val nativePages = mutableStateListOf<NativeDocumentPage>()
@@ -211,6 +211,7 @@ class IosAppHost {
     val tabCount: Int get() = navigation.tabCount
     val shiftMode: Boolean get() = navigation.shiftMode
     val showsNativeTabBar: Boolean get() = navigation.showsNativeTabBar
+    val showsNativeHeader: Boolean get() = navigation.showsNativeHeader
     val isDark: Boolean get() = navigation.isDark
     val overlayActive: Boolean
         get() = router.hasOverlay || navigationOverlayActive || overlays.isActive || popupHost.isActive
@@ -271,6 +272,7 @@ class IosAppHost {
                                 )
                             },
                             nativeTransitionInFlight,
+                            showsNativeHeader,
                         )
                     }.collect { onStateChanged?.invoke() }
                 }
@@ -284,10 +286,27 @@ class IosAppHost {
         }
     }
 
+    fun performMainAction(actionId: String) {
+        when (actionId) {
+            "switchSchedule" -> navigation.onOpenSwitchSchedule?.invoke()
+            "jumpWeek" -> navigation.onJumpWeek?.invoke()
+            "courseManage" -> navigation.onCourseManage?.invoke()
+            "customize" -> navigation.onEnterCustomize?.invoke()
+            "jumpToDate" -> navigation.onJumpToDate?.invoke()
+        }
+    }
+
     fun updateBottomBarInset(points: Double) {
         val inset = points.coerceAtLeast(0.0)
         if (kotlin.math.abs(navigation.bottomBarInset - inset) > 0.5) {
             navigation.bottomBarInset = inset
+        }
+    }
+
+    fun updateTopBarInset(points: Double) {
+        val inset = points.coerceAtLeast(0.0)
+        if (kotlin.math.abs(navigation.topBarInset - inset) > 0.5) {
+            navigation.topBarInset = inset
         }
     }
 
@@ -320,6 +339,7 @@ private data class NativeHostSnapshot(
     val floatingOverlayActive: Boolean,
     val nativeChrome: List<NativeDocumentChromeSnapshot>,
     val nativeTransitionInFlight: Boolean,
+    val showsNativeHeader: Boolean,
 )
 
 private data class NativeDocumentChromeSnapshot(

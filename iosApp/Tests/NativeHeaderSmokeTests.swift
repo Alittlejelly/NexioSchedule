@@ -552,4 +552,40 @@ final class NativeHeaderSmokeTests: XCTestCase {
         nativeBack()
         XCTAssertEqual(app.navigationBars.count, 0)
     }
+
+    func testMainScreenNativeHeaderTransitionsAndMenu() throws {
+        if app.tabBars.buttons["课程表"].waitForExistence(timeout: 5) {
+            app.tabBars.buttons["课程表"].tap()
+            settle()
+        }
+        let switchButton = app.navigationBars.buttons["课表切换"]
+        let moreButton = app.navigationBars.buttons["更多"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), "Schedule header missing switch button")
+        XCTAssertTrue(moreButton.exists, "Schedule header missing more button")
+        capture("Main header - Schedule tab controls")
+
+        // Switch to My (tab 2): header controls should dismiss
+        showSettings()
+        XCTAssertFalse(switchButton.exists, "My tab must not have switch button")
+        XCTAssertFalse(moreButton.exists, "My tab must not have more button")
+        capture("Main header - My tab empty controls")
+
+        // Switch back to Schedule (tab 1): controls restore
+        if app.tabBars.buttons["课程表"].exists {
+            app.tabBars.buttons["课程表"].tap()
+            settle()
+            XCTAssertTrue(switchButton.waitForExistence(timeout: 5))
+            XCTAssertTrue(moreButton.exists)
+            capture("Main header - restored Schedule tab controls")
+        }
+
+        // Switch to Today (tab 0): only more button exists
+        if app.tabBars.buttons["今日"].exists {
+            app.tabBars.buttons["今日"].tap()
+            settle()
+            XCTAssertFalse(switchButton.exists, "Today tab must not have switch button")
+            XCTAssertTrue(moreButton.exists, "Today tab must have more button")
+            capture("Main header - Today tab single more button")
+        }
+    }
 }

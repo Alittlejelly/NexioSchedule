@@ -27,6 +27,7 @@ class HostNavigationState {
     var showsNativeTabBar by mutableStateOf(true)
     var isDark by mutableStateOf(false)
     var bottomBarInset by mutableStateOf(0.0)
+    var topBarInset by mutableStateOf(0.0)
     var onTabSelected: ((Int) -> Unit)? = null
     /**
      * 开洞缩放进度，1f=正常。宿主（当前只有 iOS）据此对原生 chrome 施加同样缩放——
@@ -38,6 +39,13 @@ class HostNavigationState {
      * CustomizeScheduleScreen 回传，不是常量，故一并上报供原生 chrome 对齐。
      */
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
+    /** Whether the main screen top bar header controls are owned by native host chrome. */
+    var showsNativeHeader by mutableStateOf(false)
+    var onOpenSwitchSchedule: (() -> Unit)? = null
+    var onJumpWeek: (() -> Unit)? = null
+    var onCourseManage: (() -> Unit)? = null
+    var onEnterCustomize: (() -> Unit)? = null
+    var onJumpToDate: (() -> Unit)? = null
 }
 
 val LocalHostNavigation = staticCompositionLocalOf<HostNavigationState?> { null }

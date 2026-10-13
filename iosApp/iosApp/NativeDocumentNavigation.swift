@@ -19,7 +19,7 @@ final class NativeDocumentNavigationController: UINavigationController,
         super.init(rootViewController: root)
         delegate = self
         root.navigationItem.backButtonDisplayMode = .minimal
-        setNavigationBarHidden(true, animated: false)
+        root.navigationItem.hidesBackButton = true
     }
 
     required init?(coder: NSCoder) {
@@ -124,7 +124,6 @@ final class NativeDocumentNavigationController: UINavigationController,
         _ navigationController: UINavigationController,
         willShow viewController: UIViewController, animated: Bool
     ) {
-        setNavigationBarHidden(viewController === retainedRoot, animated: animated)
         updateChromeState()
     }
 

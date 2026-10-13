@@ -378,4 +378,39 @@ class NativeDocumentHostTest {
         host.router.navigate(AppRoute.CourseManage)
         assertSame(AppRoute.CourseManage, host.router.current)
     }
+
+    @Test
+    fun mainHeaderActionDispatchInvokesCallbacks() {
+        val host = IosAppHost()
+        assertFalse(host.showsNativeHeader)
+        var switched = false
+        var jumpedWeek = false
+        var courseManaged = false
+        var customized = false
+        var jumpedDate = false
+
+        host.performMainAction("switchSchedule")
+        assertFalse(switched)
+
+        // Inject callbacks via HostNavigationState
+        val navigation = host.navigation
+        navigation.showsNativeHeader = true
+        navigation.onOpenSwitchSchedule = { switched = true }
+        navigation.onJumpWeek = { jumpedWeek = true }
+        navigation.onCourseManage = { courseManaged = true }
+        navigation.onEnterCustomize = { customized = true }
+        navigation.onJumpToDate = { jumpedDate = true }
+
+        assertTrue(host.showsNativeHeader)
+        host.performMainAction("switchSchedule")
+        assertTrue(switched)
+        host.performMainAction("jumpWeek")
+        assertTrue(jumpedWeek)
+        host.performMainAction("courseManage")
+        assertTrue(courseManaged)
+        host.performMainAction("customize")
+        assertTrue(customized)
+        host.performMainAction("jumpToDate")
+        assertTrue(jumpedDate)
+    }
 }

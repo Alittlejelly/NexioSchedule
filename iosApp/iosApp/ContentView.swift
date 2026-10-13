@@ -126,6 +126,33 @@ private final class AppHostController: UIViewController {
     private let chromeContainer = TabBarPassthroughView()
     private let chromeController = NativeChromeController()
     private var lastBottomInset: CGFloat = -1
+    private var lastTopInset: CGFloat = -1
+
+    private lazy var mainMoreItem: UIBarButtonItem = {
+        let icon = MiuixTabIcons.more.withRenderingMode(.alwaysTemplate)
+        let item = UIBarButtonItem(image: icon, style: .plain,
+                                   target: nil, action: nil)
+        if #available(iOS 26.0, *) {
+            item.identifier = "main-header-more"
+        }
+        item.accessibilityLabel = "更多"
+        item.tintColor = .label
+        return item
+    }()
+
+    private lazy var mainSwitchItem: UIBarButtonItem = {
+        let icon = MiuixTabIcons.convertFile.withRenderingMode(.alwaysTemplate)
+        let item = UIBarButtonItem(image: icon,
+                                   style: .plain,
+                                   target: self,
+                                   action: #selector(handleSwitchScheduleTap))
+        if #available(iOS 26.0, *) {
+            item.identifier = "main-header-switch"
+        }
+        item.accessibilityLabel = "课表切换"
+        item.tintColor = .label
+        return item
+    }()
 
     init(host: IosAppHost) {
         self.host = host
@@ -138,8 +165,11 @@ private final class AppHostController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        edgesForExtendedLayout = [.top, .bottom]
+        extendedLayoutIncludesOpaqueBars = true
         view.backgroundColor = .clear
         view.clipsToBounds = true
+        navigationItem.hidesBackButton = true
         mainContainer.backgroundColor = .clear
         chromeContainer.backgroundColor = .clear
 
@@ -167,11 +197,19 @@ private final class AppHostController: UIViewController {
         super.viewDidLayoutSubviews()
         updateMainTransform()
         updateChromeTransform()
+        reportTopInset()
+        reportBottomInset()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        reportTopInset()
         reportBottomInset()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        reportTopInset()
         reportBottomInset()
     }
 
@@ -200,9 +238,77 @@ private final class AppHostController: UIViewController {
         host.overlayController.view.accessibilityViewIsModal = overlayActive
         mainContainer.isUserInteractionEnabled = !overlayActive
         mainContainer.accessibilityElementsHidden = overlayActive
+        updateMainHeaderControls()
         updateMainTransform()
         updateChromeTransform()
+        reportTopInset()
         reportBottomInset()
+    }
+
+    private func updateMainHeaderControls() {
+        let showHeader = host.showsNativeHeader && !host.nativePageActive
+        let targetItems: [UIBarButtonItem]
+        if showHeader {
+            switch host.selectedTab {
+            case 0:
+                mainMoreItem.menu = makeTodayMenu()
+                targetItems = [mainMoreItem]
+            case 1:
+                mainMoreItem.menu = makeScheduleMenu()
+                targetItems = [mainMoreItem, mainSwitchItem]
+            default:
+                targetItems = []
+            }
+        } else {
+            targetItems = []
+        }
+        let interactionAllowed = !host.floatingOverlayActive && !host.overlayActive
+        mainMoreItem.isEnabled = interactionAllowed
+        mainSwitchItem.isEnabled = interactionAllowed
+        let animated = viewIfLoaded?.window != nil && !UIAccessibility.isReduceMotionEnabled
+        if (navigationItem.rightBarButtonItems ?? []) != targetItems {
+            navigationItem.setRightBarButtonItems(targetItems, animated: animated)
+        }
+    }
+
+    @objc private func handleSwitchScheduleTap() {
+        host.performMainAction(actionId: "switchSchedule")
+    }
+
+    private func makeScheduleMenu() -> UIMenu {
+        var actions: [UIAction] = [
+            UIAction(title: "跳转周数", image: UIImage(systemName: "calendar.badge.clock")) { [weak self] _ in
+                self?.host.performMainAction(actionId: "jumpWeek")
+            }
+        ]
+        if !host.shiftMode {
+            actions.append(
+                UIAction(title: "课程管理", image: UIImage(systemName: "books.vertical")) { [weak self] _ in
+                    self?.host.performMainAction(actionId: "courseManage")
+                }
+            )
+        }
+        actions.append(
+            UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
+                self?.host.performMainAction(actionId: "customize")
+            }
+        )
+        return UIMenu(children: actions)
+    }
+
+    private func makeTodayMenu() -> UIMenu {
+        let actions: [UIAction] = [
+            UIAction(title: "跳转日期", image: UIImage(systemName: "calendar")) { [weak self] _ in
+                self?.host.performMainAction(actionId: "jumpToDate")
+            },
+            UIAction(title: "课程管理", image: UIImage(systemName: "books.vertical")) { [weak self] _ in
+                self?.host.performMainAction(actionId: "courseManage")
+            },
+            UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
+                self?.host.performMainAction(actionId: "customize")
+            }
+        ]
+        return UIMenu(children: actions)
     }
 
     /// 开洞（课表外观）时把原生 TabBar 跟着主内容一起上移缩小。
@@ -235,6 +341,15 @@ private final class AppHostController: UIViewController {
             translationX: -0.24 * CGFloat(progress) * view.bounds.width,
             y: 0
         )
+    }
+
+    private func reportTopInset() {
+        guard isViewLoaded, let window = view.window else { return }
+        let showHeader = host.showsNativeHeader && !host.nativePageActive
+        let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
+        guard abs(lastTopInset - inset) > 0.5 else { return }
+        lastTopInset = inset
+        host.updateTopBarInset(points: Double(inset))
     }
 
     private func reportBottomInset() {
