@@ -61,6 +61,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -777,7 +778,6 @@ fun HolidaySettingsScreen(
         followWeekday = followWeekday,
         onFollowWeekChange = { followWeek = it; followWeekManuallySelected = true },
         onFollowWeekdayChange = { followWeekday = it },
-        liquidGlassBackdrop = liquidGlassBackdrop,
         canDelete = editingEntry != null,
         onDeleteClick = { showDeleteConfirm = true },
         onDismiss = { showDialog = false },
@@ -1952,7 +1952,6 @@ private fun EntryEditDialog(
     followWeekday: String,
     onFollowWeekChange: (String) -> Unit,
     onFollowWeekdayChange: (String) -> Unit,
-    liquidGlassBackdrop: Backdrop?,
     canDelete: Boolean,
     onDeleteClick: () -> Unit,
     onDismiss: () -> Unit,
@@ -1960,163 +1959,303 @@ private fun EntryEditDialog(
 ) {
     val isHoliday = dialogType == HolidayManager.TYPE_HOLIDAY
     val hapticFeedback = LocalHapticFeedback.current
-    OverlayDialog(
-        title = dialogTitle,
-        summary = null,
-        show = show,
-        liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = onDismiss,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            NativeMiuixTextField(
-                name,
-                onNameChange,
-                label = "名称",
+    val isTablet = isTabletWidth()
+    val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
+    val sheetBackgroundColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
+    val cardColor = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF)
+    val canSave = name.isNotBlank()
+
+    // 顶栏按钮：左 × 取消，右 ✓ 保存。⚠ backdrop 必须取 LocalSheetContentBackdrop ——
+    // sheet 顶栏是浮在内容之上的，不喂 backdrop 就是一块实心色块。
+    val startAction: @Composable () -> Unit = {
+        val material = LocalSheetTopBarMaterial.current
+        LiquidTopBarButton(
+            onClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                onDismiss()
+            },
+            backdrop = LocalSheetContentBackdrop.current!!,
+            icon = MiuixIcons.Normal.Close,
+            contentDescription = "取消",
+            modifier = Modifier.padding(start = if (isTablet) 16.dp else 18.dp),
+            iconSize = 24.dp,
+            backdropAlpha = material.backdropAlpha,
+            shadowAlpha = material.shadowAlpha,
+        )
+    }
+    val endAction: @Composable () -> Unit = {
+        val material = LocalSheetTopBarMaterial.current
+        LiquidTopBarButton(
+            onClick = {
+                if (canSave) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                    onSave()
+                }
+            },
+            backdrop = LocalSheetContentBackdrop.current!!,
+            icon = MiuixIcons.Ok,
+            contentDescription = if (canSave) "保存" else "请先填写名称",
+            modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
+            iconSize = 25.dp,
+            iconTint = if (canSave) Color.Unspecified
+                else MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.45f),
+            enabled = canSave,
+            backdropAlpha = material.backdropAlpha,
+            shadowAlpha = material.shadowAlpha,
+        )
+    }
+    val sheetContent: @Composable () -> Unit = {
+        // 一字段一块：控件放 Card，标题走 SmallTitle。
+        //
+        // ⚠ 两层 Column 是刻意的：外层管「块与块」之间的 12dp；内层只管「标题 + 它自己的
+        //    卡片」，间距 0 —— 标题浮在卡片上方会显得空一大截。SmallTitle 自带的
+        //    bottomPadding 也在 [SHEET_TITLE_PADDING] 里归零。
+        //
+        // ⚠ 左对齐：外层 16dp + 标题左 12dp = 28dp；卡片内文字同样 padding 12dp = 28dp。
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-            )
-            LabeledDatePickerRow(
-                text = if (isHoliday) "开始日期" else "调休日期",
-                year = startYear,
-                month = startMonth,
-                day = startDay,
-                onYearChange = onStartYearChange,
-                onMonthChange = onStartMonthChange,
-                onDayChange = onStartDayChange,
-            )
-            if (isHoliday) {
-                LabeledDatePickerRow(
-                    text = "结束日期",
-                    year = endYear,
-                    month = endMonth,
-                    day = endDay,
-                    onYearChange = onEndYearChange,
-                    onMonthChange = onEndMonthChange,
-                    onDayChange = onEndDayChange,
+                insideMargin = PaddingValues(0.dp),
+                colors = CardDefaults.defaultColors(
+                    color = cardColor,
+                    contentColor = MiuixTheme.colorScheme.onSurface,
+                ),
+            ) {
+                NativeMiuixTextField(
+                    name,
+                    onNameChange,
+                    label = "名称",
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (!isHoliday) {
-                // 显示成日期，让用户能核对「补的是哪一天」；存档也是这个日期
-                val date = followDate(followWeek, followWeekday)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+
+            Column {
+                SmallTitle(
+                    text = if (isHoliday) "开始日期" else "调休日期",
+                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    // 滚轮上下自留白：0 会让首尾两行贴卡片边缘
+                    insideMargin = PaddingValues(vertical = 16.dp),
+                    colors = CardDefaults.defaultColors(
+                        color = cardColor,
+                        contentColor = MiuixTheme.colorScheme.onSurface,
+                    ),
                 ) {
-                    Text(
-                        "跟随课程",
-                        style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Normal),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 16.dp),
+                    DatePickerRow(
+                        year = startYear,
+                        month = startMonth,
+                        day = startDay,
+                        onYearChange = onStartYearChange,
+                        onMonthChange = onStartMonthChange,
+                        onDayChange = onStartDayChange,
                     )
-                    if (date != null) {
-                        Text(
-                            "${date.year}/${date.monthNumber}/${date.dayOfMonth}",
-                            style = MiuixTheme.textStyles.body1.copy(
-                                fontSize = 15.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            ),
-                            modifier = Modifier.padding(end = 16.dp),
+                }
+            }
+
+            if (isHoliday) {
+                Column {
+                    SmallTitle(
+                        text = "结束日期",
+                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(vertical = 16.dp),
+                        colors = CardDefaults.defaultColors(
+                            color = cardColor,
+                            contentColor = MiuixTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        DatePickerRow(
+                            year = endYear,
+                            month = endMonth,
+                            day = endDay,
+                            onYearChange = onEndYearChange,
+                            onMonthChange = onEndMonthChange,
+                            onDayChange = onEndDayChange,
                         )
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    NumberPicker(
-                        followWeek.toIntOrNull()?.coerceAtLeast(1) ?: 1,
-                        { onFollowWeekChange(it.toString()) },
-                        range = 1..52,
-                        visibleItemCount = 3,
-                        itemHeight = 44.dp,
-                        textStyle = pickerTextStyle(),
-                        label = { "第${it}周" },
-                        modifier = Modifier.weight(1f),
-                    )
-                    NumberPicker(
-                        followWeekday.toIntOrNull()?.coerceIn(1, 7) ?: 1,
-                        { onFollowWeekdayChange(it.toString()) },
-                        range = 1..7,
-                        visibleItemCount = 3,
-                        itemHeight = 44.dp,
-                        textStyle = pickerTextStyle(),
-                        label = { WEEKDAYS[it - 1] },
-                        modifier = Modifier.weight(1f),
-                    )
+            }
+
+            if (!isHoliday) {
+                Column {
+                    // 推算日期与小标题同行、右对齐：用户要核对「补的是哪一天」，别塞进卡片
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SmallTitle(
+                            text = "跟随课程",
+                            modifier = Modifier.weight(1f),
+                        )
+                        val date = followDate(followWeek, followWeekday)
+                        if (date != null) {
+                            Text(
+                                "${date.year}/${date.monthNumber}/${date.dayOfMonth}",
+                                style = MiuixTheme.textStyles.body1.copy(
+                                    fontSize = 15.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                ),
+                                modifier = Modifier.padding(end = 12.dp),
+                            )
+                        }
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(vertical = 16.dp),
+                        colors = CardDefaults.defaultColors(
+                            color = cardColor,
+                            contentColor = MiuixTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                NumberPicker(
+                                    followWeek.toIntOrNull()?.coerceAtLeast(1) ?: 1,
+                                    { onFollowWeekChange(it.toString()) },
+                                    range = 1..52,
+                                    visibleItemCount = 3,
+                                    itemHeight = 44.dp,
+                                    textStyle = pickerTextStyle(),
+                                    label = { "第${it}周" },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                NumberPicker(
+                                    followWeekday.toIntOrNull()?.coerceIn(1, 7) ?: 1,
+                                    { onFollowWeekdayChange(it.toString()) },
+                                    range = 1..7,
+                                    visibleItemCount = 3,
+                                    itemHeight = 44.dp,
+                                    textStyle = pickerTextStyle(),
+                                    label = { WEEKDAYS[it - 1] },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            // 国家级数据只说「哪天补班」，不说「补哪天的课」，上面是推算出来的预填值，
+                            // 各校安排未必一致 —— 明确告诉用户：以学校通知为准，保存后才生效。
+                            Text(
+                                "已按假期末尾推算预填，请以学校通知为准，保存后生效",
+                                style = MiuixTheme.textStyles.body1.copy(
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                ),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp),
+                            )
+                        }
+                    }
                 }
-                // 国家级数据只说「哪天补班」，不说「补哪天的课」，上面是推算出来的预填值，
-                // 各校安排未必一致 —— 明确告诉用户：以学校通知为准，保存后才生效。
-                Text(
-                    "已按假期末尾推算预填，请以学校通知为准，保存后生效",
-                    style = MiuixTheme.textStyles.body1.copy(
-                        fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    ),
+            }
+
+            if (canDelete) {
+                Button(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(
-                    "取消",
-                    {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    "保存",
-                    {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onSave()
-                    },
-                    enabled = name.isNotBlank(),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        if (canDelete) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(y = (-42).dp)
-                    .size(36.dp)
-                    .clip(ContinuousRoundedRectangle(20))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
+                        .height(50.dp),
+                    onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         onDeleteClick()
                     },
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    imageVector = MiuixIcons.Delete,
-                    contentDescription = "删除",
-                    colorFilter = ColorFilter.tint(Color(0xFFF44336)),
-                    modifier = Modifier.size(23.dp),
-                )
+                    colors = ButtonDefaults.buttonColors(
+                        color = if (isDark) Color.White.copy(alpha = 0.1f)
+                        else Color.Black.copy(alpha = 0.06f),
+                    ),
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = Color(0xFFF44336),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "删除",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFF44336),
+                    )
+                }
             }
         }
+    }
+
+    if (isTablet) {
+        BlurBottomSheetTablet(
+            show = show,
+            title = dialogTitle,
+            dimBackground = true,
+            enableContentHeightSnap = true,
+            sheetBackgroundColor = sheetBackgroundColor,
+            sheetBackgroundAlpha = 1f,
+            liquidGlassBackdrop = null,
+            onDismissRequest = onDismiss,
+            startAction = startAction,
+            endAction = endAction,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (LocalBlurBottomSheetContentExpanded.current) Modifier.fillMaxHeight()
+                        else Modifier,
+                    )
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Spacer(modifier = Modifier.height(56.dp))
+                sheetContent()
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+    } else {
+        BlurBottomSheet(
+            show = show,
+            title = dialogTitle,
+            dimBackground = true,
+            enableContentHeightSnap = true,
+            sheetBackgroundColor = sheetBackgroundColor,
+            sheetBackgroundAlpha = 1f,
+            liquidGlassBackdrop = null,
+            sheetOffsetDp = statusBarsPadding + 5.dp,
+            onDismissRequest = onDismiss,
+            startAction = startAction,
+            endAction = endAction,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (LocalBlurBottomSheetContentExpanded.current) Modifier.fillMaxHeight()
+                        else Modifier,
+                    )
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Spacer(modifier = Modifier.height(58.dp))
+                sheetContent()
+                Spacer(modifier = Modifier.height(statusBarsPadding + 60.dp))
+            }
         }
     }
 }
 
+/**
+ * 年月日三列滚轮（卡片内容；标题由调用方的 SmallTitle 承担）。
+ *
+ * ⚠ `day` 会随年/月被 clamp 回当月天数 —— 从大月滚到小月不能留下非法日期，
+ * 这个逻辑别在搬移时丢掉。
+ */
 @Composable
-private fun LabeledDatePickerRow(
-    text: String,
+private fun DatePickerRow(
     year: Int,
     month: Int,
     day: Int,
@@ -2124,11 +2263,6 @@ private fun LabeledDatePickerRow(
     onMonthChange: (Int) -> Unit,
     onDayChange: (Int) -> Unit,
 ) {
-    Text(
-        text,
-        style = MiuixTheme.textStyles.body1.copy(fontWeight = FontWeight.Normal),
-        modifier = Modifier.padding(start = 16.dp),
-    )
     val maxDay = LocalDate(year, month, 1).lengthOfMonth()
     val currentYear = remember { todayLocalDate().year }
     val yearRange = (currentYear - 1)..(currentYear + 1)
