@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
@@ -15,12 +17,15 @@ import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.IosWallpaperPicker
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.NsFileAppFile
+import com.haooz.chedule.data.PrivacyConsent
+import com.haooz.chedule.data.StatsReporter
 import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.activities.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
+import com.haooz.chedule.ui.screens.PrivacyConsentScreen
 import com.haooz.chedule.ui.screens.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeatherIos
 import com.haooz.chedule.ui.utils.IosSharedFileReceiver
@@ -119,6 +124,16 @@ private val backupFileController = IosBackupFileController()
 @Composable
 internal fun NexioIosMain(host: IosAppHost) {
     val router = host.router
+    // 合规：对齐 Android MainActivity —— 启动时同步同意状态，未同意前不触网（云同步/公告/统计）
+    PrivacyConsent.refresh()
+    val consented by PrivacyConsent.consented.collectAsState()
+    // 统计上报：已同意的回访用户，冷启动即上报（active + 一次性 install），对齐 Android onCreate
+    LaunchedEffect(Unit) {
+        if (PrivacyConsent.hasConsented()) {
+            StatsReporter.reportActive()
+            StatsReporter.reportInstallOnce()
+        }
+    }
     // 注入自检：AppStorage/UserDefaults 与 AppFiles/NSFileManager 的 iOS 实现是新写的，
     // 编译通过 ≠ 落盘位置与还原类型正确（UserDefaultsStore 的 Int/Long 不分是已知雷区）。
     // 原先是首页两行文字，真主界面就位后降级为**启动日志**——仍是唯一运行时证据，别删。
@@ -143,7 +158,7 @@ internal fun NexioIosMain(host: IosAppHost) {
             // 主界面常驻底座：**真课表界面**。尚未接的宿主能力
             // （分享/选壁纸/今日助手卡）走默认「无此能力」，入口不渲染而不是留个死按钮。
                 CourseScheduleApp(
-                    privacyConsented = true,
+                    privacyConsented = consented,
                     onSystemBarsChanged = { statusDark, _ ->
                         IosSystemBars.update(statusDark)
                     },
@@ -189,6 +204,7 @@ internal fun NexioIosMain(host: IosAppHost) {
 internal fun NexioIosNavigation(host: IosAppHost) {
     val router = host.router
     val mainTransition = host.mainTransition
+    val consented by PrivacyConsent.consented.collectAsState()
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
             AppNavHost(
@@ -197,6 +213,26 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                 onOverlayActivityChanged = { host.navigationOverlayActive = it },
             ) { route ->
                 NexioIosRouteContent(router, route)
+            }
+            // 隐私同意弹窗：与 Android MainActivity 相同的挂载方式（AppNavHost 之后、同层 Box），
+            // 且必须在这一层 —— 它位于原生 TabBar 之上，遮罩才盖得住底栏（mainController 层盖不住）。
+            // 同意后 PrivacyConsent.consented 流翻转 → CourseScheduleApp 内部的
+            // LaunchedEffect(privacyConsented) 才会启动云同步/公告，统计上报也在此时触发。
+            if (!consented) {
+                PrivacyConsentScreen(
+                    onAgree = {
+                        PrivacyConsent.setConsented()
+                        // 合规：同意后方可进行设备信息上报（对齐 Android 的同意回调）
+                        StatsReporter.reportActive()
+                        StatsReporter.reportInstallOnce()
+                    },
+                    onDecline = {
+                        // 对齐 Android 的 finish()：拒绝即退出。iOS 没有公开的「退出应用」API，
+                        // exit(0) 是仅有的等价手段（App Store 审核不喜，但拒绝者本就无法继续用）。
+                        platform.posix.exit(0)
+                    },
+                    onOpenPolicy = { router.navigate(AppRoute.PrivacyPolicy) },
+                )
             }
         }
     }
