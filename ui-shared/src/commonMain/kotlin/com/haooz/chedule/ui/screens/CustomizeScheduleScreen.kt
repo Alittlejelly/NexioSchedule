@@ -1,18 +1,6 @@
 /** 自定义课表页面 - 课表外观选择 */
 package com.haooz.chedule.ui.screens
 
-// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十五批）。
-//
-// 迁移动机与做法（壁纸/快照重灾区，但 Android 面比想象小）：
-//  · `Bitmap` → `ImageBitmap`：`snapshot` / `wallpaperBitmap` / 搭配缩略图都改成
-//    跨平台的 `ImageBitmap?`。宿主侧的 `Combination`（含 android.graphics.Bitmap，
-//    要做 remap / recycle / 像素测光）**原样留在宿主**，由宿主映射成本页的
-//    `CombinationThumbnail`（只带两张 ImageBitmap）—— 本页只用得到 snapshot/bitmap
-//    两个字段（其余参数走 `appearance: AppearanceConfig`）。
-//  · `BackHandler`（androidx.activity）→ fork 的 `NavigationBackHandlerFor`。
-//  · `ScheduleAppearance.getThemeMode/setThemeMode` → 注入的 `themeMode` / `onThemeModePersist`。
-//  · `LocalContext` 那行是死代码（声明后从未使用），直接删。
-
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -1566,8 +1554,7 @@ fun CustomizeScheduleScreen(
                                 onValueChange = { cardTextScaleValue = it },
                                 quantize = { (it * 10f).roundToInt() / 10f },
                                 suffix = "x",
-                                // 原 `"%.1f".format(it)` 是 JVM 专有（String.format 的扩展形式，
-                                // 纯净度扫描器当时只认 `String.format(...)` 而漏掉了它）
+                                // 用 formatOneDecimal 而非 "%.1f".format(it)：后者 JVM 专有，跨平台编不过
                                 displayValue = { it.formatOneDecimal() },
                                 parseInput = { it.replace(',', '.').toFloatOrNull()?.coerceIn(0.5f, 2.0f) }
                             )
@@ -1767,11 +1754,8 @@ private fun SliderItem(
     enabled: Boolean,
     onValueChange: (Float) -> Unit,
     /**
-     * 档位量化（取整）。只作用于对外提交的值，不参与滑块位置计算。
-     *
-     * 位置由 rawValue 连续驱动：若在回写路径上也取整，Slider 的 animateFloatAsState 目标值
-     * 就只能在整档之间跳，拖动会一格一格地卡顿。取整挪到这里后，thumb 连续跟手、
-     * 提交值仍是整数。
+     * 档位量化（取整）。只作用于对外提交的值，不参与滑块位置计算：位置由 rawValue 连续驱动，
+     * 若回写路径也取整，animateFloatAsState 目标值只能在整档间跳、拖动一格一格卡顿。
      */
     quantize: (Float) -> Float = { it },
     suffix: String = "",
@@ -1966,14 +1950,9 @@ private fun SliderCard(
 }
 
 /**
- * 缩略图条需要的「搭配视图」——宿主从自己的 `Combination` 映射过来。
- *
- * 为什么不在 :ui-shared 里直接复用宿主的 `Combination`：那是个**运行期**结构，
- * 字段 `bitmap`/`snapshot` 是 `android.graphics.Bitmap`，宿主还要对它做 remap / recycle /
- * 像素测光（`isRecycled`、`getPixels`）—— 这些在跨平台侧不存在。而本页只用到
- * 「有没有图、图是什么」这一件事，所以按最小面暴露：两张 `ImageBitmap?`。
- *
- * 宿主的 `CombinationStyle`（落盘结构）与本类型无关，继续留在宿主。
+ * 缩略图条需要的「搭配视图」——宿主从自己的 `Combination` 映射过来。宿主 `Combination` 是运行期
+ * 结构、字段是 `android.graphics.Bitmap`（还要 remap / recycle / 像素测光），跨平台侧不存在；
+ * 本页只用到「有没有图、图是什么」，故按最小面暴露两张 `ImageBitmap?`。
  */
 data class CombinationThumbnail(
     /** 该搭配的快照；null 表示尚未生成（此时回落到 [wallpaper]） */

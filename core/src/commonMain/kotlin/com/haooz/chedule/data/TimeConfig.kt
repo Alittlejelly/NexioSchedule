@@ -5,17 +5,10 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 
-// TimeRoutine / SpecialItem / SpecialBlock 的 fromRaw 供 :app 的解析与导入逻辑调用，故为 public。
-
 /**
- * 作息方案：同一套节次骨架（上午/下午/晚上各几节）下的**一套时间**。
- *
- * 用于夏令时/冬令时这类"节次不变、时间变"的场景。每个方案带一个「几月几号起生效」，
- * 到日期自动切换，无需手动操作。
- *
- * 生效规则（按年内第几天比较，跨年回绕）：
- *   取生效日期 <= 今天 的最后一个方案；若今天早于所有方案的生效日期，则回绕取日期最大的那个。
- *   例：A 生效 5/1、B 生效 10/1 → 5/1~9/30 用 A，10/1~次年 4/30 用 B。
+ * 作息方案：同一套节次骨架（上午/下午/晚上各几节）下的**一套时间**，用于夏令时/冬令时
+ * 这类"节次不变、时间变"的场景。每个方案带「几月几号起生效」，按年内第几天比较、跨年回绕，
+ * 到日期自动切换。
  */
 data class TimeRoutine(
     val id: Long = 0L,
@@ -60,10 +53,8 @@ data class TimeRoutine(
 
     companion object {
         /**
-         * 某年闰年月的天数（month 越界按 12 月算）。
-         *
-         * 生效日期是「几月几号」，不是「一年中的第几天」，所以 2 月 29 日在平年等于
-         * 永远不触发。日期选择器与导入都要按这个夹一次，否则会静默存下一个永不生效的作息。
+         * 某年闰年月的天数（month 越界按 12 月算）。生效日期是「几月几号」而非年内第几天，
+         * 2/29 在平年永不触发，日期选择器与导入都要夹一次，否则会静默存下永不生效的作息。
          */
         fun daysInMonth(month: Int, leapYear: Boolean = true): Int = when (month.coerceIn(1, 12)) {
             1, 3, 5, 7, 8, 10, 12 -> 31
@@ -170,10 +161,7 @@ data class SpecialItem(
     val endDay: Int = 1          // >= startDay
 ) {
     companion object {
-        /**
-         * 兜底还原：Gson 泛型丢失会把元素解析成 Map；UnsafeAllocator 使默认值不生效，
-         * 即使是 SpecialItem 实例也可能字段为 null，故统一重建。
-         */
+        /** 兜底还原：Gson 泛型丢失会解析成 Map，UnsafeAllocator 使默认值失效，故统一重建 */
         // USELESS_ELVIS：以下 ?: 编译期看似走左值，但 Gson 反序列化后字段可能是 null
         @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS", "ELVIS_ALWAYS_NULL")
         fun fromRaw(raw: Any?): SpecialItem? = when (raw) {
@@ -206,16 +194,14 @@ data class SpecialBlock(
     val items: List<SpecialItem>? = null
 ) {
     /**
-     * 先擦成 List<*> 再逐元素还原。**不要**写 filterIsInstance<SpecialItem>：
-     * 接收者已是 List<SpecialItem>，R8 可能把过滤当恒等变换消除，坏元素会漏进 UI。
+     * 先擦成 List<*> 再逐元素还原。**不要**用 filterIsInstance<SpecialItem>：接收者已是
+     * List<SpecialItem>，R8 会把过滤当恒等变换消除，坏元素漏进 UI。
      */
     val safeItems: List<SpecialItem>
         get() = (items as List<*>?).orEmpty().mapNotNull { SpecialItem.fromRaw(it) }
 
     companion object {
-        /**
-         * 兜底还原：UnsafeAllocator 使缺失字段为 null，原样返回会在非空 String 参数处 NPE。
-         */
+        /** 兜底还原：UnsafeAllocator 使缺失字段为 null，原样返回会在非空 String 参数处 NPE */
         // USELESS_ELVIS：以下 ?: 编译期看似走左值，但 Gson 反序列化后字段可能是 null
         @Suppress("SENSELESS_COMPARISON", "USELESS_ELVIS", "ELVIS_ALWAYS_NULL")
         fun fromRaw(raw: Any?): SpecialBlock? = when (raw) {
@@ -307,11 +293,8 @@ data class TimeConfig(
         safeRoutines.firstOrNull { it.id == routineId }
 
     /**
-     * 从「已叠加某作息」的这份配置里反推出该作息的 TimeRoutine。
-     * 二级页面拿到的是 effectiveFor(routineId) 的结果（顶层字段已被该作息覆盖）。
-     *
-     * 名称/生效日期以 [nameOverride] / 已有作息为准 —— 二级页把用户输入的作息名
-     * 写在了顶层 `name` 上，这里必须显式采用，否则改名不落库。
+     * 从「已叠加某作息」的配置里反推该作息。名称/生效日期以 [nameOverride] / 已有作息为准：
+     * 二级页把用户输入的作息名写在了顶层 `name` 上，这里必须显式采用，否则改名不落库。
      */
     fun routineOf(routineId: Long, nameOverride: String? = null): TimeRoutine {
         val existing = safeRoutines.firstOrNull { it.id == routineId }
@@ -344,10 +327,7 @@ data class TimeConfig(
         )
     }
 
-    /**
-     * 叠加当前生效作息的时间数据后返回新配置。
-     * 无作息方案时原样返回，旧数据完全兼容。
-     */
+    /** 叠加当前生效作息的时间数据后返回新配置；无作息方案时原样返回，旧数据完全兼容 */
     fun effective(date: LocalDate = Clock.System.todayIn(TimeZone.currentSystemDefault())): TimeConfig {
         val r = routineFor(date) ?: return this
         return applyRoutine(r)
@@ -379,10 +359,8 @@ data class TimeConfig(
             eveningStartMinute = r.eveningStartMinute,
             sectionTimes = r.sectionTimes.takeIf { it.isNotEmpty() } ?: sectionTimes,
             sectionNames = r.sectionNames.takeIf { it.isNotEmpty() } ?: sectionNames,
-            // 特殊课程不能用「空集合=未配置」的回退口径：**空列表就是「一条都没有」的合法状态**。
-            // 早先写成 blocks.takeIf{isNotEmpty} ?: safeSpecialBlocks，于是「删光特殊课程」
-            // 只改到该作息、切过去又被顶层镜像（旧值）填回来，删不掉。
-            // 只有该作息压根没有这个字段（老数据）才回退顶层。
+            // 空列表是「一条都没有」的合法状态，不能用「空集合=未配置」回退，否则删光特殊课程会被
+            // 顶层镜像（旧值）填回来；只有该作息压根没这个字段（老数据）才回退顶层。
             specialBlocks = if (r.specialBlocks != null) r.safeSpecialBlocks else safeSpecialBlocks
         )
     }
@@ -391,13 +369,9 @@ data class TimeConfig(
     fun effectiveRoutineId(date: LocalDate = Clock.System.todayIn(TimeZone.currentSystemDefault())): Long? = routineFor(date)?.id
 
     /**
-     * 把 source 的**作息时间数据**写回指定作息方案。
-     *
-     * 刻意不写节次骨架（morningSections 等）：骨架由时间配置页统一管理，
-     * 属于所有作息共享的数据。若这里跟着 source 写回顶层，
-     * 编辑作息 B 会用「B 的视角」覆盖骨架，改一个作息就污染另一个。
-     *
-     * 顶层镜像仍然更新（备份/分享/旧版链路读顶层字段），镜像值取该作息自己的数据。
+     * 把 source 的**作息时间数据**写回指定作息方案。刻意不写节次骨架（morningSections 等）：
+     * 骨架由时间配置页统一管理、所有作息共享，跟着写回会让编辑作息 B 污染另一个。
+     * 顶层镜像仍更新（备份/分享/旧链路读顶层），取该作息自己的数据。
      */
     fun withRoutineTimesApplied(routineId: Long, source: TimeConfig): TimeConfig {
         val list = safeRoutines.toMutableList()
@@ -470,10 +444,7 @@ data class TimeConfig(
         )
     }
 
-    /**
-     * 无作息方案时，用当前顶层时间播种一个「默认作息」（1月1日起生效）。
-     * 旧数据升级与新建配置都走这里，保证多作息编辑始终有落点。
-     */
+    /** 无作息方案时用顶层时间播种一个「默认作息」（1/1 起生效），保证多作息编辑始终有落点 */
     fun ensureRoutine(): TimeConfig {
         if (safeRoutines.isNotEmpty()) return this
         return copy(
@@ -550,10 +521,8 @@ data class TimeConfig(
     }
 
     /**
-     * 删除作息方案；至少保留一个，删到最后一个时原样返回。
-     *
-     * 删完要把顶层镜像换成「删除后生效的那套」（[effective] 顺带把 routines 保留下来）。
-     * 否则顶层仍是被删掉的那一套的时间 —— 备份 / 分享 / 旧链路只读顶层，会导出已经不存在的时间。
+     * 删除作息方案；至少保留一个，删到最后一个时原样返回。删完要把顶层镜像换成删除后生效的那套
+     * （[effective] 顺带保留 routines），否则备份 / 分享 / 旧链路会导出已不存在的时间。
      */
     fun withRoutineRemoved(id: Long): TimeConfig {
         val list = safeRoutines.toMutableList()
@@ -584,10 +553,8 @@ data class TimeConfig(
     }
 
     /**
-     * 用 [edited] 整体替换指定作息，并同步镜像到顶层时间字段。
-     * 二级页面保存「一个作息」时走这里：只动作息，不碰节次骨架。
-     * 若 [edited] 恰好是当前生效作息，顶层镜像才有意义——
-     * 否则顶层会变成"未来作息"的时间，课表立刻显示错。
+     * 用 [edited] 整体替换指定作息并镜像到顶层时间字段（二级页保存「一个作息」时走这里）。
+     * 只有 [edited] 是当前生效作息时才写镜像，否则顶层会变成"未来作息"的时间，课表显示错。
      */
     fun withRoutineReplaced(id: Long, edited: TimeRoutine): TimeConfig {
         val list = safeRoutines.toMutableList()
@@ -622,10 +589,7 @@ data class TimeConfig(
         ) else base
     }
 
-    /**
-     * period: "morning" / "afternoon" / "evening"
-     * 返回时段内相对节次号 (1-6) -> "HH:mm-HH:mm"
-     */
+    /** period 取 "morning"/"afternoon"/"evening"，返回时段内相对节次号 (1-6) -> "HH:mm-HH:mm" */
     fun getPeriodTimes(period: String): Map<Int, String> {
         if (quickTimeEnabled) {
             return calculatePeriodTimes(period)
@@ -694,9 +658,6 @@ data class TimeConfig(
     }
 
     companion object {
-        // 注：parseSnapshotOrNull 依赖 Gson，已留在 Android 侧的 TimeConfigSnapshotParser.kt，
-        // 等阶段 2 换成 kotlinx.serialization 后再移回 commonMain。
-
         /**
          * 长期数据兜底：UnsafeAllocator 使非空字段可能为 null；三段节数全 0 视为损坏恢复 4/4/4；
          * 单段节数夹到 0..6（0 表示该时段无课）。

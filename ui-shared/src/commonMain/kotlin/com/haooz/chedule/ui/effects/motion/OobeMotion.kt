@@ -6,11 +6,8 @@
  */
 package com.haooz.chedule.ui.effects.motion
 
-// ⚠ 2026-10-10 随第二批迁移从 `:androidApp` 迁入 `:ui-shared`，**全部 internal 已开放为 public**。
-// 原因：动效常量/缓动被 MainActivity、AppNavHost、AppRouteContent、CourseEditScreen 等
-// 仍在 `:androidApp` 的页面引用，跨模块读不到 internal（编译器会逐个报
-// "Cannot access … it is internal in file"）。这是共享动效库，本就该对外可见。
-// 同理，将来还有页面迁入本模块时，新暴露的 internal 也要一并开放。
+// ⚠ 全部 internal 已开放为 public：跨模块（:androidApp 的 MainActivity/AppNavHost 等）读不到
+// internal 会编译报错（"Cannot access … it is internal in file"），勿改回 internal。
 
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExitTransition
@@ -74,11 +71,7 @@ val OobeQuartOutSoftStartEasing = Easing { fraction ->
     1f - inverse.pow(4.5f)
 }
 
-/**
- * 二级页「出场」缓动：起步更缓、后段正常滑出。
- * 原为 [ActivityTransitions] 里的 `CubicBezierEasing(0.36f, 0.18f, 0.3f, 0.85f)`，
- * 单宿主改造后由 [AppNavHost] 复用，故抽到这里集中管理。
- */
+/** 二级页「出场」缓动：起步更缓、后段正常滑出。 */
 val SecondaryPageExitEasing = CubicBezierEasing(0.36f, 0.18f, 0.3f, 0.85f)
 
 val OobeFifthpowerOutEasing = Easing { fraction ->

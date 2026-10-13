@@ -3,26 +3,9 @@ package com.haooz.chedule.data
 import kotlin.concurrent.Volatile
 
 /**
- * 外观存储 —— **跨平台**。
+ * 外观存储（跨平台）：键名、快照编解码与缓存口径。getter/setter 与 Android 侧同名，调用点零改动切换。
  *
- * ## 为什么要这一层
- *
- * 原实现 `ScheduleAppearance` 整个在 `:androidApp`：依赖 `Context`（拿
- * `SharedPreferences` / `filesDir`）+ Gson（运行时反射，Native 上不存在）。
- * `CourseScheduleApp` 直接调它 → 整个函数搬不进共享模块。
- *
- * ## 与 `ScheduleAppearance` 的分工
- *
- * - **本类**：跨平台的读写逻辑（键名、快照编解码、缓存口径）
- * - **`ScheduleAppearance`**：降级成 Android 侧的**实现体 + 兼容迁移**
- *   （`migrateLegacyAppearanceIfNeeded` 读旧版主 prefs、壁纸文件改名迁移），
- *   外加 `init(context)` 这个平台入口
- *
- * 两边的 getter/setter 名字**逐字相同**（这是有意的：调用点可以零改动切换）。
- *
- * ## ⚠ 键名与文件位置是数据兼容契约
- *
- * `FILE` / `FILE_STYLE_KEY` 已下沉 `:core` 的 [AppearancePrefs]，两边同源不会抄错。
+ * ⚠ 键名与文件位置是数据兼容契约（[AppearancePrefs.FILE] / [AppearancePrefs.FILE_STYLE_KEY]），
  * 改了等于老用户的外观设置读不出来。
  */
 object AppearanceStore {
@@ -33,16 +16,12 @@ object AppearanceStore {
     /** 唯一的数据键：参数 JSON 快照 */
     private const val FILE_STYLE_KEY = AppearancePrefs.FILE_STYLE_KEY
 
-    /** 快照缓存，读多写少（口径与原 ScheduleAppearance.cached 一致） */
+    /** 快照缓存，读多写少 */
     private var cached: AppearanceStyle? = null
 
     /**
-     * 冷启动预加载的外观参数兜底缓存（承接原 `MainActivity.cachedAppearance`）。
-     *
-     * 宿主在启动时把盘上的外观参数读成 [AppearanceConfig] 回填到这里；
-     * `CourseScheduleApp` 首帧若搭配尚未加载完成，用它兜底 —— 否则壁纸
-     * 测光/卡片参数会先闪一帧默认值再跳到真实值。
-     * 仅内存，不落盘；键名/落盘格式不受影响。
+     * 冷启动预加载的外观参数兜底缓存。宿主启动时回填；`CourseScheduleApp` 首帧若搭配
+     * 尚未加载完成，用它兜底，否则壁纸测光/卡片参数会先闪一帧默认值再跳到真实值。仅内存，不落盘。
      */
     @Volatile
     var cachedConfig: AppearanceConfig = AppearanceConfig()
@@ -80,11 +59,8 @@ object AppearanceStore {
     }
 
     /**
-     * 批量保存：块内所有写入合并为**一次**磁盘提交。可嵌套（内层直接执行，
-     * 由最外层统一落盘）。
-     *
-     * 语义与原 `ScheduleAppearance.batchSave` 一致 —— 外观自定义页一次拖动会触发
-     * 十几次 saveXxx，不合并就是十几次磁盘 IO。
+     * 批量保存：块内所有写入合并为一次磁盘提交（外观页一次拖动会触发十几次写入，
+     * 不合并就是十几次磁盘 IO）。可嵌套，由最外层统一落盘。
      */
     fun batchSave(block: () -> Unit) {
         if (inBatch) {
@@ -114,7 +90,7 @@ object AppearanceStore {
         cached = null
     }
 
-    // ── 便捷读写（与 ScheduleAppearance 同名，便于调用点零改动切换） ──
+    // ── 便捷读写（同名 getter/setter，调用点零改动切换） ──
 
     fun getOffsetX(): Float = currentStyle().offsetX
     fun getOffsetY(): Float = currentStyle().offsetY

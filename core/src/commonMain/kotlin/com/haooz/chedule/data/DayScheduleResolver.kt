@@ -4,27 +4,9 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 
 /**
- * 某日课表解析（节假日 / 调休映射 / 末日或假期前节次排除）—— **平台中立的纯计算**。
+ * 某日课表解析（节假日 / 调休映射 / 末日或假期前节次排除）—— 平台中立的纯计算。
  *
- * ## 从哪来
- *
- * 从 `:androidApp` 的 `reminder/CourseReminderHelper` 抠出来的「提醒时刻算法」核心。
- * 那边的 `resolveDaySchedule(context, …)` 重载**函数体根本没用 context**
- * （它只读 `HolidayManager` 与 `CourseRepository`），`Context` 是历史残留参数。
- *
- * ## 为什么抠出来
- *
- * 1. 计划里早就标记「`CourseReminderHelper` 的提醒时刻算法值得抠进 `:core`
- *    （iOS 本地通知要用）」—— iOS 没有 `AlarmManager`，但**算某天有什么课**两边都要。
- * 2. 它是 `SettingsViewModel` / `ScheduleViewModel` **唯一的 Android 依赖来源**：
- *    两个 VM 为了拿 `Context` 去调它，才被迫继承 `AndroidViewModel(application)`，
- *    于是引用这两个 VM 的 19 个页面全部卡在 `:androidApp`。抠出来即可解开。
- *
- * ## ⚠ 搬家原则
- *
- * **逐字搬，行为一位都不能改。** `CourseReminderHelper` 改成委托到本对象，
- * 20 个既有调用点一行不用动。任何「顺手优化」都会让提醒排课静默算错 ——
- * 提醒算错的代价是用户上课没收到通知，且极难复现。
+ * ⚠ 提醒排课算法，行为一位都不能改：算错会让用户上课收不到通知，且极难复现。
  */
 object DayScheduleResolver {
 
@@ -53,11 +35,8 @@ object DayScheduleResolver {
     )
 
     /**
-     * 与主课表「当前周」对齐的目标日周次。
-     *
-     * The semester start encodes a manual week adjustment, while a saved current_week
-     * does not advance when the app remains closed across a week boundary.
-     * 调休 `followWeek` 仍由调用方优先覆盖。
+     * 与主课表「当前周」对齐的目标日周次。学期起始日带手动周调整，而存下的 current_week
+     * 在应用跨周未打开时不会推进；调休 `followWeek` 仍由调用方优先覆盖。
      */
     fun alignedStoredWeekForDate(repository: CourseRepository, date: LocalDate): Int =
         repository.getLiveTeachingWeek(date)
@@ -196,10 +175,7 @@ object DayScheduleResolver {
     private fun getCourseStartTime(course: Course, repository: CourseRepository): String? =
         CourseTimeResolver.getStartTime(course, repository)
 
-    /**
-     * 逐字搬自 `CourseReminderHelper`（那边是 private，且同样的实现在 5 个文件里各抄了一份）。
-     * 解析不出来时返回 `Int.MAX_VALUE` —— **不是 0**：那会把没时间的课排到最前面。
-     */
+    /** 解析失败返回 `Int.MAX_VALUE` 而非 0 —— 否则没时间的课会被排到最前面。 */
     private fun String?.toMinutes(): Int {
         if (this.isNullOrBlank()) return Int.MAX_VALUE
         val parts = this.split(":")

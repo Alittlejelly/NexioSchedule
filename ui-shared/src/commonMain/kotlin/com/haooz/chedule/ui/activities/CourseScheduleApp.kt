@@ -224,11 +224,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /**
- * 真课表主界面。Android 专有能力全部走注入参数，本页只认回调不认平台类型：
- * 系统栏 / 节假日提醒重排 / 相册选壁纸 / 分享 / 外部分享文件读取 / 设置页装配 /
- * 今日助手卡 / 更新能力。宿主装配见 `AndroidCourseScheduleApp`，
- * iOS/桌面直接调本函数，缺能力的入口不渲染。
- *
+ * 真课表主界面。平台能力全部走注入参数，缺能力的入口不渲染；
  * 位图统一 [ImageBitmap]，快照裁剪走 `cropImageBitmap`，壁纸存储走 `WallpaperStore`。
  */
 
@@ -243,10 +239,7 @@ private fun recycleSnapshot(bitmap: ImageBitmap?, vararg keep: ImageBitmap?) {
     bitmapRecycler?.invoke(bitmap)
 }
 
-/**
- * 将壁纸 offset/scale 从 fromW×fromH 重映射到 toW×toH。
- * 无有效 bitmap/参考尺寸时原样返回，避免横竖屏切换把数据算坏。
- */
+/** 将壁纸 offset/scale 从 fromW×fromH 重映射到 toW×toH；无有效 bitmap/参考尺寸时原样返回，避免横竖屏切换算坏数据。 */
 private fun remapWallpaperForScreen(
     offset: Offset,
     scale: Float,
@@ -321,8 +314,8 @@ data class SettingsPaneArgs(
 )
 
 /**
- * 设置页渲染：宿主注入了 `settingsPane` 就用宿主的（Android 接 8 个平台 dest），
- * 否则回落共享 [SettingsScreen] 默认装配（平台 dest 显示占位，iOS/桌面开箱可用）。
+ * 设置页渲染：宿主注入了 `settingsPane` 就用宿主的，
+ * 否则回落共享 [SettingsScreen] 默认装配。
  */
 @Composable
 internal fun RenderSettingsPane(
@@ -370,8 +363,7 @@ private data class EmptyCellMenuTarget(
 
 /**
  * 粘贴落点：动画/高亮走列星期（几何坐标），写库走调课映射后的数据坐标。
- * 调课日列显示的是 followWeekday/followWeek 的课，只传列星期会让粘出来的课落到错误星期/周次，
- * 在本页任何列都不渲染——与空白格「添加」必须保持同一套映射。
+ * 调课日列显示的是 followWeekday/followWeek 的课，只传列星期会落到错误星期/周次。
  */
 private data class PasteTarget(
     val columnDay: Int,
@@ -723,10 +715,7 @@ private fun MorePopupMenus(
     todayMorePopupFraction: Animatable<Float, *>,
     scheduleMenuOffset: () -> Offset = { Offset.Zero },
     todayMenuOffset: () -> Offset = { Offset.Zero },
-    /**
-     * 「更多」占位槽实测顶部（root 坐标 px）。传 state 而非 Float：
-     * 定位要在**绘制期**读（graphicsLayer 的 block 内），首帧才不会先画在兜底位置上再跳。
-     */
+    /** 「更多」占位槽实测顶部（root 坐标 px）；传 state 而非 Float，定位须在绘制期读，首帧才不跳。 */
     moreSlotTopPx: MutableFloatState = mutableFloatStateOf(0f),
     scheduleMaterialAlpha: Float = 0f,
     todayMaterialAlpha: Float = 0f,
@@ -946,17 +935,10 @@ fun CourseScheduleApp(
     todayAssistantCard: (@Composable (TodayAssistantCardData) -> Unit)? = null,
     /** 更新能力（检查/下载/安装）；null = NoopUpdateController（不弹更新） */
     updateController: UpdateController? = null,
-    /**
-     * 是否显示设置页的「更新设置」入口。
-     *
-     * iOS 走 App Store 更新 → 传 false，入口整个不渲染（不是留个点进去没反应的页）。
-     */
+    /** 是否显示设置页的「更新设置」入口；iOS 走 App Store → 传 false，入口整个不渲染。 */
     showUpdateSettings: Boolean = true,
     /**
-     * 是否显示「排班模式」入口（设置页的进入开关 / 退出按钮 / 确认弹窗）。
-     *
-     * iOS 不支持排班课表 → 传 false，入口整个不渲染
-     * （同 `showUpdateSettings`：不是留一个点进去什么都做不了的入口）。
+     * 是否显示「排班模式」入口（设置页进入开关 / 退出按钮 / 确认弹窗）；iOS 不支持 → 传 false，入口整个不渲染。
      */
 ) {
 
@@ -1120,9 +1102,8 @@ fun CourseScheduleApp(
     var pendingConflictCourse by remember { mutableStateOf<Course?>(null) }
     // 退出动画期间保持 true，结束后原卡片 alpha 恢复 1
     var floatingCardVisible by remember { mutableStateOf(false) }
-    // 手指**正拖着**浮层：onCourseDragStart 置真、onCourseDragEnd 置假。
-    // 不能拿 floatingCardVisible 当高光开关 —— 它从长按那一刻就为 true，且要等退场动画
-    // （约 360ms）跑完才回 false，于是「长按没拖也亮」+「松手后等动画结束才开始灭」。
+    // 手指正拖着浮层：不能拿 floatingCardVisible 当高光开关——它从长按即为 true，
+    // 且要等约 360ms 退场动画跑完才回 false，会出现「长按没拖也亮」「松手后不灭」。
     var isFloatingCardDragging by remember { mutableStateOf(false) }
     // 入场 0.94→1.04，退场 1.04→1.0
     val floatingScale = remember { Animatable(0.94f) }
@@ -1132,9 +1113,8 @@ fun CourseScheduleApp(
     val floatingOffsetX = remember { mutableFloatStateOf(0f) }
     val floatingOffsetY = remember { mutableFloatStateOf(0f) }
 
-    // 高光开关 / 淡变值：声明在 Scaffold 之前 —— Scaffold 内容里的提饱和节点要用它。
-    // 开关 = 正在拖 && 浮层还活着：长按没拖不亮；一松手 onCourseDragEnd 立刻置 false，
-    // 立刻开始淡出，不用等 floatingCardVisible 那 360ms 退场动画跑完。
+    // 高光开关 = 正在拖 && 浮层还活着：声明在 Scaffold 之前，Scaffold 内容里的提饱和节点要用它。
+    // 一松手 onCourseDragEnd 立刻置 false 开始淡出，不等 360ms 退场动画。
     val glowShowing = isFloatingCardDragging && floatingCardVisible
     val glowAlpha by animateFloatAsState(
         targetValue = if (glowShowing) 1f else 0f,
@@ -1310,9 +1290,7 @@ fun CourseScheduleApp(
 
     /**
      * 搭配读取唯一入口：冷启动 IO 路径与伴生缓存路径都走这里。
-     *
-     * 两份逐字段复制的构造曾是 bug 温床——cardRefraction 只加进了 IO 路径，
-     * 导致伴生缓存命中时折射强度被静默重置为 DEFAULT。新增外观字段只需改此处。
+     * 两份逐字段复制的构造曾是 bug 温床，新增外观字段只需改此处。
      */
     fun buildCombination(bitmap: ImageBitmap?) =
         ScheduleCombination(
@@ -1536,9 +1514,8 @@ fun CourseScheduleApp(
         pageCount = { todayMaxDateOffset * 2 }
     )
 
-    // 主 tab 平移容器：今日/课程表/我的/课程管理/切换课表（排班模式为排班/设置），仅点底栏/侧栏 tab 驱动
-    // 手机底栏只有 3 个 tab，后两页（课程管理/切换课表）只有平板侧栏才到得了。
-    // 手机端按 5 页建会让这两页也常驻组合树，每次重组白陪跑。
+    // 主 tab 平移容器：仅点底栏/侧栏 tab 驱动。手机端只有 3 页，
+    // 后两页（课程管理/切换课表）只有平板侧栏才到得了，按 5 页建会让它们常驻组合树白陪跑。
     val mainPagerPageCount = if (isShiftMode) 2 else if (navBarStyle == "rail") 5 else 3
     val mainPagerState = rememberPagerState(
         initialPage = selectedTab.coerceIn(0, mainPagerPageCount - 1),
@@ -1547,10 +1524,8 @@ fun CourseScheduleApp(
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by remember { mutableStateOf(false) }
 
-    // 当前可见页背后是不是壁纸 —— 决定高光亮度：近白底只能压到 0.05，壁纸背景有余量 → 0.1
-    // （见 InteractiveHighlight 的 peak）。
-    // 必须在组合期算出来再交给 SideEffect：只在 SideEffect 里读 currentPage 不会订阅，
-    // 切页时就不更新了。0 今日 / 1 课程表（只有这两页有壁纸）；排班模式页数不同，排除。
+    // 当前可见页背后是不是壁纸，决定高光亮度（见 InteractiveHighlight 的 peak）。
+    // 必须在组合期算再交给 SideEffect：只在 SideEffect 里读 currentPage 不会订阅，切页不更新。
     val pageBehindHasWallpaper = wallpaperBitmap != null &&
         !isShiftMode &&
         mainPagerState.currentPage in 0..1
@@ -1758,11 +1733,8 @@ fun CourseScheduleApp(
         if (geom.showBreakDividers) with(density) { 24.dp.toPx() } else 0f
 
     fun sectionTopPx(geom: ScheduleGridGeometry, section: Int, dividerPx: Float): Float {
-        // 优先用网格布局的**实际**节次顶（来自 computeSpecialGridLayout，含特殊块挤占）。
-        // 下面的「节次高 × 序号 + 分界缝」现算公式漏掉特殊块高度，
-        // 会让长按浮层与吸附落点整体偏上，偏移量正好等于该节次上方的特殊块总高
-        //（特殊块高约半个卡片时就表现为「长按浮层偏上 50%」）。
-        // 空节次长按路径一直用的是 grid.sectionTop，所以它没这个问题。
+        // 优先用网格布局的实际节次顶（含特殊块挤占）；下面的现算公式漏掉特殊块高度，
+        // 会让长按浮层与吸附落点整体偏上，偏移量等于该节次上方的特殊块总高。
         geom.sectionTopDp[section]?.let { dp -> return with(density) { dp.dp.toPx() } }
         val sectionH = geom.sectionHeightPx
         if (sectionH <= 0f) return 0f
@@ -1807,9 +1779,8 @@ fun CourseScheduleApp(
     }
 
     /**
-     * 列星期 → 数据（星期, 周次）。
-     * 调课日列渲染的是 followWeekday/followWeek 的课，落点写库、冲突检测都要走这个映射；
-     * 几何（吸附动画、落点高亮）仍然用列星期。映射缺失时退回 列星期 + 正在浏览的周。
+     * 列星期 → 数据（星期, 周次）：调课日列渲染的是 followWeekday/followWeek 的课，
+     * 落点写库、冲突检测都要走这个映射，几何仍用列星期；映射缺失时退回列星期+浏览周。
      */
     fun dataPositionForColumn(columnDay: Int): Pair<Int, Int> =
         gridGeometry?.columnDataPosition?.get(columnDay) ?: (columnDay to currentViewingWeek)
@@ -2157,8 +2128,7 @@ fun CourseScheduleApp(
         if (relY < 0f) return null
         val sectionH = geom.sectionHeightPx
 
-        // 优先用网格**权威**节次顶（sectionTopDp 含分界缝与特殊块挤占），
-        // 与卡片实际排版、落点高亮（MainScheduleScreen 的 boxOf 用 grid.sectionTop）保持一致。
+        // 优先用网格权威节次顶（sectionTopDp 含分界缝与特殊块挤占），与卡片排版、落点高亮保持一致；
         // 下面那套手写遍历漏掉特殊块，会让「实际落到的格子」与「高亮显示的格子」错开。
         val totalSections = geom.morningSections + geom.afternoonSections + geom.eveningSections
         if (geom.sectionTopDp.isNotEmpty() && totalSections > 0) {
@@ -2327,8 +2297,7 @@ fun CourseScheduleApp(
         }
     }
 
-    // 选壁纸：系统选图器 + 降采样解码是 Android 能力（宿主注入）；
-    // 解出的 ImageBitmap 回填这里的状态（与迁移前回调体一致）。
+    // 选壁纸：系统选图器 + 降采样解码是 Android 能力（宿主注入），解出的 ImageBitmap 回填这里状态。
     val applyPickedWallpaper: (ImageBitmap?) -> Unit = { picked ->
         if (picked != null) {
             val oldWallpaper = wallpaperBitmap
@@ -2382,16 +2351,11 @@ fun CourseScheduleApp(
     val todayMorePopupFraction = remember { Animatable(0f) }
     // 「更多」占位槽实测顶部位置（px，root 坐标）：布局期上报，菜单据此定位，避免首帧 inset 未到而偏位
     val moreSlotTopPx = remember { mutableFloatStateOf(0f) }
-    // 占位槽在开洞/切页期间仍在顶层顶栏里，照常采样。
-    // 曾把 showCustomizePage / showSwitchSchedule 一起关掉，导致 moreSlotTopPx
-    // 冻结在进页前的旧高度：Android 上菜单被外观页整页盖住、点不到也看不出，
-    // iOS 上浮层是独立合成根、压在外观页之上，于是「更多」停在错位高度且仍可点。
-    // 恢复采样让位置跟随顶栏，两端表现一致。
+    // 占位槽在开洞/切页期间仍在顶层顶栏里，照常采样：关掉采样会让 moreSlotTopPx
+    // 冻结在进页前旧高度，菜单错位且仍可点。
     val canSampleMoreSlot = !isWindowCutoutActive
-    // 顶栏滚动材质透明度（收起态「更多」玻璃渐显渐隐）；两个顶栏各自一份，避免切页时互相覆盖
-    // 初值 0 而非 1f：真实材质值由 SideEffect 在首帧组合后写入，
-    // 用 1f 会让「更多」先亮一帧材质再变透明。收起态 f=0 时
-    // materialVisible = max(materialAlpha, 0) = materialAlpha，故 0 安全。
+    // 顶栏滚动材质透明度；两个顶栏各自一份，避免切页时互相覆盖。
+    // 初值 0 而非 1f：真实值由 SideEffect 首帧写入，用 1f 会让「更多」先亮一帧。
     val scheduleMaterialAlpha = remember { mutableStateOf(0f) }
     val todayMaterialAlpha = remember { mutableFloatStateOf(0f) }
     var todayJumpToDateTrigger by remember { mutableIntStateOf(0) }
@@ -2427,10 +2391,8 @@ fun CourseScheduleApp(
         val mainContentBlurModifier =
             if (mainContentBlurDp.value > 0f) Modifier.blur(mainContentBlurDp) else Modifier
 
-        // liquidGlass 录制跳帧指纹：结构量变了才 update→markNeedsRecord。
-        // 必须 remember 出稳定 List，否则 equals 失败会强制录制。
-        // 用 pager 当前页而非 selectedTab：点击后 selectedTab 先变，真正像素落定在 currentPage。
-        // pagerState.currentPage：无壁纸周滑跳过 mustRecord 后，靠落页变 key 补录。
+        // liquidGlass 录制跳帧指纹：结构量变了才 update→markNeedsRecord，必须 remember 出稳定 List。
+        // 用 pager 当前页而非 selectedTab（点击后 selectedTab 先变，像素落定在 currentPage）。
         val liquidGlassRecordKey = remember(
             mainPagerState.currentPage, isShiftMode, showDetail, showCustomizePage, showSwitchSchedule,
             isWindowCutoutActive, shortcutMenuVisible, isDraggingCard, floatingCardVisible,
@@ -2464,12 +2426,8 @@ fun CourseScheduleApp(
         // 无壁纸周左右滑：跳过 liquidGlass 整树逐帧重录（chrome 采样缓存随之跳过模糊）。
         // 落页靠 recordKey 里的 currentPage 补一帧；有壁纸时玻璃要跟像素，仍每帧重录。
         val latestHasWallpaperForGlass by rememberUpdatedState(wallpaperBitmap != null)
-        // 传给页面的壁纸：Compose 的 ImageBitmap，页面因此不再依赖 ImageBitmap。
-        //
-        // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都**新建包装对象**，每帧新建会让
-        // Image 的位图纹理反复重建（同本文件 4583 行附近快照那处的注释）。
-        // 本 Activity 内部的 Bitmap 生命周期管理（decodeWallpaperSampled / recycleIndependentBitmap
-        // 的 `===` 身份比较）**一律不动** —— 只有跨模块边界的页面参数换类型。
+        // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都新建包装对象，每帧新建会让
+        // Image 的位图纹理反复重建。Bitmap 生命周期管理里的 `===` 身份比较一律不动。
         val wallpaperImage = remember(wallpaperBitmap) { wallpaperBitmap }
         val originalWallpaperImage = originalWallpaperBitmap
         // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结
@@ -2870,9 +2828,8 @@ fun CourseScheduleApp(
                             }
                         }
                     },
-                    // popup 槽是 Scaffold 最上层，但内容按组合顺序绘制：
-                    // 「更多」控件排在 MiuixPopupHost 之前，故只高于顶栏按钮、低于弹窗，
-                    // 打开添加课程弹窗时会被遮罩一起压暗
+                    // popup 槽按组合顺序绘制：「更多」排在 MiuixPopupHost 之前，
+                    // 只高于顶栏按钮、低于弹窗，打开弹窗时会被遮罩一起压暗。
                     popupHost = {
                         // 单个「更多」控件随所在顶栏一起滑动：与顶栏同一套 delta 公式；
                         // 非当前页时整块被平移出屏幕，天然只留一份可见
@@ -2891,11 +2848,8 @@ fun CourseScheduleApp(
                             if (navBarStyle == "rail") Offset(0f, delta * screenHPx)
                             else Offset(delta * screenWPx, 0f)
                         }
-                        // 「更多」与顶栏同源问题：外层 chrome 主题跟 selectedTab 变，
-                        // 切到设置页时未移出屏幕的「更多」会跳色。今日/课程表壁纸已恒同步
-                        // 不再包 HostedOverlay：iOS 上浮层独立合成根拿不到主内容开洞缩放，
-                        // 导致「更多」不随顶栏缩小、且盖在课表外观页上仍可点。
-                        // 留在本槽即与顶栏按钮同层，行为与 Android 一致。
+                        // 不包 HostedOverlay：iOS 上浮层独立合成根拿不到主内容开洞缩放，
+                        // 「更多」会不随顶栏缩小、盖在课表外观页上仍可点；留在本槽与顶栏按钮同层。
                         PageLockedTopBarTheme(wallpaperForcedDark) {
                         // LocalAppRouter.current 必须在组合层取（onClick lambda 里取不到）
                         val popupRouter = LocalAppRouter.current
@@ -2917,9 +2871,8 @@ fun CourseScheduleApp(
                                     isShiftMode = isShiftMode,
                                     // 平板（rail）右上角不显示「更多」
                                     enabled = navBarStyle != "rail",
-                                    // 预测性返回由 LiquidGlassDropdownMenu 内部驱动：
-                                    // 它操作的就是这里传入的同一个 fraction Animatable，
-                                    // 外面再 snapTo/animateTo 一遍会和它互相 cancel，动画直接卡死。
+                                    // 预测性返回由 LiquidGlassDropdownMenu 内部驱动同一个 fraction Animatable，
+                                    // 外面再 snapTo/animateTo 会和它互相 cancel，动画直接卡死。
                                     onJumpWeek = { viewModel.showJumpWeekDialog() },
                                     onCourseManage = {
                                         popupRouter.navigate(
@@ -3286,9 +3239,8 @@ fun CourseScheduleApp(
                                                         ?: geom.dayBounds.values.firstOrNull()
                                                     // 宽度沿用卡片回调（含 Day 列内 2dp padding 后的实际宽），不要用整列 dayBounds
                                                     val topRel = sectionTopPx(geom, course.startSection, div)
-                                                    // X 必须用卡片实测中心 left：
-                                                    // ① 调课日列的数据星期 ≠ 列星期，dayBounds[course.dayOfWeek] 会取到隔壁列，
-                                                    //    浮层/菜单整块错到别的列；② 自定义时间课按时间轴定位，不按节次几何。
+                                                    // X 必须用卡片实测中心 left：调课日列数据星期 ≠ 列星期，
+                                                    // dayBounds[course.dayOfWeek] 会取到隔壁列；自定义时间课按时间轴定位。
                                                     anchorCenter = when {
                                                         course.hasValidCustomTime() ->
                                                             Offset(left, top)
@@ -3362,9 +3314,8 @@ fun CourseScheduleApp(
                                                     val sectionH = geomNow?.sectionHeightPx ?: 0f
                                                     val sectionCount =
                                                         course.endSection - course.startSection + 1
-                                                    // 必须与浮层卡片用同一套高度（含分界缝与特殊块挤占）：
-                                                    // 之前写死 sectionCount * sectionH，跨午休/晚修或插了特殊块时
-                                                    // 「起始节次中心」会算偏，落点命中与高亮就错开一节。
+                                                    // 必须与浮层卡片用同一套高度（含分界缝与特殊块挤占）：写死
+                                                    // sectionCount * sectionH 会让「起始节次中心」算偏，落点命中与高亮错开一节。
                                                     val cardHeightPx = when {
                                                         course.hasValidCustomTime() -> draggedCardSize.y
                                                         geomNow != null -> courseVisualHeightPx(
@@ -3384,9 +3335,8 @@ fun CourseScheduleApp(
                                                         centerX,
                                                         firstSectionCenterY
                                                     )
-                                                    // 放不下的格子不给落点：起始节次+跨度超过总节次
-                                                    // （与粘贴路径同款校验），否则松手写出
-                                                    // endSection > totalSections 的课，渲染溢出/错位
+                                                    // 放不下的格子不给落点（与粘贴路径同款校验）：起始节次+跨度
+                                                    // 超过总节次时松手会写出 endSection > totalSections 的课，渲染溢出/错位。
                                                     val newTarget = rawTarget?.takeIf {
                                                         it.second + sectionCount - 1 <= totalSections
                                                     }
@@ -3673,9 +3623,8 @@ fun CourseScheduleApp(
                                         }
                                     }
                                     3 -> {
-                                        // 课程管理不预加载：beyond 撑满整窗后这一格任何时候
-                                        // 都在窗口里，不加 if 就等于常驻。只有它自己是当前页
-                                        // 才真正组合，其余时刻渲染空 —— 见 VerticalPager 处注释。
+                                        // 课程管理不预加载：beyond 撑满整窗后这一格任何时候都在窗口里，
+                                        // 不加 if 就等于常驻；只有它是当前页才真正组合。
                                         if (mainPagerState.currentPage == 3) {
                                             TabletCourseManagePane(
                                                 viewModel = viewModel,
@@ -3745,15 +3694,8 @@ fun CourseScheduleApp(
                             }
                             }
                             if (navBarStyle == "rail") {
-                                // 平板与手机对齐：今日/课程表/我的（0~2）三页常驻组合树，
-                                // 切页零组合成本。
-                                // beyond 撑到覆盖全部页 —— 它是**以当前页为中心的对称窗口**
-                                // （PagerBeyondBoundsState：first = firstVisible - beyond、
-                                // last = lastVisible + beyond），只有窗口大到能罩住全部页，
-                                // 0~2 才能在停在 3/4 页时也不被挤出组合树。
-                                // 单靠它表达不了「0~2 常驻 + 3/4 仅当前」，所以
-                                // 「不预加载另外两页」由内容侧兜底：mainPagerPageContent
-                                // 的 3/4 分支只在自己是当前页时才组合。
+                                // beyond 撑到覆盖全部页，让 0~2（今日/课程表/我的）常驻组合树、切页零成本。
+                                // 「3/4 仅当前页才组合」由 mainPagerPageContent 内容侧兜底。
                                 VerticalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
@@ -3762,9 +3704,8 @@ fun CourseScheduleApp(
                                     beyondViewportPageCount = mainPagerPageCount,
                                 ) { page -> mainPagerPageContent(page) }
                             } else {
-                                // 手机切 tab 是 spring 平移动画。beyond=1 时目标页隔壁那页会在动画
-                                // 途中才首次组合（我的/今日各约 23~31ms），直接砸在动画首帧上。
-                                // 3 页用 beyond=2 让三页常驻，切页变成纯位移动画，零组合成本。
+                                // 手机切 tab 是 spring 平移动画：beyond=1 时目标页隔壁那页会在动画途中
+                                // 才首次组合、砸在首帧上；beyond=2 让三页常驻，切页变纯位移动画。
                                 HorizontalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
@@ -3794,9 +3735,8 @@ fun CourseScheduleApp(
                         }
                     val backToNowLabel = "今"
                     val navBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                    // ⚠ 必须与 ScheduleBottomBar 的底部间距**同一套算法**（2026-10-12 改）：
-                    //   底栏从 `maxOf(28, inset + 8)` 改成「有安全区就贴 inset」后，这里如果还
-                    //   保留 +8，按钮会比底栏高 8dp → 陷进底栏胶囊里。
+                    // ⚠ 必须与 ScheduleBottomBar 的底部间距同一套算法：这里若多保留 +8，
+                    // 按钮会比底栏高 8dp → 陷进底栏胶囊里。
                     val bottomBarPadding = if (navBarBottomInset > 0.dp) navBarBottomInset else 28.dp
                     val backToNowBottomPadding = if (nativeBottomBar) {
                         hostNavigation.bottomBarInset.toFloat().dp + 8.dp
@@ -3853,8 +3793,7 @@ fun CourseScheduleApp(
                         }
                     }
 
-                    // 页面已迁 :ui-shared：宿主把分享 Intent 摊平成 SharedFileIntent，
-                    // 并提供一个「读该 uri 全部文本」的回调（contentResolver 是 Android 能力）。
+                    // 宿主把分享 Intent 摊平成 SharedFileIntent，并提供读该 uri 全文的回调。
                     ShareImportDialog(
                         shareIntent = sharedFileIntent,
                         onShareIntentConsumed = onShareIntentConsumed,
@@ -3865,7 +3804,7 @@ fun CourseScheduleApp(
                         liquidGlassBackdrop = liquidGlassBackdrop,
                     )
 
-                    // 页面已迁 :ui-shared：更新能力（检查/下载/校验/安装）由宿主注入
+                    // 更新能力（检查/下载/校验/安装）由宿主注入
                     UpdateDialog(
                         updateController = updateController ?: NoopUpdateController,
                         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -4258,7 +4197,7 @@ fun CourseScheduleApp(
                             onTabSelected = onTabletTabSelected,
                             backdrop = chromeBackdrop,
                             isShiftMode = isShiftMode,
-                            // 侧栏遮罩圆角：原来自取 Activity.window，现由宿主注入（同一份 px）
+                            // 侧栏遮罩圆角由宿主注入（同一份 px）
                             screenCornerRadiusPx = screenCornerRadius,
                             onSidebarExpandedChange = {
                                 com.haooz.chedule.ui.components.TabletNavSideState.expanded = it
@@ -4484,14 +4423,9 @@ fun CourseScheduleApp(
                                 // 无壁纸时垫页底色，取值见 floatSolidBacking
                                 solidBackingColor = floatSolidBacking,
                                 cardHeightPerSection = displayAppearance.cardHeight,
-                                // ⚠ 必须把浮层 Box 的高度原样传给卡片，否则长按浮层会偏上。
-                                // CourseCard 自身高度 = customCardHeightDp ?: (节次数 × 每节高)，
-                                // 而上面 Box 的高度用的是 heightPx（实测/视觉高度）。
-                                // 两者不一致时，固定高度的卡片在 Box 里按顶部对齐，
-                                // 视觉中心就偏上 (heightPx − 卡片高)/2 ——
-                                // 自定义时间课的实测高约为节次高的 2 倍时，
-                                // 偏移正好是半个卡片高（表现为“偏上 50%”）。
-                                // v1.6.4beta24 引入：那之前 Box 高度恒为节次几何，与卡片一致。
+                                // ⚠ 必须把浮层 Box 的高度原样传给卡片，否则长按浮层会偏上：
+                                // 卡片高（customCardHeightDp ?: 节次数×每节高）与 Box 高度 heightPx
+                                // 不一致时按顶部对齐，视觉中心偏上 (heightPx − 卡片高)/2。
                                 customCardHeightDp = with(density) { heightPx.toDp().value },
                                 cardCornerRadius = displayAppearance.cardCornerRadius,
                                 isTablet = isTablet,
@@ -4699,9 +4633,8 @@ fun CourseScheduleApp(
             )
         }
         if (isEntryAnimating) {
-            // alpha 必须走 graphicsLayer：原来这里在组合期读 switchReturnBgScrim.value，
-            // 进场动画 350ms 里每帧让根内容作用域失效 → 整棵 MainActivity 内容树
-            // （pager + 各页顶栏底栏 + 卡片）重组 20+ 次。视觉等价：黑底 + 层透明度。
+            // alpha 必须走 graphicsLayer：在组合期读 scrim.value 会让进场动画 350ms 里
+            // 每帧令整棵内容树（pager + 顶栏底栏 + 卡片）重组。视觉等价：黑底 + 层透明度。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -4856,7 +4789,6 @@ fun CourseScheduleApp(
                     isCustomizeExiting = true
                 }
             }
-                // 页面已迁 :ui-shared，宿主侧的 Bitmap 要先转成跨平台的 ImageBitmap。
                 // ⚠ 必须 remember：`asImageBitmap()` 每次调用都新建包装对象，不 remember 会让
                 // 页面里 `remember(wallpaperBitmap, …)` 之类的 key 每帧都变（白跑一遍计算）。
                 val customizeSnapshotImage = customizeSnapshot
@@ -5274,9 +5206,8 @@ fun CourseScheduleApp(
                                     WallpaperStore.currentImageBitmap(),
                                     wallpaperBitmap,
                                 )
-                                // onBack 带回来的整屏截图只用来裁卡片快照；裁完即弃。
-                                // 它和 mainContentSnapshot 是两个独立对象时（选中的是另一张
-                                // 课表 / 点了当前课表走 dismissKeepCurrent）才会走到这里。
+                                // onBack 带回来的整屏截图只用来裁卡片快照，裁完即弃；
+                                // 仅当它与 mainContentSnapshot 是两个独立对象时才会走到这里。
                                 recycleSnapshot(
                                     switchPageBitmapBmp,
                                     oldSwitchCard,
@@ -5350,9 +5281,8 @@ fun CourseScheduleApp(
                             switchCardSnapshot = null
                             switchCardBounds = null
                             mainContentSnapshot = null
-                            // fullBitmap 是切换页的整屏截图，只用来裁 cardBitmap，裁完即弃；
-                            // 每次「选中另一张课表」原先都直接丢弃一张全屏位图。
-                            // keep 传 cardBitmap：裁剪区等于整图时两者同一对象，天然不回收
+                            // fullBitmap 只用来裁 cardBitmap，裁完即弃；keep 传 cardBitmap：
+                            // 裁剪区等于整图时两者同一对象，天然不回收。
                             launch {
                                 delay(32.milliseconds)
                                 recycleSnapshot(
@@ -5413,12 +5343,9 @@ fun CourseScheduleApp(
                                     null
                                 }
                             } else null
-                            // screenBitmap 只用来裁 cardSnap，裁完即弃。原先只等 GC 回收，
-                            // 反复进出切换页几次，光这一项就够在低端机上把动画收尾那一帧的
-                            // 位图峰值顶爆（manifest 没开 largeHeap）。
-                            // 延后两帧再回收：与本文件其余快照位图同一套时序。
-                            // keep 传 cardSnap 是必须的：裁剪区恰好等于整图时
-                            // createBitmap 会原样返回 screenBitmap，此时它就是 cardSnap 本体。
+                            // screenBitmap 只用来裁 cardSnap，裁完即弃：反复进出切换页会在低端机上
+                            // 把动画收尾帧的位图峰值顶爆。延后两帧再回收；keep 传 cardSnap 是必须的
+                            //（裁剪区恰好等于整图时 createBitmap 原样返回它，二者同一对象）。
                             coroutineScope.launch {
                                 delay(32.milliseconds)
                                 recycleSnapshot(screenBitmapBmp, cardSnap, switchCardSnapshot)
@@ -5527,9 +5454,8 @@ private fun SwitchMorphOverlay(
     val density = LocalDensity.current
     val p = progress.value
 
-    // asImageBitmap() 每次调用都 new 一个 AndroidImageBitmap 包装对象，而 Image 的位图
-    // 纹理缓存是按这个对象身份命中的：写在组合里 = 每帧换一个身份 = 缓存全失效，
-    // 全屏的 mainSnapshot 每帧都要重新上传纹理。这里按底层 Bitmap 身份记住包装对象。
+    // asImageBitmap() 每次调用都 new 一个包装对象，Image 的位图纹理缓存按对象身份命中：
+    // 写在组合里 = 每帧换身份 = 缓存全失效，全屏 mainSnapshot 每帧重传纹理。故按位图身份记住。
     val cardImage = remember(cardSnapshot) { cardSnapshot }
     val mainImage = remember(mainSnapshot) { mainSnapshot }
 
@@ -5597,15 +5523,8 @@ private fun SwitchMorphOverlay(
 }
 
 /**
- * 共享顶栏槽里单页顶栏的主题锁。
- *
- * `Scaffold.topBar` 里今日/课程表/我的三根顶栏叠在一起靠 graphicsLayer 平移淡入淡出，
- * 外层统一套的是**跟随当前 tab** 的 chrome 主题（[forcedDark]，含 `selectedTab == 2 -> null`
- * 回落应用主题）。课程表/今日页跟随壁纸锁深浅，于是「课程表深色 → 切到设置页浅色」时
- * `forcedDark` 立刻变 null，尚未移出屏幕的课程表顶栏整体变浅，表现为遮罩瞬间变色。
- *
- * 这里按**本页自己**的主题再锁一层，与 pager 内各页的写法一致。稳态下两者取值相同，
- * 不改变静止时的观感。
+ * 共享顶栏槽里单页顶栏的主题锁：外层 chrome 主题跟随当前 tab（[forcedDark]），
+ * 切页时会先变，尚未移出屏幕的顶栏遮罩瞬间变色；这里按本页自己的主题再锁一层。
  */
 @Composable
 private fun PageLockedTopBarTheme(

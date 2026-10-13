@@ -1,18 +1,6 @@
 /**
- * 备份与迁移页面 - Screen
- *
- * 2026-10-11 自 `:androidApp` 迁入 `:ui-shared`（第二十三批，androidPane 最后一个留守 dest）。
- *
- * 迁移时拆出去的 Android 专有能力（全部改宿主注入，见各参数注释）：
- * - 文件选择/另存为（SAF）→ `ScheduleFileController`
- * - 口令分享（OkHttp + Gson + Bitmap 出图 + 系统分享）→ `onShareSchedule`
- * - 第三方口令抓取（WebView + OkHttp + Gson）→ `onImportThirdParty`
- * - 分享口令取回（OkHttp + Gson）→ `onFetchShareCode`
- * - 手环推送 → `onExportToWearable`
- * - 节假日变更后的提醒重排 → `onHolidayDataChanged`
- *
- * 跟着一起进 commonMain 的纯逻辑：`parseIcsFile`（→ `:core` 的 `IcsCodec.kt`）、
- * `applyScheduleData` / `applyThirdPartySharePayload`（→ `ui/screens/ScheduleImportApply.kt`）。
+ * 备份与迁移页面 - Screen。平台专有能力（文件选择/另存为、口令分享/抓取、手环推送、
+ * 节假日变更后重排提醒）全部由宿主注入，见各参数注释。
  */
 package com.haooz.chedule.ui.activities
 
@@ -109,10 +97,7 @@ enum class ScheduleDataManageMode {
     Backup,
 }
 
-/**
- * 课表导入 / 导出 / 备份页面 - Screen
- * 由 mode 决定展示内容，入口页共用同一实现。
- */
+/** 课表导入 / 导出 / 备份页面；由 [mode] 决定展示内容，入口页共用。 */
 @Composable
 fun BackupAndMigrationScreen(
     scrollBehavior: SharedScrollBehavior? = null,
@@ -123,36 +108,18 @@ fun BackupAndMigrationScreen(
     mode: ScheduleDataManageMode = ScheduleDataManageMode.Import,
     /** pad 设置右栏：导入页去掉「导入方式」，并把口令/文件拆成两个小标题 */
     compactImport: Boolean = false,
-    /**
-     * 课表文件的「选文件读 / 另存为」能力（Android = `AndroidScheduleFileController`，
-     * 宿主用 `remember { AndroidScheduleFileController(context) }` 注入）。
-     * 桌面/iOS 没有系统文件选择器，用默认的 [NoopScheduleFileController]。
-     */
+    /** 课表文件的选文件 / 另存为能力（Android 注入 `AndroidScheduleFileController`；桌面/iOS 用 [NoopScheduleFileController]）。 */
     scheduleFileController: ScheduleFileController = NoopScheduleFileController,
-    /**
-     * 节假日/调休数据变更后的平台副作用（重排提醒）。
-     * Android 宿主注入：`CourseReminderHelper.onHolidayDataChanged(context)`。
-     * 不直接调 reminder 模块 —— 那是 Android 专有的（内部要 Context）。
-     */
+    /** 节假日/调休数据变更后的平台副作用（重排提醒），Android 宿主注入。 */
     onHolidayDataChanged: () -> Unit = {},
-    /**
-     * 分享口令取回（网络 + Gson，Android 专有）。
-     * Android 宿主注入：`{ ShareCodeApi.fetchShare(it).map { r -> ShareCodeFetchResult(...) } }`。
-     * 不注入时口令导入按「取回失败」处理。
-     */
+    /** 分享口令取回（Android 专有，宿主注入）；不注入时按「取回失败」处理。 */
     onFetchShareCode: suspend (code: String) -> Result<ShareCodeFetchResult> =
         { Result.failure(IllegalStateException("当前平台不支持口令导入")) },
-    /**
-     * 第三方（WakeUp / 星链）口令抓取（无头 WebView + OkHttp + Gson，Android 专有）。
-     * Android 宿主注入：`{ source, code -> ThirdPartyShareImporter.import(context, source, code) }`。
-     */
+    /** 第三方（WakeUp / 星链）口令抓取（Android 专有，宿主注入）。 */
     onImportThirdParty: suspend (source: ThirdPartyShareSource, code: String)
         -> Result<ThirdPartySharePayload> =
         { source, _ -> Result.failure(IllegalStateException("当前平台不支持${source.displayName}")) },
-    /**
-     * 口令分享导出（上传 + 出图 + 唤起系统分享，Android 专有）。
-     * Android 宿主注入：`{ name, onChanged -> performScheduleShare(context, scope, name, onChanged) }`。
-     */
+    /** 口令分享导出（上传 + 出图 + 系统分享，Android 专有，宿主注入）。 */
     onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
     /** 导出到手环（Android 专有；未连接/不支持时返回 null） */
     onExportToWearable: suspend (scheduleName: String) -> String? = { null },
@@ -168,12 +135,11 @@ fun BackupAndMigrationScreen(
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
-    // WebDavManager 已在 :core；恢复成功后的提醒重排是平台副作用，走注入
+    // 恢复成功后的提醒重排是平台副作用，走注入
     val webDavManager = remember { WebDavManager { onHolidayDataChanged() } }
     val lastSyncTimeMs = webDavManager.lastSyncTime
     val lastSyncSummary = remember(lastSyncTimeMs) {
-        // 原实现 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) ——
-        // pattern 只含数字与固定分隔符、不受 Locale 影响，:core 手写等价格式化。
+        // 格式只含数字与固定分隔符、不受 Locale 影响（:core 手写等价格式化）。
         if (lastSyncTimeMs > 0L) "上次操作: ${localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute()}"
         else "未操作"
     }
@@ -289,7 +255,7 @@ fun BackupAndMigrationScreen(
                                 title = "教务系统导入",
                                 summary = "从学校教务系统一键拉取课表",
                                 onClick = {
-                                    // 单 Activity：教务导入走路由，不再 startActivity
+                                    // 走路由，不再 startActivity
                                     aiImportRouter.navigate(AppRoute.EducationalImport)
                                 }
                             )
@@ -993,14 +959,9 @@ internal fun icsEventUid(courseId: String, teachingWeek: Int, date: LocalDate): 
     "$courseId-$teachingWeek-${date.toString().replace("-", "")}@nexio-schedule"
 
 /**
- * 组装 ICS 文本。
- *
- * 原实现用 `Calendar` + `SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault())` 拼
- * `DTSTART/DTEND`。这两个都是 java 专有（`java.*` 在 Kotlin/Native 上不存在），
- * 换成 kotlinx-datetime 的 [LocalDateTime] + `:core` 的 [formatIcsTimestamp]。
- *
- * ⚠ 节次时间来自用户配置，理论上可能写出 `24:00` 这类越界值 —— 原 `Calendar.set`
- * 会静默进位到次日，这里改成夹取到 23:59（`LocalTime` 不接受越界入参会抛异常）。
+ * 组装 ICS 文本（`DTSTART/DTEND` 用 [LocalDateTime] + [formatIcsTimestamp]）。
+ * ⚠ 节次时间可能越界（如 `24:00`）：`LocalTime` 入参越界会抛异常，故夹取到 23:59，
+ * 不沿用旧 `Calendar.set` 的静默进位。
  */
 private fun buildExportIcs(scheduleName: String): String? {
     val repository = CourseRepository()

@@ -17,9 +17,7 @@ import platform.UIKit.UIWindow
 
 /**
  * iOS 宿主 UI 工具：找 key window / 栈顶 VC / 弹原生提示条。
- *
- * 文件选择器、选壁纸、分享面板都要做同一件事 —— **从当前最顶层的视图控制器弹东西**，
- * 所以统一放这里，别在每个实现里各写一份（写错了就是「点了没反应」）。
+ * 文件选择器、选壁纸、分享面板都要从最顶层 VC 弹东西，统一放这里避免各写一份。
  */
 internal object IosUiHost {
 
@@ -31,9 +29,8 @@ internal object IosUiHost {
 
     /**
      * 栈顶视图控制器：从 root 一路跟到 `presentedViewController` 的末端。
-     *
-     * 必须跟到底 —— 已经有模态页（比如分享面板）在的时候，直接拿 root 去 present
-     * 会抛 `Attempt to present ... which is already presenting`。
+     * 必须跟到底 —— 已有模态页时直接拿 root 去 present 会抛
+     * `Attempt to present ... which is already presenting`。
      */
     fun topViewController(): UIViewController? {
         var vc = keyWindow()?.rootViewController
@@ -45,20 +42,9 @@ internal object IosUiHost {
 }
 
 /**
- * iOS 原生提示条（对应 Android 的 `Toast`）。
- *
- * ## 为什么要有
- *
- * `showToast` 的 native actual 原先只打日志（注释写着「等 :iosApp 真跑起来再决定是接
- * 原生提示还是维持日志」）—— 现在真跑起来了。导入导出、分享、选壁纸这些流程**全靠它给反馈**，
- * 只打日志的话用户看到的就是「点了没反应」，功能等于坏的。
- *
- * ## 行为对齐 Android
- *
- * - 时长同 `Toast.LENGTH_SHORT`(2s) / `LENGTH_LONG`(3.5s)
- * - **不合并**：连续调用弹两条（各自计时、各自消失），与 Android 语义一致；
- *   上下错开堆叠，避免两条文字叠在一起看不清
- * - 不拦截触摸（`userInteractionEnabled = false`），弹提示时底下的界面照常能点
+ * iOS 原生提示条（对应 Android 的 `Toast`）：导入导出、分享、选壁纸这些流程全靠它给反馈。
+ * 时长对齐 `LENGTH_SHORT`(2s) / `LENGTH_LONG`(3.5s)；**不合并**，连续调用弹两条、上下错开堆叠；
+ * 不拦截触摸（`userInteractionEnabled = false`）。
  */
 object IosToast {
 
@@ -94,7 +80,6 @@ object IosToast {
             val w = fitting.useContents { width }.coerceAtMost(MAX_WIDTH)
             val h = fitting.useContents { height }
 
-            // 从下往上堆叠：已有提示条就往上让
             var y = windowH - BOTTOM_INSET
             active.forEach { existing ->
                 val existingFrame = existing.frame
@@ -124,10 +109,8 @@ object IosToast {
         backgroundColor = UIColor.colorWithWhite(0.0, alpha = 0.82)
         font = UIFont.systemFontOfSize(14.0)
         userInteractionEnabled = false
-        // 圆角
         layer.cornerRadius = 10.0
         layer.masksToBounds = true
-        // 内边距：用 attributed string 太重，这里靠 sizeThatFits 后手动加宽
-        // （见 show() 里对 fitting 的处理）
+        // 内边距：attributed string 太重，靠 sizeThatFits 后手动加宽（见 show() 对 fitting 的处理）
     }
 }

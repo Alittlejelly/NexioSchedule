@@ -1,18 +1,8 @@
 /** WebView 页面 - 用于加载教务系统网页 */
 package com.haooz.chedule.ui.screens
 
-// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十六批）。
-//
-// 切法（全仓唯一一处「网页本体」）：
-//  · **外壳进 commonMain**：顶栏采样带 / 进度条 / 底部胶囊 / alert·prompt·单选三个对话框 /
-//    目标课表选择 / 返回处理 —— 纯 Compose，约 600 行，iOS 直接复用。
-//  · **网页本体留宿主**：WebView 创建与配置、UA/视口策略、JS 桥（AndroidBridge /
-//    WebPostBridge / WebCompatDelegate）、PixelCopy 逐帧采色 —— 约 400 行，
-//    iOS 要整体换成 WKWebView，一行都复用不了。见 androidApp/ui/web/AndroidWebHost.kt。
-//  · 中间是 ui/web/WebHost.kt 的契约（7 个方法 + 8 个事件回调）。
-//
-// 因此本文件里**不应出现任何 android.* / androidx.activity / androidx.core**；
-// 需要新能力就往 WebHost 上加方法，而不是把平台类型带进来。
+// ⚠ 本文件不得出现 android.* / androidx.activity / androidx.core；
+// 需要新能力就往 WebHost 契约上加方法，而不是把平台类型带进来。
 
 import com.haooz.chedule.data.NexioLog
 import androidx.compose.animation.AnimatedVisibility
@@ -106,18 +96,7 @@ import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 
-// 三个「网页实现细节」常量（DESKTOP_USER_AGENT / TOP_MIRROR_*）随网页本体搬到宿主：
-// androidApp/.../ui/web/AndroidWebHost.kt。页面不再采样像素，也就不需要它们。
 
-/**
- * 在 [src] 全图里取出现次数最多的颜色。
- *
- * 返回 ARGB；[prevColor] 为上一帧色（-1 表示无）。
- *
- * 滞回：新色与上一帧接近则直接用；差得远时，只有当「接近上一帧的像素」不再占优
- * （新众数明显更多，或上一帧色已几乎消失）才切换，避免左右对半来回闪；
- * 同时也不会像「占比不足 55% 就锁死」那样，把加载时的白色一直粘住。
- */
 private data class AlertData(
     val title: String,
     val content: String,
@@ -160,10 +139,7 @@ fun WebViewScreen(
     onExecuteImportRef: ((() -> Unit) -> Unit)? = null,
     onToggleDesktopModeRef: ((() -> Unit) -> Unit)? = null,
     onReloadRef: ((() -> Unit) -> Unit)? = null,
-    /**
-     * 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 尚未提供时用 [NoopWebHost]
-     * （内容区留白、控制方法空转）。
-     */
+    /** 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 用 [NoopWebHost]。 */
     webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
 ) {
     val isTablet = isTabletWidth()
@@ -233,13 +209,9 @@ var pageTitle by remember { mutableStateOf("加载中...") }
     }
 
 
-    // ── 网页宿主 ────────────────────────────────────────────────────────────
-    // 网页本体（WebView / JS 桥 / PixelCopy 采色）在平台侧，页面只通过这个契约驱动它。
-    // 见 ui/web/WebHost.kt 的注释：iOS 侧换一份 IosWebHost 即可，本页不用动。
-    //
-    // events 用 remember 建一次：宿主内部用 rememberUpdatedState 持有它（WebView 的回调是
-    // 长生命周期对象），而这里的闭包读的都是上面那些 rememberUpdatedState / MutableState，
-    // 天然取到最新值。
+    // ── 网页宿主 ──
+    // 网页本体（WebView / JS 桥 / PixelCopy 采色）在平台侧，页面只通过 WebHost 契约驱动它。
+    // events 用 remember 建一次：宿主内部以 rememberUpdatedState 持有，闭包读的都是最新的 MutableState。
     val webHostEvents = remember {
         WebHostEvents(
             onTitle = { pageTitle = it },
@@ -391,16 +363,14 @@ var pageTitle by remember { mutableStateOf("加载中...") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 生产者包住 WebView：底部玻璃从这里实时采样页面像素
-        // 顶栏在 Activity 层，这里只负责页面 + 底部胶囊
+        // 顶栏在宿主层，这里只负责页面 + 底部胶囊
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MiuixTheme.colorScheme.surface)
                 .layerBackdrop(webContentBackdrop)
         ) {
-            // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding，供 ProgressiveBlurTopBar /
-            // 顶栏空白区采样。原实现是把采到的颜色做成 1×1 Bitmap 再 FillBounds 铺开 ——
-            // 等价于直接填一块纯色，只是不再需要 Bitmap（跨平台侧也没有 Bitmap）。
+            // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding，供 ProgressiveBlurTopBar 采样。
             topColor?.let { color ->
                 Box(
                     modifier = Modifier

@@ -1,12 +1,11 @@
 package com.haooz.chedule.data
 
 /**
- * 应用更新控制器。Android 实现是 `AndroidUpdateController`，桌面/iOS 用 [NoopUpdateController]。
+ * 应用更新控制器。Android 实现是 `AndroidUpdateController`，桌面/iOS 用 [NoopUpdateController]；
+ * 本地安装包用绝对路径字符串表示（commonMain 没有 `java.io.File`）。
  *
- * [checkForUpdate] / [hasValidApk] / [resolveApkUrl] 是阻塞 IO，调用方用
- * `withContext(ioDispatcher)` 包住；[downloadApk] 是 suspend，实现内部自行切调度器。
- *
- * 本地安装包用绝对路径字符串表示，commonMain 没有 `java.io.File`。
+ * ⚠ [checkForUpdate] / [hasValidApk] / [resolveApkUrl] 是阻塞 IO，调用方需用 `withContext(ioDispatcher)`
+ * 包住；[downloadApk] 是 suspend，实现内部自行切调度器。
  */
 interface UpdateController {
     /** 当前安装的版本号；取不到时为 `"未知"`。 */
@@ -30,18 +29,14 @@ interface UpdateController {
     /** 本地是否已有一份**可安装**的安装包（校验不过时 Android 侧会顺手删掉损坏包）。 */
     fun hasValidApk(tag: String): Boolean
 
-    /**
-     * 该 tag 对应本地安装包的**绝对路径**。不判断存在性 ——
-     * 调用方先用 [hasValidApk] 判定，无效时自行置 null。
-     */
+    /** 该 tag 对应本地安装包的**绝对路径**。不判断存在性，调用方先用 [hasValidApk] 判定，无效时自行置 null。 */
     fun localApkPath(tag: String): String
 
     /** 解析下载地址（缓存优先，缓存不可用回源重查），解析不到返回 null。 */
     fun resolveApkUrl(tag: String, source: String, channel: String): String?
 
     /**
-     * 下载 APK 到本地并做完整性校验。成功返回落盘文件的**绝对路径**；
-     * 失败抛 `Exception`（调用方 catch 后 toast `下载失败: ${e.message}`）。
+     * 下载 APK 到本地并做完整性校验。成功返回落盘文件的**绝对路径**；失败抛 `Exception`。
      *
      * @param onProgress 0f..1f 进度回调，实现负责切回主线程
      */
@@ -61,7 +56,6 @@ interface UpdateController {
     /**
      * 安装本地 APK（Android：优先 Shizuku 静默安装，失败回退系统安装器）。
      *
-     * @param apkPath [localApkPath] / [downloadApk] 返回的绝对路径
      * @param onInstallingChanged 安装中状态回调（主线程）
      * @param onFinished 结束回调（静默成功 / 系统安装器已拉起都会触发）
      */
@@ -72,7 +66,7 @@ interface UpdateController {
     )
 }
 
-/** 一次检查到的 Release 元数据。由 `AndroidUpdateController` 从 `UpdateChecker.GiteeRelease` 转换而来。 */
+/** 一次检查到的 Release 元数据。 */
 data class UpdateRelease(
     val tagName: String,
     val name: String,

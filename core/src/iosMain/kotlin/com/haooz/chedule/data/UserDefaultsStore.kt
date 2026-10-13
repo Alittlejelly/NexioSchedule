@@ -10,43 +10,15 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 
 /**
- * [KeyValueStore] 的 iOS 实现：按名字开一个独立的 NSUserDefaults 域。
+ * [KeyValueStore] 的 iOS 实现：按名字开独立的 `NSUserDefaults(suiteName:)` 域
+ * （不用 `standardUserDefaults`，否则 17 个 prefs 文件挤进一个域、同名键互相覆盖）。
  *
- * ## 为什么是「按 suiteName 开域」而不是 `standardUserDefaults`
+ * ⚠ 数值类型必须记到**独立域** `suiteName.__kvtypes`：plist 里数值都是 `NSNumber`，读出来
+ * 分不清原本是 Int 还是 Long；统一按 Long 还原会让复制课表把 Int 键写成 Long → Android 侧
+ * `getInt` 抛 `ClassCastException` → 被 `runCatching` 兜底成默认值 → **用户设置静默丢失**。
+ * 标记键不能与业务键同域（`all()` 会遍历，会被当成业务数据复制/导出）。
  *
- * Android 侧是 `getSharedPreferences(name, MODE_PRIVATE)` —— **每个名字一个独立 XML 文件**，
- * 项目有 17 个不同名字。iOS 侧语义等价物是 `NSUserDefaults(suiteName:)`
- * （`multiplatform-settings` 在 Apple 平台也是这个做法），而不是单例的 `standardUserDefaults`。
- * 若所有名字都映射到 standardUserDefaults，17 个文件的键会挤进同一个域 ——
- * 一旦两个文件有同名键（本项目 `island_countdown_state_test` 之类就是这么来的），
- * 数据会互相覆盖。
- *
- * ## ⚠ 为什么要额外记「类型标记」（本类最不直观的一处）
- *
- * [all] 的返回值被 `CourseRepository` **按具体类型匹配**后用掉两处：
- * - 复制课表（`when (value) { is Int -> putInt … is Long -> putLong … }`）
- * - 全量备份 `exportAllPreferences()`
- *
- * 而 plist 里所有数值都是 `NSNumber`，**读出来无法区分原本是 Int 还是 Long**
- * （64 位上 NSInteger 就是 Long）。如果统一按 Long 还原，后果是：
- * 复制课表会把 Int 键写成 Long → 之后 `getInt` 拿到 Long → Android 侧抛
- * `ClassCastException` → 被既有 `runCatching` 兜底成默认值 → **用户设置静默丢失**。
- * iOS 内部因为走 NSNumber 宽松转换不会崩，但一旦备份文件跨平台往返就会炸。
- *
- * 所以写入时把类型记到一个**独立域** `suiteName.__kvtypes`。
- * 必须独立：`all()` 会被遍历，标记键若和业务键同域，会被当成业务数据复制/导出。
- *
- * ## 与 Android 实现的行为差异（有意为之）
- *
- * Android 对「键存在但类型不符」抛 `ClassCastException`（历史数据格式变更多次，
- * 调用点靠 `runCatching` 兜底）。iOS **没有存量数据**，不需要复刻这个行为，
- * 按 [KeyValueStore] 主契约返回默认值。
- *
- * ⚠ **Windows 上无法编译本文件**（iOS target 需要 Xcode SDK）。
- * 首次 `compileKotlinIosArm64` 必须在 macOS 上做，重点验证：
- *   1. Kotlin 的 Int/Long/Float/Boolean 传给 `setObject(_:forKey:)` 是否自动装箱成 NSNumber
- *   2. `persistentDomainForName` 对自定义 suite 是否返回非空
- *   3. `raw is String` 对 plist 里的 NSString 是否成立
+ * ⚠ **Windows 上无法编译本文件**（iOS target 需要 Xcode SDK），首次编译须在 macOS 上做。
  */
 class UserDefaultsStore(
     private val suiteName: String,
@@ -90,9 +62,7 @@ class UserDefaultsStore(
 
     override fun edit(block: KeyValueEditor.() -> Unit) {
         UserDefaultsEditor().block()
-        // 对应 Android 的 apply()：提示系统落盘。iOS 本身会在合适时机持久化，
-        // 这里显式调用一次让「提交」语义与 Android 对齐；返回 false 表示落盘失败，
-        // 与 apply() 一样不向调用方抛（调用方无能为力）。
+        // 对应 Android 的 apply()：显式落盘让「提交」语义对齐；失败也不抛（调用方无能为力）
         defaults.synchronize()
         typeDomain.synchronize()
     }
@@ -111,22 +81,16 @@ class UserDefaultsStore(
      * iOS 无「带 key 的变更回调」：`NSUserDefaultsDidChangeNotification` 只通知「变了」，
      * 不带是哪个键 → 回调时传 [KEY_CHANGED_ANYWHERE] 哨兵，由调用方自己复查关心的键。
      *
-     * ⚠ 这**不是**可以长期留空的桩：`CourseScheduleTheme` 靠它监听 `theme_mode`，
-     *   之前这里是 `= null`（注释写「没有调用点」），结果 **iOS 上应用内深浅色切换
-     *   写进了磁盘但 UI 永不刷新** —— 用户切了完全没反应。
-     *
-     * ⚠ 用 block 版 `addObserverForName` 而非 selector 版 `addObserver`：后者在
-     *   Kotlin/Native 里签名是 `(observer, selector: CPointer, object)`，塞不进 Kotlin lambda。
-     *
-     * ⚠ **返回 handle（不是 token）**：block 版由 NotificationCenter 内部持有观察者，
-     *   `removeObserver` 要传的就是它。调用方（DisposableEffect）保留返回值即可。
+     * ⚠ 不能留空实现：`CourseScheduleTheme` 靠它监听 `theme_mode`，缺了会导致 iOS 上
+     *   深浅色切换写进了磁盘但 UI 永不刷新。
+     * ⚠ 必须用 block 版 `addObserverForName`：selector 版在 Kotlin/Native 里签名含 `CPointer`，塞不进 lambda。
+     * ⚠ 返回值是 NotificationCenter 内部持有的 handle（不是 token），`removeObserver` 要传的就是它。
      */
     override fun registerListener(listener: (String) -> Unit): Any? =
         observerCenter.addObserverForName(
             name = NSUserDefaultsDidChangeNotification,
             `object` = null,
-            // 主线程队列：listener 会写 Compose 状态，而 Compose 状态不是线程安全的。
-            // ⚠ NSUserDefaults 的通知本身在**任意线程**投递，这里必须指定队列才能保证在主线程回调。
+            // ⚠ NSUserDefaults 通知在**任意线程**投递，必须指定队列；listener 会写非线程安全的 Compose 状态
             queue = NSOperationQueue.mainQueue,
             usingBlock = { _ -> listener(KEY_CHANGED_ANYWHERE) },
         )
@@ -137,10 +101,7 @@ class UserDefaultsStore(
 
     /**
      * 每个 store 实例一个中心。
-     *
-     * ⚠ 不用 `NSNotificationCenter.defaultCenter`：那是全局单例，多个 store 实例
-     *   （本项目 17 个 prefs 文件 = 17 个 store）的监听会互相收到对方的变更通知，
-     *   `removeObserver` 也可能误删别人的。
+     * ⚠ 不用全局单例 `defaultCenter`：多个 store 的监听会互相收到对方通知，`removeObserver` 也会误删。
      */
     private val observerCenter = NSNotificationCenter()
 

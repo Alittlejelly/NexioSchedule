@@ -156,9 +156,6 @@ private class CardBoundsHolder {
     var rect: Rect? = null
 }
 
-// ScheduleTouchState 已抽出迁入 :ui-shared（DayColumn / CourseCard 要放进公开签名）。
-// 本文件与调用方同包名，引用不变。
-
 data class ScheduleGridGeometry(
     val dayBounds: Map<Int, FloatArray>,
     val sectionHeightPx: Float,
@@ -167,23 +164,17 @@ data class ScheduleGridGeometry(
     val eveningSections: Int,
     val showBreakDividers: Boolean,
     /**
-     * 列星期 → 数据（星期, 周次）。
-     * 调课日列显示的是 followWeekday/followWeek 的课，落点、冲突检测、写库都要映射回数据坐标，
-     * 否则「列星期 + 页周」写进去的课在本页任何列都不渲染（空白格「添加」走的就是这套映射）。
+     * 列星期 → 数据（星期, 周次）。调课日列显示的是 followWeekday/followWeek 的课，
+     * 落点/冲突检测/写库必须映射回数据坐标，否则写进去的课在本页任何列都不渲染。
      */
     val columnDataPosition: Map<Int, Pair<Int, Int>> = emptyMap(),
     /** 教学周重组的休课日列：该列永远渲染为空，落进去的课会静默消失，必须拦掉 */
     val blockedColumns: Set<Int> = emptySet(),
     /**
-     * 节次 → 顶部 y（**dp**，列内相对坐标），直接取自 [computeSpecialGridLayout] 的结果。
+     * 节次 → 顶部 y（dp，列内相对坐标），取自 [computeSpecialGridLayout]。
      *
-     * ⚠ 定位必须用它，不能再用「节次高 × 序号 + 分界缝」现算：
-     * 网格里还会插入**特殊块**（早读 / 大课间 / 晚自习…），块会把它下面的节次整体下推，
-     * 而现算公式**漏掉这部分**。结果就是长按浮层 / 吸附落点整体偏上，
-     * 偏移量正好等于该节次上方的特殊块总高（特殊块高约半个卡片时表现为「偏上 50%」）。
-     *
-     * 空节次长按路径一直用的是 `grid.sectionTop`（所以它没问题），
-     * 课程卡长按路径走的是本字段，两条路径由此统一到同一个权威来源。
+     * ⚠ 定位必须用它，不能再用「节次高 × 序号 + 分界缝」现算：特殊块会把下面的节次
+     * 整体下推，现算公式漏掉这部分，长按浮层/吸附落点会整体偏上（偏移量 = 该节次上方特殊块总高）。
      */
     val sectionTopDp: Map<Int, Float> = emptyMap(),
 )
@@ -238,7 +229,6 @@ fun MainScheduleScreen(
     externalSelectedCourse: MutableState<Course?> = mutableStateOf(null),
     externalSelectedCourses: MutableState<List<Course>> = mutableStateOf(emptyList()),
 ) {
-    // 解构外观配置
     val cardBlurRadius = appearance.cardBlurRadius
     val cardAlpha = appearance.cardAlpha
     val cardSurfaceAlpha = appearance.cardSurfaceAlpha
@@ -446,10 +436,8 @@ fun MainScheduleScreen(
     val semesterLastDate = dateForTeachingPosition(totalWeeks, 7)
         ?: semesterStartMonday.plusWeeks((totalWeeks - 1).toLong()).plusDays(6)
     /**
-     * 调休条目 → 该课表下的 (周次, 星期)。
-     *
-     * 库存的是**绝对日期**，这里按当前课表的学期开始时间现算，所以切换课表后
-     * 同一天会算出不同周次，调休列自动改跟随那一周的课（旧版存周次本身，换课表就整体错位）。
+     * 调休条目 → 该课表下的 (周次, 星期)。库存的是绝对日期，这里按当前课表的学期
+     * 开始时间现算，切换课表后同一天会算出不同周次，调休列自动跟随那一周的课。
      */
     val followPositionFor: (HolidayEntry) -> Pair<Int, Int>? = remember(
         semesterStartDate,
@@ -999,9 +987,8 @@ fun MainScheduleScreen(
                     val pageDayRange = remember(weekendDaysByWeek, week) {
                         (1..5).toList() + (weekendDaysByWeek[week] ?: emptySet()).filter { it in 6..7 }
                     }
-                    // 每个可见列**实际显示的星期**：调休日的列画的是被调星期的课
-                    // （周一补班 → 该列显示周日的课），横带子块必须跟着它走，
-                    // 与下面 DayColumn 用的 displayDayForCol 同源，别再拿列下标当星期。
+                    // 每个可见列实际显示的星期（调休列画的是被调星期的课）；横带子块必须
+                    // 跟着它走，与下面 DayColumn 的 displayDayForCol 同源，别再拿列下标当星期。
                     val pageColumnDays = remember(pageDayRange, weekFilteredCourses, page) {
                         pageDayRange.map { col ->
                             weekFilteredCourses[page]?.get(col)?.first ?: col
@@ -1111,9 +1098,8 @@ fun MainScheduleScreen(
                                         onPopupStateChange(true)
                                     }
                                 }
-                            // 教学周重组的休课日列永远渲染为空：往里加/粘的课在课表与今日页都看不见
-                            // 键里带上 dateForTeachingPosition：它自己随重组数据重建，
-                            // 否则改完教学周重组回主页会继续用旧判断（漏拦/误拦）
+                            // 休课日列永远渲染为空：加/粘的课在课表与今日页都看不见。键里带
+                            // dateForTeachingPosition（随重组数据重建），否则改完重组回主页会沿用旧判断
                             val pausedColumn = remember(page, dayOfWeek, dateForTeachingPosition) {
                                 dateForTeachingPosition(week, dayOfWeek) == null
                             }
@@ -1297,9 +1283,8 @@ fun MainScheduleScreen(
                     val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
                     val dividerIsDark = scheduleIsDark
                     val dividerDensity = LocalDensity.current
-                    // ⚠ remember 放外层、with 放内层：with(density){remember{...}} 的双层
-                    // 接收者 lambda 在 commonMain 目标下类型推断失败（Cannot infer R/T），
-                    // 交换嵌套后语义与缓存行为完全等价
+                    // ⚠ remember 放外层、with 放内层：with(density){remember{...}} 的双层接收者
+                    // lambda 在 commonMain 目标下类型推断失败（Cannot infer R/T），交换嵌套语义等价
                     val dividerBlurPx = remember(cardBlurRadius) { with(dividerDensity) { cardBlurRadius.dp.toPx() } }
                     val dividerLensRadiusPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
                     val dividerLensStrengthPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
@@ -1722,7 +1707,6 @@ fun MainScheduleScreen(
     } // CompositionLocalProvider
 }
 
-// 特殊安排的编辑弹窗 / 星期选择器 / 区间合并 已抽到 ui/components/SpecialItemEditor.kt，课表页与时间设置页共用
 @Composable
 private fun CourseDetailSheet(
     showState: MutableState<Boolean>,

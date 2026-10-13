@@ -29,53 +29,17 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * iOS 实现：`NSURLSession`（**零第三方依赖**，不引入 Ktor —— 原因见 [HttpService] KDoc）。
+ * iOS 实现：`NSURLSession`（**零第三方依赖**，不引入 Ktor）。
  *
- * ## 为什么用 delegate 流式读，而不是 completionHandler 一把梭
+ * 走 `NSURLSessionDataDelegate` 流式读而非 completionHandler：契约要求 `maxBytes` **在读取过程中
+ * 生效**（读到超限立即停，读完再检查时 OOM 已发生）。语义对齐 commonMain 的 `readAtMost`：
+ * **只在 total > maxBytes 时才算截断**。每次请求独立建 session、完成后 `finishTasksAndInvalidate()`，
+ * 换来 delegate 状态零共享零锁（回调在 session 私有串行队列上执行）。
  *
- * 契约要求 `maxBytes` **在读取过程中生效**（读到超限立即停，不能读完再检查 ——
- * 那样 OOM 已经发生）。`dataTaskWithRequest(completionHandler:)` 要等**整个响应体
- * 收完**才回调，大响应会先把内存吃满，违背契约。所以这里走
- * `NSURLSessionDataDelegate` 三件套：
- *
- * - `didReceiveResponse` → 先看声明长度（`expectedContentLength`）：
- *   已超限就 `NSURLSessionResponseCancel` —— 一个字节都不收，
- *   **与 Android 实现的「声明长度已超限 → 空字节 + truncated」逐字对齐**。
- * - `didReceiveData` → 边收边计数，超过 `maxBytes` 只保留到上限为止并立即
- *   `task.cancel()`（语义对齐 commonMain 的 `readAtMost`：**只在 total > maxBytes
- *   时才算截断**，恰好等于上限不算）。
- * - `didCompleteWithError` → 统一收口：成功 / 超限截断 / 网络异常，各走各的分支。
- *
- * ## 会话生命周期
- *
- * **每次请求独立创建一个 session，完成后 `finishTasksAndInvalidate()`。**
- * 按 Apple 的指引 session 应当复用，但共享 session 的 delegate 必须维护
- * 「task → 请求状态」的路由表，引入共享可变状态；本 App 的 HTTP 调用频次很低
- * （学校索引 / 脚本 / 公告 / 打点 / WebDAV 备份，量级为每次运行几十次），
- * 换来的是 delegate 状态零共享、零锁 —— 回调在 session 私有的串行队列上执行。
- * 若将来高频调用，可改为按 [HttpTimeouts] 缓存 session + delegate 内按
- * `taskIdentifier` 路由（Android 侧 `clientCache` 就是这个模式）。
- *
- * ## 与 Android（OkHttp）的已知差异
- *
- * | 项 | OkHttp | NSURLSession | 影响 |
- * |---|---|---|---|
- * | connect 超时 | `connectTimeout` 独立配置 | 无独立 API，共用 `timeoutIntervalForRequest` | 连接阶段超时 ≈ readSeconds（iOS 系统限制，无解） |
- * | call 超时 | `callTimeout` | `timeoutIntervalForResource` | 语义近似：整个资源加载的上限 |
- * | Cookie | 默认无持久化 | 默认有 `sharedCookieStorage` → **已显式关闭** | 对齐 OkHttp |
- * | 响应缓存 | 默认无 | 默认有 URLCache → **`cachePolicy = 忽略本地缓存` + `URLCache = null`** | 对齐 OkHttp |
- * | 重定向 | 默认跟随 | 默认跟随 | 一致 |
- * | 异常类型 | IOException | 普通 `Exception`（带 NSError code/description） | 调用方全部 `catch (Exception)`，已核对 32 处 |
- *
- * ## 签名来源（不是猜的）
- *
- * 所有 ObjC 方法签名（协议方法、枚举值、setter 扩展名）来自本机
- * `klib dump-metadata` 导出的 `platform.Foundation`（Kotlin/Native 2.4.10 / ios_arm64）：
- * - 协议接口名带后缀：`NSURLSessionDataDelegateProtocol`（无短名别名）
- * - `NSURLSessionResponseDisposition` 是 `Long`：`Allow = 1L` / `Cancel = 0L`
- * - `setValue` / `setHTTPMethod` / `setHTTPBody` 是 `NSMutableURLRequest` 的**扩展函数**
- *   （调用处需 import，本文件顶部已列出）
- * - `statusCode` / `expectedContentLength` 为 `Long`（`NSInteger`）
+ * ⚠ Kotlin/Native 的 Foundation 绑定不完全（签名取自本机 `klib dump-metadata`）：协议接口名带后缀
+ * `NSURLSessionDataDelegateProtocol`；`NSURLSessionResponseDisposition` 是 `Long`（Allow = 1L / Cancel = 0L）；
+ * `setValue` / `setHTTPMethod` / `setHTTPBody` 是 `NSMutableURLRequest` 的**扩展函数**，调用处必须显式 import；
+ * `statusCode` / `expectedContentLength` 为 `Long`（`NSInteger`）。
  */
 actual fun createHttpService(timeouts: HttpTimeouts): HttpService =
     NsUrlSessionHttpService(timeouts)
@@ -121,14 +85,12 @@ private class NsUrlSessionHttpService(private val timeouts: HttpTimeouts) : Http
         val request = NSMutableURLRequest.requestWithURL(
             URL = nsUrl,
             cachePolicy = NSURLRequestReloadIgnoringLocalCacheData,
-            // request 的超时与会话配置都设 readSeconds —— 二者取谁生效不完全确定，
-            // 都设成同一值即可与 OkHttp 的 readTimeout 对齐
+            // request 与会话配置都设 readSeconds：二者取谁生效不完全确定，同值即可对齐 readTimeout
             timeoutInterval = timeoutSeconds(timeouts.readSeconds),
         )
         request.setHTTPMethod(method)
         headers.forEach { (k, v) -> request.setValue(value = v, forHTTPHeaderField = k) }
-        // Content-Type 单独传参时优先级覆盖 headers —— 与 OkHttp 一致
-        //（OkHttp 的 body MediaType 无条件写入 Content-Type 头，覆盖 builder 设置的值）
+        // Content-Type 单独传参时覆盖 headers（与 OkHttp 一致：MediaType 无条件写入 Content-Type 头）
         if (contentType != null) request.setValue(value = contentType, forHTTPHeaderField = "Content-Type")
         if (body != null) request.setHTTPBody(body.encodeToByteArray().toNSData())
 
@@ -143,9 +105,8 @@ private class NsUrlSessionHttpService(private val timeouts: HttpTimeouts) : Http
             // 必须在 task.resume() 之前赋值：回调可能立刻发生
             delegate.continuation = cont
             task.resume()
-            // 协程被取消（调用方 scope 收掉）→ 中止传输；
-            // didCompleteWithError 会带 NSURLErrorCancelled 回来，
-            // resume 已取消的 continuation 属于安全 no-op（值被丢弃）。
+            // 协程取消 → 中止传输；didCompleteWithError 带 NSURLErrorCancelled 回来，
+            // resume 已取消的 continuation 是安全 no-op（值被丢弃）。
             cont.invokeOnCancellation { task.cancel() }
         }
     }
@@ -154,8 +115,7 @@ private class NsUrlSessionHttpService(private val timeouts: HttpTimeouts) : Http
         val config = NSURLSessionConfiguration.defaultSessionConfiguration
         // 对齐 OkHttp readTimeout：NSData 到达间隔，连接阶段也用它（iOS 无独立 connect 超时）
         config.setTimeoutIntervalForRequest(timeoutSeconds(timeouts.readSeconds))
-        // 对齐 OkHttp callTimeout：整个资源加载的总上限；callSeconds <= 0 表示不设
-        //（NSURLSession 的默认值 7 天，等效于不设，无需显式恢复）
+        // 对齐 OkHttp callTimeout：整个资源加载的总上限；callSeconds <= 0 表示不设（默认 7 天等效不设）
         if (timeouts.callSeconds > 0) {
             config.setTimeoutIntervalForResource(timeoutSeconds(timeouts.callSeconds))
         }
@@ -172,7 +132,9 @@ private class NsUrlSessionHttpService(private val timeouts: HttpTimeouts) : Http
 
 /**
  * 单请求 delegate：状态只被 session 私有串行队列读写（[continuation] 除外，
- * 它在 `task.resume()` 前由调用线程写入，故标 `@Volatile` 保证可见性）。
+ * 它在 `task.resume()` 前由调用线程写入）。
+ * ⚠ [continuation] 必须用限定名 `kotlin.concurrent.Volatile`（见顶部 import）：不限定的
+ * `@Volatile` 依赖 JVM 专有默认导入，在 Kotlin/Native 上 Unresolved 编译不过。
  */
 private class DataTaskDelegate(
     private val maxBytes: Long,
@@ -196,8 +158,7 @@ private class DataTaskDelegate(
         completionHandler: (NSURLSessionResponseDisposition) -> Unit,
     ) {
         statusCode = (didReceiveResponse as? NSHTTPURLResponse)?.statusCode?.toInt() ?: 0
-        // 先看声明长度：明知超限就一个字节都不收（对齐 Android 的
-        //「declared > maxBytes → 空字节 + truncated」分支）
+        // 先看声明长度：明知超限就一个字节都不收（对齐 Android 的「declared > maxBytes」分支）
         if (maxBytes > 0 && didReceiveResponse.expectedContentLength > maxBytes) {
             truncated = true
             cancelledByLimit = true
@@ -217,8 +178,7 @@ private class DataTaskDelegate(
         if (incoming.isEmpty()) return
         if (maxBytes > 0) {
             val remaining = maxBytes - totalSize
-            // 语义对齐 readAtMost：**total > maxBytes 才算截断**，
-            // 恰好等于上限时全部收下、等下一包再判（流若在此结束则不算截断）
+            // 语义对齐 readAtMost：**total > maxBytes 才算截断**（恰好等于上限不算，等下一包再判）
             if (incoming.size.toLong() > remaining) {
                 val keep = remaining.toInt().coerceAtLeast(0)
                 if (keep > 0) {
@@ -252,8 +212,7 @@ private class DataTaskDelegate(
                 cont.resume(HttpResult(statusCode, concatChunks(), truncated = true))
 
             else ->
-                // 网络异常/超时照常抛出、不吞（契约）。若协程已被调用方取消，
-                // resume 落在已取消的 continuation 上会被安全忽略（值丢弃）。
+                // 网络异常/超时照常抛出、不吞（契约）；协程已取消时 resume 会被安全忽略（值丢弃）
                 cont.resumeWithException(
                     Exception(
                         "HTTP 请求失败 [${didCompleteWithError.code}] " +
@@ -274,6 +233,3 @@ private class DataTaskDelegate(
         return out
     }
 }
-// `NSData ⇄ ByteArray` 的两个转换原先是这里的 private 扩展，
-// `NsFileAppFile` 也要用，已抽到同目录的 `FoundationBytes.kt`（internal 顶层扩展，
-// 同包直接可见，调用点一行不用改）。

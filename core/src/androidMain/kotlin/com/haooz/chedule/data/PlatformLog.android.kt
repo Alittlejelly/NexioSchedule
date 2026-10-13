@@ -5,8 +5,7 @@ import android.util.Log
 /**
  * Android 实现：原样转发到 Logcat。
  *
- * 刻意**不**加任何过滤或级别映射 —— 迁移前 166 处调用看到的就是 Logcat，
- * 现在必须看到一模一样的级别，否则线上排查会失效（尤其是 `Log.e` 的堆栈）。
+ * ⚠ 刻意不加过滤或级别映射：加映射会让同一行日志在两个平台长得不一样。
  */
 actual fun platformLog(level: Int, tag: String, message: String, throwable: Throwable?) {
     when (level) {

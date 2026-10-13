@@ -83,16 +83,8 @@ import kotlin.math.roundToInt
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
 
-/**
- * 平板左侧导航全局状态：已抽到 :ui-shared 的 TabletNavSideState.kt（同包名，
- * BackToNowFloatingButton 迁移后需要与它同模块）。本文件只保留侧栏 UI。
- */
-
 /** 顶栏糊层 draw 阶段跟踪侧栏伸缩用的稳定引用（勿在组合期调用） */
 val tabletNavExpandSampleTrack: () -> Float = { TabletNavSideState.expandProgress.floatValue }
-
-// TabletNavSideWidthFraction / TabletNavIconRailWidth / TabletNavSideInset /
-// tabletNavRailStartPadding 已迁入 :ui-shared 的 TabletNavPadding.kt（同包名，引用不变）。
 
 /** 图标中心相对遮罩左缘的固定位置（折叠态即 84/2，面板内居中） */
 private val TabletNavIconCenterX = 42.dp
@@ -106,17 +98,13 @@ private val TabletNavMaskPadding = 8.dp
 /** 遮罩底缘间距，保持不变 */
 private val TabletNavBottomInset = 12.dp
 
-/**
- * 条目内图标额外左偏：遮罩内边距 8 + 此值 20 + 图标半宽 14 = 图标中心 42（相对遮罩左缘）。
- * 折叠时图标在 84 宽轨内居中；展开时中线相对遮罩不动。
- */
+/** 条目内图标额外左偏：与遮罩内边距、图标半宽共同把图标中心钉在 [TabletNavIconCenterX] */
 private val TabletNavIconAlignStart =
     TabletNavIconCenterX - TabletNavMaskPadding - TabletNavIconSize / 2f
 
 /**
- * 条目内选中遮罩的四周内缩。
- * 滑选高光必须用同一套值（见 [TabletNavSideItem] 的 dropdownPanelEntry），
- * 否则一个满幅、一个内缩，两个遮罩叠一起对不齐。
+ * 条目内选中遮罩的四周内缩；滑选高光必须用同一套值（见 [TabletNavSideItem] 的
+ * dropdownPanelEntry），否则两个遮罩一满幅一内缩，叠一起对不齐。
  */
 private val TabletNavItemMaskHPadding = 4.dp
 private val TabletNavItemMaskVPadding = 2.dp
@@ -154,8 +142,6 @@ fun Density.tabletNavSideInsetPx(widthDp: Int, screenHeightDp: Int = widthDp): F
         TabletNavSideState.expandProgress.floatValue,
     ).toPx()
 }
-
-/** 内容区左侧避让（tabletNavRailStartPadding）已迁入 :ui-shared 的 TabletNavPadding.kt。 */
 
 /** 侧栏玻璃面板宽度随展开进度在 layout 期插值，不进组合 */
 internal fun Modifier.tabletNavPanelWidth(
@@ -200,24 +186,9 @@ private class TabletNavPanelWidthElement(
 }
 
 /**
- * 设置页叠层标题槽（tabletNavChromeTitleSlot + TabletNavChromeTitleSlotElement）已迁
- * `:ui-shared` 的 components/TabletNavChromeTitleSlot.kt —— TabletSettingsScreen 迁入
- * commonMain 后需要它，且它只依赖跨平台符号。本文件保留 Android 专有的
- * TabletNavSideBar / LiquidNavigationRail / startActivity* 等。
- *
- * 2026-10-11 本文件整体迁入 `:ui-shared`（第二十七批）—— 原注释说「TabletNavSideBar 是
- * Android 专有（Activity/WindowManager）」，实际只卡在一处：遮罩圆角要从 `Activity.window`
- * 取。改成宿主注入 `screenCornerRadiusPx` 之后整份 UI 都跨平台了。
- * 同时删掉三个 Android 专有导航辅助（`startActivityNoNavAnim` / `startActivityTabletNavAware` /
- * `navigateMainTabFromSecondary`）—— 单 Activity 路由改造后**全仓已零调用**。
- */
-
-/**
  * 整块玻璃遮罩圆角：屏幕圆角 − 左缘间距；取不到系统圆角时退回 28.dp。
  *
- * @param screenCornerRadiusPx 屏幕圆角（**px**）；0 = 取不到 → 按 28.dp 基准。
- *   原实现自己从 `Activity.window` 取（`ApiCompat.windowCornerRadius`），那是 Android 专有；
- *   现在由宿主注入 —— MainActivity 的 `screenCornerRadius` 就是这个值（同一份 px）。
+ * @param screenCornerRadiusPx 屏幕圆角（px）；0 = 取不到 → 按 28.dp 基准。
  */
 @Composable
 private fun rememberTabletNavMaskCorner(screenCornerRadiusPx: Float): Dp {
@@ -228,9 +199,8 @@ private fun rememberTabletNavMaskCorner(screenCornerRadiusPx: Float): Dp {
 }
 
 /**
- * pad 侧边导航：展开/折叠是同一套布局的连续变形。
- * 遮罩左缘间距与内边距恒定，图标因此始终落在同一条竖直线上；
- * 折叠只收窄遮罩宽度并淡出文字，不整体平移。
+ * pad 侧边导航：展开/折叠是同一套布局的连续变形 —— 遮罩左缘间距与内边距恒定，
+ * 折叠只收窄宽度并淡出文字，不整体平移。
  * 宽度/文字透明度只在 layout/draw 读进度，不进组合。
  */
 @Composable
@@ -267,9 +237,8 @@ fun TabletNavSideBar(
     val interactiveHighlight = remember(animationScope) {
         InteractiveHighlight(
             animationScope = animationScope,
-            // 倍率随展开进度反向补偿：展开 ×0.4 / 收起 ×0.7 —— 两者乘出的绝对半径
-            // 接近（minDimension 变小、倍率变大），光晕视觉大小不随伸缩跳变。
-            // 读的是 draw 阶段的进度，不会因此触发重组。
+            // 倍率随展开进度反向补偿（展开 ×0.4 / 收起 ×0.7），使绝对半径接近，
+            // 光晕大小不随伸缩跳变；读的是 draw 阶段进度，不触发重组。
             radiusScale = {
                 0.7f - 0.3f * TabletNavSideState.expandProgress.floatValue.coerceIn(0f, 1f)
             },
@@ -388,9 +357,8 @@ fun TabletNavSideBar(
                 onClick = { TabletNavSideState.expanded = !TabletNavSideState.expanded },
             )
 
-            // 页签之间更紧；与上方「导航」的间距仍由外层 spacedBy 控制。
-            // 滑动点选挂这一层：正好只覆盖页签，「导航」折叠按钮与底部「今」
-            // 都在手势节点之外，各自 clickable 不会被 down.consume() 波及。
+            // 滑动点选挂这一层：正好只覆盖页签，「导航」折叠按钮与底部「今」在
+            // 手势节点之外，各自 clickable 不会被 down.consume() 波及。
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -535,12 +503,8 @@ fun TabletNavSideBar(
 }
 
 /**
- * 侧栏条目：展开/折叠共用。
- * 图标与文字始终同黑白主色；[showLabel]=false 时不显示右侧文字。
- *
- * 选中遮罩只有一份：由 dropdownPanelEntry 画，跟手态与静止态共用它。
- * 早期版本另有一个直接绘制的静态遮罩，两层同形同位叠着纯属浪费，
- * 而且一个淡入淡出、一个即时切换，视觉上会打架。
+ * 侧栏条目：展开/折叠共用。图标与文字同黑白主色，[showLabel]=false 时不显示文字。
+ * 选中遮罩只有一份（由 dropdownPanelEntry 画，跟手态与静止态共用）。
  */
 @Composable
 private fun TabletNavSideItem(
@@ -556,10 +520,8 @@ private fun TabletNavSideItem(
     selectEnabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    // 滑动点选：登记纵向区间 + 命中遮罩，与弹窗菜单共用 DropdownPanelDragSelect。
-    // 条目自己的 clickable 保留：折叠态手势层不消费（fraction<0.98 直接放行），
-    // 上移到「我的」下方的那颗数据项仍要点得到；展开态 down 被手势层消费，
-    // clickable 的 awaitFirstDown(requireUnconsumed=true) 起不来，不会双重触发。
+    // 登记纵向区间 + 命中遮罩，与弹窗菜单共用 DropdownPanelDragSelect。
+    // clickable 保留：折叠态手势层放行故仍可点；展开态 down 已被消费，不会双重触发。
     val selectModifier = if (selectState != null) {
         Modifier.dropdownPanelEntry(
             enabled = selectEnabled,
@@ -623,10 +585,6 @@ private fun TabletNavSideItem(
 /**
  * pad 主导航：只保留侧边态（展开=图标+文字，折叠=仅图标），直接转调 [TabletNavSideBar]。
  * 折叠按钮为 Miuix Sidebar 图标。
- *
- * 2026-10-10 从 LiquidBottomTabs.kt（已迁 :ui-shared）移回本文件 ——
- * 它转调的 TabletNavSideBar 是 Android 专有（Activity/WindowManager），不能进 commonMain。
- * 同包名，调用方（MainActivity）引用不变。
  */
 @Composable
 fun LiquidNavigationRail(

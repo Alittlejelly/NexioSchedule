@@ -163,9 +163,9 @@ internal fun DialogContentLayout(
     }
 
     popupHost(internalVisible.value) {
-        // 预测性返回：commonMain 走 :miuix 的跨平台封装 —— androidx.navigationevent 是
-        // Android-only，CMP 的 iOS/Desktop artifact 里没有。handler 与进度读取必须来自
-        // **同一个 backState**（拆成两处各自 remember 会拿不到手势进度，且编译无报错）。
+        // 预测性返回走 :miuix 跨平台封装（androidx.navigationevent 仅 Android artifact）。
+        // ⚠ handler 与进度读取必须来自**同一个 backState**：拆成两处各自 remember
+        // 会拿不到手势进度，且编译无报错。
         val backState = rememberNavigationBack()
         backState.handler(
             enabled = show,
@@ -178,9 +178,8 @@ internal fun DialogContentLayout(
         LaunchedEffect(Unit) {
             // 不响应预测性返回手势时，连手势进度都不订阅，避免弹窗被拖动
             if (!enablePredictiveBackGesture) return@LaunchedEffect
-            // backProgress() 已内含「转场进行中且方向为后退」判定（与迁移前的
-            // transitionState is InProgress && direction == TRANSITIONING_BACK 逐字等价），
-            // 非手势期间为 null —— 保持静止。
+            // backProgress() 已内含「转场进行中且方向为后退」判定，非手势期间为 null —— 保持静止。
+            // ⚠ 判定与迁移前逐字等价，勿改。
             snapshotFlow { backState.backProgress() }
                 .collect { progress ->
                     if (progress != null) {

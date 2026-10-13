@@ -115,8 +115,7 @@ import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
- * 平板设置页目的地：原一级 + 原二级入口全部平铺在左栏；
- * 右栏直接渲染内容（原三级页变为右栏二级内容）。全程不跳 Activity。
+ * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。
  * 仅 pad 使用此分组（与手机设置页分类不同）。
  */
 enum class TabletSettingsDest(val title: String, val group: String) {
@@ -147,9 +146,8 @@ object TabletSettingsUiState {
 }
 
 /**
- * 画在 MainActivity 层的设置页固定标题 + 分界线。
- * 标题用顶栏折叠态样式（19sp / Medium），垂直位置与 CollapsibleTopAppBar 折叠标题一致：
- * 状态栏下方 CollapsedHeight 区域内垂直居中；水平在左右两栏各自居中。
+ * 画在 MainActivity 层的设置页固定标题 + 分界线。标题用顶栏折叠态样式（19sp / Medium），
+ * 垂直位置与 CollapsibleTopAppBar 折叠标题一致，水平在左右两栏各自居中。
  */
 @Composable
 fun TabletSettingsChromeOverlay() {
@@ -227,8 +225,8 @@ fun TabletSettingsChromeOverlay() {
 }
 
 /**
- * 当前窗口顶部系统内边距。对齐 CollapsibleTopAppBar：用 systemBars 仅取顶部，
- * 分屏/自由窗口下 statusBars 顶部为 0，用 systemBars 才不会让内容贴顶。
+ * 当前窗口顶部系统内边距。用 systemBars 仅取顶部：分屏/自由窗口下 statusBars
+ * 顶部为 0，用 systemBars 才不会让内容贴顶。
  */
 @Composable
 private fun mainWindowTopInset(): Dp =
@@ -241,10 +239,8 @@ private val TabletPaneBlurHeight: Dp
     }
 
 /**
- * 本栏顶部表面色遮罩 / 右上角按钮共用的 alpha。
- * 判定与手机 [CollapsibleTopAppBar] 的 showButtonShadow 完全一致：
- * - contentOffset（手机 SharedScrollBehavior 约定，向下滚为负）超过 10dp
- * - 或未滚动时的底部越界（offset < 0）
+ * 本栏顶部表面色遮罩 / 右上角按钮共用的 alpha。判定与手机 [CollapsibleTopAppBar] 的
+ * showButtonShadow 一致：contentOffset（向下滚为负）超过 10dp，或未滚动时底部越界。
  * 不吸收顶部橡皮筋；回弹只清越界，不把已滚动量抹掉。
  */
 @Composable
@@ -316,11 +312,9 @@ private fun TabletPaneTopChrome(
 }
 
 /**
- * 右栏滚动观察：直接复用手机 [SharedScrollBehavior] 的 contentOffset 累计
- * （onPostScroll 无门闩 `contentOffset += consumed.y`，甩动/拖动同一路径）。
- *
- * 外面包一层代理：越界期间把 consumed.y 置零再交给委托，避免 OverScroll
- * 把 available 回灌进 contentOffset（BlurBottomSheet 同款）。
+ * 右栏滚动观察：复用手机 [SharedScrollBehavior] 的 contentOffset 累计。
+ * 外包一层代理：越界期间把 consumed.y 置零再交给委托，避免 OverScroll 把
+ * available 回灌进 contentOffset。
  */
 @Composable
 private fun rememberPaneScrollTracker(
@@ -369,10 +363,7 @@ fun TabletSettingsScreen(
     isShiftMode: Boolean,
     onExitShiftMode: () -> Unit,
     onEnterShiftMode: () -> Unit = {},
-    /**
-     * 是否显示「排班模式」入口（iOS 不支持 → false，五处入口整个不渲染）。
-     * 语义与手机版 [SettingsScreen] 的同名参数一致。
-     */
+    /** 是否显示「排班模式」入口（iOS 不支持 → false，入口整个不渲染） */
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     /** 平台专有设置面板（下述 8 个 dest）由宿主渲染；null 显示占位 */
     androidPane: (@Composable (TabletSettingsDest) -> Unit)? = null,
@@ -744,9 +735,8 @@ fun TabletSettingsScreen(
                             }
                         }
 
-                        // 底部操作按钮：与手机 Activity 层同款。玻璃按钮必须采样右栏本地 backdrop（兄弟节点，
-                        // 记录内容不含按钮本身）；不能采样全局 liquidGlassBackdrop——按钮就在全局玻璃层内，
-                        // 采样自身会触发循环采样。弹窗在根部 PopupHost 渲染，仍可正常采样全局层。
+                        // 底部操作按钮：玻璃按钮必须采样右栏本地 backdrop（兄弟节点，记录内容不含按钮），
+                        // 不能采样全局 liquidGlassBackdrop——按钮就在全局玻璃层内，采样自身会循环采样。
                         val glassBackdrop = liquidGlassBackdrop
                         if (glassBackdrop != null) when (selected) {
                             TabletSettingsDest.Reminder -> {
@@ -854,10 +844,8 @@ fun TabletSettingsScreen(
                         )
                     }
 
-                    // 右上角操作按钮：节假日「更新」、WebDAV「测试连接」。
-                    // 与底部按钮同理采样右栏本地 backdrop（兄弟节点，记录内容不含按钮）。
-                    // 作为 TabletPaneTopChrome 后的兄弟绘制，落在顶部糊层之上。
-                    // 出现/消失只动玻璃材质（backdropAlpha/shadowAlpha），图标常驻。
+                    // 右上角操作按钮：同样采样右栏本地 backdrop，作为 TabletPaneTopChrome 后的
+                    // 兄弟绘制落在顶部糊层之上；出现/消失只动玻璃材质，图标常驻。
                     if (liquidGlassBackdrop != null) when (selected) {
                         TabletSettingsDest.Holiday -> {
                             Box(
@@ -1067,12 +1055,12 @@ fun TabletSettingsScreen(
     }
 }
 
-/** 左栏单独卡片：课表导出（从「导入与导出」分类拆出） */
+/** 左栏单独卡片：课表导出 */
 private val StandaloneDests = listOf(
     TabletSettingsDest.ScheduleExport,
 )
 
-/** 左栏「其他」分类下独立卡片：关于应用 / 捐赠支持 / 交流与反馈（不新建分类） */
+/** 左栏「其他」分类下独立卡片：关于应用 / 捐赠支持 / 交流与反馈 */
 private val BottomMoreDests = listOf(
     TabletSettingsDest.About,
     TabletSettingsDest.Appreciate,
@@ -1092,11 +1080,6 @@ private fun TabletLeftEntry(
         onClick = onSelect,
     )
 }
-
-// `parseDate` / `getDaysInMonth` 的私有副本已删除（2026-10-11 第二十四批）：
-// 它们原本是「SettingsScreen 还在 :androidApp、两模块互不可见」时的权宜之计，
-// 现在两个文件同属 :ui-shared 同一个包，直接用 SettingsScreen.kt 里那份
-// （同签名重复声明会报 `Conflicting overloads`）。
 
 /** 右栏：学期与周次 — 与手机设置页同等可编辑（日期/周数/新学期） */
 @Composable
@@ -1526,7 +1509,7 @@ private fun TabletSemesterPane(
     }
 }
 
-/** 右栏：节假日（状态由 HolidayManager 维护，不启 Activity）。顶部「更新」联网拉取对齐手机 Activity。 */
+/** 右栏：节假日（状态由 HolidayManager 维护）。顶部「更新」联网拉取。 */
 @Composable
 private fun TabletHolidayPane(
     scrollBehavior: SharedScrollBehavior?,
@@ -1588,7 +1571,6 @@ private fun TabletHolidayPane(
         },
         reload = { entries = HolidayManager.load(year) },
         onTeachingWeekReorganizationsChanged = onTeachingWeekReorganizationsChanged,
-        // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
         onHolidayDataChanged = {
             onHolidayDataChanged()
         },

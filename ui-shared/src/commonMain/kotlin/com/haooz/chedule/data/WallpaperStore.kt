@@ -9,9 +9,8 @@ import com.haooz.chedule.data.AppFiles
  * 壁纸的后端能力 —— 平台实现方需要提供的四件事。
  *
  * 走接口 + 启动注入而不是 expect/actual：Android 实现（`ScheduleAppearance`）在
- * `:androidApp`，`:ui-shared` 反向依赖不到它，写 actual 就得在共享层重写一遍解码。
- * Android 由 `NexioApplication.onCreate()` 注入 `AndroidWallpaperBackend`；
- * iOS 默认用 [IosWallpaperBackend]。
+ * `:androidApp`，`:ui-shared` 反向依赖不到它。Android 由 `NexioApplication.onCreate()`
+ * 注入 `AndroidWallpaperBackend`，iOS 默认用 [IosWallpaperBackend]。
  */
 interface WallpaperBackend {
     /** 解码壁纸字节为 [ImageBitmap]；失败返回 null（不抛）。 */
@@ -31,8 +30,7 @@ interface WallpaperBackend {
  * 壁纸存储。
  *
  * ⚠ 存储路径是数据兼容契约：文件名与落盘根目录（[AppFiles.root]）逐字不能改，
- * 改了等于存量用户的壁纸静默丢失。后缀 `.webp` 只是名字 —— 解码都按内容识别格式，
- * 不看扩展名。
+ * 改了等于存量用户的壁纸静默丢失。后缀 `.webp` 只是名字 —— 解码按内容识别格式，不看扩展名。
  */
 object WallpaperStore {
 
@@ -47,13 +45,12 @@ object WallpaperStore {
 
     /**
      * 内存缓存。Android 侧真正的主缓存是 `ScheduleAppearance` 的 `LruCache`，
-     * 这里只是「避免同一次会话里重复读盘」的兜底，单例语义不做 LRU ——
-     * 所以改壁纸必须两边都清。
+     * 这里只是「避免同一次会话重复读盘」的兜底 —— 所以改壁纸必须两边都清。
      */
     private var cached: ImageBitmap? = null
 
-    // 变换存在这里而不是 Activity 的 companion：横竖屏切换、进程重建后
-    // 都要靠它把壁纸摆回用户上次调的位置，而它是纯数据，没有平台成分。
+    // 变换存这里而不是 Activity 的 companion：横竖屏切换、进程重建后都要靠它把壁纸
+    // 摆回用户上次调的位置，而它是纯数据、没有平台成分。
 
     /** 重映射到当前屏幕后的壁纸 offset（px）。与 [transformScale] 成对。 */
     var wallpaperOffset: Offset = Offset.Zero
@@ -173,7 +170,7 @@ object WallpaperStore {
 
     /**
      * 16×16 网格**感知加权平均亮度**（0.299R + 0.587G + 0.114B），阈值 128。
-     * 与 Android 侧一致 —— 阈值改了会让「跟随壁纸」的主题在临界图上翻转。
+     * ⚠ 与 Android 侧一致 —— 阈值改了会让「跟随壁纸」的主题在临界图上翻转。
      *
      * @return null = 无壁纸或尺寸非法（调用方按「未测光」处理）
      */

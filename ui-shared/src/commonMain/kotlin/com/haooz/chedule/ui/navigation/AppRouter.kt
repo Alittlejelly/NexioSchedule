@@ -8,49 +8,30 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 
-
-
 /**
- * 供 `:app` 深处的 Composable（如 `SettingsScreen`）发起路由跳转，**不经过 Activity 引用**。
+ * 供深处的 Composable（如 `SettingsScreen`）发起路由跳转，**不经过 Activity 引用**。
  *
- * 在 `MainActivity.setContent` 的最外层 provide，任何宿主内容里的页面都能读到。
- * ⚠ 只在主线程（组合）里用，不加锁。
+ * 在 `MainActivity.setContent` 的最外层 provide。⚠ 只在主线程（组合）里用，不加锁。
  */
 val LocalAppRouter = staticCompositionLocalOf<AppRouter> {
     error("LocalAppRouter 未提供：请在 MainActivity.setContent 最外层 CompositionLocalProvider")
 }
 
-
 /** 最近一次导航的方向，供转场动画判方向。 */
 enum class NavDirection { Push, Pop }
+
 /**
- * 子页叠加路由器。
- *
- * ## 「叠加」而不是「替换」—— 这是本次设计里最重要的一个决定
- *
- * 主界面（`CourseScheduleApp`）**永远保持组合**，不参与路由的 save/restore。
- * 子页（关于 / 更新日志 / …）以叠加层的方式压在主界面**之上**；
- * **栈内全部子页整栈常驻组合**（2026-10-10 起），出栈时组合才销毁
- * （saveable 状态由 SaveableStateHolder 继续托管，见 AppNavHost）。
+ * 子页叠加路由器：主界面（`CourseScheduleApp`）**永远保持组合**、不参与路由的
+ * save/restore，子页以叠加层压在其上；**栈内全部子页整栈常驻**，出栈时组合才销毁
+ *（saveable 状态由 `SaveableStateHolder` 托管，见 [AppNavHost]）。
  * 静止时底层页暂停绘制 —— 等价 Activity back stack：实例全活着，stop 的不画。
  *
- * 这么做的原因：拆 Activity 时代跳到子页，主 Activity 只是 **stop、没有销毁**，
- * 它的**全部组合状态**（pager 位置、壁纸映射、非 saveable 的临时状态）都原样保留。
- * 若把主界面也塞进 `AnimatedContent` + `SaveableStateHolder`，
- * `rememberSaveable` 能救回来，但 `remember { mutableStateOf }` 之类救不回来
- * —— `CourseScheduleApp` 里有大量这类状态，丢了就是「切到设置再回来 pager 位置变了」。
+ * ⚠ 主界面不能塞进 `AnimatedContent` + `SaveableStateHolder`：`rememberSaveable` 救得回来，
+ * `remember { mutableStateOf }` 救不回来 —— `CourseScheduleApp` 里有大量这类状态，
+ * 丢了就是「切到设置再回来 pager 位置变了」。
  *
- * 代价：主界面在子页打开期间**持续组合**（没有被回收）。可接受 —— 原来多个
- * Activity 共存的方案里主 Activity 也只是 stop 而不是 destroy。
- *
- * ## 生命周期
- *
- * 通过 [rememberAppRouter] 创建，用 `rememberSaveable` 保存**当前栈**，
- * 配置变更/进程被杀后重建都能回到原来的页面。
- *
- * ## 并发
- *
- * 只在主线程（Compose 组合）里改，与 Activity 的 `OnBackPressedDispatcher` 同线程。
+ * 通过 [rememberAppRouter] 创建，用 `rememberSaveable` 保存**当前栈**，配置变更/进程被杀
+ * 后重建都能回到原来的页面。只在主线程（Compose 组合）里改。
  */
 @Stable
 class AppRouter {
@@ -70,7 +51,7 @@ class AppRouter {
 
     /**
      * 最近一次被 pop 出去的路由：已不在栈里，但退出转场还要把它画完 ——
-     * `AppNavHost` 靠它在动画期间继续渲染这一层（此时 `current` 已变成它下面那层）。
+     * [AppNavHost] 靠它在动画期间继续渲染这一层。
      */
     var lastPopped: AppRoute? = null
         private set
@@ -81,13 +62,11 @@ class AppRouter {
     /**
      * 当前路由栈的**只读视图**（下标 0 = 最深的子页，末位 = 栈顶）。
      *
-     * 供 [AppNavHost] 整栈常驻渲染：栈内每一层都保持组合（像 Activity back stack
-     * 实例全活着），静止时暂停绘制（见 AppNavHost 的绘制三档策略）。
-     * 直接改这个 list 是不允许的 —— 走 [navigate] / [popBack]。
+     * 供 [AppNavHost] 整栈常驻渲染。直接改这个 list 是不允许的 —— 走 [navigate] / [popBack]。
      */
     val routes: List<AppRoute> get() = stack
 
-    /** 入栈。同一个路由重复入栈是允许的（对应原来重复 startActivity）。 */
+    /** 入栈。同一个路由重复入栈是允许的。 */
     fun navigate(route: AppRoute) {
         stack.add(route)
         lastDirection = NavDirection.Push
@@ -95,7 +74,7 @@ class AppRouter {
 
     /**
      * 出栈。返回 false 表示栈已经空了 —— 此时返回键应交给 Android 宿主
-     * （MainActivity 的预测性返回 /「退出即隐藏后台」）。
+     *（MainActivity 的预测性返回 /「退出即隐藏后台」）。
      */
     fun popBack(): Boolean {
         if (stack.isEmpty()) return false
@@ -111,7 +90,6 @@ class AppRouter {
  * 创建并记住一个空的叠加路由器。
  *
  * ⚠ 栈**从空开始**：主界面不是路由，是常驻底座。
- * 只有 `navigate(AppRoute.X)` 之后栈才非空、`hasOverlay` 才为 true。
  */
 @Composable
 fun rememberAppRouter(): AppRouter {

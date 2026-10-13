@@ -136,39 +136,20 @@ import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * 路由宿主的**跨平台**部分。
+ * 路由宿主的**跨平台**部分：路由跳转、状态接线、Updater 订阅，平台能力一律参数注入。
  *
- * ⚠ 本文件**不能**改名为 `AppRouteContent.kt`（曾导致线上事故）
- *
- * `:androidApp` 有一个 `com/haooz/chedule/ui/navigation/AppRouteContent.kt`，
- * 宿主装配（`AppRouteContent` 主函数 + `Android*` 包装）在里面。本文件若与它
- * **同名**，Kotlin 会给两边生成同一个 facade 类 `AppRouteContentKt`：
- * - **编译期**：两个源文件同 FQN，编译器合并看待 → 一片绿，什么都不报
- * - **运行期**：D8/R8 打 dex 时两个 `AppRouteContentKt.class` 同名冲突，只留一个。
- *   留下的是 app 那个（里面只有 `AppRouteContent`），于是
- *   `AiImportRoute` / `PreferenceSettingsRoute` / `EducationalImportRoute` 等
- *   全部 `NoSuchMethodError` —— **点哪页哪页闪退**，且 Android/iOS 都跑不掉
- *
- * 编译器一声不响，比「import 指错」那类坑更隐蔽 —— 同包同名连 import 都不用写。
- *
- * ⇒ **纪律**：往 `:ui-shared` 加文件前，先查 `:androidApp` 同包下有没有同名 `.kt`。
- *
- * Android 侧之所以还留一份：宿主装配永远有两半 ——
- * - **跨平台的一半**（在这里）：路由跳转、状态接线、Updater 订阅 —— iOS / 桌面照抄即用
- * - **平台专有的一半**（`:androidApp` 的 `Android*Route` 包装）：`Context` / `Activity` /
- *   权限 / 应用图标 —— 通过**参数注入**进来，本文件一行平台代码都不碰
- *
- * ⚠ 命名纪律：Android 侧的同名包装一律加 `Android` 前缀（与既有 `AndroidSettingsScreen`
- * / `AndroidWebHost` 同款），否则跨模块同名同包，排查时会分不清调的是哪一份。
+ * ⚠ 本文件**不能**改名为 `AppRouteContent.kt`：`:androidApp` 同包下已有一个同名文件，
+ * 两边会生成同一个 facade 类 `AppRouteContentKt` —— 编译期静默通过，D8/R8 打 dex 时
+ * 同名 class 冲突只留一个，本文件的路由全部 `NoSuchMethodError`，Android/iOS 都闪退。
+ * ⇒ 往 `:ui-shared` 加文件前先查 `:androidApp` 同包有无同名 `.kt`；Android 侧同名包装
+ * 一律加 `Android` 前缀（如 `AndroidWebHost`）。
  */
 
 /**
  * 教务导入路由。
  *
- * @param webHostFactory 网页宿主工厂：Android 传 `AndroidWebHost`，iOS 传将来的
- *   `IosWebHost`（WKWebView）。**这是本路由唯一必须注入的平台能力**。
- * @param isInFreeformWindow 自由窗口判定：Android 读 `Activity.isInMultiWindowMode`，
- *   桌面/iOS 传 false（那两边没有自由窗口概念）。
+ * @param webHostFactory 网页宿主工厂：Android 传 `AndroidWebHost`，iOS 传 `IosWebHost`（WKWebView）；本路由唯一必须注入的平台能力。
+ * @param isInFreeformWindow Android 读 `Activity.isInMultiWindowMode`；桌面/iOS 没有自由窗口概念，传 false。
  */
 @Composable
 fun EducationalImportRoute(
@@ -192,11 +173,9 @@ fun EducationalImportRoute(
 }
 
 /**
- * 关于页路由。
+ * 关于页路由。版本号 / 应用名 / 应用图标 / 退出应用四个平台值全部参数注入。
  *
- * 四个「只能由平台给」的值全部走参数：版本号、应用名、裁好边的应用图标、退出应用。
- * Android 从 `packageManager` / `Activity.finishAffinity()` 取，iOS 从 `NSBundle` 取，
- * 桌面给常量 —— 本路由不关心来源。
+ * Android 从 `packageManager` / `Activity.finishAffinity()` 取，iOS 从 `NSBundle` 取，桌面给常量。
  */
 @Composable
 fun AboutRoute(
@@ -220,8 +199,7 @@ fun AboutRoute(
 }
 
 // ── 纯文档壳路由：DocumentPageScaffold + 单个 Screen，零平台触点 ──
-// 这五个的形状完全一样（标题 + 返回 + 正文），Android 侧同名 `Android*` 包装都不需要，
-// `:androidApp` 的 AppRouteContent 直接调这里。
+// 五个形状完全一样（标题 + 返回 + 正文），Android 侧不需要 `Android*` 包装，`:androidApp` 直接调这里。
 
 /** 更新日志路由。 */
 @Composable
@@ -263,14 +241,13 @@ fun AppreciateAuthorRoute(router: AppRouter) {
     }
 }
 
-// ── 带能力注入的文档壳路由（第三十四批）：壳在 commonMain，平台能力走参数 ──
+// ── 带能力注入的文档壳路由：壳在 commonMain，平台能力走参数 ──
 
 /**
- * 应用偏好设置路由。
+ * 应用偏好设置路由。四个平台能力全部参数注入：定位权限检查 / 天气缓存清空 /
+ * 最近任务卡片隐藏 / 主题切换后的系统栏刷新。
  *
- * 四个平台能力全部参数注入：定位权限检查 / 天气缓存清空 / 最近任务卡片隐藏 /
- * 主题切换后的系统栏刷新。Android 从 `ContextCompat` / `MainActivity` 取，
- * 桌面/iOS 用默认值（前三项空/false，后一项无系统栏概念）。
+ * Android 从 `ContextCompat` / `MainActivity` 取；桌面/iOS 用默认值（前三项空/false，后一项无系统栏概念）。
  */
 @Composable
 fun PreferenceSettingsRoute(
@@ -284,7 +261,7 @@ fun PreferenceSettingsRoute(
         title = "应用偏好设置",
         onBack = { router.popBack() },
     ) { scrollBehavior, backdrop ->
-        // 偏好设置页可能改主题 → 系统栏要跟着刷新（原来在 Activity 的 setContent 里）
+        // 偏好设置页可能改主题 → 系统栏要跟着刷新
         val isDark = isAppDarkTheme()
         LaunchedEffect(isDark) { onThemeDarkChanged(isDark) }
         PreferenceSettingsScreen(
@@ -300,8 +277,7 @@ fun PreferenceSettingsRoute(
 /**
  * 更新设置路由。
  *
- * @param updateController 更新能力（检查/下载/APK 安装）：Android 注入
- *   `AndroidUpdateController(context)`；桌面/iOS 用默认 [NoopUpdateController]。
+ * @param updateController Android 注入 `AndroidUpdateController(context)`（检查/下载/APK 安装）；桌面/iOS 用默认 [NoopUpdateController]。
  */
 @Composable
 fun UpdateSettingsRoute(
@@ -323,8 +299,7 @@ fun UpdateSettingsRoute(
 /**
  * 本地备份路由。
  *
- * @param backupFileController 备份文件能力（SAF 选文件 + 目录扫描读写）：Android 注入
- *   `AndroidBackupFileController(context)`；桌面/iOS 用默认 [NoopBackupFileController]。
+ * @param backupFileController Android 注入 `AndroidBackupFileController(context)`（SAF 选文件 + 目录扫描读写）；桌面/iOS 用默认 [NoopBackupFileController]。
  * @param onHolidayDataChanged 全量恢复成功后的平台副作用（重排提醒等），Android 宿主注入。
  */
 @Composable
@@ -349,8 +324,7 @@ fun LocalBackupRoute(
 /**
  * AI 文本导入路由。
  *
- * @param onCopyToClipboard 复制提示词到系统剪切板：Android 用 `ClipboardManager`，
- *   iOS 用 `UIPasteboard`，桌面用 `Toolkit`。默认空实现。
+ * @param onCopyToClipboard 复制提示词到系统剪切板：Android 用 `ClipboardManager`，iOS 用 `UIPasteboard`，桌面用 `Toolkit`；默认空实现。
  */
 @Composable
 fun AiImportRoute(
@@ -371,14 +345,10 @@ fun AiImportRoute(
 }
 
 /**
- * 节假日与调休路由（第三十五批）。
+ * 节假日与调休路由。网络拉取统一走 `:core` 的 [createHttpService]（iOS 是 NSURLSession，
+ * 桌面是 OkHttp），协程调度用 [ioDispatcher]。
  *
- * 迁移前网络拉取走 `HttpURLConnection` + `Dispatchers.IO/Main`（Android 专有）；
- * 现在统一走 `:core` 的 [createHttpService]（iOS 是 NSURLSession，桌面是 OkHttp），
- * 协程调度用 [ioDispatcher] —— 路由本体已完全跨平台。
- *
- * @param onHolidayDataChanged 节假日数据变更后的平台副作用（重排提醒/刷小部件），
- *   Android 宿主注入；桌面/iOS 默认空实现。
+ * @param onHolidayDataChanged 节假日数据变更后的平台副作用（重排提醒/刷小部件），Android 宿主注入。
  */
 @Composable
 fun HolidaySettingsRoute(
@@ -460,18 +430,15 @@ fun HolidaySettingsRoute(
     }
 }
 
-// ── 带额外元素的页面路由（第三十六批）：底部悬浮按钮 / 引导弹窗 / 顶栏按钮 ──
-// 共同形状：DocumentPageScaffold + 一个已迁 Screen，平台能力全部走参数。
-// Android 注入真实能力；桌面/iOS 用默认值（按钮不显示 / 空实现）。
+// ── 带额外元素的页面路由：底部悬浮按钮 / 引导弹窗 / 顶栏按钮 ──
+// 共同形状：DocumentPageScaffold + 一个 Screen，平台能力全部走参数；
+// Android 注入真实能力，桌面/iOS 用默认值（按钮不显示 / 空实现）。
 
 /**
  * 桌面小部件引导路由。
  *
- * @param onRequestWidgetRefresh 小组件刷新：Android 注入 `WidgetUpdateCache` 的清缓存 +
- *   更新已安装小部件；桌面/iOS 没有 AppWidget 概念，默认空实现。
- *
- * ⚠ 弹窗里的「添加到桌面」引导文案是 **Android 措辞**（长按桌面 → 安卓小部件）。
- * iOS 若做 WidgetKit，把这段文案提成参数再换 —— 现在 iOS 走不到这一页，先不预留。
+ * @param onRequestWidgetRefresh Android 注入 `WidgetUpdateCache` 清缓存 + 刷新已安装小部件；桌面/iOS 无 AppWidget 概念，默认空实现。
+ * ⚠ 弹窗「添加到桌面」文案是 **Android 措辞**；iOS 若做 WidgetKit 需提成参数（现在走不到这一页）。
  */
 @Composable
 fun WidgetIntroRoute(
@@ -544,12 +511,9 @@ fun WidgetIntroRoute(
 /**
  * 课程提醒路由。
  *
- * @param reminderController 提醒能力（闹钟 / 电池优化 / 权限 / 系统设置页跳转）：
- *   Android 注入 `AndroidReminderController(context)`；桌面/iOS 用 [NoopReminderController]。
- * @param testActionLabel 底部测试按钮文案 —— Android 按设备能力在「测试小米超级岛」/
- *   「测试实时活动」之间切换，由宿主导好再传进来。
- * @param onSendTestNotification 测试通知。**传 null 表示这一端没有测试能力 → 不渲染按钮**
- *   （iOS/桌面走不到，别给一个点了没反应的按钮）。
+ * @param reminderController Android 注入 `AndroidReminderController(context)`（闹钟 / 电池优化 / 权限 / 系统设置页跳转）；桌面/iOS 用 [NoopReminderController]。
+ * @param testActionLabel 底部测试按钮文案，Android 按设备能力在「测试小米超级岛」/「测试实时活动」间切换后传入。
+ * @param onSendTestNotification **传 null 表示这一端没有测试能力 → 不渲染按钮**，别给一个点了没反应的按钮。
  */
 @Composable
 fun CourseReminderRoute(
@@ -592,14 +556,11 @@ fun CourseReminderRoute(
 }
 
 /**
- * WebDAV 云备份设置路由。
+ * WebDAV 云备份设置路由：顶栏「测试连接」（[DocumentPageScaffold] 的 endAction）+
+ * 底部「备份到云端 / 从云端恢复」。
  *
- * 顶栏「测试连接」（[DocumentPageScaffold] 的 endAction）+ 底部「备份到云端 / 从云端恢复」。
- * 两个按钮的实际实现**由 Screen 反抛给宿主**（`onTestConnectionReady` /
- * `onBackupRestoreReady`），本路由只持有并渲染它们 —— 这样才能跨端复用。
- *
- * @param onHolidayDataChanged 云端恢复后的平台副作用（重排提醒 / 勿扰 / 小组件），
- *   Android 宿主注入；桌面/iOS 默认空实现。
+ * 按钮实现由 Screen 反抛给宿主（`onTestConnectionReady` / `onBackupRestoreReady`），本路由只持有并渲染。
+ * @param onHolidayDataChanged 云端恢复后的平台副作用（重排提醒 / 勿扰 / 小组件），Android 宿主注入。
  */
 @Composable
 fun WebDavSettingsRoute(
@@ -678,19 +639,12 @@ fun WebDavSettingsRoute(
 /**
  * 课表导入 / 导出 / 备份（三者共用 [BackupAndMigrationScreen]，只差 [mode]）。
  *
- * ⚠ 这三个入口**必须**走路由，不能再是独立 Activity：原来 `BackupAndMigrationActivity`
- * 里 `BackupAndMigrationScreen` 的「本地备份」入口读 [LocalAppRouter]，而独立 Activity 的
- * setContent 没有 provide，默认值是 `error(...)` —— 一点开就崩。
+ * ⚠ 三个入口**必须**走路由，不能是独立 Activity：`BackupAndMigrationScreen` 的「本地备份」
+ * 入口读 [LocalAppRouter]，独立 Activity 的 setContent 没有 provide，默认值 `error(...)` 一点就崩。
+ * 口令取回 / 第三方抓取 / 分享出图 / 手环推送四条 Android 能力走注入，iOS/桌面默认「当前平台不支持」
+ * —— 这一页在 iOS 上仍能打开（WebDAV / 本地备份 / 文件导入导出可用），只是口令通道不可用。
  *
- * ## 四条 Android 专有能力全部走注入，且**都有跨平台默认值**
- *
- * 口令取回 / 第三方口令抓取 / 口令分享出图 / 手环推送 —— Android 注入真实实现，
- * iOS 与桌面用默认值（"当前平台不支持"）。**默认值不是偷懒**：这一页在 iOS 上
- * 仍应能打开（WebDAV 备份、本地备份、文件导入导出都能用），只是口令通道不可用。
- *
- * @param scheduleFileController 文件选择器（导入选文件 / 导出另存为）：
- *   Android 注入 `AndroidScheduleFileController(context)`；iOS/桌面用
- *   [NoopScheduleFileController]（没有系统文件选择器，点导入会提示不可用）。
+ * @param scheduleFileController Android 注入 `AndroidScheduleFileController(context)`；iOS/桌面用 [NoopScheduleFileController]（点导入会提示不可用）。
  */
 @Composable
 fun BackupAndMigrationRoute(
@@ -729,20 +683,18 @@ fun BackupAndMigrationRoute(
     }
 }
 
-// ── 最后两个路由壳（第三十八批）：二级页转场 + 卡片快照 ──
-// 这两个是全部路由里最复杂的：一级列表之上叠一层「背景缩放 + 模糊」，
-// 二级编辑页渲染在 Scaffold **外面**（否则会被顶栏裁掉），
+// ── 最后两个路由壳：二级页转场 + 卡片快照 ──
+// 一级列表之上叠一层「背景缩放 + 模糊」；二级编辑页渲染在 Scaffold **外面**（否则会被顶栏裁掉），
 // 快捷菜单还要在模糊层之外再叠一层卡片快照。结构必须整体搬，不能只搬 Screen。
 
 /**
  * 课表节数与时间。
  *
- * 比普通文档页多两层结构：
- * - 外层 `Box` 做「背景缩放 + 模糊」动画，二级编辑页从列表卡片展开时主列表缩下去
- * - 二级编辑页 `TimeConfigEditScreen` 渲染在 `Scaffold` **外面**，否则会被顶栏裁掉
+ * 比普通文档页多两层结构：外层 `Box` 做「背景缩放 + 模糊」动画；
+ * ⚠ 二级编辑页 `TimeConfigEditScreen` 必须渲染在 `Scaffold` **外面**，否则会被顶栏裁掉。
  *
- * @param isInFreeformWindow 自由小窗 / 分屏判定：Android 读宿主 `MainActivity` 的
- *   Compose 状态（子页拿不到自己的 Activity 回调）；桌面/iOS 没有这个概念，传 false。
+ * @param isInFreeformWindow Android 读宿主 `MainActivity` 的 Compose 状态（子页拿不到
+ *   自己的 Activity 回调）；桌面/iOS 没有这个概念，传 false。
  */
 @Composable
 fun CourseTimeSettingsRoute(
@@ -760,7 +712,7 @@ fun CourseTimeSettingsRoute(
     // 圆角：Android 读系统真实圆角（自由小窗固定 20dp）；iOS/桌面返回 0 = 不裁切
     val screenCornerRadius = rememberScreenCornerRadiusPx()
 
-    // 页面状态管理（原来在 Activity 里）
+    // 页面状态管理
     var currentPage by remember { mutableStateOf("select") }
     var editingConfig by remember { mutableStateOf<TimeConfig?>(null) }
     var editingRoutineId by remember { mutableStateOf<Long?>(null) }
@@ -905,7 +857,7 @@ fun CourseTimeSettingsRoute(
                             repository.saveRoutine(routineId, savedConfig, savedConfig.name)
                         } ?: false
                         if (!saved) {
-                            // 保存被丢弃必须让用户看见：以前静默丢弃，表现成「改完保存、重开还是原来的」
+                            // 保存被丢弃必须让用户看见，否则表现成「改完保存、重开还是原来的」
                             showToast("保存失败，请重试")
                         }
                         listRefreshTrigger++
@@ -919,7 +871,7 @@ fun CourseTimeSettingsRoute(
                     screenCornerRadius = screenCornerRadius,
                     cardStartCornerRadius = 20f,
                     cardSnapshot = cardSnapshot,
-                    // 新建配置的 FAB 形态已随「快捷切换」一起移除，二级页永远从列表卡片展开
+                    // 新建配置的 FAB 形态已移除，二级页永远从列表卡片展开
                     isFabCreation = false,
                     onDeleteRoutine = { routineId ->
                         // 删除会换掉生效作息，重排提醒等都在 repository 里一并做完
@@ -934,16 +886,10 @@ fun CourseTimeSettingsRoute(
 }
 
 /**
- * 课程管理。
- *
- * 与 [CourseTimeSettingsRoute] 同构，但比它多两块**必须在模糊层之外**的叠加内容：
- * - 快捷菜单（长按课程卡片）：遮罩 + 卡片快照 + [ShortcutMenu]
- * - [CourseEditScreen]
- * 所以它们不能走 `DocumentPageScaffold` 的 `overlay`（那是在采样层内部），
- * 必须留在根 `Box` 里当外层 `Box` 的兄弟 —— 否则会跟着一起被模糊/缩放。
- *
- * ⚠ `DisposableEffect` 的清理（退出时删掉「本次新建但没编辑过」的空课程）从
- * 「Activity finish」变成「路由弹出、组合退出」。语义一致：都是离开本页时清理。
+ * 课程管理。与 [CourseTimeSettingsRoute] 同构，但多两块**必须在模糊层之外**的叠加内容：
+ * 快捷菜单（遮罩 + 卡片快照 + [ShortcutMenu]）与 [CourseEditScreen]。
+ * 它们不能走 `DocumentPageScaffold` 的 `overlay`（那是采样层内部），必须留在根 `Box` 里
+ * 当外层 `Box` 的兄弟，否则会跟着一起被模糊/缩放。
  *
  * @param isInFreeformWindow 自由小窗 / 分屏判定，Android 宿主注入。
  */
@@ -959,7 +905,7 @@ fun CourseManageRoute(
     val settingsViewModel = settingsViewModel()
     val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
 
-    // Edit screen state
+    // 编辑页状态
     var showEditScreen by remember { mutableStateOf(false) }
     var selectedCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
     var cardLeft by remember { mutableFloatStateOf(0f) }
@@ -990,12 +936,12 @@ fun CourseManageRoute(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
 
-    // Track course IDs created in this session for cleanup on exit
+    // 本次新建的课程 id，退出本页时清理
     var createdCourseIds by remember { mutableStateOf(setOf<String>()) }
-    // Track course IDs that were opened for editing (to avoid deleting modified ones)
+    // 打开过编辑的课程 id，避免误删已修改的
     var editedCourseIds by remember { mutableStateOf(setOf<String>()) }
 
-    // 退出本页时清理本次新建但没编辑过的空课程（原来是 Activity finish 时做）
+    // 退出本页时清理本次新建但没编辑过的空课程
     DisposableEffect(Unit) {
         onDispose {
             val coursesToDelete = createdCourseIds - editedCourseIds
@@ -1005,7 +951,7 @@ fun CourseManageRoute(
         }
     }
 
-    // Graphics layer for capturing screen content
+    // 截屏用的 graphics layer
     val screenGraphicsLayer = rememberGraphicsLayer()
 
     LaunchedEffect(showShortcutMenu) {
@@ -1029,7 +975,6 @@ fun CourseManageRoute(
         onBackCancelled = {},
     )
 
-    // Background scale animation
     val backgroundScale = remember { Animatable(1f) }
     val managePageBlurRadius = remember { Animatable(0f) }
 
@@ -1041,7 +986,7 @@ fun CourseManageRoute(
     val shortcutMenuBackdrop = rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Main content with blur and scale animation
+        // 主内容（模糊 + 缩放动画）
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1135,7 +1080,7 @@ fun CourseManageRoute(
                                 cardColor = color
                                 cardAlpha = alpha
                                 hiddenCourseIds = courses.map { it.id }.toSet()
-                                // Mark courses as edited when opened
+                                // 打开即视为编辑过
                                 editedCourseIds = editedCourseIds + courses.map { it.id }
 
                                 // 裁出卡片区域的快照（跨平台重绘，见 cropImageBitmapClamped）
@@ -1169,7 +1114,7 @@ fun CourseManageRoute(
             }
         }
 
-        // Edit screen (above blur layer)
+        // 编辑页在模糊层之上
         if (showEditScreen) {
             CourseEditScreen(
                 courses = selectedCourses,

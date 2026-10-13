@@ -3,20 +3,10 @@ package com.haooz.chedule.ui.utils
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.randomUuidV4
 
-// ════════════════════════════════════════════════════════════════════════
-//  第三方 App 课表导入的数据契约（WakeUp / 星链）
-//
-//  2026-10-11 自 `:androidApp` 的 `ScheduleImport.kt` 拆出并迁入 `:ui-shared`
-//  （第二十三批）。拆出的原因：**页面要引用这些类型**（口令来源枚举驱动弹窗标题、
-//  payload 驱动确认框文案），而 `ScheduleImport.kt` 里的抓取器本体用了
-//  WebView / OkHttp / Gson，是纯 Android 实现 —— 类型跟实现挤在一个文件里，
-//  页面就永远进不了 commonMain。
-//
-//  抓取器（[ThirdPartyShareImporter]）**仍在 `:androidApp`**，由宿主注入给页面
-//  （见 `BackupAndMigrationScreen` 的 `onImportThirdParty`）。
-// ════════════════════════════════════════════════════════════════════════
+// 第三方 App 课表导入（WakeUp / 星链）的数据契约。
+// 抓取器在宿主侧，由页面注入（见 BackupAndMigrationScreen 的 onImportThirdParty）。
 
-/** WakeUp / 星链课表分享口令导入：原生请求 + 无界面脚本执行 */
+/** 第三方课表分享口令来源（WakeUp / 星链） */
 enum class ThirdPartyShareSource(val displayName: String, val inputLabel: String) {
     WakeUp("WakeUp课程表口令导入", "分享口令"),
     StarLink("星链课表分享码导入", "分享码"),
@@ -74,12 +64,7 @@ data class ThirdPartyTimeSlot(
     val endTime: String,
 )
 
-/**
- * 分享口令取回结果（`ShareCodeApi.fetchShare` 的成功值）。
- *
- * 取回本身走 OkHttp + Gson（Android 专有），但**结果只是三个字段** ——
- * 抽到这里让共享页能直接消费，宿主只注入「取回」这个动作。
- */
+/** 分享口令取回结果，供共享页直接消费；取回动作本身由宿主注入。 */
 data class ShareCodeFetchResult(
     val code: String,
     val scheduleName: String,

@@ -1,30 +1,9 @@
 /**
- * 教务系统导入页面（Screen 主体）。
- *
- * 原先整个 UI 内联在 `EducationalImportActivity` 里（673 行）。
- * 2026-10-10 两步走：
- * 1. UI 拆出为 Screen（本文件），Activity 变薄壳；
- * 2. 按「彻底单 Activity」的决定，Activity 彻底删除 ——
- *    本页并入路由系统（`AppRoute.EducationalImport`），宿主为 MainActivity。
- *    返回 = `router.popBack()`，多窗状态 = MainActivity 的 `isInFreeformWindow`，
- *    系统栏 = 宿主全局处理。
- *
- * 仍在 Android 侧的部分
- * （WebView 宿主通过 `WebHost` 注入；Toast 与 JSON 均为跨平台 API）
- * 按用户决定**暂留本文件**，注入细节后置处理。
+ * 教务系统导入页面（Screen 主体），由路由 `AppRoute.EducationalImport` 打开。
+ * 网页宿主经 [WebHost] 注入（见 webHostFactory）。
  */
 package com.haooz.chedule.ui.activities
 
-// ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
-//
-// 平台面只有四处，全部按既有模板收敛：
-//  · `LocalContext` 那行（toastContext）**声明后从未使用** → 删。
-//  · `@SuppressLint("UseKtx")` 是 Android lint 注解 → 删。
-//  · `forceUpdate(context: Context)` 的 context 形参**从未被函数体使用** → 去掉形参。
-//  · `System.currentTimeMillis()` → `Clock.System.now().toEpochMilliseconds()`；
-//    `Dispatchers.IO` → `ioDispatcher`。
-//  · 网页宿主（WebView 本体）改成 `webHostFactory` 注入 —— 本页的 WebView 分支
-//    只负责把宿主转交给已迁 :ui-shared 的 WebViewScreen。
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -126,19 +105,11 @@ import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。
- *
- * @param isInFreeformWindow 当前是否处于自由窗口/多窗模式（Activity 的多窗回调下发）
- * @param isUpdating 脚本索引是否正在后台更新（更新按钮转圈）
- * @param dataVersion 数据版本号（+1 触发列表刷新）
- * @param onForceUpdate 点击顶栏「更新」按钮（Activity 侧执行脚本更新并 Toast 结果）
- * @param onFinish 顶栏返回（= Activity.finish()）
+ * @param dataVersion 数据版本号，+1 触发列表刷新
  */
 @Composable
 fun EducationalImportScreen(
-    /**
-     * 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 尚未提供时用 [NoopWebHost]。
-     * 本页只把它转交给已迁 `:ui-shared` 的 `WebViewScreen`（网页本体是平台能力）。
-     */
+    /** 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 用 [NoopWebHost]。 */
     webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
     isInFreeformWindow: Boolean,
     isUpdating: Boolean,
@@ -297,8 +268,7 @@ fun EducationalImportScreen(
                         )
                     }
 
-                    // 迁移前 InputField 内部直接读 isAppDarkTheme()；现在 :miuix 拿不到 App 偏好，
-                    // 需显式传入，否则会退回「跟随系统」—— 强制深浅色时底色会与文字对不上。
+                    // :miuix 拿不到 App 偏好，isLightTheme 需显式传入，否则强制深浅色时底色与文字对不上。
                     // isAppDarkTheme 是 @Composable，必须在组合期先取好，不能塞进下面那个 lambda。
                     val searchIsLightTheme = !isAppDarkTheme()
                     Column(
@@ -460,8 +430,7 @@ fun EducationalImportScreen(
                             onExecuteImportRef = { action -> executeImportAction = action },
                             onToggleDesktopModeRef = { action -> toggleDesktopModeAction = action },
                             onReloadRef = { action -> reloadWebViewAction = action },
-                            // 网页本体（WebView / JS 桥 / PixelCopy 采色）留在 Android 侧：
-                            // 页面外壳已迁 :ui-shared，这里只把宿主造出来注入进去。
+                            // 网页本体（WebView / JS 桥 / PixelCopy 采色）在平台侧，这里只把宿主造出来注入。
                             webHostFactory = webHostFactory,
                         )
 
@@ -535,8 +504,7 @@ private fun applyPresetTimeSlots(
     val prefs = AppStorage.store("edu_import_prefs")
     val timeSlotsJson = prefs.getStringOrNull("preset_time_slots") ?: return
     try {
-        // Gson 的 `List<Map<String,Any>>` 运行时反射在 Kotlin/Native 不存在；用项目已有的
-        // JsonElement 动态工具逐字段读（与该 JSON 契约相同：缺键/类型不对时走默认值）。
+        // Gson 运行时反射在 Kotlin/Native 不存在，改用 JsonElement 逐字段读（缺键/类型不对走默认值）。
         val timeSlots = parseJsonArray(timeSlotsJson).mapNotNull { element ->
             (element as? JsonObject)?.let { slot ->
                 PresetTimeSlot(
@@ -607,13 +575,8 @@ private fun applyPresetTimeSlots(
 }
 
 /**
- * 应用教务脚本通过 saveCourseConfig 传回的课表配置：
- * - 开学时间、总周数（semesterStartDate / semesterTotalWeeks）；
- * - 默认单节 / 课间时长（defaultClassDuration / defaultBreakDuration → 目标课表 TimeConfig）；
- * - 周起始日（firstDayOfWeek → 导入课程的星期归一化，保证落在 App 固定周一起始的表格上不错位）。
- * 与 applyPresetTimeSlots 一致，仅在导入完成时消费一次性标记，避免重复/旧数据覆盖；
- * 消费后整组清掉，防止残留旧值在下次导入时被误应用。
- * 开学日写入目标课表（可能非当前课表）；日期先规范化，防止被读路径重置成今天。
+ * 应用教务脚本通过 saveCourseConfig 传回的课表配置（开学日 / 总周数 / 单节时长 / 周起始日）。
+ * 一次性消费标记，读完整组清掉，防止残留旧值在下次导入时被误应用。
  */
 private fun applyImportedScheduleConfig(
     courseViewModel: CourseViewModel,
@@ -650,9 +613,8 @@ private fun applyImportedScheduleConfig(
         applied = true
     }
 
-    // 官方文档 config：defaultClassDuration（默认 45）/ defaultBreakDuration（默认 10）可选，
-    // 未提供用默认值。桥接层已写入 prefs，这里落到目标课表 TimeConfig（节数、节次时间、作息方案
-    // 原样保留；无绑定配置时新建并绑定）。
+    // 桥接层已把 config 写入 prefs，这里落到目标课表 TimeConfig
+    // （节数、节次时间、作息原样保留；无绑定配置时新建并绑定）。
     val classDuration = prefs.getInt("default_class_duration", -1)
     val breakDuration = prefs.getInt("default_break_duration", -1)
     if (classDuration > 0 || breakDuration > 0) {
@@ -668,9 +630,8 @@ private fun applyImportedScheduleConfig(
         }
     }
 
-    // 官方文档 config：firstDayOfWeek（1=周一…7=周日，默认 1）描述学校周起始日。
-    // App 表格固定周一起始、不随导入改动；学校以其它日为周起始时，其课程 day 编号相对该周起始，
-    // 落列前换算回绝对星期（1=周一…7=周日），否则整表错位一天。firstDayOfWeek=1 恒等，跳过。
+    // 学校周起始日非周一时，其课程 day 编号相对该周起始，需换算回绝对星期，
+    // 否则整表错位一天（App 表格固定周一起始）。
     val firstDayOfWeek = prefs.getInt("first_day_of_week", 1)
     if (firstDayOfWeek in 2..7) {
         val targetId = if (isTargetCurrent) repository.getCurrentScheduleId() else targetScheduleId
@@ -714,11 +675,8 @@ private fun applyImportedScheduleConfig(
 }
 
 /**
- * 应用教务脚本通过 saveComboSchedule 传回的组合作息方案（官方文档 4. comboSchedule）。
- * 同一课表在不同日期区间用不同作息（如夏季/冬季）；每个方案以 startDate 为生效起点，
- * 时间槽按官方「差量合并」语义：只覆盖脚本提交的节次，其余节次沿用基础时间段
- * （preset_time_slots / 课表现有节次时间），避免方案切换后未覆盖节次丢时间。
- * 与 applyPresetTimeSlots 一致，仅在导入完成时消费一次性标记。
+ * 应用教务脚本通过 saveComboSchedule 传回的组合作息方案（同一课表按日期区间切换作息）。
+ * 时间槽是差量：只覆盖脚本提交的节次，其余沿用基础时间段，避免切换后未覆盖节次丢时间。
  */
 private fun applyComboSchedule(
     settingsViewModel: SettingsViewModel,
@@ -864,11 +822,8 @@ private data class ComboTimeSlotImportModel(
 )
 
 /**
- * 教务脚本索引的后台更新器（原 `EducationalImportActivity` 的 companion，
- * Activity 删除后随 Screen 迁到这里；逻辑逐字保留）。
- *
- * - [isUpdating] / [dataVersion]：页面组合期收成 State（更新中顶栏转圈；版本 +1 触发列表刷新）
- * - [startUpdateIfNeeded]：进入页面时调用（原 onCreate 时机），距上次成功更新 ≥7 天才动
+ * 教务脚本索引的后台更新器。⚠ 逻辑与迁移前逐字保留，勿改。
+ * - [startUpdateIfNeeded]：进入页面时调用，距上次成功更新 ≥7 天才动
  * - [forceUpdate]：顶栏「更新」按钮，结果 Toast 给用户
  */
 object EduImportUpdater {
@@ -924,7 +879,7 @@ object EduImportUpdater {
                     -1 -> "更新失败，请检查网络连接"
                     else -> "更新失败"
                 }
-                // Toast 必须回主线程（与迁移前逐字一致）；Main 是 kotlinx-coroutines 的跨平台 dispatcher。
+                // Toast 必须回主线程（Main 是 kotlinx-coroutines 的跨平台 dispatcher）。⚠ 与迁移前逐字一致，勿改。
                 withContext(Dispatchers.Main) { showToast(msg) }
                 if (result >= 0) {
                     val prefs = AppStorage.store(PREFS_NAME)

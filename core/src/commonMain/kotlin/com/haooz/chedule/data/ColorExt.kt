@@ -1,18 +1,12 @@
 package com.haooz.chedule.data
 
 /**
- * RGB ↔ HSV 转换 —— `android.graphics.Color.RGBToHSV` / `HSVToColor` 的**逐行纯数学移植**。
- * 零依赖（core 不引 compose），返回/接收与 AOSP 相同的 Int/FloatArray 形态。
+ * RGB ↔ HSV 转换 —— `android.graphics.Color.RGBToHSV` / `HSVToColor` 的逐行纯数学移植
+ * （零依赖，core 不引 compose；返回/接收与 AOSP 相同的 Int/FloatArray 形态）。
  *
- * 迁移自 CourseCard 的「课程色饱和度提升」：原实现直接调 android.graphics.Color，
- * 那是 Android 专有 API，commonMain 编不过（iOS/桌面都没有）。
- *
- * ## 为什么逐行移植而不是自己写标准公式
- *
- * 舍入路径必须与 AOSP 一致 —— 浮点公式的写法很多，细节差一点（int 截断 vs 四舍五入、
- * 先乘后截 vs 先截后乘）颜色就会差 1/255，表现为「桌面端课程卡颜色与 Android 不一致」。
- * 这里每个分支、每次 `* 255f` 后的 `.toInt()`（AOSP 语义 = 向零截断）都对齐 AOSP 源码，
- * 并用 golden vectors（见 commonTest）锁定。
+ * ⚠ 舍入路径必须与 AOSP 一致：浮点写法差一点（int 截断 vs 四舍五入、先乘后截 vs 先截后乘）
+ * 颜色就差 1/255，表现为桌面端课程卡颜色与 Android 不一致。分支与 `* 255f` 后的 `.toInt()`
+ * 均对齐 AOSP 源码，并用 golden vectors（见 commonTest）锁定。
  */
 
 /**

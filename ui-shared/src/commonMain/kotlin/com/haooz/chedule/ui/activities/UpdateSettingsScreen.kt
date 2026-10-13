@@ -1,4 +1,4 @@
-/** 应用更新设置页面 - Screen（已迁入 :ui-shared commonMain；更新能力全部改经 :core 的 UpdateController 注入） */
+/** 应用更新设置页面 - Screen（更新能力经 UpdateController 注入） */
 package com.haooz.chedule.ui.activities
 
 import androidx.compose.foundation.layout.Arrangement
@@ -69,11 +69,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-/**
- * 今日日期 `yyyy-MM-dd`。原实现是平台默认语言环境下的固定 pattern 日期格式化：
- * 纯数字 + 固定分隔符的 pattern 不受语言环境影响，commonMain 手写零填充，
- * 行为逐字一致（同 HolidaySettingsScreen.isoDate 的处理）。
- */
+/** 今日日期 `yyyy-MM-dd`（手写零填充；⚠ 与迁移前逐字一致，勿改）。 */
 private fun todayIsoDate(): String {
     val date = todayLocalDate()
     return "${date.year.toString().padStart(4, '0')}" +
@@ -85,11 +81,7 @@ private fun todayIsoDate(): String {
 fun UpdateSettingsScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
-    /**
-     * 更新能力控制器（Android = `AndroidUpdateController`，构造时捕获 context、包装平台侧
-     * 检查/下载/安装单例与版本号查询；宿主用 `remember { AndroidUpdateController(context) }` 注入）。
-     * 桌面/iOS 没有 APK 更新能力，用默认的 [NoopUpdateController]。
-     */
+    /** 更新能力控制器（Android 注入 `AndroidUpdateController`；桌面/iOS 用 [NoopUpdateController]）。 */
     updateController: UpdateController = NoopUpdateController,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
@@ -116,7 +108,7 @@ fun UpdateSettingsScreen(
     }
     val effectiveDownloadSource = if (updateChannel == "beta") "gitee" else downloadSource
 
-    // 原实现：宿主 context 的包信息查询，取不到显示「未知」
+    // 版本号取自控制器（取不到显示「未知」）
     val currentVersion = remember { updateController.currentVersion }
 
     var isChecking by remember { mutableStateOf(false) }
@@ -181,11 +173,9 @@ fun UpdateSettingsScreen(
         }
     }
 
-    // 切换更新通道时清除缓存，下次自动检查重新拉取。
-    // 注意：LaunchedEffect 在**首次组合时也会执行**，原来无差别清缓存，
-    // 导致「每次打开本页」都把 has_update / latest_apk_url 等抹掉——
-    // 弹窗那边读到空的 latest_apk_url 就再也点不出下载，而本页重新检查又能下。
-    // 因此只在通道真的发生变化时才清。
+    // 切换通道时清缓存，下次自动检查重新拉取。
+    // ⚠ 只在通道真的变化时才清：LaunchedEffect 首次组合也会执行，
+    // 无差别清会把 has_update / latest_apk_url 抹掉，弹窗再也点不出下载。
     var cachedChannel by remember { mutableStateOf(updateChannel) }
     LaunchedEffect(updateChannel) {
         if (updateChannel == cachedChannel) return@LaunchedEffect

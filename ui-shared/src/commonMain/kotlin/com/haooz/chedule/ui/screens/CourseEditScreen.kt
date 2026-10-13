@@ -119,12 +119,8 @@ private data class EditAnimState(
 )
 
 /**
- * 裁切形状。
- *
- * 宽度必须取当次回调的 size，不能在构造时捕获外部宽度：
- * 平板右栏宽度随侧栏展开/折叠变化，而 clipShape 是 remember 单例，
- * 捕获旧宽度会让裁剪停在旧值 —— 窄切宽时右侧多出的一节被裁掉看不见，
- * 必须切换页面重建才恢复。
+ * 裁切形状。宽度必须取当次回调的 size：clipShape 是 remember 单例，
+ * 捕获外部宽度会让平板右栏变宽后裁切停在旧值（右侧被裁掉看不见）。
  */
 private class EditAnimClipShape(
     private val screenCornerRadiusPx: Float,
@@ -254,13 +250,10 @@ fun CourseEditScreen(
     val transOpenMillis = if (isUpperHalf) 500 else 500
     val transExitMillis = if (isUpperHalf) 320 else 320
 
-    // 预测性返回：手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
-    // 预测返回期间围绕屏幕中心缩放（translation=0），位移/裁切保持全屏不动；
-    // 取消回弹全屏、完成随关闭动画一起缩回卡片；
-    // 低版本自动退化为立即播放完整退出动画（navigationevent 自身行为，Android actual 逐字保留）。
-    // 跨平台化：androidx.navigationevent 只有 Android artifact，改用 :miuix 的
-    // expect/actual 封装 rememberNavigationBack —— handler 与进度读取绑定同一份状态
-    // （拆开会导致跟手动画失效且编译无报错）。
+    // 预测性返回：手势只驱动 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
+    // 期间围绕屏幕中心缩放，位移/裁切保持全屏；取消回弹、完成随关闭动画缩回卡片。
+    // ⚠ 走 :miuix 的 rememberNavigationBack（androidx.navigationevent 仅 Android artifact）；
+    // handler 与进度读取必须绑定同一份状态，拆开会跟手动画失效且编译无报错。
     val navigationBackState = rememberNavigationBack()
     // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
     val gestureBackProgress = remember { Animatable(0f) }
@@ -324,12 +317,10 @@ fun CourseEditScreen(
     }
 
     // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
-    // 缩放跟随行程为"卡片→全屏"全程的 200%（滑到底 scaleProgress=-1），
-    // 松手后由 onBackCompleted 按正常关闭动画回到卡片（1 倍）
+    // 缩放行程为「卡片→全屏」的 200%（滑到底 scaleProgress=-1），松手后按关闭动画回到卡片。
     LaunchedEffect(Unit) {
-        // backProgress() 已内含「转场进行中且方向为后退」判定（与迁移前的
-        // transitionState is InProgress && direction == TRANSITIONING_BACK 逐字等价），
-        // 非手势期间为 null —— 保持静止。
+        // backProgress() 已内含「转场进行中且方向为后退」判定，非手势期间为 null —— 保持静止。
+        // ⚠ 判定与迁移前逐字等价，勿改。
         snapshotFlow { navigationBackState.backProgress() }
             .collect { progress ->
                 if (progress != null) {
@@ -389,24 +380,23 @@ fun CourseEditScreen(
             val bgAlpha = if (embedded) 0f else (p * 0.5f).coerceIn(0f, 0.5f)
             val snapAlpha = (1f - p * 3f).coerceIn(0f, 1f)
             val contAlpha = ((p - 0.1f) / 0.5f).coerceIn(0f, 1f)
-            // 预测性返回手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，手势可退到 -1 即 200% 行程），
-            // 位移与裁切保持全屏（p 不变）不随手势变化；coerceAtLeast 防止窄卡片时 scale 变负翻转
+            // 手势只驱动 scaleProgress，位移与裁切保持全屏（p 不变）；
+            // coerceAtLeast 防止窄卡片时 scale 变负翻转。
             val scale = (cardWidth / screenWidth + (1f - cardWidth / screenWidth) * scaleProgress.value).coerceAtLeast(0.05f)
             // 起点 = cardCenter, 终点 = screenCenter；ty 作为曲线参数，前快后慢
             val cardCenter = cardTop + cardHeight / 2f
             val screenCenter = screenHeight / 2f
             val curveT = ty  // 直接用 ty 作为曲线参数
             val targetCenter = cardCenter + (screenCenter - cardCenter) * curveT
-            // 正常 morph 缩放锚点为屏幕顶部居中：y 围绕顶部（原有补偿），x 围绕屏幕中轴
-            // （去掉左缘补偿，位移基于卡片原始左缘）；预测返回期间围绕屏幕中心缩放
+            // 正常 morph 锚点为屏幕顶部居中（y 围绕顶部、x 围绕屏幕中轴）；预测返回期间围绕屏幕中心缩放。
             val gesture = gestureBackProgress.value
             val normalY =
                 targetCenter - screenHeight / 2f * (1f - scale) - (cardHeight + (screenHeight - cardHeight) * p) / 2f
             val normalX = (cardLeft - screenWidth / 2f * (1f - cardWidth / screenWidth)) * (1f - p)
             val translationY = normalY * (1f - gesture)
             val translationX = normalX * (1f - gesture)
-            // 手势推进期间裁切跟随"当前展开高度×缩放"（打开未完成时也连续，底部不瞬间归位）；
-            // 松手/取消过渡期按 gesture 平滑插值衔接 morph 的底部收缩动画
+            // 手势期间裁切跟随「当前展开高度×缩放」（打开未完成时也连续）；
+            // 松手/取消过渡期按 gesture 平滑插值衔接 morph 的底部收缩。
             val morphClip = cardHeight + (screenHeight - cardHeight) * p
             val predictiveClip = morphClip * scale
             val rawClipBottom = if (isGestureActive) predictiveClip else predictiveClip * gesture + morphClip * (1f - gesture)
@@ -663,8 +653,8 @@ fun CourseEditScreen(
                                 contentColor = MiuixTheme.colorScheme.onSurface
                             )
                         ) {
-                        //同一门课的多个时段：未排时间的沉底 → 周一→周日 → 实际上课时刻 → 节次 → 周次。
-                        // 不排的话直接沿用 groupBy 的插入序（= 数据库添加顺序），视觉上完全是乱的。
+                        // 同一门课的多个时段排序：未排时间的沉底 → 周一→周日 → 实际上课时刻 → 节次 → 周次。
+                        // 不排会沿用 groupBy 插入序（= 数据库添加顺序），视觉上是乱的。
                         val courseGroups = remember(courses, sectionTimes) {
                             courses.groupBy { course ->
                                 CourseGroupKey(
@@ -1113,8 +1103,8 @@ private fun CourseGroupCard(
     val sectionText = course.getTimeDisplayText().ifEmpty { "未设置" }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 分组标题用「周几 + 时间」而不是周次：列表已按时段排序，
-        // 周次作标题会出现连续多个同名标题，看不出这一组是周几的课
+        // 分组标题用「周几 + 时间」而非周次：列表按时段排序，
+        // 周次作标题会连续重名、看不出是哪天的课
         SmallTitle(
             text = if (course.dayOfWeek in 1..7) {
                 "${dayLabels[course.dayOfWeek]} $sectionText"

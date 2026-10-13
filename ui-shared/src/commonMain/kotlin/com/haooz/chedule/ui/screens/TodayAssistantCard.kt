@@ -1,24 +1,10 @@
 package com.haooz.chedule.ui.screens
 
-// ════════════════════════════════════════════════════════════════════════
-//  今日助手卡（第四十四批从 :androidApp 迁入 commonMain）
-//
-//  与仍在 :androidApp 的 `TodayAssistant.kt` 的分工：本文件只放**纯展示与纯逻辑**
-//  —— 天气图标映射、天气数据模型、课程状态推导、倒计时与智能提示文案、卡片本体。
-//  **天气拉取与定位留在平台侧**（LocationManager vs CoreLocation 的差异），由宿主
-//  算好后按参数传入：
-//
-//      weather / hasLocationPermission / onRequestLocation
-//
-//  这样 Android 与 iOS 共用同一张卡片，两端只有数据来源不同。下课烟花同理走
-//  `fireworksOverlay` 槽位（Android 的 FireworksOverlay 依赖 LocalContext 与
-//  System.nanoTime，iOS 暂不提供 → 传 null 即不渲染）。
-//
-//  ⚠ 图标早已在 `:ui-shared` 的 composeResources 里、Android 图形 API 依赖
-//  （图标阴影 / BlurMaskFilter）也已在 2026-10-10 移除，所以这里是纯搬运。
-//  ⚠ 文件名必须与 androidApp 的 `TodayAssistant.kt` **不同**：同包同名 .kt 会让
-//  Kotlin 生成同名 facade 类，dex 只留一个 → 运行期 NoSuchMethodError（踩过）。
-// ════════════════════════════════════════════════════════════════════════
+// 今日助手卡（纯展示与纯逻辑）。
+// 天气拉取与定位在平台侧（LocationManager vs CoreLocation），算好后按参数传入；
+// 下课烟花走 `fireworksOverlay` 槽位，null = 该端不渲染。
+// ⚠ 文件名必须与 androidApp 的 `TodayAssistant.kt` 不同：同包同名 .kt 会让 Kotlin
+//   生成同名 facade 类，dex 只留一个 → 运行期 NoSuchMethodError。
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -77,9 +63,6 @@ import org.jetbrains.compose.resources.painterResource
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 中国天气网 type（中文）→ 图标
-//
-// 2026-10-10：返回类型由 Android 的 `Int` 资源 ID 改为 CMP 的 `DrawableResource`（走 composeResources），
-// 图标本体已迁到 `:ui-shared` 的 `composeResources/drawable/`。
 private fun getWeatherIconRes(type: String, isNight: Boolean = false): DrawableResource = when {
     type.contains("冰雹") || type.contains("雷") -> Res.drawable.icon_t_storm
     type.contains("雾") || type.contains("霾") || type.contains("浮尘") ||
@@ -97,16 +80,7 @@ private fun getWeatherIconRes(type: String, isNight: Boolean = false): DrawableR
     type.contains("晴") -> if (isNight) Res.drawable.icon_sunny_night else Res.drawable.icon_sunny
     else -> if (isNight) Res.drawable.icon_sunny_night else Res.drawable.icon_sunny
 }
-/**
- * 天气图标。
- *
- * 2026-10-10 大幅简化：**去掉了原来的「alpha 蒙版模糊阴影」**。
- * 原实现要用 `ContextCompat.getDrawable` + `Bitmap` + `Canvas` + `BlurMaskFilter` 渲染两张位图
- * （图标 + 阴影）再叠画 —— 深度依赖 Android 图形 API，是这页迁进共享模块的最大障碍；
- * 而实际观感收益有限（阴影贴合轮廓的效果在 23dp 尺寸下几乎看不出来）。
- *
- * 现在就是普通的 `painterResource`，因此 `LocalContext` 也不再需要。
- */
+/** 天气图标（普通 painterResource，无 Android 图形 API 依赖）。 */
 @Composable
 private fun WeatherIcon(
     resource: DrawableResource,

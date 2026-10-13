@@ -1,13 +1,11 @@
 package com.haooz.chedule.data
 
 /**
- * 本地备份文件的读写能力。Android 实现是 `AndroidBackupFileController`，
- * 桌面/iOS 用 [NoopBackupFileController]。
+ * 本地备份文件的读写能力。Android 实现是 `AndroidBackupFileController`，桌面/iOS 用 [NoopBackupFileController]。
+ * 备份 JSON 的序列化见 `BackupCodec.kt`，本接口只管文件在哪、怎么读写。
  *
- * 备份 JSON 的序列化在 `:core` 的 `BackupCodec.kt`，本接口只管文件在哪、怎么读写。
- *
- * [listBackups] / [saveBackupFile] / [readBackupFile] / [deleteBackupFile] 是阻塞 IO，
- * 调用方用 `withContext(ioDispatcher)` 包住；[pickAndReadBackup] 是异步发起系统选择器。
+ * ⚠ [listBackups] / [saveBackupFile] / [readBackupFile] / [deleteBackupFile] 是阻塞 IO，调用方需用
+ * `withContext(ioDispatcher)` 包住；[pickAndReadBackup] 是异步发起系统选择器。
  */
 interface BackupFileController {
 
@@ -17,22 +15,16 @@ interface BackupFileController {
     /**
      * 拉起系统文件选择器选一份备份并读出内容。
      *
-     * @param onResult `(json, displayName)`；读取成功时 `json` 为文件内容，
-     *   `displayName` 尽力而为可能为 null。用户取消或读取失败时都是 `(null, null)`。
+     * @param onResult `(json, displayName)`；用户取消或读取失败时均为 `(null, null)`，`displayName` 尽力而为。
      */
     fun pickAndReadBackup(onResult: (json: String?, displayName: String?) -> Unit)
 
-    /**
-     * 把 [json] 写入备份目录下的 [fileName] 文件（UTF-8），需在 IO 线程调。
-     *
-     * 失败时抛异常，返回 true 表示写入成功。
-     */
+    /** 把 [json] 写入备份目录下的 [fileName] 文件（UTF-8）。失败时抛异常，返回 true 表示写入成功。 */
     fun saveBackupFile(fileName: String, json: String): Boolean
 
     /**
-     * 读取 [BackupFileInfo.id] 对应备份文件的内容（含 8 MB 上限校验），需在 IO 线程调。
-     *
-     * 文件不存在返回 null；超过上限或读取异常时抛异常。
+     * 读取 [BackupFileInfo.id] 对应备份文件的内容（含 8 MB 上限校验）。文件不存在返回 null；
+     * 超过上限或读取异常时抛异常。
      */
     fun readBackupFile(id: String): String?
 
@@ -72,8 +64,8 @@ const val BACKUP_DIR_NAME: String = "Neixo_Schedule"
 val BACKUP_NAME_REGEX: Regex = Regex("^(.+)_(\\d{8}_\\d{6})$")
 
 /**
- * 统计备份 JSON 里的课表数：单课表备份（含 `schedule_name` + `courses`）为 1；
- * 全量备份按 `schedule_<名>_courses` 键的前缀去重计数；解析失败为 0。
+ * 统计备份 JSON 里的课表数：单课表备份（含 `schedule_name` + `courses`）为 1；全量备份按
+ * `schedule_<名>_courses` 键的前缀去重计数；解析失败为 0。键名是备份落盘格式，逐字不能改。
  */
 fun countSchedulesInBackupJson(json: String): Int = try {
     @Suppress("UNCHECKED_CAST")
@@ -102,9 +94,8 @@ fun formatBackupSize(bytes: Long): String = when {
 }
 
 /**
- * 解析备份文件名（不含扩展名）→（课表名 or null, 是否全量）。
- *
- * 以「全部备份」开头为全量；否则用 [BACKUP_NAME_REGEX] 取第 1 组为课表名，匹配不上就整个名字当课表名。
+ * 解析备份文件名（不含扩展名）→（课表名 or null, 是否全量）。以「全部备份」开头为全量；
+ * 否则用 [BACKUP_NAME_REGEX] 取第 1 组为课表名，匹配不上就整个名字当课表名。
  */
 fun parseBackupFileBaseName(baseName: String): Pair<String?, Boolean> {
     val isFullBackup = baseName.startsWith("全部备份")

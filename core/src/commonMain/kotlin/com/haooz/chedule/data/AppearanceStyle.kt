@@ -1,21 +1,11 @@
 package com.haooz.chedule.data
 
 /**
- * 外观参数快照 —— **跨平台**。
+ * 外观参数快照（跨平台）。
  *
- * ## ⚠ 字段名是数据兼容契约
- *
- * 这是 `:androidApp` 的 `ScheduleAppearance.CombinationStyle` 的跨平台副本。
- * 存量用户在 `appearance_settings` 里存的是这个结构的 JSON 快照（Gson 序列化，
- * 键名 = 字段名），**一个字符都不能改** —— 改了等于老用户的外观设置全部读不出来。
- *
- * 新增字段可以加（Gson/kotlinx 都会忽略未知键），但**改名/删除 = 数据丢失**。
- *
- * ## 与 `AppearanceConfig` 的关系
- *
- * `AppearanceConfig`（在 `:core`）是 `CombinationStyle` 去掉壁纸变换后的**业务视图**，
- * 页面（`MainScheduleScreen` 等）消费它。这里存的是完整快照（含 offset/scale/ref），
- * 落盘格式必须保持原样。
+ * ⚠ 字段名是数据兼容契约：存量用户在 `appearance_settings` 里存的就是本结构的 JSON 快照
+ * （键名 = 字段名），一个字符都不能改 —— 改名/删除 = 老用户外观设置全部读不出来。
+ * 可以新增字段（Gson/kotlinx 都忽略未知键），落盘格式必须保持原样。
  */
 data class AppearanceStyle(
     val offsetX: Float = 0f,

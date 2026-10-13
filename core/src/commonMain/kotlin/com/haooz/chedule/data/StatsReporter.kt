@@ -9,18 +9,8 @@ import kotlin.concurrent.Volatile
 /**
  * 匿名统计上报。
  *
- * ## 迁移状态：四个 Android 依赖已全部解除，可下沉 `:core`
- *
- * | 原依赖 | 现状 |
- * |---|---|
- * | `Context.getSharedPreferences` | ✅ [AppStorage] |
- * | `OkHttpClient` | ✅ [HttpService]，超时仍是 connect 10s / read 10s / call 15s |
- * | `org.json.JSONObject` | ✅ [jsonObjectOf] |
- * | `Build.*` + `packageManager` | ✅ [currentDeviceInfo] / [AppInfo] |
- * | `java.util.UUID` | ✅ [randomUuidV4]，格式与 UUID v4 一致 |
- *
- * ⚠ 上报负载的字段名（`device_id` / `event_type` / `device_model`
- * / `android_version` / `sdk_level` …）是**服务端既有统计口径**，一个字都不能改。
+ * ⚠ 上报负载的字段名（`device_id` / `event_type` / `device_model` / `android_version`
+ * / `sdk_level` …）是服务端既有统计口径，一个字都不能改。
  */
 object StatsReporter {
     private const val TAG = "StatsReporter"
@@ -33,7 +23,7 @@ object StatsReporter {
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_INSTALL_REPORTED = "install_reported"
 
-    // 超时与迁移前一致
+    // 超时 connect 10s / read 10s / call 15s
     /** 可替换（`internal var`）以便 commonTest 注入 FakeHttpService，覆盖重试/退避分支。 */
     internal var http: HttpService = createHttpService(
         HttpTimeouts(connectSeconds = 10, readSeconds = 10, callSeconds = 15),
@@ -43,11 +33,8 @@ object StatsReporter {
     private var deviceId: String? = null
 
     /**
-     * 仅供测试：清空内存缓存，模拟「进程冷启动」。
-     *
-     * 有必要暴露它是因为 [StatsReporter] 是全局 object，`deviceId` 会跨测试用例残留；
-     * 而 [AppStorage] 在测试里会被重设为新的内存实现，两者不同步时
-     * 「device_id 已落盘」这类断言会假失败。
+     * 仅供测试：清空内存缓存，模拟进程冷启动。`deviceId` 会跨测试用例残留，
+     * 而 [AppStorage] 在测试里会被重设为新的内存实现，不同步会让「已落盘」断言假失败。
      */
     internal fun resetForTest() {
         deviceId = null
@@ -67,7 +54,7 @@ object StatsReporter {
     }
 
     /** 组装上报负载：设备ID、事件类型、时间戳 + 设备/系统/App 信息。
-     *  `internal` 而非 private：字段名是**服务端既有统计口径**，用测试锁住。 */
+     *  `internal` 而非 private：字段名是服务端既有统计口径，用测试锁住。 */
     internal fun buildPayload(eventType: String): String {
         val device = currentDeviceInfo()
         return jsonObjectOf(
@@ -111,8 +98,7 @@ object StatsReporter {
     /**
      * 上报安装事件的实际逻辑（可挂起、可测）。
      *
-     * 关键契约：**只有上报成功才落盘标记**，否则下次启动会重试 ——
-     * 反过来（先标记后上报）会永久丢失安装量，是先标记先上报的经典陷阱。
+     * ⚠ 只有上报成功才落盘标记，否则下次启动会重试 —— 反过来（先标记后上报）会永久丢失安装量。
      *
      * @return 是否成功上报
      */

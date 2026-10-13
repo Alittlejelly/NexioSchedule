@@ -14,36 +14,16 @@ import kotlinx.datetime.toLocalDateTime
 // ════════════════════════════════════════════════════════════════════════
 //  课表备份 —— 单文件全包
 //
-//  备份与恢复的完整能力集中于此：
 //  1. [SyncManager]    手动备份/恢复：驱动 WebDAV 上传/下载，并暴露可观察状态
 //  2. [WebDavManager]  WebDAV：账号配置、上传、下载、远端文件列表、删除
 //
-//  两者共用 [CourseRepository.exportAllPreferences] / `importAllPreferences`
-//  这一对全量序列化入口，备份格式由它们决定；**格式改动只需看那两处**。
+//  两者共用 [CourseRepository.exportAllPreferences] / `importAllPreferences` 全量
+//  序列化入口，备份格式由它们决定；格式改动只需看那两处。
 //
-//  与 `ScheduleExport.kt`（分享口令）的区别：备份走 WebDAV，保留完整
-//  课表 + 节假日数据，不含外观等本机观感；分享走口令，只含课表本体。
-//
-//  账号密码存 `webdav_config` prefs。
-//
-//  ## 下沉 `:core` 时替换掉的东西（逐条对齐，未做「顺手优化」）
-//
-//  | 原来 | 现在 |
-//  |---|---|
-//  | `Context` + `getSharedPreferences("webdav_config", …)` | `AppStorage.store("webdav_config")`（**文件名与 4 个键名逐字未变**） |
-//  | OkHttp（`OkHttpClient` / `Request` / `Credentials.basic`） | [HttpService]（`request()` 支持 PROPFIND / MKCOL / PUT / GET / DELETE） |
-//  | `SimpleDateFormat` ×4 | `DateExt` 的 `formatCompactStamp` / `formatDisplayDateTime` / `parseCompactStamp` |
-//  | Gson（备份外层信封） | [JsonSupport] |
-//  | `Thread.sleep` | `delay`（本来就在协程里） |
-//  | `Dispatchers.IO` | [ioDispatcher]（Kotlin/Native 上没有 `Dispatchers.IO`） |
-//  | `CourseReminderHelper.onHolidayDataChanged(context)` | 构造时注入的回调（`:core` 不能反向依赖 `:app` 的提醒模块） |
-//
-//  ## ⚠ 行为对齐说明
-//
-//  请求方法、`Authorization`、`Depth` 头、状态码分支（2xx / 401 / 404 / 405）、
-//  `ensureDir` 的重试次数（2 次）与退避（1s、2s）全部照抄。
-//  **唯一可观测差异**：OkHttp 的 `response.message`（reason phrase）在 [HttpResult] 里没有对应物，
-//  所以 `testConnection` 的失败文案由「服务器返回: <code> <message>」变成「服务器返回: <code>」。
+//  ⚠ 数据兼容红线：prefs 文件名 `webdav_config` 与 4 个键名、备份 JSON 字段名逐字未变；
+//  请求方法 / `Authorization` / `Depth` 头 / 状态码分支（2xx / 401 / 404 / 405）/
+//  `ensureDir` 重试次数（2 次）与退避（1s、2s）全部照抄，超时 connect 10s / read 30s。
+//  唯一可观测差异：失败文案不含 reason phrase，为「服务器返回: <code>」。
 // ════════════════════════════════════════════════════════════════════════
 
 // ── 1. 同步管理器 ───────────────────────────────────────────
@@ -161,24 +141,16 @@ class SyncManager private constructor() {
 
 /** WebDAV 备份/恢复管理器 */
 class WebDavManager(
-    /**
-     * 恢复成功后通知平台侧刷新提醒。
-     *
-     * 原实现直接调 `:app` 的 `CourseReminderHelper.onHolidayDataChanged(context)` ——
-     * 那是反向依赖。改为构造时注入；`:app` 的调用点传
-     * `{ CourseReminderHelper.onHolidayDataChanged(context) }`。
-     */
+    /** 恢复成功后通知平台侧刷新提醒（构造时注入，避免 `:core` 反向依赖 `:app`）。 */
     private val onHolidayDataChanged: () -> Unit = {},
 ) {
 
     private val configPrefs = AppStorage.store("webdav_config")
 
     /**
-     * 超时与迁移前逐字一致：connect 10s / read 30s；原来没调 callTimeout，所以不设整体超时。
+     * ⚠ 超时与迁移前一致：connect 10s / read 30s；不设整体 callTimeout。
      *
-     * `internal var` 而不是 `private val`：与 [StatsReporter.http] 同一个套路 ——
-     * 让测试能塞一个假的实现进来断言「发出去的请求逐条不变」。
-     * WebDAV 没法在本地起真服务器，这是唯一能锁住请求形状（方法 / Authorization / Depth / body）的办法。
+     * `internal var` 是为了让测试注入假实现，锁住请求形状（WebDAV 无法本地起真服务器）。
      */
     internal var http: HttpService = createHttpService(
         HttpTimeouts(connectSeconds = 10, readSeconds = 30),
@@ -214,7 +186,7 @@ class WebDavManager(
 
     fun isConfigured(): Boolean = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
 
-    /** 对应 OkHttp 的 `Credentials.basic(user, pass)`：`Basic ` + base64("user:pass")。 */
+    /** Basic 认证头：`Basic ` + base64("user:pass")。 */
     private fun authHeader(): String = basicAuthHeader(username, password)
 
     private fun baseUrl() = "$serverUrl/$BACKUP_DIR"
@@ -237,7 +209,7 @@ class WebDavManager(
                 response.isSuccessful -> Result.success("连接成功")
                 response.code == 401 -> Result.failure(Exception("认证失败，请检查用户名和密码"))
                 response.code == 404 -> Result.success("连接成功（目录将自动创建）")
-                // ⚠ OkHttp 的 response.message（reason phrase）在 HttpResult 里没有对应物，故省略
+                // ⚠ reason phrase 在 HttpResult 里没有对应物，故省略
                 else -> Result.failure(Exception("服务器返回: ${response.code}"))
             }
         } catch (e: Exception) {
@@ -256,7 +228,7 @@ class WebDavManager(
         var lastError: String? = null
         for (attempt in 0..retries) {
             if (attempt > 0) {
-                // 原实现是 Thread.sleep（JVM 专有）；这里本来就在协程里，用 delay
+                // 已在协程内，用 delay 而非阻塞 sleep
                 delay(1000L * attempt)
             }
             val mkcolResponse = http.request(
@@ -430,13 +402,7 @@ class WebDavManager(
     }
 }
 
-/**
- * Basic 认证头：`Basic ` + base64("user:pass")。
- *
- * 对应 OkHttp 的 `Credentials.basic(username, password)` —— 它内部就是
- * `base64(username + ":" + password, UTF-8)`。base64 用 stdlib 的
- * [kotlin.io.encoding.Base64]（跨平台，不需要额外依赖）。
- */
+/** Basic 认证头：`Basic ` + base64("user:pass")，用 stdlib 的 [kotlin.io.encoding.Base64]。 */
 internal fun basicAuthHeader(username: String, password: String): String =
     "Basic " + kotlin.io.encoding.Base64.Default.encode("$username:$password".encodeToByteArray())
 
@@ -448,7 +414,7 @@ data class BackupInfo(
         get() {
             return try {
                 val id = backupId.removePrefix("backup_")
-                // 原实现：SimpleDateFormat 解析 yyyyMMdd_HHmmss，再格式化成 yyyy-MM-dd HH:mm:ss
+                // 解析 yyyyMMdd_HHmmss，格式化成 yyyy-MM-dd HH:mm:ss
                 parseCompactStamp(id)?.formatDisplayDateTime() ?: id
             } catch (_: Exception) {
                 backupId

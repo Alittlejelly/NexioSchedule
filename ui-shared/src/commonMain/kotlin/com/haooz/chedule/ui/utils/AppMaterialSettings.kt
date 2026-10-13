@@ -9,9 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
 
 /**
- * 应用材质质量档（应用偏好设置中可切换，默认最佳）。
- *
- * 最佳 / 均衡 / 性能 —— 供玻璃模糊、折射、边光等材质效果读取。默认均衡。
+ * 应用材质质量档（最佳 / 均衡 / 性能，供玻璃模糊、折射、边光等读取），默认均衡。
  */
 object AppMaterialSettings {
 
@@ -37,22 +35,15 @@ object AppMaterialSettings {
     fun labelOf(level: String): String =
         entries.firstOrNull { it.first == level }?.second ?: "均衡"
 
-    /**
-     * 按钮 / 低栏背景板折射。
-     * 最佳保留；均衡及更省档关闭。
-     */
+    /** 按钮 / 低栏背景板折射：仅最佳档保留，均衡及更省档关闭。 */
     fun chromeLensEnabled(): Boolean = level == BEST
 
-    /**
-     * 性能档：假渐进模糊（等值 blur + alpha 淡出）替代真渐进（AGSL 多重采样）。
-     * 最佳 / 均衡保留真模糊。
-     */
+    /** 性能档用假渐进模糊（等值 blur + alpha 淡出）替代真渐进（AGSL 多重采样）；最佳 / 均衡保留真模糊。 */
     fun progressiveBlurUseFake(): Boolean = level == PERFORMANCE
 
     /**
-     * 性能档：高光描边降级为普通纯色描边（无模糊、SrcOver）。
-     * 传入底板色 [baseColor] 时按同色系提亮一档作描边，彩色按钮得到同色高光；
-     * 未传时按主题回退（浅色白 / 深色灰）。最佳 / 均衡保留原高光。
+     * 性能档把高光描边降级为普通纯色描边（无模糊、SrcOver）；[baseColor] 非空时按同色系
+     * 提亮一档作描边，否则按主题回退（浅色白 / 深色灰）。最佳 / 均衡保留原高光。
      */
     fun resolveEdgeLight(
         source: com.kyant.backdrop.edgelight.EdgeLight,
@@ -89,10 +80,8 @@ object AppMaterialSettings {
     }
 
     /**
-     * 启动时从偏好载入到全局状态。
-     *
-     * 不再需要 `Context`：走 [AppStorage] 按名字取，平台实现由启动时注入
-     * （Android 仍是同一个 `app_preferences` 文件，存量数据不受影响）。
+     * 启动时从偏好载入到全局状态，走 [AppStorage] 按名字取（Android 仍是同一个
+     * `app_preferences` 文件，存量数据不受影响）。
      */
     fun load() {
         level = normalize(AppStorage.store(PREFS_NAME).getString(KEY_APP_MATERIAL, BALANCED))

@@ -27,23 +27,17 @@ class CourseRepository private constructor() : PeriodTimeSource {
     private var globalSectionTimesCache: Map<Int, String>? = null
 
     init {
-        // 启动迁移，两者都幂等、只跑一次：
-        // - 课表收进默认文件夹（文件夹 1.6.1 才有，1.5.6 及更早的课表还散在根目录）；
-        // - 清理闲置 time_config（判据不可靠时整体跳过，见函数注释）。
-        // 另注：曾考虑补回「缺绑定就补绑」的迁移，但那会让上面 prune 的
-        // 「未绑定即跳过」保护失效——补绑后判据看似可靠，反而会把只在旧指针里的
-        // 配置判成孤儿删掉（场景同 1.6.4 的误删）。保持保守策略，不做补绑。
+        // 启动迁移，两者都幂等、只跑一次：课表收进默认文件夹；清理闲置 time_config
+        //（判据不可靠时整体跳过，见函数注释）。不做「缺绑定就补绑」的迁移——
+        // 那会让 prune 的「未绑定即跳过」保护失效，把只在旧指针里的配置误判成孤儿删掉。
         migrateSchedulesIntoDefaultFolder()
         pruneOrphanTimeConfigsIfNeeded()
     }
 
 
     /**
-     * 首次装这个版本（或第一次使用）时，把现有课表全部收进「默认文件夹」。
-     * 只跑一次：升上来的老用户不会看到课表散在根目录，新用户也从一开始就有分组。
-     *
-     * 备份恢复会清掉迁移标记再跑一遍：此时可能已有同 id 的默认文件夹，
-     * 必须并入而不是再 add 一个，否则 LazyColumn 的 folder key 冲突会闪退。
+     * 首次使用时把现有课表全部收进「默认文件夹」，只跑一次。
+     * 备份恢复会清掉标记再跑：已有同 id 文件夹必须并入而非再 add，否则 LazyColumn key 冲突会闪退。
      */
     private fun migrateSchedulesIntoDefaultFolder() {
         if (prefs.getBoolean(KEY_DEFAULT_FOLDER_MIGRATED, false)) return
@@ -74,8 +68,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     // 变更回调：多播列表，避免后构造的 ViewModel 覆盖先注册的监听。
-    // 原来是 java.util.concurrent.CopyOnWriteArrayList（JVM 专有），换成
-    // 「@Volatile 不可变列表 + 写时复制」—— 语义一致：读走快照、写不阻塞读。
+    // @Volatile 不可变列表 + 写时复制：读走快照、写不阻塞读。
     @Volatile
     private var courseChangedListeners: List<(action: String, courseId: String) -> Unit> = emptyList()
 
@@ -144,10 +137,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 某课表设置变更落库后的时间戳/UI 通知。
-     * - 始终更新**该课表**的 `settings_last_modified`（按课表分键保存，供备份还原与后续同步预留）
-     * - 仅当写入的是当前课表时才失效缓存并通知 UI / 触发重排
-     * - 写非当前课表时不碰当前课表时间戳，也不通知当前 UI
+     * 某课表设置变更落库后的时间戳/UI 通知：始终更新该课表的 `settings_last_modified`；
+     * 仅当写入的是当前课表时才失效缓存并通知 UI / 触发重排。
      */
     private fun markScheduleSettingsChanged(scheduleId: String, changeId: String = "") {
         val prefix = getScheduleKeyPrefix(scheduleId)
@@ -180,8 +171,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             date.formatSlashDate()
 
         /**
-         * 解析教务/设置/备份里各种开学日写法。
-         * 支持：yyyy/MM/dd、yyyy-MM-dd、yyyy/M/d、yyyyMMdd、带时间的 ISO 前缀。
+         * 解析教务/设置/备份里各种开学日写法（yyyy/MM/dd、yyyy-MM-dd、yyyy/M/d、yyyyMMdd 等）。
          * 年份限 1970..2100，避免「26/9/1」被当成公元 26 年。
          */
         fun parseFlexibleDate(raw: String?): LocalDate? {
@@ -262,8 +252,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
         /**
          * 小组件 padding 档位的出厂默认档，仅在用户从未手动选过时生效：
-         * 小米系（HyperOS 桌面按 4×6 规格绘制小部件）默认 4×6，其余机型默认标准档。
-         * 用户一旦选择就落盘，之后不再随设备判断变化。
+         * 小米系（HyperOS 按 4×6 绘制）默认 4×6，其余机型标准档；用户选过就落盘不再变。
          */
         private val defaultWidgetPaddingMode: Int = run {
             val xiaomiBrands = setOf("xiaomi", "redmi", "poco")
@@ -494,9 +483,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 调课-移动：仅影响该周。单周直接改位置；多周拆分；目标已有同源则合并。
-     * 通知由 ViewModel 统一处理，避免竞态。
-     * @param targetWeek 目标位周次；调休列的 followWeek 与源周不同时为跨周移动，默认同周
+     * 调课-移动：仅影响该周。单周直接改位置；多周拆分；目标已有同源则合并。通知由 ViewModel 统一处理。
+     * @param targetWeek 目标位周次；与源周不同时为跨周移动，默认同周
      */
     fun moveCourseForWeek(
         sourceCourseId: String,
@@ -517,7 +505,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 调课-覆盖：按周删除目标位冲突课后移动。同源课不删，交给 move 合并。
-     * @param week 源课所在周；@param targetWeek 目标位周次（冲突课按它删）
+     * @param targetWeek 目标位周次（冲突课按它删）
      */
     fun overwriteCourseForWeek(
         sourceCourseId: String,
@@ -614,8 +602,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 按周移动的拆分+合并（原地、不落盘）。
-     * @param targetWeek 目标位周次；默认与 week 相同 = 同周内移动。调休列的 followWeek
-     * 与源周不同时走跨周：源课剔除 week、目标位写入 targetWeek
+     * @param targetWeek 目标位周次；与 week 不同时走跨周：源课剔除 week、目标位写入 targetWeek
      * @return 新列表；无需改动时返回 null，调用方跳过落盘
      */
     private fun moveWeekInPlace(
@@ -920,7 +907,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     fun getSmartWeekend(scheduleId: String): Boolean {
-        // 兼容基线 1.5.6：旧 show_weekend 键的一次性迁移在 1.5.6 内就跑完了，这里只读现键
+        // 旧 show_weekend 键的一次性迁移已跑完，这里只读现键
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_SMART_WEEKEND"
         return prefs.getBoolean(key, false)
     }
@@ -941,12 +928,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     data class WorkSwapFollow(val date: LocalDate, val week: Int, val weekday: Int)
 
     /**
-     * 把调休条目的「跟随绝对日期」换算成当前课表的 (周次, 星期)。
-     *
-     * 关键点：存的是日期，周次每次按**当前课表**的学期开始时间现算。
-     * 切换课表 = 换学期开始时间 → 同一天算出不同周次 → 调休列自动改跟随那一周的课。
-     * （改之前存的是周次本身，换课表就整体错位，跟随到别的日期的课上去。）
-     *
+     * 把调休条目的「跟随绝对日期」换算成当前课表的 (周次, 星期)。存的是日期，
+     * 周次按当前课表学期开始时间现算，切换课表后自动改跟随（存周次本身会整体错位）。
      * @return null = 这条调休还没配跟随日期
      */
     fun resolveWorkSwapFollow(
@@ -972,8 +955,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 该课表日「有没有课可上」：当天有课，或已配置调休且映射日/映射周有课。
-     * 智能周末跳周用：无课可上（含未配置 followWeekday）→ 应跳下周。
+     * 该课表日「有没有课可上」：当天有课，或已配置调休且映射日/周有课。
+     * 智能周末跳周用：无课可上（含未配置 followWeekday）→ 跳下周。
      */
     fun hasDisplayableCoursesOnDay(dayOfWeek: Int, week: Int): Boolean {
         if (dayOfWeek !in 1..7) return false
@@ -1051,10 +1034,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         notifyCourseChanged("settings")
     }
 
-    /**
-     * period: "morning" / "afternoon" / "evening"
-     * 返回相对节次号 (1-6) -> "HH:mm-HH:mm"
-     */
+    /** period: "morning"/"afternoon"/"evening"；返回相对节次号 (1-6) -> "HH:mm-HH:mm" */
     override fun getPeriodTimes(period: String): Map<Int, String> {
         return getPeriodTimes(period, getCurrentScheduleId())
     }
@@ -1182,10 +1162,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 占用判断为分钟级时间重叠；自定义时间课按实际起止参与，时间无法确定时回退节次重叠。
-     *
-     * @param excludeIds 编辑时排除自身
-     * @param startTime/endTime 自定义时间课程传入 "HH:mm"
+     * 占用判断为分钟级时间重叠；自定义时间课按实际起止参与，无法确定时回退节次重叠。
+     * @param excludeIds 编辑时排除自身；@param startTime/endTime 自定义时间课传 "HH:mm"
      */
     fun getOccupiedWeeks(
         dayOfWeek: Int,
@@ -1275,7 +1253,6 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 分钟级重叠判断；相邻（end==start）不算冲突。时间无法确定时回退节次重叠。
-     *
      * @param sectionTimes 全局绝对节次号 -> "HH:mm-HH:mm"
      */
     private fun isTimeConflict(
@@ -1432,8 +1409,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 从文件夹原始数据里去掉（或改名）某个课表引用，并落盘。
-     * 不能用 getScheduleFolders() 做判断：它读时已按当前 names 剔除刚删的名字，
-     * 缓存冷时条件恒为 false，幽灵引用会一直留在 prefs 并被备份导出。
+     * 不能用 getScheduleFolders() 判断：缓存冷时它已剔除刚删的名字、条件恒为 false，
+     * 幽灵引用会留在 prefs 并被备份导出。
      */
     private fun rewriteScheduleNameInFolders(oldName: String, newName: String?) {
         val json = prefs.getStringOrNull(KEY_SCHEDULE_FOLDERS) ?: return
@@ -1564,9 +1541,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     // ---------- 课表文件夹 ----------
 
     /**
-     * 读取课表文件夹。
-     * 顺带清洗：剔除已被删除的课表名，保证一个课表只出现在一个文件夹里（保留靠前的那个），
-     * 并合并重复的文件夹 id（坏备份会让 LazyColumn key 冲突闪退）。
+     * 读取课表文件夹，顺带清洗：剔除已删除的课表名，保证一个课表只出现在一个文件夹里
+     *（保留靠前的那个），并合并重复的文件夹 id（坏备份会让 LazyColumn key 冲突闪退）。
      */
     fun getScheduleFolders(): List<ScheduleFolder> {
         scheduleFoldersCache?.let { return it }
@@ -1633,10 +1609,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         return folders
     }
 
-    /**
-     * 解散文件夹：文件夹内的课表回到根目录，课表本身不删除。
-     * 只删文件夹壳，避免误删用户数据（真要删课表请走删除课表）。
-     */
+    /** 解散文件夹：文件夹内的课表回到根目录，课表本身不删除（只删文件夹壳）。 */
     fun disbandScheduleFolder(id: String): List<ScheduleFolder> {
         val folders = getScheduleFolders()
         if (folders.none { it.id == id }) return folders
@@ -1775,13 +1748,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * `time_config_ids` 丢失时，从现存的 `time_config_{id}` 键反推重建并落盘。
-     *
-     * 无版本依赖的通用自愈：不管是备份还原把键冲掉、还是老数据残留，只要配置还在就自己爬起来。
-     * 否则 [getScheduleTimeConfigId] 会因为「绑定 id 不在列表里」而回退到第一个配置，
-     * 读到 `time_config_0` 不存在 → 节数与时间被**静默**重置成 4/4/4 默认值。
-     *
-     * @return 扫到了配置则返回（已落盘），一个都没有则返回 null 交回上层走原逻辑
+     * `time_config_ids` 丢失时，从现存的 `time_config_{id}` 键反推重建并落盘：否则
+     * [getScheduleTimeConfigId] 会回退到第一个配置、读到 `time_config_0` 不存在，节数与时间被静默重置成 4/4/4。
+     * @return 扫到配置则返回（已落盘），一个都没有则返回 null
      */
     private fun rebuildTimeConfigIdsFromKeys(): List<Long>? {
         val scanned = prefs.all().keys
@@ -1828,9 +1797,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         timeConfigCache[id]?.let { return it }
         val key = "$TIME_CONFIG_PREFIX$id"
         val json = prefs.getStringOrNull(key)
-        // 兜底配置必须经 sanitize 播种（内部 ensureRoutine 会补一个默认作息）。
-        // 裸默认配置 routines 为空：设置页只在内存里 ensureRoutine，
-        // 而 saveRoutine 按存储态校验「目标作息是否存在」——两头对不上，保存会被静默丢弃
+        // 兜底配置必须经 sanitize 播种（内部 ensureRoutine 补默认作息）：裸默认配置 routines
+        // 为空，而 saveRoutine 按存储态校验「目标作息是否存在」，两头对不上会静默丢弃保存。
         val fallback = TimeConfig.sanitize(id, TimeConfig(id = id, name = "默认配置"))
         if (json.isNullOrEmpty()) {
             // id=0 没数据是全新安装的正常状态；别的 id 读不到 = 配置真丢了，会静默回落 4/4/4
@@ -1882,10 +1850,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 直接改写 TimeConfig 后广播一次「设置变更」。
-     *
-     * [saveTimeConfig] 只落盘、不发通知（它被很多内部批量写调用，发了会重复重排），
-     * 所以「在 UI 层拿到 config 改一改再存回去」的路径必须自己补这一下，
+     * 直接改写 TimeConfig 后广播一次「设置变更」。[saveTimeConfig] 只落盘、不发通知
+     *（它被很多内部批量写调用），所以「改一改再存回去」的路径必须自己补这一下，
      * 否则课程提醒 / 小部件 / 手表推送仍按改动前的时间工作。
      */
     fun notifyTimeConfigChanged() {
@@ -1894,9 +1860,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 删除当前课表的一个作息方案；至少保留一个，删不动时返回 false。
-     *
-     * 删除后「生效的那套」可能换人（也可能还是它，时间却变了），所以必须广播 ——
-     * 否则课程提醒 / 小部件仍按被删掉的作息排时间。
+     * 删除后「生效的那套」可能换人（也可能时间变了），必须广播，否则提醒 / 小部件仍按旧作息排时间。
      */
     fun deleteRoutine(routineId: Long): Boolean {
         val configId = getScheduleTimeConfigId(getCurrentScheduleId())
@@ -1909,11 +1873,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 保存某个作息方案的时间数据，并广播变更让课表页重算。
-     * 节次骨架不在这里改——它属于课表，由时间配置页统一管理。
-     *
-     * @return false 表示没找到目标作息、什么都没写（withRoutineReplaced 静默返回原值）。
-     * 曾经有「保存成功但课表纹丝不动」的反馈无法复现，命中不到时必须留下日志。
+     * 保存某个作息方案的时间数据，并广播变更让课表页重算。节次骨架不在这里改。
+     * @return false 表示没找到目标作息、什么都没写；命中不到时必须留下日志。
      */
     fun saveRoutine(routineId: Long, edited: TimeConfig, nameOverride: String? = null): Boolean {
         val scheduleId = getCurrentScheduleId()
@@ -1947,11 +1908,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 清理没有课表绑定的孤儿时间配置。
-     *
-     * 删除不可逆（prefs 没有回收站），所以只在**能证明没人用**时才动手：还有课表没写下显式
-     * 绑定就整体跳过。1.6.4 曾把在用的配置判成孤儿删掉（判据漏了旧全局指针
-     * `current_time_config_id`），用户时间回落成 4/4/4；现在口径统一到 [collectBoundTimeConfigIds]。
+     * 清理没有课表绑定的孤儿时间配置。删除不可逆，只在能证明没人用时才动手：
+     * 还有课表没写下显式绑定就整体跳过（判据漏掉旧全局指针曾误删在用的配置，
+     * 用户时间回落成 4/4/4）。口径统一到 [collectBoundTimeConfigIds]。
      */
     fun pruneOrphanTimeConfigsIfNeeded() {
         val ids = getTimeConfigIds()
@@ -1976,8 +1935,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 判定「正在被使用」的唯一口径：全部 `schedule_time_config_*` 绑定值（含已不存在的课表残留）
-     * + 旧全局指针本身及其解析值（未绑定的课表会回退到它）。
+     * 判定「正在被使用」的唯一口径：全部 `schedule_time_config_*` 绑定值（含已不存在的
+     * 课表残留）+ 旧全局指针本身及其解析值（未绑定的课表会回退到它）。
      */
     private fun collectBoundTimeConfigIds(): Set<Long> {
         val bound = prefs.all().keys
@@ -1994,14 +1953,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 跨过作息生效日期后，补一次「设置变更」广播，让课程提醒 / 小部件按新作息重排。
-     *
-     * 作息是到日期自动切换的，切换那一刻没有任何写操作；而提醒闹钟只在设置变更时重排，
-     * 不补这一下的话，App 没被打开过时提醒会一直停在上一个作息的时间上。
-     *
-     * 只在「生效的作息真的换了」时才广播；同一天反复调用只是两次 prefs 读，无副作用。
-     * prefs 里没值时只登记不重排——首次（新装 / 首次升级）的排程由既有冷启动链路负责。
-     * 按课表分键存放，切换课表不会互相干扰。
+     * 跨过作息生效日期后，补一次「设置变更」广播，让课程提醒 / 小部件按新作息重排：
+     * 作息到日期自动切换、切换那一刻没有写操作，而提醒闹钟只在设置变更时重排。
+     * 只在生效作息真的换了时才广播；prefs 里没值时只登记不重排，首次排程交给冷启动链路。
      */
     fun syncRoutineAfterDateChange(): Boolean {
         val scheduleId = getCurrentScheduleId()
@@ -2010,10 +1964,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val prefKey = "${SCHEDULE_KEY_PREFIX}${scheduleId}_active_routine"
         val last = prefs.getStringOrNull(prefKey)
 
-        // 顺带把顶层镜像刷成当天生效的那套。跨日期切换本身没有任何写操作，
-        // 镜像不刷新就会一直停在上一个作息上 —— 只读顶层的旧版本 App、
-        // 以及直接导出 prefs 原始 JSON 的全量备份都会拿到过期时间。
-        // （App 内部所有读取都已走 effective()，这里只是把镜像 invariant 补回来）
+        // 顺带把顶层镜像刷成当天生效的那套：跨日期切换本身没有写操作，不刷新会停在
+        // 上一个作息上，只读顶层的旧版本 App 与导出 prefs 原始 JSON 的备份会拿到过期时间。
         val effective = config.effective()
         if (effective != config) saveTimeConfig(effective)
 
@@ -2052,8 +2004,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         getTimeConfig(getScheduleTimeConfigId(scheduleId)).effective()
 
     /**
-     * 把另一个课表的时间配置（含全部作息方案）完整复制过来，直接作为本课表的时间配置使用。
-     * 一个课表只绑定一个时间配置，所以这里是「覆盖」而不是「新增/切换」。
+     * 把另一个课表的时间配置（含全部作息方案）完整复制过来直接使用：
+     * 一个课表只绑定一个时间配置，所以这里是「覆盖」而非「新增/切换」。
      */
     fun copyTimeConfigFromSchedule(
         sourceScheduleId: String,
@@ -2128,11 +2080,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 教务导入：把脚本下发的默认单节时长 / 课间休息时长落到目标课表的 TimeConfig。
-     *
-     * 只改 [TimeConfig.classDuration] / [TimeConfig.shortBreak]，节数、节次时间、作息方案
-     * 全部原样保留；目标课表尚未绑定 TimeConfig 时新建一个并绑定（与 [applyTimeImportToSchedule] 一致）。
-     * 与「作息时间是否为空」无关：即使脚本同时下发了 preset_time_slots（显式节次时间），
-     * 这两个默认值也作为课表骨架参数落库，供无显式时间的节次推算使用。
+     * 只改 [TimeConfig.classDuration] / [TimeConfig.shortBreak]，节数、节次时间、作息方案原样保留；
+     * 未绑定时新建并绑定。与「作息时间是否为空」无关，这两个值始终作为骨架参数落库。
      */
     fun applyImportedDefaultDurationsToSchedule(
         scheduleId: String,
@@ -2233,8 +2182,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 一次写入完整配置（旧实现 20+ setter 造成多次磁盘提交；且 savePeriodTimes 会
-     * 静默关掉 quickTimeEnabled，这里显式保持关闭以对齐历史行为）。
+     * 一次写入完整配置（旧实现 20+ setter 造成多次磁盘提交）。
+     * savePeriodTimes 会静默关掉 quickTimeEnabled，这里显式保持关闭以对齐历史行为。
      */
     private fun applyTimeConfigToSchedule(config: TimeConfig) {
         val scheduleId = getCurrentScheduleId()
@@ -2296,12 +2245,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
- * 外观键不进全量备份。
- *
- * 外观已整体迁到 [AppearancePrefs] 的独立 prefs 文件，本文件里理论上不该再有外观键。
- * 这里保留判定是为了兜住两类残留：迁移未完成的旧版本数据、以及历史备份里混入的键
- * （旧版外观键叫 `combination_*` / `comb_*`，迁移到新文件后键名也变了，但老备份仍带旧名）。
- */
+     * 外观键不进全量备份。外观已整体迁到 [AppearancePrefs] 的独立 prefs 文件，
+     * 这里保留判定是为兜住历史备份里混入的旧外观键（`combination_*` / `comb_*` / `wallpaper_*`）。
+     */
     private fun isCombinationBackupKey(key: String): Boolean {
         return key == AppearancePrefs.FILE_STYLE_KEY ||
             key.startsWith("combination_") ||
@@ -2322,10 +2268,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             key == KEY_WIDGET_PADDING_MODE
     }
 
-    /**
-     * 全量备份：课表数据 + 节假日/调休。
-     * 不含搭配、提醒等应用功能设置，以及主题等应用偏好。
-     */
+    /** 全量备份：课表数据 + 节假日/调休；不含搭配、提醒等应用功能设置与主题等应用偏好。 */
     fun exportAllPreferences(): Map<String, Any> {
         val result = mutableMapOf<String, Any>()
         for ((key, value) in prefs.all()) {
@@ -2436,10 +2379,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 从单课表备份还原时间配置；认不出格式时返回 null（调用方退回复制当前课表）。
-     *
-     * 两种形态都收：整份 JSON 字符串，或扁平 Map（旧版本 App 写的、也认识的那种）。
-     * 二者都转回 JSON 交给 gson + sanitize —— 字段清单不用手写，也不用跟着 TimeConfig
-     * 加字段改两处；sanitize 顺带完成钳制与默认作息播种。
+     * 两种形态都收：整份 JSON 字符串，或扁平 Map。二者都转回 JSON 交给 gson + sanitize，
+     * 字段清单不用手写，sanitize 顺带完成钳制与默认作息播种。
      */
     private fun buildImportedTimeConfig(scheduleName: String, raw: Any): TimeConfig? = when (raw) {
         is String, is Map<*, *> -> parseTimeConfigSnapshot(raw)?.copy(name = scheduleName, id = 0L)
@@ -2540,8 +2481,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         invalidateAllCaches()
 
         // 不能靠 getScheduleTimeConfigId==0 判断未绑定（会 fallback 到第一个配置），
-        // 也不能只看 contains（deleteSchedule 历史上不清理绑定）。
-        // 有 time_config 则强制新建覆盖；没有且确实无绑定时才复制当前配置。
+        // 也不能只看 contains（deleteSchedule 历史上不清理绑定）；有 time_config 则强制新建覆盖。
         val boundKey = "$SCHEDULE_TIME_CONFIG_PREFIX$scheduleName"
         if (timeConfigData != null || !prefs.contains(boundKey)) {
             // 解析不出来（备份损坏 / 格式不认识）时退回「复制当前课表」，课表不至于没有时间配置
@@ -2643,8 +2583,7 @@ fun validateFullScheduleBackupStructure(data: Map<String, Any>): List<String> {
     if (data.containsKey("schedule_folders")) {
         val rawFolders = data["schedule_folders"] as? String
             ?: throw IllegalArgumentException("Invalid schedule folders in backup")
-        // 原来走 Gson 的 JsonParser/JsonElement（isJsonArray / asJsonObject / asJsonPrimitive…）；
-        // kotlinx 的 JsonElement 用类型判断 + JsonPrimitive.isString 表达同一套语义。
+        // kotlinx 的 JsonElement 用类型判断 + JsonPrimitive.isString 表达与原 Gson 相同的语义。
         val folders = runCatching { parseJsonElement(rawFolders) }.getOrNull()
         require(folders is JsonArray) { "Invalid schedule folder in backup" }
         folders.forEach { folder ->
@@ -2754,10 +2693,8 @@ fun validateFullScheduleBackupStructure(data: Map<String, Any>): List<String> {
     data.keys.asSequence()
         .filter {
             it.startsWith("schedule_") && it != "schedule_names" && it != "schedule_folders" &&
-                // ⚠ schedule_folder_map 是**老版本遗留键**（被 schedule_folders 取代后代码里
-                // 已无任何引用），但它还留在老用户的 prefs 里 → 会被 exportAllPreferences
-                // 原样导出。这里必须同样豁免，否则**用户连自己的备份都恢复不了**
-                //（实测：真实备份正是因此被拒，报 "setting belongs to an unknown schedule"）。
+                // ⚠ schedule_folder_map 是已无引用的老版本遗留键，但仍留在老用户 prefs 里、
+                // 会被原样导出：这里必须豁免，否则用户连自己的备份都恢复不了。
                 it != "schedule_folder_map" &&
                 !it.startsWith("schedule_time_config_")
         }
@@ -2766,12 +2703,9 @@ fun validateFullScheduleBackupStructure(data: Map<String, Any>): List<String> {
                 "Invalid full schedule backup: setting belongs to an unknown schedule"
             }
         }
-    // ⚠ 「绑定到已删除课表的时间配置」**不是损坏**，是正常残留：删课表时清的是
-    // `schedule_{名}_*`，而绑定键用的是另一个前缀 `schedule_time_config_{名}`，没被一起清掉。
-    // 实测：真实备份里有 13 个这样的残留名（辽科院26秋 / ICS导入课表 / 新建的课表 …），
-    // 而 schedule_names 只有 5 个 —— 旧校验会直接拒绝，**用户连自己的备份都恢复不了**。
-    // 恢复流程本来就会先删掉全部 `schedule_*` 前缀再按备份写回，残留写回去与现状一致，无害。
-    // 所以这里只做「格式合理」的检查（非空、不含分隔符歧义），不再要求名字已知。
+    // ⚠ 「绑定到已删除课表的时间配置」不是损坏，是正常残留：删课表清的是 `schedule_{名}_*`，
+    // 绑定键 `schedule_time_config_{名}` 没被一起清掉。旧校验会因此拒绝恢复用户的备份，
+    // 故这里只做「格式合理」检查（非空、不含分隔符歧义），不要求名字已知。
     data.keys.asSequence()
         .filter { it.startsWith("schedule_time_config_") }
         .map { it.removePrefix("schedule_time_config_") }

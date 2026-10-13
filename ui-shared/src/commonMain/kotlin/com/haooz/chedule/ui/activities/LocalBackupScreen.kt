@@ -1,4 +1,4 @@
-/** 本地备份页面 - Screen（2026-10-11 自 :androidApp 迁入 :ui-shared；文件 I/O 走 BackupFileController） */
+/** 本地备份页面 - Screen（文件 I/O 走 BackupFileController） */
 package com.haooz.chedule.ui.activities
 
 import androidx.compose.animation.core.Animatable
@@ -85,20 +85,12 @@ import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
-// 备份体 / 学期设置 / 恢复门禁 parseBackupPayload、写侧 encodeBackupJson 已迁 :core
-// （kotlinx-serialization，原 Gson 走运行时反射、iOS 不存在）—— 见 com.haooz.chedule.data.BackupCodec.kt。
-// 备份目录扫描 / SAF 选文件 / 文件读写删已抽成 :core 的 BackupFileController 接口
-// （见 data/BackupFileController.kt），Android 实现是 :androidApp 的 AndroidBackupFileController。
 
 /** 课表名可能含路径分隔符/非法字符，直接拼进文件名会写失败或写到意外位置 */
 private fun sanitizeFileName(name: String): String =
     name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifEmpty { "课表" }
 
-/**
- * 备份文件名。原实现 `SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())` ——
- * 该 pattern 只含数字与固定分隔符、不受 Locale 影响，commonMain 用 :core 的
- * [formatCompactStamp] 手写零填充，行为逐字一致。
- */
+/** 备份文件名：时间戳走 [formatCompactStamp]（不受 Locale 影响，⚠ 与迁移前逐字一致，勿改）。 */
 private fun generateBackupFileName(mode: String, scheduleName: String?): String {
     val timestamp = nowLocalDateTime().formatCompactStamp()
     return if (mode == "all") {
@@ -109,9 +101,8 @@ private fun generateBackupFileName(mode: String, scheduleName: String?): String 
 }
 
 /**
- * 单课表备份的课程字段序列化 —— 与 `:androidApp` 的 `ScheduleExport.courseToShareMap`
- * **同一份字段清单**（颜色、周次模型保持一致；那份是分享/导出链路的 internal 函数，
- * 仍在 Android 侧，commonMain 不可见，故这里保留一份同构副本；**两边改字段必须同步**）。
+ * 单课表备份的课程字段序列化。
+ * ⚠ 与分享/导出的 courseToShareMap 是同一份字段清单，两边改字段必须同步。
  */
 private fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
     "name" to course.name,
@@ -138,16 +129,9 @@ private fun countFullBackupSchedules(data: Map<String, Any>): Int =
 fun LocalBackupScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
-    /**
-     * 备份文件能力控制器（Android = `AndroidBackupFileController`，构造时捕获 context、
-     * 包装目录扫描 / SAF 选文件 / 文件读写删；宿主用
-     * `remember { AndroidBackupFileController(context) }` 注入）。
-     * 桌面/iOS 没有对应能力，用默认的 [NoopBackupFileController]。
-     */
+    /** 备份文件能力控制器（Android 注入 `AndroidBackupFileController`；桌面/iOS 用 [NoopBackupFileController]）。 */
     backupFileController: BackupFileController = NoopBackupFileController,
-    // 全量恢复成功后的平台副作用（重排提醒等）。
-    // 由 Android 宿主注入：CourseReminderHelper.onHolidayDataChanged(context)。
-    // 不直接调 reminder 模块 —— 那是 Android 专有的（内部要 Context，桌面/iOS 无此概念）。
+    // 全量恢复成功后的平台副作用（重排提醒），由 Android 宿主注入。
     onHolidayDataChanged: () -> Unit = {},
 ) {
     val hapticFeedback = LocalHapticFeedback.current
@@ -162,7 +146,7 @@ fun LocalBackupScreen(
     var backupMode by remember { mutableStateOf("all") }
     var selectedSchedule by remember { mutableStateOf("") }
 
-    // 三个 VM 都已去掉 Application（平台副作用走 :core 的 ScheduleEffects 出口），统一走 viewModel() 进 ViewModelStore
+    // 三个 VM 统一走 viewModel() 进 ViewModelStore
     val courseViewModel = courseViewModel()
     val scheduleViewModel = scheduleViewModel()
     val settingsViewModel = settingsViewModel()
@@ -190,11 +174,7 @@ fun LocalBackupScreen(
     }
 
     /**
-     * 先解析校验，再弹确认框。
-     * 这样非法文件在弹框前就被拦下，且弹框文案能按备份类型给出准确说明。
-     *
-     * @param backupId 列表项的备份文件句柄（[BackupFileInfo.id]）
-     * @param backupFileName 列表项的文件名（确认框来源文案）
+     * 先解析校验，再弹确认框 —— 非法文件在弹框前就被拦下，文案也能按备份类型给准确说明。
      * @param externalJson SAF 选中的外部文件内容（已由控制器读出）
      */
     fun beginRestore(backupId: String? = null, backupFileName: String? = null, externalJson: String? = null) {
@@ -422,8 +402,8 @@ fun LocalBackupScreen(
                                                         repository.getTeachingWeekReorganizations(selectedSchedule),
                                                     ),
                                                     "courses" to courses.map(::courseToShareMap),
-                                                    // kotlinx（R2）：TimeConfig → 扁平 Map（25 字段，
-                                                    // :core 的 toJsonMap，等价原 Gson 反射展开；写侧再剔 null）
+                                                    // TimeConfig → 扁平 Map（:core 的 toJsonMap，
+                                                    // 等价原 Gson 反射展开；写侧再剔 null）
                                                     "time_config" to timeConfig.toJsonMap()
                                                 )
                                             }
@@ -591,9 +571,8 @@ fun LocalBackupScreen(
                             summary = "从其他位置选择备份文件进行恢复",
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                // mime 放开（*/*）与合法性把关（parseBackupPayload）的原因见 Android 包装的注释：
-                                // 各厂商文件管理器对 .json 上报的 mime 不一致，限定 application/json 会选不到文件。
-                                // 取消 / 读取失败由控制器回调 (null, null)（失败已由控制器按原文案 toast）。
+                                // mime 必须放开（*/*）：各厂商文件管理器对 .json 上报的 mime 不一致，
+                                // 限定 application/json 会选不到文件；合法性由 parseBackupPayload 把关。
                                 backupFileController.pickAndReadBackup { json, _ ->
                                     if (json != null) beginRestore(externalJson = json)
                                 }
@@ -699,9 +678,8 @@ fun LocalBackupScreen(
                     text = "删除",
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        // 必须先把目标文件捕获成局部变量：删除动画有 300ms 延迟，
-                        // 期间若用户点了另一个文件的删除按钮，pendingDelete 会被覆盖，
-                        // 原来的协程就会去删新选中的文件（旧版 bug：删错且原文件没删掉）
+                        // ⚠ 必须先捕获成局部变量：删除动画有 300ms 延迟，期间 pendingDelete 可能被
+                        // 另一个文件的删除按钮覆盖，导致删错文件（旧版 bug）。
                         val target = pendingDelete ?: return@TextButton
                         showDeleteDialog = false
                         pendingDelete = null

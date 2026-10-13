@@ -1,15 +1,5 @@
 package com.haooz.chedule.ui.components
 
-// ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
-//
-// 平台面收敛成两样：
-//  · `UpdateChecker` / `UpdateInstaller` / `packageManager` → 已有的 `UpdateController`
-//    接口（宿主注入 `AndroidUpdateController`）。顺手给它补了 `cleanOldApks`，
-//    并把纯函数的 `parseVersion` / `isBetaVersion` / `isNewerVersion` 下沉 :core。
-//  · `File` → 绝对路径 `String`（控制器本来就是这么约定的）。
-//  · `SimpleDateFormat("yyyy-MM-dd")` → `todayLocalDate().toString()`（ISO 格式一致）。
-//  · `Dispatchers.IO` → `ioDispatcher`（前者在 Native 上是 internal）。
-
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
 import androidx.compose.foundation.layout.Arrangement
@@ -58,9 +48,7 @@ import com.haooz.chedule.data.todayLocalDate
  * 点「更新」直接下载安装包（已下好则直接安装），不再跳转设置页再点一次。
  */
 @Composable
-/**
- * @param updateController 更新能力（检查 / 下载 / 校验 / 安装）；桌面/iOS 用 [NoopUpdateController]
- */
+/** @param updateController 更新能力；桌面/iOS 用 [NoopUpdateController] */
 fun UpdateDialog(
     updateController: UpdateController = NoopUpdateController,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
@@ -169,9 +157,8 @@ fun UpdateDialog(
         downloadProgress = 0f
         downloadComplete = false
         coroutineScope.launch {
-            // 当天缓存里可能没有下载地址（发版时 release 先于 APK 资产创建），
-            // 这里不直接放弃：resolveApkUrl 会在缓存为空时回源重查并回写缓存。
-            // 否则弹窗会一直报「未找到下载链接」，只有进设置页重新检查才能下。
+            // 缓存里可能没有下载地址（发版时 release 先于 APK 资产创建），不能直接放弃：
+            // resolveApkUrl 会在缓存为空时回源重查并回写缓存。
             val apkUrl = withContext(ioDispatcher) {
                 updateController.resolveApkUrl(tag, downloadSource(), updateChannel())
             }
@@ -203,8 +190,8 @@ fun UpdateDialog(
             apkPath = apkPath,
             onInstallingChanged = { isInstalling = it },
             onFinished = {
-                // 安装流程已交棒（静默成功 / 系统安装器已拉起）：
-                // 无条件收尾，避免用户在系统安装器点取消后弹窗卡在「安装中」
+                // 安装流程已交棒（静默成功 / 系统安装器已拉起）：无条件收尾，
+                // 避免用户在系统安装器点取消后弹窗卡在「安装中」
                 isInstalling = false
                 showUpdateDialog = false
                 downloadComplete = false
@@ -235,8 +222,8 @@ fun UpdateDialog(
         },
         show = showUpdateDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
-        // 安装/下载都不阻塞关闭：系统安装器可被用户取消，弹窗不能因此卡死。
-        // 关闭时同步清掉 transient 状态，否则下次打开会残留「安装中」无法操作。
+        // 安装/下载都不阻塞关闭（系统安装器可被取消，弹窗不能卡死）；
+        // 关闭时同步清掉 transient 状态，否则下次打开会残留「安装中」。
         onDismissRequest = {
             showUpdateDialog = false
             if (!isDownloading) {

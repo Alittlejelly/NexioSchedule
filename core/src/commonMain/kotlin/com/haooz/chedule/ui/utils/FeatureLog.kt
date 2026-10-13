@@ -1,25 +1,10 @@
 package com.haooz.chedule.ui.utils
 
 /**
- * 各功能统一埋点入口：稳定短名，便于崩溃轨迹对账。
+ * 各功能统一埋点入口：稳定短名，便于崩溃轨迹对账。真正的轨迹记录由宿主经 [init] 注入，
+ * 未注入时静默丢弃（埋点丢失不该反过来搞崩业务）。
  *
- * 2026-10-10 从 `:androidApp` 的 `ui/utils/CrashLogHelper.kt` 抽到 `:core` —— 原先它只是
- * `CrashLogHelper` 的语法糖，却让 `viewmodel/` 等**平台中立**的代码反向依赖整个
- * Android 专有的崩溃记录器（`synchronized` + `AtomicLong` + 环形缓冲 + 写文件）。
- *
- * ## 接线方式（与 AppStorage / AppFiles / PlatformToast 同一套路）
- *
- * `:core` 只认这个入口，真正的轨迹记录由宿主注入：
- * ```
- * FeatureLog.init(
- *     trace = { f, e, d -> CrashLogHelper.trace(f, e, d) },
- *     recording = { f, e, d -> CrashLogHelper.traceRecording(f, e, d) },
- *     isRecording = { CrashLogHelper.isRecording },
- * )
- * ```
- * 见 `NexioApplication.onCreate`。**未注入时静默丢弃**（埋点丢失不该反过来搞崩业务）。
- *
- * ⚠ 包名刻意保持 `com.haooz.chedule.ui.utils` 不变 —— 21 处调用方的 import 一行不用改。
+ * ⚠ 包名必须保持 `com.haooz.chedule.ui.utils` —— 21 处调用方的 import 依赖它。
  */
 object FeatureLog {
 
@@ -81,16 +66,12 @@ object FeatureLog {
     }
 
     /**
-     * lambda 版：未录制时 detail **不求值**（与迁移前的 `inline` + `if (!isRecording) return` 同义）。
+     * lambda 版：未录制时 detail 不求值。
      *
-     * ⚠ 这里刻意**不用 `inline`**。原因：本模块 android 变体的 JVM target 跟随 JDK（21），
-     * 而 `:androidApp` 是 17，跨模块 inline 会直接编译失败：
-     *   "Cannot inline bytecode built with JVM target 21 into bytecode that is being built with JVM target 17"
-     * 而 KMP 的 android 目标在当前 AGP 版本下**不暴露 `compileOptions`**（试过 `android { compileOptions }`
-     * 与 `kotlin { compilerOptions { jvmTarget } }` 都不被识别），无法从本模块对齐 target。
-     *
-     * 代价仅是「lambda 对象会被构造一次」，**lambda 体仍然不执行** —— 原优化（未录制时不读 SP、
-     * 不抓栈）完整保留，因为判断发生在调用之前。
+     * ⚠ 刻意不用 `inline`：本模块 android 变体的 JVM target 是 21、`:androidApp` 是 17，
+     * 跨模块 inline 会直接编译失败（"Cannot inline bytecode built with JVM target 21 …"），
+     * 而 KMP 的 android 目标在当前 AGP 下不暴露 `compileOptions`，无法对齐 target。
+     * 代价仅是 lambda 对象构造一次，lambda 体仍不执行。
      */
     fun reminderFlow(event: String, detail: () -> String) {
         if (recordingActive?.invoke() != true) return

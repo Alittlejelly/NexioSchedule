@@ -15,34 +15,11 @@ import kotlinx.serialization.json.JsonPrimitive
 // ════════════════════════════════════════════════════════════════════════
 //  节假日与调休 · 存储层（加载 / 备份 / 数据源）
 //
-//  原 `Holidays.kt`（1782 行单文件全包）拆成四个文件后，本文件是最后一个搬进 `:core` 的：
-//
-//    HolidayEntry.kt                条目类型 + 纯查询（HolidayEntries）
-//    TeachingWeekReorganization.kt  调休改周规则
-//    HolidayCourseExclusion.kt      假期课程剔除与逐日裁决
-//    HolidayCountdown.kt            假期倒计时（今日页）
-//    HolidayManager.kt              本文件：存储 + 备份 + 数据源
-//
 //  数据全部存 `holiday_settings` 一个 prefs 文件，进全量备份。
 //
-//  ## 下沉时替换掉的东西（每一条都对着一个平台依赖）
-//
-//  | 原来 | 现在 | 说明 |
-//  |---|---|---|
-//  | `Context` + `getSharedPreferences(PREFS, MODE_PRIVATE)` | [AppStorage].store(PREFS) | 偏好文件名 `holiday_settings` **逐字未变**（改了等于用户数据读不出来） |
-//  | `SharedPreferences` 形参 | [KeyValueStore] 形参 | 取值/写入 API 一一对应 |
-//  | `androidx.core.content.edit {}` | `KeyValueStore.edit {}` | 语义相同：提交即写盘 |
-//  | `org.json.JSONObject` / `JSONArray` | [JsonSupport] | `opt(key) as? X` 风格的判断用 [optRaw] 逐字保留 |
-//  | Gson `JsonParser` / `JsonElement` / `TypeToken` | [JsonSupport] | 见 `parseBackupEntry` 一族的改写 |
-//  | `@Synchronized` / `synchronized(this)` | [synchronizedOn] | Android/JVM 仍是真锁（行为零变化）；Native 见 [synchronizedOn] 的 KDoc |
-//  | `System.currentTimeMillis()` | `Clock.System.now()` | 同为 Unix 纪元毫秒 |
-//  | `CourseRepository(context)` | 调用方注入的日期解析回调 | 见 [migrateLegacyFollowDates] |
-//
-//  ## ⚠ 落盘格式是数据兼容红线
-//
-//  [HolidayEntry.toJson] 产出的串会以 `entries_{年}` 为键**直接落盘**。
-//  换 JSON 库时字段名、字段顺序、紧凑格式都**逐字保留**，并由
-//  `HolidayManagerStorageTest` 用真实存量串做 round-trip 回归。
+//  ⚠ 落盘格式是数据兼容红线：[HolidayEntry.toJson] 产出的串会以 `entries_{年}` 为键
+//  直接落盘，字段名、字段顺序、紧凑格式必须与存量数据逐字一致（换 JSON 库时尤其注意），
+//  由 `HolidayManagerStorageTest` 用真实存量串做 round-trip 回归。
 // ════════════════════════════════════════════════════════════════════════
 
 /** 节假日与调休数据。假期跳过提醒，调休按配置的课表周次和星期调度。 */
@@ -51,8 +28,7 @@ object HolidayManager {
     private const val KEY_PREFIX = "entries_"
     private const val KEY_VERSION = "version"
 
-    // 以下 3 个键从 internal 提升为 public：`:app` 的 CourseRepository 要用它们
-    // 过滤全量备份里的节假日键（原先 internal 在本模块内可见，跨模块后不可见）。
+    // 这 3 个键必须 public：`:app` 的 CourseRepository 要跨模块过滤全量备份里的节假日键
     const val BACKUP_KEY = "holiday_entries"
     const val BACKUP_EXCLUSION_KEY = "holiday_end_course_exclusion"
     const val BACKUP_BEFORE_EXCLUSION_KEY = "holiday_before_course_exclusion"
@@ -69,16 +45,11 @@ object HolidayManager {
     private val _dataRevision = MutableStateFlow(0L)
     val dataRevision = _dataRevision.asStateFlow()
 
-    // 条目类型常量转发到 [HolidayEntry]，调用点 `HolidayManager.TYPE_HOLIDAY` 保持可用
+    // 转发到 [HolidayEntry]，调用点 `HolidayManager.TYPE_HOLIDAY` 保持可用
     const val TYPE_HOLIDAY = HolidayEntry.TYPE_HOLIDAY
     const val TYPE_WORKSWAP = HolidayEntry.TYPE_WORKSWAP
 
-    /**
-     * 保护「读 prefs → 算 → 写 prefs」的复合操作。
-     *
-     * 真实场景：`NexioApplication.onCreate` 起一个后台 `Thread` 跑 [migrateLegacyFollowDates]，
-     * 同一时刻主线程可能正在保存节假日设置。原实现靠 `@Synchronized` 挡住这种交错。
-     */
+    /** 保护「读 prefs → 算 → 写 prefs」的复合操作（后台迁移线程与主线程保存会交错）。 */
     private val lock = Any()
 
     private fun store(): KeyValueStore = AppStorage.store(PREFS)
@@ -89,7 +60,7 @@ object HolidayManager {
         val beforeExclusion: HolidayBeforeCourseExclusion = HolidayBeforeCourseExclusion(),
     )
 
-    /** 纯查询转发到 [HolidayEntries]（原实现整体下沉，行为逐字未变）。 */
+    /** 纯查询转发到 [HolidayEntries]，行为不变。 */
     fun entriesForDate(
         entriesByYear: Map<Int, List<HolidayEntry>>,
         date: LocalDate,
@@ -102,14 +73,12 @@ object HolidayManager {
     private fun loadLocked(year: Int): List<HolidayEntry> {
         val store = store()
         val key = "$KEY_PREFIX$year"
-        // 原来写的是 getString(key, null) ?: return emptyList()；KeyValueStore 没有可空默认值，
-        // 所以先判存在。两者等价：缺键 → 空列表。
+        // KeyValueStore 无可空默认值，先判存在；缺键 → 空列表
         if (!store.contains(key)) return emptyList()
         val raw = store.getString(key, "")
         val array = runCatching { parseJsonArray(raw) }.getOrNull() ?: return emptyList()
         return readEntriesSafely(array.size) { index ->
-            // org.json 的 getJSONObject(index) 在元素不是对象时会抛，这里保持一致：
-            // 抛出 → 被 readEntriesSafely 的 runCatching 吃掉 → 跳过该行。
+            // 元素不是对象时抛，被 readEntriesSafely 的 runCatching 吃掉 → 跳过该行
             parseStoredEntry(array[index] as? JsonObject ?: error("Invalid holiday entry"))
                 ?: error("Invalid holiday entry")
         }
@@ -125,13 +94,13 @@ object HolidayManager {
             }
         }
 
-    /** Loads all years with saved holiday entries, retaining the storage year for schedule lookup. */
+    /** 加载所有有存量条目的年份，保留存储年份用于课表查找。 */
     fun loadAllByYear(): Map<Int, List<HolidayEntry>> = synchronizedOn(lock) {
         val years = storedEntryYears(store().all().keys)
         years.associateWith { load(it) }
     }
 
-    /** Preserve each year's stored JSON, including custom mappings and cross-year ranges. */
+    /** 按年原样导出存量 JSON，含自定义映射与跨年范围。 */
     fun exportBackupEntries(): Map<String, String> =
         synchronizedOn(lock) { exportBackupEntries(store()) }
 
@@ -285,7 +254,7 @@ object HolidayManager {
         return (value as Number).toInt()
     }
 
-    /** A missing field in a legacy full backup represents an empty holiday configuration. */
+    /** 老全量备份缺该字段 = 空的节假日配置。 */
     internal fun decodeBackupEntries(backup: Map<String, Any?>): Map<String, String> {
         if (BACKUP_KEY !in backup) return emptyMap()
         val value = backup[BACKUP_KEY]
@@ -323,7 +292,7 @@ object HolidayManager {
         _dataRevision.value = newVersion
     }
 
-    /** Replace only holiday entries; do not roll back the runtime revision on restore. */
+    /** 只替换节假日条目；恢复时不回退运行时版本号。 */
     fun restoreBackupEntries(entries: Map<String, String>) =
         synchronizedOn(lock) { restoreBackupEntries(store(), entries) }
 
@@ -360,8 +329,7 @@ object HolidayManager {
         lastDate: LocalDate,
     ): List<HolidayEntry> {
         if (lastDate < firstDate) return emptyList()
-        // 原实现用 `toSortedMap()` —— 那是 JVM 专有（走 java.util.TreeMap）。
-        // 这里按 key 排序后展开，顺序完全一致。
+        // 按 key 排序后展开，顺序与原来的 toSortedMap 一致
         return entriesByYear.entries.sortedBy { it.key }.flatMap { (year, entries) ->
             entries.filter { entry ->
                 val startDate = runCatching { LocalDate.parse(entry.date) }.getOrNull()
@@ -436,9 +404,7 @@ object HolidayManager {
     /**
      * 解析 `entries_{年}` 里的一行。
      *
-     * 原来用 org.json 的 `opt(key) as? X` —— 这里用 [JsonSupport] 的 [optRaw]（返回
-     * 「原始值」：字符串 / Double / Boolean / Map / List / null），所以那些类型判断
-     * **逐字保留**。注意不能用 `optString` / `optInt`：它们会做强制转换，
+     * ⚠ 用 [optRaw]（返回原始值）而非 `optString` / `optInt`：后者会做强制转换，
      * 语义不同（`optString` 会把数字 `1` 变成 `"1"`）。
      */
     private fun parseStoredEntry(item: JsonObject): HolidayEntry? {
@@ -510,11 +476,8 @@ object HolidayManager {
     /**
      * 解析备份里的条目行。
      *
-     * 原实现走 Gson 的 `JsonElement`（`isJsonObject` / `asJsonObject` / `asJsonPrimitive.isString`
-     * / `asNumber` / `asBoolean`）。kotlinx 的 `JsonElement` 没有这些判定，所以这里用
-     * 「是不是 `JsonPrimitive` + `isString`」来区分字符串与字面量 —— 与 Gson 的
-     * `isString` / `isNumber` / `isBoolean` 三分法等价：
-     * `isString == false` 时，`content` 只可能是数字 / `true` / `false` / `null`。
+     * 用「`JsonPrimitive` + `isString`」区分字符串与字面量：`isString == false` 时
+     * `content` 只可能是数字 / `true` / `false` / `null`。
      */
     private fun parseBackupEntry(element: JsonElement): HolidayEntry? {
         val item = element as? JsonObject ?: return null
@@ -633,8 +596,7 @@ object HolidayManager {
 
     fun mergeApiEntries(year: Int, apiEntries: List<HolidayEntry>): Boolean {
         if (apiEntries.isEmpty()) return true
-        // 调休日的「上哪天的课」 —— 那是推算值不是权威数据，
-        // 只在用户打开编辑弹窗时预填
+        // 调休日「上哪天的课」是推算值非权威数据，只在编辑弹窗预填
         val incoming = apiEntries
         return updateEntries(setOf(year)) { current ->
             val existing = current[year].orEmpty()
@@ -663,7 +625,7 @@ object HolidayManager {
             ?.takeIf { it.toString() == value }
 
     fun parseApiResponse(json: String): List<HolidayEntry> = runCatching {
-        // 原来 org.json 的 getJSONArray 缺键/类型不对会抛，这里保持「抛 → 整体返回空列表」
+        // 缺键/类型不对时抛 → 整体返回空列表
         val dates = parseJsonObject(json).optJsonArray("dates")
             ?: throw IllegalArgumentException("Invalid holiday response")
         val result = mutableListOf<HolidayEntry>()
@@ -701,8 +663,8 @@ object HolidayManager {
         return result
     }
 
-    // 默认 holiday-calendar：unpkg 上的静态 JSON，无限流、最稳，字段是「放假 / 补班」两态 + 节日名。
-    // 备选 APIHubs：字段更全，能给出「补班日归属哪个节日」（如「国庆节调休」），
+    // holiday-calendar：unpkg 静态 JSON，无限流、最稳，字段为「放假 / 补班」两态 + 节日名。
+    // APIHubs：字段更全，能给出「补班日归属哪个节日」（如「国庆节调休」）。
 
     const val SOURCE_APIHUBS = "apihubs"
     const val SOURCE_HOLIDAY_CALENDAR = "holiday_calendar"
@@ -723,9 +685,8 @@ object HolidayManager {
 
     /** 当前数据源下取某一年数据的地址 */
     fun sourceUrlFor(year: Int): String = when (holidaySource()) {
-        // 用 semver 范围 @1（= 最新 1.x）而不是写死版本：作者补了新年份数据 App 不用改代码。
-        // 不写 @latest —— 2.0 若改了 JSON 结构会把所有用户的导入一次性打挂。
-        // 该包 1.x 结构稳定（dates[] 里 date/name_cn/type），已实测 1.3.0 与 1.3.3 一致。
+        // 用 semver 范围 @1（最新 1.x）而非写死版本：作者补新年份数据 App 无需改代码；
+        // 不用 @latest —— 2.0 若改 JSON 结构会打挂所有用户的导入。
         SOURCE_HOLIDAY_CALENDAR -> "https://unpkg.com/holiday-calendar@1/data/CN/$year.json"
         else -> "https://api.apihubs.cn/holiday/get" +
             "?field=date,holiday_recess,holiday_overtime,holiday_cn,holiday_overtime_cn" +
@@ -738,11 +699,10 @@ object HolidayManager {
         else parseApiHubsResponse(json)
 
     /**
-     * APIHubs 全年响应 → 条目列表（一次请求即全年，无需分页）。
+     * APIHubs 全年响应 → 条目列表（一次请求即全年）。
      *
-     * 判定只能用 holiday_recess / holiday_overtime 两个字段：
-     * 这个源会把圣诞、感恩节、记者节、下元节、七夕……一堆**不放假**的日子也标成
-     * 「节日当天」，按名字或 holiday_today 导入会多出一堆假假期。
+     * ⚠ 只能用 holiday_recess / holiday_overtime 判定：该源会把圣诞、感恩节等一堆
+     * **不放假**的日子也标成「节日当天」，按名字或 holiday_today 导入会多出假假期。
      */
     fun parseApiHubsResponse(json: String): List<HolidayEntry> = runCatching {
         val rows = parseJsonObject(json).optJsonObject("data")?.optJsonArray("list")
@@ -776,10 +736,8 @@ object HolidayManager {
     }
 
     /**
-     * 给还没配映射的调休日算一套「上第 X 周星期 Y 的课」的**建议值
-     * 只用于 UI 预填，**不落库*
-     * 只动还没配过映射的条目；用户手工保存过的条目（custom=true）由
-     * [mergeApiEntries] 原样保留，不会被覆盖。
+     * 给还没配映射的调休日算一套「上第 X 周星期 Y 的课」的建议值，只用于 UI 预填、不落库。
+     * 只动未配映射的条目；用户手工保存过的（custom=true）由 [mergeApiEntries] 原样保留。
      */
     fun suggestWorkSwapFollowTargets(entries: List<HolidayEntry>): List<HolidayEntry> {
         val swaps = entries.filter { it.type == TYPE_WORKSWAP && it.followLocalDate() == null }
@@ -849,18 +807,11 @@ object HolidayManager {
     }
 
     /**
-     * 一次性迁移：旧数据存的是「第几周 + 星期几」（相对课表的周次），一切换课表就指向别的日期。
-     * 这里把它换算成绝对日期写进 followDate，之后周次一律按当前课表实时推算。
+     * 一次性迁移：把旧数据的「第几周 + 星期几」换算成绝对日期写进 followDate，之后按当前课表实时推算。
      *
-     * 自愈规则：补班日跟随的那一天**必须是放假的日子**，否则这个映射一定是错的
-     * （典型症状：换了课表/改过学期开始时间后，跟随日跑到假期外去了）→ 直接改用建议值重算。
+     * 自愈：跟随日必须落在假期内，否则映射已失效（换课表/改学期开始时间后常见）→ 改用建议值重算。
      *
-     * ## 为什么日期解析要由调用方注入
-     *
-     * 原实现内部 `CourseRepository(context)` 构造课表仓储再调
-     * `dateForTeachingWeekDay(周次, 星期)` —— 那是**反向依赖**（`:core` 不能依赖还在 `:app`
-     * 的 `CourseRepository`）。改为传入回调；调用方拿不到仓储时**根本不要调用本函数**，
-     * 以保持原来「构造失败就整体跳过、连迁移标记都不写」的语义。
+     * ⚠ 调用方拿不到课表仓储时不要调用本函数，以保持「构造失败即整体跳过、不写迁移标记」的语义。
      *
      * @param resolveDateForTeachingWeekDay 由（周次, 星期）换算绝对日期；失败返回 null
      */
@@ -883,8 +834,7 @@ object HolidayManager {
             store.edit { putBoolean(KEY_FOLLOW_DATE_MIGRATED, true) }
             return
         }
-        // 建议值按日期算，天然不随课表漂移，用它替换掉判定为失效的旧映射。
-        // 建议算法只处理「还没配映射」的条目，所以先把待迁移条目的旧周次清掉再喂进去
+        // 建议值按日期算、不随课表漂移；算法只处理未配映射的条目，故先清掉待迁移条目的旧周次
         val suggestionInput = allEntries.map {
             if (it in legacy) it.copy(followWeek = -1, followWeekday = -1) else it
         }
@@ -923,12 +873,8 @@ object HolidayManager {
 /**
  * 条目 → JSON。
  *
- * ⚠ **这是落盘格式**：产出会以 `entries_{年}` 为键直接写进 `holiday_settings`
- * （见 [HolidayManager.updateEntries]），字段名、字段顺序、紧凑格式必须与迁移前
- * org.json 的产出**逐字一致**。`HolidayManagerStorageTest` 用真实存量串做 round-trip 回归。
- *
- * 手表载荷（`wearable/WatchPayload`）也复用它，但那边需要 org.json 的 `JSONObject`，
- * 所以调用点是 `JSONObject(entry.toJson().toString())` —— 解析回来的是同一个对象。
+ * ⚠ 这是落盘格式：产出以 `entries_{年}` 为键直接写进 `holiday_settings`
+ * （见 [HolidayManager.updateEntries]），字段名、字段顺序、紧凑格式必须与存量数据逐字一致。
  */
 fun HolidayEntry.toJson(): JsonObject = jsonObjectOf(
     "date" to date,

@@ -5,11 +5,8 @@ import kotlin.concurrent.Volatile
 /**
  * 设备与系统信息。
  *
- * 迁移前 19 个文件直接读 `android.os.Build.*` 与 `context.packageManager` —— 两者都是
- * Android 专有。这里抽成跨平台数据类，把平台差异收敛到 [currentDeviceInfo] 一个 actual。
- *
- * 字段刻意**不**做重命名（`model` / `brand` / `manufacturer` / `sdkLevel`），
- * 因为 [StatsReporter] 会把这些字段原样上报给后端，改名会破坏服务端既有统计口径。
+ * ⚠ 字段名刻意不做重命名（`model` / `brand` / `manufacturer` / `sdkLevel`）：[StatsReporter] 会把这些
+ * 字段原样上报给后端，改名会破坏服务端既有统计口径。
  */
 data class DeviceInfo(
     /** 对应 `Build.MODEL`，如 "Pixel 7" */
@@ -28,11 +25,8 @@ data class DeviceInfo(
 expect fun currentDeviceInfo(): DeviceInfo
 
 /**
- * 应用自身的元信息。
- *
- * `appVersion` 需要 `PackageManager`（Android）或 `CFBundleShortVersionString`（iOS），
- * 无法在 commonMain 直接取，所以由各平台在启动时 [init] 一次 ——
- * 与 [AppStorage] 同样的「启动时注入」模式。
+ * 应用自身的元信息。`appVersion` 需平台 API（Android `PackageManager` / iOS
+ * `CFBundleShortVersionString`），由各平台启动时 [init] 一次（同 [AppStorage] 的注入模式）。
  */
 object AppInfo {
     @Volatile
@@ -42,18 +36,15 @@ object AppInfo {
         appVersion = version
     }
 
-    /** 未初始化时返回 "unknown"，与迁移前 `getAppVersion` 失败时的返回值一致。 */
+    /** 未初始化时返回 "unknown"。 */
     val version: String get() = appVersion
 }
 
 /**
  * 生成 UUID v4 格式（8-4-4-4-12 十六进制）的随机标识。
  *
- * 迁移前用 `java.util.UUID.randomUUID()`（JVM 专有）。这里基于 `kotlin.random.Random`
- * 自行拼装，**格式与 UUID v4 完全一致**（含版本位 `4` 与变体位），
- * 因此后端若按 UUID 校验/索引不会受影响。
- *
- * 用途仅为匿名统计的设备标识，不需要密码学强度；122 位随机量足以避免碰撞。
+ * ⚠ 格式必须与 UUID v4 完全一致（含版本位 `4` 与变体位），后端若按 UUID 校验/索引不受影响。
+ * 用途仅为匿名统计的设备标识，不需要密码学强度。
  */
 fun randomUuidV4(): String {
     val bytes = ByteArray(16)

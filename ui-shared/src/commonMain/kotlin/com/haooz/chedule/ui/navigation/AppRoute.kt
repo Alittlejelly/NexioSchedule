@@ -1,39 +1,14 @@
 package com.haooz.chedule.ui.navigation
 
 /**
- * 应用内子页路由表。
+ * 应用内子页路由表（单宿主 + 显式路由；iOS 无 Activity，导航状态不能活在 Android back stack 里）。
  *
- * ## 为什么要有这层（而不是继续用 Intent 跳 Activity）
+ * ⚠ [id] 是持久化契约（`rememberSaveable` 的进程/配置重建用）：**已发布路由的 id 不要改**，
+ * 改了用户多任务切换回来会落回首页；改 id 必须同时写迁移。
  *
- * 跨端的硬前提：CMP 在 iOS 上跑在 `UIViewController` 里，**没有 Activity**。
- * 更关键的是 —— **导航状态原本活在 Android 的 Activity back stack 里，iOS 拿不到**。
- * 只要还用 Intent 跳 Activity，那些 Screen 就永远共享不了。
- * 所以「单宿主 + 显式路由表」不是风格选择，是跨端的必要结构。
- *
- * ## 为什么**手写**而不是引入 Navigation 库
- *
- * 1. `androidx.navigation:navigation-compose` 是 **Android-only**，
- *    阶段 5 还得换成 CMP 的 `org.jetbrains.androidx.navigation` —— 白做一遍。
- * 2. 而 CMP 那个 artifact **本机离线缓存里没有**（只有它的 `lifecycle` / `savedstate` /
- *    `navigationevent` 兄弟包），加不上。
- * 3. 路由表本身很小（几十行），而且**将来要整体搬进共享模块**，
- *    手写反而没有「换库」这一步。
- *
- * 这与项目既有的「不引入 Ktor」是同一个判断：**不为了一点便利，把可控的东西换成
- * 会连带升级核心依赖的黑盒**。
- *
- * ## ⚠ [id] 是持久化契约
- *
- * [id] 用于 `rememberSaveable` 的进程/配置重建。**已发布路由的 id 不要改** ——
- * 改了等于用户在多任务切换回来后落回首页。
- * 新增路由随便加；要改 id 就得同时写迁移。
- *
- * ## ⚠ 这里**没有**主界面路由
- *
- * 主界面（`CourseScheduleApp`）是**常驻底座**，不参与路由的 save/restore ——
- * 否则切到子页再回来，`remember { mutableStateOf }` 之类非 saveable 状态全丢
- * （见 [AppRouter] 的 KDoc）。将来若要把某个页面"变成主 tab"，应该改
- * `CourseScheduleApp` 内部的 pager，而不是在这里加一条主界面路由。
+ * ⚠ 这里**没有**主界面路由：主界面是常驻底座、不参与 save/restore，否则切子页再回来
+ * 非 saveable 状态（`remember { mutableStateOf }`）全丢。要把某页变主 tab 应改
+ * `CourseScheduleApp` 内部 pager，而不是在这里加路由。
  */
 sealed interface AppRoute {
 
@@ -136,11 +111,8 @@ sealed interface AppRoute {
     }
 
     /**
-     * 教务系统导入（「教务系统导入」）。
-     *
-     * 2026-10-10 由独立的 `EducationalImportActivity` 并入单 Activity 路由系统
-     *（按「全应用只能有 MainActivity 一个 Activity」的决定）。页面本体见
-     * `ui/screens/EducationalImportScreen.kt`；WebView 注入仍为 Android 专有。
+     * 教务系统导入（「教务系统导入」）。页面本体见 `ui/screens/EducationalImportScreen.kt`；
+     * WebView 注入仍为 Android 专有。
      */
     data object EducationalImport : AppRoute {
         override val id: String get() = "educational_import"

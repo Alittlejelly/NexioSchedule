@@ -3,44 +3,26 @@ package com.haooz.chedule.data
 /**
  * 跨平台 HTTP 门面。
  *
- * ## 为什么不用 Ktor（重要，别顺手换掉）
- *
- * 计划文档原本写的是「Ktor 包一层，OkHttp 不删」。实测后改了主意，原因是**依赖代价**：
- *
- * | Ktor 版本 | 连带把 kotlinx-coroutines 从 1.9.0 顶到 |
- * |---|---|
- * | 3.6.0 | **1.11.0** |
- * | 3.1.3 | **1.10.2** |
- *
- * `:app` 的协程 1.9.0 是从 Compose 传递来的。引入任何现代 Ktor 都会把全 app 的协程
- * 换掉 —— 而这个 App 的提醒、闹钟、同步、小组件全压在协程上。
- *
- * **把「升级核心异步库」捆进「KMP 迁移」是坏主意**：一旦真机出现时序/取消类异常，
- * 无法判断是迁移引入的还是协程升级引入的，且无法单独回退其中一个。
+ * ⚠ **别顺手换成 Ktor**：任何现代 Ktor 都会把 kotlinx-coroutines 从 1.9.0 顶到 1.10+
+ *（3.6.0 → 1.11.0，3.1.3 → 1.10.2），而全 app 的协程 1.9.0 是从 Compose 传递来的 ——
+ * 提醒、闹钟、同步、小组件全压在协程上。把「升级核心异步库」捆进「KMP 迁移」会让
+ * 时序/取消类异常无法归因，也无法单独回退其中一个。
  *
  * 所以这里只定义接口，Android 实现继续用 OkHttp（引擎、超时、重试语义与迁移前逐字一致）。
- * 将来想换 Ktor 时，只需换一个 [HttpService] 实现 —— 这也是把接口单独抽出来的意义。
+ * 将来想换 Ktor，只需换一个实现 —— 这也是把接口单独抽出来的意义。
  *
- * iOS 侧同理：由平台侧提供一个 `NSURLSession` 实现即可，commonMain 的调用方不用改。
- *
- * ## 与 OkHttp 的语义对应
- *
- * - [HttpResult.isSuccessful] ≡ `Response.isSuccessful`（200..299）
- * - 网络异常**照常抛出**（不吞）：迁移前的调用点普遍自带 `try/catch`，
- *   保持抛出才能让那些兜底继续生效。
- * - 响应体**一次性读入内存**。迁移前的调用点也都是一次性读取
- *   （`body.string()` / 下载脚本时整体写出），没有流式消费。
+ * 语义对应：网络异常**照常抛出**（不吞，迁移前的调用点普遍自带 try/catch）；
+ * 响应体**一次性读入内存**（迁移前的调用点也都是一次性读取）。
  */
 interface HttpService {
 
     /**
      * GET，返回状态码与响应体。
      *
-     * @param maxBytes 响应体上限。`<= 0` 表示不限制。
-     *   超出上限时**不抛异常**，而是返回 [HttpResult.truncated] = true（可能带已读到的部分字节），
-     *   由调用方决定怎么处理 —— 迁移前 `ScriptRepository` 就是「超限即视为下载失败」。
-     *   存在的意义是**边读边计数、超限即中止**，避免异常大的响应先把内存吃掉。
-     *   ⚠ 平台实现必须真正在读取过程中就停，不能读完再检查大小（那样 OOM 已经发生）。
+     * @param maxBytes 响应体上限，`<= 0` 表示不限制。超出时**不抛异常**，而是返回
+     *   [HttpResult.truncated] = true，由调用方决定怎么处理（迁移前 `ScriptRepository`
+     *   就是「超限即视为下载失败」）。
+     *   ⚠ 平台实现必须**边读边计数、超限即中止**，不能读完再检查大小（那样 OOM 已经发生）。
      */
     suspend fun get(
         url: String,
@@ -48,7 +30,7 @@ interface HttpService {
         maxBytes: Long = -1,
     ): HttpResult
 
-    /** POST，body 为 UTF-8 文本（迁移前都是 `toRequestBody(application/json)`）。 */
+    /** POST，body 为 UTF-8 文本。 */
     suspend fun post(
         url: String,
         body: String,
@@ -57,7 +39,7 @@ interface HttpService {
     ): HttpResult
 
     /**
-     * 任意方法。WebDAV 备份用到 `PROPFIND` / `MKCOL`，OkHttp 直接支持。
+     * 任意方法。WebDAV 备份用到 `PROPFIND` / `MKCOL`。
      * @param body 为 null 表示无请求体
      */
     suspend fun request(
@@ -92,12 +74,8 @@ class HttpResult(
 /**
  * 在读取过程中最多读 [maxBytes]：超限立即停手，返回（已读字节, 是否被截断）。
  *
- * 抽到 commonMain 是因为各平台实现需要同一套语义 ——
- * 迁移前这段逻辑只存在于 `ScriptRepository`（用 `byteStream()` 手写），
- * 其余调用点都是无上限的 `body.bytes()`。
- *
- * 用「按块收集再拼接」而不是平台专有的 `ByteArrayOutputStream`（JVM 专有）。
- * 超限时保留到上限为止的字节，并标记截断 —— 调用方一律按失败处理。
+ * 抽到 commonMain 是因为各平台实现需要同一套语义。用「按块收集再拼接」而不是
+ * `ByteArrayOutputStream`（JVM 专有）。超限时保留到上限为止的字节并标记截断。
  *
  * @param read 每次调用读一段到给定缓冲区，返回读到的字节数，-1 表示流结束。
  */
@@ -133,8 +111,8 @@ internal fun readAtMost(maxBytes: Long, read: (ByteArray) -> Int): Pair<ByteArra
 /**
  * 超时配置（秒）。
  *
- * 迁移前每个文件各自 `new OkHttpClient()` 并配不同超时，实测有 4 种组合：
- * 5/5、10/30、10/10+15、12/20+30。这里保留同样的粒度，不擅自统一。
+ * 迁移前每个调用点各自配超时，实测有 4 种组合：5/5、10/30、10/10+15、12/20+30。
+ * 这里保留同样的粒度，不擅自统一。
  */
 data class HttpTimeouts(
     val connectSeconds: Long = 10,
@@ -144,11 +122,7 @@ data class HttpTimeouts(
 )
 
 /**
- * 平台侧创建默认实现。
- *
- * Android → OkHttp；JVM/桌面 → `HttpURLConnection`（纯 JDK，零依赖）；
- * iOS → `NSURLSession`（2026-10-10 实现，delegate 流式读保证 maxBytes 生效，
- *   见 `iosMain/HttpService.ios.kt`）；
- * linuxX64（仅编译门禁目标）→ 显式失败占位，见 `linuxX64Main/HttpService.linuxX64.kt`。
+ * 平台侧创建默认实现：Android → OkHttp；JVM/桌面 → `HttpURLConnection`；
+ * iOS → `NSURLSession`；linuxX64（仅编译门禁）→ 显式失败占位。
  */
 expect fun createHttpService(timeouts: HttpTimeouts): HttpService

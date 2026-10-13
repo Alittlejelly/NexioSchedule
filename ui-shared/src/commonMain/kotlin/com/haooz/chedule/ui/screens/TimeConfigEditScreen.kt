@@ -128,9 +128,8 @@ private data class ConfigAnimState(
 )
 
 /**
- * 裁切形状。宽度取当次回调的 size，不在构造时捕获外部宽度：
- * 折叠屏展开 / 分屏 / 横竖屏切换时容器宽度会变，而 clipShape 是 remember 单例，
- * 捕获旧宽度会让裁切停在旧值（平板上表现为右侧一段被裁掉）。
+ * 裁切形状。宽度取当次回调的 size，别在构造时捕获外部宽度：clipShape 是 remember 单例，
+ * 折叠屏展开 / 分屏 / 横竖切换时宽度会变，捕获旧宽度会让裁切停在旧值（平板右侧被裁掉）。
  */
 private class ConfigAnimClipShape(
     private val screenCornerRadiusPx: Float,
@@ -192,11 +191,8 @@ private fun formatHhMm(hour: Int, minute: Int): String =
     hour.toString().padStart(2, '0') + ":" + minute.toString().padStart(2, '0')
 
 /**
- * 保存前的时间冲突检查结果。
- *
- * [blocking] 节次互相重叠 → 不允许保存（沿用旧口径）。
- * [warnings] 只要有一边是特殊课程 → 只提示，允许用户「仍然保存」：
- * 块压在节次上现在能正确排开，且老数据可能本来就重叠，硬拦会让用户改别处也存不下去。
+ * 保存前的时间冲突检查结果。[blocking] 节次互相重叠 → 不允许保存（沿用旧口径）；
+ * [warnings] 有一边是特殊课程 → 只提示、允许「仍然保存」：块能正确排开，老数据也可能本就重叠。
  */
 private data class OverlapCheck(
     val blocking: String? = null,
@@ -284,11 +280,8 @@ fun TimeConfigEditScreen(
     var afternoonSections by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonSections) }
     var eveningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.eveningSections) }
 
-    // 快捷设置开关只控制参数卡片展开，不落数据层。
-    // 数据层的 quickTimeEnabled 是"课表按参数实时计算"的总开关：为 true 时课表
-    // 完全无视 sectionTimes，为 false 且 sectionTimes 为空时会掉回内置默认时间。
-    // 曾经就因为开关把 false 落库、而用户时间只存在参数里，导致"更新后校时变回默认"。
-    // 所以这里与数据层字段解耦；保存时见下方 quickTimeEnabled = false 的迁移注释。
+    // 开关只控制参数卡片展开，不落数据层。数据层 quickTimeEnabled 是"课表按参数实时计算"的总开关，
+    // 与它解耦：否则开关落 false 而时间只在参数里时，课表会掉回内置默认时间。
     var quickExpanded by remember(timeConfig) { mutableStateOf(timeConfig.quickTimeEnabled) }
     var classDuration by remember(timeConfig) { mutableIntStateOf(timeConfig.classDuration) }
     var shortBreak by remember(timeConfig) { mutableIntStateOf(timeConfig.shortBreak) }
@@ -374,12 +367,7 @@ fun TimeConfigEditScreen(
     var animating by remember { mutableStateOf(false) }
 
     // 预测性返回：手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
-    // 预测返回期间围绕屏幕中心缩放（translation=0），位移/裁切保持全屏不动；
-    // 取消回弹全屏、完成随关闭动画一起缩回卡片；
-    // 低版本自动退化为立即播放完整退出动画（navigationevent 自身行为，Android actual 逐字保留）。
-    // 跨平台化：androidx.navigationevent 只有 Android artifact，改用 :miuix 的
-    // expect/actual 封装 rememberNavigationBack —— handler 与进度读取绑定同一份状态
-    // （拆开会导致跟手动画失效且编译无报错）。
+    // 期间围绕屏幕中心缩放、位移/裁切保持全屏不动。⚠️ handler 与进度读取须绑定同一份状态，拆开会导致跟手动画失效且编译无报错。
     val navigationBackState = rememberNavigationBack()
     // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
     val gestureBackProgress = remember { Animatable(0f) }
@@ -455,13 +443,10 @@ fun TimeConfigEditScreen(
         },
     )
 
-    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
-    // 缩放跟随行程为"卡片→全屏"全程的 200%（滑到底 scaleProgress=-1），
-    // 松手后由 onBackCompleted 按正常关闭动画回到卡片（1 倍）
+    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；缩放跟随行程为
+    // "卡片→全屏"全程的 200%（滑到底 scaleProgress=-1），松手后由 onBackCompleted 按关闭动画回卡片。
     LaunchedEffect(Unit) {
-        // backProgress() 已内含「转场进行中且方向为后退」判定（与迁移前的
-        // transitionState is InProgress && direction == TRANSITIONING_BACK 逐字等价），
-        // 非手势期间为 null —— 保持静止。
+        // backProgress() 已内含「转场进行中且方向为后退」判定，非手势期间为 null —— 保持静止。
         snapshotFlow { navigationBackState.backProgress() }
             .collect { progress ->
                 if (progress != null) {
@@ -589,10 +574,8 @@ fun TimeConfigEditScreen(
     var afternoonTimes by remember(timeConfig) { mutableStateOf(timeConfig.getPeriodTimes("afternoon")) }
     var eveningTimes by remember(timeConfig) { mutableStateOf(timeConfig.getPeriodTimes("evening")) }
 
-    // 特殊课程弹窗的「重新开始填」逻辑放在这儿：要读下面的 morningTimes，
-    // Kotlin 不允许局部函数前向捕获后面才声明的变量。
-    // 默认时段跟着第一节课走（第1节开始前 40 分钟），别再写死 08:00-08:40 ——
-    // 那几乎必然和第1节 08:00-08:45 撞车，用户一添加就踩重叠。
+    // 默认时段跟着第一节课走（第1节开始前 40 分钟），别再写死 08:00-08:40 —— 那几乎必然
+    // 和第1节撞车，用户一添加就踩重叠。（函数放在此处是因为要读下面的 morningTimes。）
     fun resetSpecialTemp() {
         tempSpecialName = ""
         val firstSectionStart = parseHhMmToMinutes(morningTimes[1]?.substringBefore("-")) ?: (8 * 60)
@@ -709,11 +692,8 @@ fun TimeConfigEditScreen(
             morningSections = morningSections,
             afternoonSections = afternoonSections,
             eveningSections = eveningSections,
-            // 保存统一落 sectionTimes（所见即所存），quickTimeEnabled
-            // 恒为 false：老数据若为 true，本次保存即完成迁移——
-            // 编辑页显示值（morningTimes 等）本来就来自参数实时计算，
-            // 落成 sectionTimes 后课表不再依赖 quickTimeEnabled，
-            // 从此开关状态、节次手改都不会再互相打架。
+            // 保存统一落 sectionTimes（所见即所存），quickTimeEnabled 恒为 false：
+            // 显示值本就来自参数实时计算，落成 sectionTimes 后开关状态与节次手改不再互相打架。
             quickTimeEnabled = false,
             classDuration = classDuration,
             shortBreak = shortBreak,

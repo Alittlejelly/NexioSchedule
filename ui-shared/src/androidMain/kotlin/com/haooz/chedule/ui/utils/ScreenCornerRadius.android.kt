@@ -11,8 +11,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 
 /**
- * Android：逐字保留迁移前 `AppNavHost.kt` 里的私有实现（零回归红线）——
- * 自由窗口固定 20dp；Android 12+ 读系统真实圆角；更老的系统返回 0（不裁切）。
+ * Android：自由窗口固定 20dp；Android 12+ 读系统真实圆角；更老的系统返回 0（不裁切）。
+ * ⚠ 与迁移前逐字一致，勿改。
  */
 @Composable
 actual fun rememberScreenCornerRadiusPx(): Float {

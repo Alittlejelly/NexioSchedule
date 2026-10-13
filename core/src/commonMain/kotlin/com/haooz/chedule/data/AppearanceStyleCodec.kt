@@ -8,21 +8,12 @@ import kotlinx.serialization.json.float
 import kotlinx.serialization.json.floatOrNull
 
 /**
- * [AppearanceStyle] 的 JSON 编解码 —— **与 Gson 输出逐字段对齐**。
+ * [AppearanceStyle] 的 JSON 编解码 —— 与 Gson 输出逐字段对齐。
  *
- * ## 为什么必须手写
- *
- * 存量数据是 `Gson().toJson(CombinationStyle)` 写的，键名 = 字段名。换成
- * kotlinx-serialization 的 `@Serializable` **也能**读，但枚举字段的缺省行为不同
- * （Gson 的 UnsafeAllocator 让 Kotlin 默认值失效，kotlinx 则保留默认值）——
- * 那会让「老数据里没有的字段」在两端落到不同默认值。所以这里显式手写，
- * 语义与 [AppearanceStyle] 的安全 getter 完全一致。
- *
- * ## 与 Gson 的差异处理
- *
- * - **枚举**：Gson 反序列化失败时给 null；这里失败也给 null（交给 safe getter 兜默认值）
- * - **Float 精度**：两边都用 IEEE-754 单精度文本，`1.0` ↔ `1.0`
- * - **缺键**：一律用 Kotlin 默认值 —— 与 Gson 无参构造路径一致
+ * ⚠ 存量数据是 `Gson().toJson(CombinationStyle)` 写的，键名 = 字段名，逐字不能改；
+ * 也不能换成 `@Serializable`：枚举字段的缺省行为不同（Gson 的 UnsafeAllocator 让 Kotlin 默认值失效），
+ * 会让「老数据里没有的字段」在两端落到不同默认值。枚举按 ordinal 存取、缺键一律用 Kotlin 默认值、
+ * 反序列化失败给 null（交给 safe getter 兜默认值）。
  */
 object AppearanceStyleCodec {
 
@@ -68,9 +59,8 @@ object AppearanceStyleCodec {
     /**
      * 解析 JSON 快照；格式非法 / 键名一个都对不上时返回 null。
      *
-     * "键名对不上就判不可用" 是**刻意的**：早先 `cardHeight` 曾被误写成别的名字，
-     * 结果 Gson 把字段停在 Java 默认值 0 → 课表页网格整页静默空白（不崩、无日志）。
-     * 宁可回落到默认值让用户重新调，也不要静默显示一个坏状态。
+     * ⚠ 「键名对不上就判不可用」是刻意的：字段名写错曾让 Gson 把值停在 Java 默认值 0，
+     * 导致课表页网格整页静默空白（不崩、无日志）。宁可回落默认值也不要静默显示坏状态。
      */
     fun decodeOrNull(json: String): AppearanceStyle? {
         val obj = runCatching { parseJsonObject(json) }.getOrNull() ?: return null
@@ -111,12 +101,10 @@ object AppearanceStyleCodec {
         (this[key] as? JsonPrimitive)?.booleanOrNull ?: default
 
     /**
-     * 枚举按 **ordinal（数字）** 存取 —— 与 Gson 对本项目这三个枚举的实际行为一致。
+     * 枚举按 ordinal（数字）存取 —— 与 Gson 对本项目这三个枚举的实际行为一致。
      *
-     * ⚠ 别改成按 name：`CardAppearance.kt` 顶部明文「落盘格式 = ordinal，
-     *   枚举顺序不能改」。Gson 默认其实是按 name 序列化枚举的，但**旧数据的
-     *   编写路径**存的是 ordinal（当年手写的 TypeAdapter / 手动 putInt），
-     *   这里以存量数据为准。
+     * ⚠ 别改成按 name：落盘格式 = ordinal，枚举顺序不能改。Gson 默认按 name 序列化枚举，
+     * 但旧数据的编写路径（手写 TypeAdapter / 手动 putInt）存的是 ordinal，以存量数据为准。
      */
     private fun <T> JsonObject.enumOr(key: String, fromOrdinal: (Int) -> T): T? {
         val primitive = this[key] as? JsonPrimitive ?: return null

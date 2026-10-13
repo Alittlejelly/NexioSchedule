@@ -15,23 +15,12 @@ import platform.UIKit.UIScreen
 /**
  * iOS 壁纸后端。
  *
- * ## 为什么走 skia 而不是 UIKit
+ * CMP 的 `ImageBitmap` 在 iOS 上就是 skia 对象，UIKit 侧没有公开的 `ImageBitmap ⇄ UIImage`
+ * 双向转换，所以 encode 只能 `ImageBitmap → skia Bitmap → encodeToData`。
  *
- * CMP 的 `ImageBitmap` 在 iOS 上就是 skia 的对象。UIKit 那侧（`UIImage`）
- * **没有公开的 `ImageBitmap ⇄ UIImage` 双向转换**（只有单向的
- * `Image.toComposeImageBitmap()`）。所以 encode 不能「ImageBitmap → UIImage → NSData」，
- * 只能 **ImageBitmap → skia Bitmap → encodeToData**。
- *
- * `ImageBitmap.readPixels(IntArray)` 是 CMP 的 expect 公开 API（Android/iOS 签名一致），
- * 拿到的是打包的 ARGB `Int`；skia 的 `Bitmap.installPixels(IntArray)` 吃同一种布局，
- * 可以直接倒。
- *
- * ## 编码格式：JPEG
- *
- * 文件名仍是 `appearance_wallpaper.webp`（数据兼容契约，Android 侧同一路径），
- * 但 iOS **存 JPEG**：格式按内容识别、不看扩展名；而 iOS 是**新平台**，
- * 不会有存量 webp 文件要读，所以不存在「读不了旧文件」的问题。
- * 选 JPEG 是因为 skia 的 WEBP **编码**在 iOS 上不可用，JPEG 对照片类壁纸足够。
+ * ⚠ 文件名仍是 `appearance_wallpaper.webp`（数据兼容契约，Android 侧同一路径）但 iOS 存
+ * **JPEG**：格式按内容识别不看扩展名，iOS 是新平台无存量 webp 可读，且 skia 的 WEBP 编码
+ * 在 iOS 上不可用。
  */
 internal class IosWallpaperBackend : WallpaperBackend {
 
@@ -93,17 +82,12 @@ internal class IosWallpaperBackend : WallpaperBackend {
     }
 
     /**
-     * 把 `ImageBitmap` 的像素读进一块新的 skia [Bitmap]（N32 / ARGB_8888）。
+     * 把 `ImageBitmap` 的像素读进一块新的 skia [Bitmap]（N32 / ARGB_8888）—— CMP 只有
+     * `readPixels` 这一个取像素出口，而 skia 编码/缩放入口只认 `Bitmap`，中间没有直接桥。
      *
-     * 为什么必须绕这一圈：CMP 侧只有 `readPixels` 这一个出口拿像素，
-     * 而 skia 的编码/缩放入口只认 `Bitmap` —— 中间没有直接桥。
-     *
-     * ⚠ 两道字节序注意：
-     * 1. CMP 的 `readPixels` 给 **IntArray**（每像素一个打包 Int），
-     *    skia 的 `installPixels` 吃 **ByteArray**（每像素 4 字节）——
-     *    x86_64/arm64 都是小端，Int 低位在前 = BGRA 字节序，而 N32 在
-     *    小端平台上同样是 BGRA 内存布局，所以 `int → 4 字节` 平铺即等价。
-     * 2. `stride` 单位是**像素**（不是字节数），必须等于 `width`。
+     * ⚠ 字节序：`readPixels` 给 IntArray、`installPixels` 吃 ByteArray（每像素 4 字节）；
+     * 小端下 Int 低位在前 = BGRA，与 N32 内存布局一致，`int → 4 字节` 平铺即等价。
+     * ⚠ `stride` 单位是**像素**（不是字节），必须等于 `width`。
      */
     private fun readToSkiaBitmap(image: ImageBitmap, w: Int, h: Int): Bitmap? {
         val pixels = IntArray(w * h)

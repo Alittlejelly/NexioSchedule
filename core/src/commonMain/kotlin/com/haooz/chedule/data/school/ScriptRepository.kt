@@ -11,36 +11,19 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.withContext
 
 /**
- * 脚本仓库管理 - 使用 HTTP 按需获取教务适配脚本
- * 复用 shiguang_warehouse 仓库结构，直链拉取静态文件：
+ * 脚本仓库管理 —— 用 HTTP 按需获取教务适配脚本（复用 shiguang_warehouse 的仓库结构）：
  *   索引: {repoUrl}/raw/{INDEX_BRANCH}/school_index.pb
  *   脚本: {repoUrl}/raw/main/resources/{resourceFolder}/{assetJsPath}
  *
- * ## 迁移说明（行为保持）
+ * ⚠ **与迁移前逐字对齐，勿顺手优化**：偏好文件名 `edu_import_prefs` 与键 `repo_url`
+ *（改了等于用户的仓库地址丢失）、索引与脚本落盘路径、防盗链判定 / 签名链接提取 /
+ * 版本比较 / `remoteBase` 的 `.git` 处理、**8MB 下载上限**（超限 `truncated = true`，
+ * 按原语义视为下载失败）。
  *
- * 原先依赖 `Context`（`filesDir` + `getSharedPreferences`）、`java.io.File`、OkHttp。
- * 现分别改用 [AppFiles] / [AppStorage] / [HttpService]，因此不再持有 Context。
- *
- * 逐项对齐的语义：
- * - 偏好文件名 `edu_import_prefs` 与键 `repo_url` **逐字未变**（改了等于用户的仓库地址丢失）
- * - `edit { }` 提交即写盘，等价原来的 `prefs.edit().putString(...).apply()`
- * - 索引/脚本落盘路径逐字未变（`repo/index/…`、`repo/schools/resources/…`）
- * - 防盗链判定 / 签名链接提取 / 版本比较 / `remoteBase` 的 `.git` 后缀处理 **逐字移植**，
- *   未做任何"顺手优化"
- * - **保留了 8MB 上限**：原来用 `byteStream()` 边读边计数、超限即中止，
- *   现在通过 `HttpService.get(maxBytes = …)` 实现同样的「读取过程中就停手」，
- *   超出时 `truncated = true`，这里按原来的语义视为下载失败
- * - 异常捕获由 `IOException` 放宽为 `Exception`：commonMain 没有 `java.io.IOException`。
- *   ⚠ **这不完全等价**（独立核对确认），有两处可观测差异，方向都偏「修复」：
- *   1. `ensureScript`：非 `IOException`（如 URL 非法的 `IllegalArgumentException`）以前会
- *      逃逸到调用方 —— 而它的三个调用点都没有 try/catch（`WebViewScreen` 的 LaunchedEffect
- *      与 `scope.launch`、`ScheduleImport`），也就是会崩；现在变成「下载失败」+ 缓存回退。
- *   2. `updateAll`：以前异常抛给调用方，`EducationalImportActivity` 的 catch 吃掉后
- *      **不写** `last_update_time`（下次启动还会重试）；现在返回 -1，调用方照写时间戳，
- *      自动更新会被 7 天间隔抑制。注意旧版对「返回 -1」（404 / 网络异常）本来就写时间戳，
- *      这次只是把「URL 非法」也并进同一行为。
- *   3. `CancellationException` 已显式透传，避免吞掉协程取消、破坏结构化并发。
- * - 顺手修掉：原来本文件自建 `OkHttpClient`（第 11 套连接池），现在复用 [HttpService]
+ * 已知差异（独立核对确认，方向都偏「修复」）：异常捕获由 `IOException` 放宽为 `Exception`
+ *（commonMain 没有 `java.io.IOException`）—— `ensureScript` 不再让非 IO 异常逃逸到三个
+ * 没有 try/catch 的调用点；`updateAll` 改为返回 -1 而非抛出。`CancellationException`
+ * 显式透传，避免吞掉协程取消。
  */
 class ScriptRepository(
     private val repoUrl: String? = null,

@@ -4,12 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
 
 /**
- * Android：继续读 `LocalConfiguration.current.screenWidthDp` —— 与迁移前逐字一致，
- * 自由窗口 / 分屏的既有语义不变（零回归红线）。
+ * Android：读 `LocalConfiguration.current.screenWidthDp`（自由窗口 / 分屏语义）。
+ * ⚠ 与迁移前逐字一致，勿改。
  */
 @Composable
 actual fun screenWidthDp(): Int = LocalConfiguration.current.screenWidthDp
 
-/** Android：同 [screenWidthDp]，继续读 LocalConfiguration（零回归）。 */
+/** Android：同 [screenWidthDp]，读 LocalConfiguration。⚠ 与迁移前逐字一致，勿改。 */
 @Composable
 actual fun screenHeightDp(): Int = LocalConfiguration.current.screenHeightDp

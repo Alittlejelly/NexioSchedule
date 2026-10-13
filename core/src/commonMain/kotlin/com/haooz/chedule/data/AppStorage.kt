@@ -5,18 +5,16 @@ import kotlin.concurrent.Volatile
 /**
  * 全局存储入口。启动时 [init] 一次，业务代码用 [store] 按偏好文件名取读写通道。
  *
- * 项目有十几个偏好文件名，每个名字对应一个独立文件，绝不能合并成一个 ——
- * 合并等于改掉存量数据的落盘位置。所以这里持有的是**工厂**而不是单个实例。
- *
+ * ⚠ 每个偏好文件名对应一个独立文件，绝不能合并成一个 —— 合并等于改掉存量数据的落盘位置。
  * 未初始化就读取会抛异常而不是静默返回空数据，静默失败会让「设置全丢」极难定位。
  */
 object AppStorage {
-    // 用 kotlin.concurrent.Volatile：不限定名的 @Volatile 依赖 JVM 专有的默认导入，
+    // ⚠ 必须用 kotlin.concurrent.Volatile：不限定名的 @Volatile 依赖 JVM 专有默认导入，
     // 在 Kotlin/Native 与 JS 上直接 Unresolved reference。
     @Volatile
     private var factory: ((String) -> KeyValueStore)? = null
 
-    /** 已创建的实例缓存。copy-on-write 不可变 Map：每个名字一生只写入一次，重建开销可忽略，换来无锁读取。 */
+    /** 实例缓存。copy-on-write 不可变 Map：每个名字一生只写入一次，重建开销可忽略，换来无锁读取。 */
     @Volatile
     private var cache: Map<String, KeyValueStore> = emptyMap()
 
@@ -47,5 +45,5 @@ object AppStorage {
 
 /*
  * 刻意不提供偏好文件名常量表：集中成表会让各文件已有的正确常量与表里手抄的常量并存，
- * 而名字写错的后果是用户数据静默读不出来。各文件继续用它自己的 private 常量即可。
+ * 而名字写错的后果是用户数据静默读不出来。
  */

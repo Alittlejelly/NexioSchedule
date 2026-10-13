@@ -34,19 +34,17 @@ fun CourseScheduleTheme(
     val prefs = remember { AppStorage.store("app_theme_prefs") }
     val themeMode = remember { mutableStateOf(prefs.getString("theme_mode", "system")) }
 
-    // 全局触感反馈开关：读取应用偏好，关闭后在整个 App 范围内屏蔽所有触感/震动
-    // （本项目及 Miuix 组件的触感均通过 LocalHapticFeedback 触发，此处统一拦截即可全局生效）
+    // 全局触感开关：关闭后屏蔽全 App 触感
+    // （本项目与 Miuix 组件的触感都经 LocalHapticFeedback，统一拦截即可）
     val hapticPrefs = remember { AppStorage.store(APP_PREFS_NAME) }
     var hapticFeedbackEnabled by remember {
         mutableStateOf(hapticPrefs.getBoolean(KEY_HAPTIC_FEEDBACK, true))
     }
 
     DisposableEffect(prefs) {
-        // ⚠ iOS 的回调**不带 key**（传 `KEY_CHANGED_ANYWHERE` 哨兵，系统只通知「有东西变了」），
-        //   Android 的 SharedPreferences 才给准确 key。所以这里不能用 `key == "theme_mode"`
-        //   精确过滤 —— 那样 iOS 上收到通知也会被丢掉，主题仍然不刷新。
-        //   正确做法：key 未知时**无条件复查**（读一次 prefs 的开销可忽略），
-        //   key 已知时才做精确过滤（省掉无关变更的重读）。
+        // ⚠ iOS 回调不带 key（传 `KEY_CHANGED_ANYWHERE` 哨兵），Android 才给准确 key。
+        // 不能用 `key == "theme_mode"` 精确过滤：那样 iOS 收到通知也会被丢掉、主题不刷新。
+        // key 未知时无条件复查，已知时才精确过滤。
         val token = prefs.registerListener { key ->
             if (key == KEY_CHANGED_ANYWHERE || key == "theme_mode") {
                 themeMode.value = prefs.getString("theme_mode", "system")
@@ -100,22 +98,16 @@ fun CourseScheduleTheme(
         content = {
             CompositionLocalProvider(
                 LocalHapticFeedback provides gatedHaptic,
-                // :miuix 读不到 :core 的偏好（模块间无依赖），Skia 侧靠这个 Local 拿
-                // 「应用内深浅色」。不 provide 的话 iOS/桌面会退回跟随系统深浅色，
-                // 表现为「应用内切换无效 + 二三级页锁死跟随系统」。
-                //
-                // ⚠ 只有显式 dark/light 才传值；`system` 传 null，让下游照旧退回
-                //   isSystemInDarkTheme() —— 不能把 system 当成「非 dark 即 light」，
-                //   那会让系统深色下的 light 模式判断失效。
+                // :miuix 读不到 :core 偏好，Skia 侧靠这个 Local 拿「应用内深浅色」；
+                // 不 provide 时 iOS/桌面会退回跟随系统。
+                // ⚠ `system` 必须传 null（退回 isSystemInDarkTheme()），不能当成「非 dark 即 light」。
                 LocalAppSettingDark provides when (themeMode.value) {
                     "dark" -> true
                     "light" -> false
                     else -> null
                 },
-                // :miuix 需要的 App 能力注入点。搬迁前这些组件直接读 AppMaterialSettings /
-                // PredictiveBackSettings / isAppDarkTheme()，构成 :miuix → :app 的反向依赖，
-                // 无法进 commonMain。改为 App 在根部 provide，模块内任何位置都能读到，
-                // 效果与迁移前一致（28 处 ProgressiveBlurTopBar 调用点无需逐个改）。
+                // :miuix 需要的 App 能力注入点（避免 :miuix → :app 反向依赖）；
+                // 效果与迁移前一致，调用点无需逐个改。
                 LocalChromeLensEnabled provides AppMaterialSettings.chromeLensEnabled(),
                 LocalUseFakeProgressiveBlur provides AppMaterialSettings.progressiveBlurUseFake(),
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,

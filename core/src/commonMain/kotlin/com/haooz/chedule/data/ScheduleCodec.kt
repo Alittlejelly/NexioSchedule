@@ -4,22 +4,16 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 
-// 课表数据模型 ↔ JSON 的显式字段清单编解码。
+// 课表数据模型 ↔ JSON 的显式字段清单编解码（手写清单，因 kotlinx-serialization 编译器插件本机不可用）。
 //
-//  用手写清单而不是 @Serializable，因为 kotlinx-serialization 的编译器插件在本机不可用。
-//
-//  兼容性判据是「字段集合 + 字段名 + 值的语义」，不是逐字相等：JSON 对象按规范无序，
-//  两端都按名字取值。真实备份里字段呈字母序，那是 release 构建被 R8 重排字段的产物，
-//  随构建而变，不要拿它当契约去对齐。
-//
-//  与 Gson 的对齐点：null 字段省略、默认值照写、Long 原样输出、`<>&='` 不转义。
-//  缺字段导致的 null 由调用方的 sanitize* 兜底。
+//  兼容性判据是「字段集合 + 字段名 + 值的语义」，不是逐字相等：JSON 对象按规范无序，两端按名字取值。
+//  与 Gson 的对齐点：null 字段省略、默认值照写、Long 原样输出、`<>&='` 不转义；缺字段导致的 null 由调用方 sanitize* 兜底。
 
 /**
  * 落盘/备份用的 JSON 实例。
  *
- * ⚠ **不要**拿 `JsonSupport` 里那个内部实例来序列化模型 —— 那个是给
- * 「动态 JsonElement 解析」用的，语义取向不同（比如它对 null 会写 `JsonNull`）。
+ * ⚠ 不要拿 `JsonSupport` 里那个内部实例来序列化模型 —— 那个是给动态 JsonElement 解析用的，
+ * 语义取向不同（它对 null 会写 `JsonNull`）。
  */
 internal val scheduleJson: Json = Json {
     // Gson 会写默认值（真实备份里 `isCustomTime:false` / `selectedWeeks:[]` 都在）
@@ -29,15 +23,10 @@ internal val scheduleJson: Json = Json {
 }
 
 /**
- * 把「值可能是 null」的 Map 转成 JSON，**递归地跳过对象里的 null 值**。
+ * 把「值可能是 null」的 Map 转成 JSON，递归跳过对象里的 null 值（对应 Gson `serializeNulls = false`）。
  *
- * 对应 Gson 的 `serializeNulls = false`：真实备份里 `Course.customStartTime` /
- * `customEndTime`（非自定义时间时为 null）根本没出现，`SpecialBlock.items` 同理。
- *
- * ⚠ **必须递归**：`specialBlocks` / `routines` 是嵌套对象，只跳顶层的话内层的
- * `"items":null` 照样会被写出去。
- *
- * ⚠ 数组元素里的 null **要保留**：`serializeNulls` 只影响对象字段，集合元素照写 null。
+ * ⚠ 必须递归：`specialBlocks` / `routines` 是嵌套对象，只跳顶层的话内层 `"items":null` 照样写出。
+ * ⚠ 数组元素里的 null 要保留：`serializeNulls` 只影响对象字段，集合元素照写 null。
  */
 private fun plainValueToJsonWithoutNulls(value: Any?): JsonElement? = when (value) {
     null -> null
@@ -75,12 +64,7 @@ private fun Map<*, *>.bool(key: String, fallback: Boolean = false): Boolean =
 //  Course
 // ════════════════════════════════════════════════════════════════════════
 
-/**
- * `Course` → JSON Map（显式字段清单，17 个字段）。
- *
- * 字段顺序 = 声明顺序（见文件头：顺序不是契约）。
- * `customStartTime` / `customEndTime` 为 null 时会被 [toJsonElementWithoutNulls] 跳过。
- */
+/** `Course` → JSON Map（字段顺序 = 声明顺序，不是契约；null 字段由 [toJsonElementWithoutNulls] 跳过）。 */
 fun Course.toJsonMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "name" to name,
@@ -104,10 +88,8 @@ fun Course.toJsonMap(): Map<String, Any?> = mapOf(
 /**
  * JSON Map → `Course`。
  *
- * ⚠ **缺字段时取零值**（0 / "" / emptyList / null），刻意**不用 Kotlin 的构造默认值** ——
- * 这才与 Gson 一致：Gson 走 `UnsafeAllocator` 绕开构造器，缺字段留下 JVM 零值
- * （非空 `String` 字段因此会变成 null）。调用方 `sanitizeCourses` 原本就是为兜这件事写的
- * （`course.name ?: ""` 等），所以**最终结果与 Gson 路径完全一致**。
+ * ⚠ 缺字段取零值（0 / "" / emptyList / null），刻意不用 Kotlin 构造默认值 —— 与 Gson 的
+ * `UnsafeAllocator` 路径一致（绕开构造器，非空 `String` 字段因此会变 null），由调用方 sanitize* 兜底。
  */
 fun courseFromJsonMap(map: Map<*, *>): Course = Course(
     id = map.str("id") ?: "",
@@ -140,11 +122,8 @@ fun encodeCourses(courses: List<Course>): String =
 /**
  * JSON 数组串 → `List<Course>`。
  *
- * 语义对齐 `gson.fromJson<List<Course>>(json, …)`：
- * - 空数组 → 空列表
- * - 字面量 `null` → 空列表（Gson 返回 null，调用点写的是 `?: emptyList()`）
- * - **格式非法 → 抛异常**（Gson 抛 JsonSyntaxException），调用点的 `try/catch` 负责兜底
- * - 顶层不是数组 → 抛异常
+ * 空数组 / 字面量 `null` → 空列表；格式非法或顶层不是数组时抛异常（与 Gson 一致），
+ * 调用点的 `try/catch` 负责兜底。
  */
 fun decodeCourses(json: String): List<Course> {
     val trimmed = json.trim()
@@ -161,7 +140,7 @@ fun decodeCourses(json: String): List<Course> {
 //  ScheduleFolder
 // ════════════════════════════════════════════════════════════════════════
 
-/** `ScheduleFolder` → JSON Map（3 个字段）。 */
+/** `ScheduleFolder` → JSON Map。 */
 fun ScheduleFolder.toJsonMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "name" to name,
@@ -195,14 +174,9 @@ fun decodeScheduleFolders(json: String): List<ScheduleFolder> {
 
 // TimeConfig（含 TimeRoutine / SpecialBlock / SpecialItem）
 //
-//  Gson 缺字段时给什么，判据是「有没有必填参数」：
-//  - Course 有必填参数 → Gson 走 UnsafeAllocator 绕开构造器，缺字段得到零值/null，
-//    由 CourseRepository 的 sanitize 兜底。
-//  - TimeConfig 一族全部有默认值 → Gson 走合成无参构造器，缺字段得到 Kotlin 默认值。
-//
-//  所以 [timeConfigFromJsonMap] 用 `TimeConfig()` 作底 + `copy` 只覆盖出现过的字段，
-//  嵌套的 TimeRoutine / SpecialBlock / SpecialItem 直接复用各自的 `fromRaw(Map)`
-//  （那里的 fallback 字面量恰好等于各自的 Kotlin 默认值）。
+//  这一族全部有默认值 → Gson 走合成无参构造器，缺字段得到 Kotlin 默认值（Course 则相反）。
+//  故 [timeConfigFromJsonMap] 用 `TimeConfig()` 作底 + copy 只覆盖出现过的字段，
+//  嵌套结构复用各自的 `fromRaw(Map)`（fallback 字面量恰好等于各自的 Kotlin 默认值）。
 
 private fun Map<*, *>.stringMap(key: String): Map<String, String> {
     val raw = raw(key) as? Map<*, *> ?: return emptyMap()
@@ -224,9 +198,7 @@ fun SpecialItem.toJsonMap(): Map<String, Any?> = mapOf(
 )
 
 /**
- * `SpecialBlock` → JSON Map（5 个字段）。
- *
- * `items` 可空：**为 null 时会被 [toJsonElementWithoutNulls] 跳过**，
+ * `SpecialBlock` → JSON Map。`items` 为 null 时会被 [toJsonElementWithoutNulls] 跳过，
  * 与 Gson 的 `serializeNulls=false` 一致（旧数据里 `items` 缺失就是这个状态）。
  */
 fun SpecialBlock.toJsonMap(): Map<String, Any?> = mapOf(
@@ -237,7 +209,7 @@ fun SpecialBlock.toJsonMap(): Map<String, Any?> = mapOf(
     "items" to items?.map { it.toJsonMap() },
 )
 
-/** `TimeRoutine` → JSON Map（24 个字段；`specialBlocks` 为 null 时跳过）。 */
+/** `TimeRoutine` → JSON Map（`specialBlocks` 为 null 时跳过）。 */
 fun TimeRoutine.toJsonMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "name" to name,
@@ -264,7 +236,7 @@ fun TimeRoutine.toJsonMap(): Map<String, Any?> = mapOf(
     "specialBlocks" to specialBlocks?.map { it.toJsonMap() },
 )
 
-/** `TimeConfig` → JSON Map（25 个字段）。 */
+/** `TimeConfig` → JSON Map。 */
 fun TimeConfig.toJsonMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "name" to name,
@@ -339,11 +311,8 @@ fun encodeTimeConfig(config: TimeConfig): String =
     scheduleJson.encodeToString(JsonElement.serializer(), toJsonElementWithoutNulls(config.toJsonMap()))
 
 /**
- * JSON 串 → `TimeConfig`。
- *
- * 语义对齐 `gson.fromJson<TimeConfig>(json)`：顶层不是对象或格式非法时**抛异常**
- * （Gson 抛 JsonSyntaxException），调用点用 `runCatching` 兜。
- * ⚠ 调用方拿到之后**必须**再过 [TimeConfig.sanitize]。
+ * JSON 串 → `TimeConfig`。顶层不是对象或格式非法时抛异常（Gson 同），调用点用 `runCatching` 兜。
+ * ⚠ 调用方拿到之后必须再过 [TimeConfig.sanitize]。
  */
 fun decodeTimeConfig(json: String): TimeConfig {
     val element = parseJsonElement(json)
@@ -353,11 +322,7 @@ fun decodeTimeConfig(json: String): TimeConfig {
 }
 
 /**
- * `TimeConfig` 的已知字段名。JSON 里**一个都不像**时判为损坏。
- *
- * 原先是 `TimeConfigSnapshotParser.kt`（`:app`）里的私有常量 —— 那个文件因为依赖 Gson
- * 被留在 Android 侧，注释里写明「等阶段 2 换成 kotlinx.serialization 之后应当移回」。
- * 现在就是那个时候：逻辑逐字搬过来，原文件删除。
+ * `TimeConfig` 的已知字段名。JSON 里一个都不像时判为损坏。
  */
 private val TIME_CONFIG_FIELD_NAMES = setOf(
     "id", "name", "morningSections", "afternoonSections", "eveningSections",
@@ -367,9 +332,6 @@ private val TIME_CONFIG_FIELD_NAMES = setOf(
 
 /**
  * `TimeConfig` 快照解析：JSON 键名一个已知字段都不像时判为损坏，返回 null。
- *
- * 与迁移前 `parseTimeConfigSnapshotOrNull(gson, json)` **逻辑完全一致**：
- * 先解析成对象做「像不像 TimeConfig」的判定，再整体解析。
  * 两步都吞异常返回 null（调用方按「损坏」处理）。
  */
 fun parseTimeConfigSnapshotOrNull(json: String): TimeConfig? {

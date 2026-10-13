@@ -11,12 +11,10 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 /**
- * `org.json` 的跨平台替代（kotlinx-serialization 的动态解析，不需要编译器插件）。
+ * `org.json` 的跨平台替代（kotlinx-serialization 动态解析，无需编译器插件）。
  *
- * 与 org.json 的语义差异：
- * 1. 取值失败返回默认值，不抛 `JSONException`。
- * 2. `JsonNull` 一律视为「无值」，而 org.json 的 `optString` 会返回字符串 `"null"`。
- * 3. [JsonObject] 遍历顺序为插入顺序。
+ * 与 org.json 的差异：取值失败返回默认值而不抛异常；`JsonNull` 一律视为「无值」
+ * （org.json 的 `optString` 会返回字符串 `"null"`）；[JsonObject] 保持插入顺序。
  */
 
 private val json = Json {
@@ -64,15 +62,12 @@ private fun JsonObject.raw(key: String): JsonElement? =
 private fun JsonArray.raw(index: Int): JsonElement? =
     getOrNull(index)?.takeIf { it !is JsonNull }
 
-/**
- * 按 org.json 的 `JSON.toString(Object)` 语义把任意 [JsonElement] 转成文本，
- * 嵌套的 object / array 也给出其 JSON 文本，而不是空串或报错。
- */
+/** 按 org.json 的 `JSON.toString(Object)` 语义转文本；嵌套 object/array 给其 JSON 文本，而非空串或报错。 */
 private fun JsonElement.toOrgJsonText(): String =
     if (this is JsonPrimitive) content else toString()
 
 /**
- * 按 org.json 的 `(int) Double.parseDouble(s)` 语义转成整数：先转 double 再截断，
+ * 按 org.json 的 `(int) Double.parseDouble(s)` 语义转整数：先转 double 再截断，
  * 所以 `"34.9"` → `34`、`"1e3"` → `1000`。
  */
 private fun String.toOrgJsonInt(): Int? = toDoubleOrNull()?.takeIf { !it.isNaN() }?.toInt()
@@ -81,11 +76,11 @@ private fun String.toOrgJsonLong(): Long? = toDoubleOrNull()?.takeIf { !it.isNaN
 // ---- 「原始值」读取：给 `opt(key) as? X` 风格的代码用 ----
 
 /**
- * 对应 org.json 的 `opt(key)`：返回「原始值」而不是强制转成某种类型，
- * 形状为字符串 → `String`、数字 → `Double`、布尔 → `Boolean`、对象 → `Map`、数组 → `List`。
+ * 对应 org.json 的 `opt(key)`：返回原始值而非强制转换（字符串 → `String`、数字 → `Double`、
+ * 对象 → `Map`、数组 → `List`）。
  *
- * 保留它是为了让 `item.opt("date") as? String` 这类判断能原样留着 ——
- * 改写成 `optString` 会做强制转换，语义不同（数字 `1` 会变成 `"1"`）。
+ * 保留它是为了让 `item.opt("date") as? String` 这类判断原样可用 —— 改写成 `optString`
+ * 会做强制转换，语义不同（数字 `1` 会变成 `"1"`）。
  */
 fun JsonObject.optRaw(key: String): Any? = jsonToPlainValue(this[key])
 
@@ -131,9 +126,7 @@ fun JsonObject.optDouble(key: String, fallback: Double): Double {
 }
 
 /**
- * 对应 `optBoolean(key, fallback)`。
- *
- * 与 org.json 一致：只认 `"true"` / `"false"`（**忽略大小写**），其余（含数字）返回 fallback。
+ * 对应 `optBoolean(key, fallback)`：只认 `"true"` / `"false"`（忽略大小写），其余（含数字）返回 fallback。
  */
 fun JsonObject.optBoolean(key: String, fallback: Boolean = false): Boolean {
     val v = raw(key) ?: return fallback
@@ -178,21 +171,12 @@ fun JsonArray.optString(index: Int, fallback: String = ""): String =
 fun JsonArray.length(): Int = size
 
 /**
- * [JsonElement] → 纯 Kotlin 值（`Map` / `List` / `String` / `Double` / `Boolean` / null）。
+ * [JsonElement] → 纯 Kotlin 值（`Map` / `List` / `String` / `Double` / `Boolean` / null），
+ * 替代 Gson 的 `fromJson<Map<String, Any>>(raw, TypeToken…)` 路径 —— 多个解析器
+ * （`TeachingWeekReorganization.fromBackupValue`、`HolidayManager.decodeBackup*`）按此形状编写。
  *
- * 用来替代 **Gson 的 `fromJson<Map<String, Any>>(raw, TypeToken…)`** —— 那条路径把 JSON
- * 解析成「嵌套的 `LinkedHashMap` + `Double` 数字」，本项目好几处解析器（如
- * `TeachingWeekReorganization.fromBackupValue`、`HolidayManager.decodeBackup*`）
- * 正是按这个形状写的（`(value as? Number)?.toDouble()`）。
- *
- * ## 与 Gson 的对齐点（别改）
- *
- * 1. **数字一律转 `Double`**：Gson 的 `ObjectTypeAdapter` 读 NUMBER 就是 `in.nextDouble()`，
- *    所以 `1` 到这里也是 `1.0`。调用方 `(value as? Number).toDouble()` 两种都吃。
- * 2. **只有 `isString` 的 primitive 才是 `String`**：JSON 里的 `"1"` 是字符串、`1` 是数字，
- *    这个区分不能丢（Gson 也是分开的）。
- * 3. **对象保持插入顺序**：返回 `LinkedHashMap`，与 Gson 的 `LinkedTreeMap` 一致。
- * 4. `JsonNull` → `null`（Gson 的 `Map<String,Any>` 里 null 就是 null）。
+ * ⚠ 别改：数字一律转 `Double`（`1` → `1.0`）；仅 `isString` 的 primitive 为 `String`；
+ * 对象保持插入顺序（`LinkedHashMap`，同 Gson 的 `LinkedTreeMap`）；`JsonNull` → null。
  */
 fun jsonToPlainValue(element: JsonElement?): Any? = when (element) {
     null, is JsonNull -> null

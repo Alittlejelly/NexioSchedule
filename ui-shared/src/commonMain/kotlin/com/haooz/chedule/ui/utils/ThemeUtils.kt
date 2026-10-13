@@ -13,8 +13,7 @@ import com.haooz.chedule.data.getStringOrNull
 import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定。
-// 已搬进 :miuix 的 theme 包（BlurBottomSheet 在模块内要用它提供 null 阻止渗色），
-// 这里保留一个别名，调用方无需改动，且与模块内是同一个 CompositionLocal 实例。
+// 别名指向 :miuix 里的同一个 CompositionLocal 实例，调用方无需改动。
 val LocalForcedDarkTheme = top.yukonga.miuix.kmp.theme.LocalForcedDarkTheme
 
 /**
@@ -29,11 +28,7 @@ private const val COURSE_CARD_BACKING_ALPHA = 0.92f
 
 /**
  * 课程卡片在**无壁纸**时的垫底色：页底色 @COURSE_CARD_BACKING_ALPHA；有壁纸返回 null。
- *
- * 无壁纸时课程色自身只有 0.1~0.4 透明度，卡片压在网格上会透出格线，垫一层接近
- * 不透明的页底色才立得住。有壁纸时玻璃层采样的是不透明壁纸层，垫色会被盖住。
- *
- * 网格里的课程卡与长按拖拽浮层统一取这里，避免两处各抄一份后漂移。
+ * 无壁纸时课程色自身只有 0.1~0.4 透明度，不垫一层近不透明的页底色会透出网格线。
  */
 fun courseCardSolidBacking(isDark: Boolean, hasWallpaper: Boolean): Color? =
     if (hasWallpaper) null
@@ -41,21 +36,14 @@ fun courseCardSolidBacking(isDark: Boolean, hasWallpaper: Boolean): Color? =
 
 /**
  * 主题亮暗的全局快照，供 draw 阶段这类非组合上下文读取 ——
- * [isAppDarkTheme] 是 `@Composable`，绘制里调不了，而高光亮度要按主题分流。
- *
- * 由 [isAppDarkTheme] 每次组合后写入。写同值不触发失效，开销可忽略。
- *
- * 实例已搬到 backdrop（InteractiveHighlight 在 :miuix 内读它），这里只做别名，
- * 保证写入的值就是 :miuix 读到的值。
+ * [isAppDarkTheme] 是 `@Composable`，绘制里调不了。由它每次组合后写入。
+ * 别名指向 backdrop 的同一实例，保证写入的值就是那边读到的值。
  */
 val AppThemeSnapshot = com.kyant.backdrop.AppThemeSnapshot
 
 /**
- * 当前可见主页面背后是否为壁纸，理由同 [AppThemeSnapshot]：draw 阶段读不到页面状态，
- * 而高光亮不亮取决于背后是壁纸还是近白底。
- *
- * 由宿主（Android 的 MainActivity / 桌面壳）写入。典型用途：浅色模式下高光默认压到 0.05
- * （近白底加白会被截断成白斑），但今日页 / 课程表页有壁纸时背景不是近白 —— 此时给到 0.1。
+ * 当前可见主页面背后是否为壁纸，供 draw 阶段读取（理由同 [AppThemeSnapshot]）。
+ * 由宿主写入：浅色下高光默认压到 0.05，背后有壁纸时给到 0.1（近白底加白会被截断成白斑）。
  */
 val PageBackdropSnapshot = com.kyant.backdrop.PageBackdropSnapshot
 
@@ -72,20 +60,15 @@ fun isAppDarkTheme(): Boolean {
     return dark
 }
 
-// 不经过壁纸强制覆盖，只读 theme_mode
-// 实现已搬进 :miuix（theme/AppDarkTheme），因为 BlurBottomSheet 在 :miuix 内也需要读
-// 同一个偏好，构成反向依赖。这里转调，行为与迁移前一致。
+// 不经过壁纸强制覆盖，只读 theme_mode（转调 :miuix 的实现，与其读同一份偏好）
 @Composable
 fun rememberAppSettingDark(): Boolean = miuixRememberAppSettingDark()
 
-// ── 课表页「默认主题」档位（第四十三批：随 CourseScheduleApp 迁入共享层）────────────
-//
-// 原实现在 :androidApp 的 ActivitySystemBars.kt（rememberScheduleThemeMode +
-// ScheduleAppearance.get/setThemeMode）。落盘位置是数据契约：**与全局应用主题共用
-// app_theme_prefs 文件但不同的键**（键名见 ThemeMode.SCHEDULE_THEME_MODE_KEY），
-// 这里逐字照搬，只把入口换成跨平台的 AppStorage / KeyValueStore。
+// ── 课表页「默认主题」档位 ───────────────────────────────────────────────
+// 落盘是数据契约：**与全局应用主题共用 app_theme_prefs 文件但键不同**
+// （键名见 ThemeMode.SCHEDULE_THEME_MODE_KEY），文件名与键名逐字不可改。
 
-/** 与全局应用主题共用一个 prefs 文件（照抄 ScheduleAppearance.FILE_THEME，同值） */
+/** 与全局应用主题共用一个 prefs 文件（值逐字不可改） */
 private const val SCHEDULE_THEME_PREFS_FILE = "app_theme_prefs"
 
 /** 读课表页「默认主题」档位（无值回落 ThemeMode.FOLLOW_WALLPAPER） */
@@ -104,9 +87,8 @@ fun saveScheduleThemeMode(mode: ThemeMode) {
 /**
  * 仅影响今日页/课程表页，与全局 theme_mode 隔离。
  *
- * 走 KeyValueStore.registerListener。⚠ iOS 的 `NSUserDefaultsDidChangeNotification`
- * 只通知「有东西变了」、**不带 key**，所以回调里是**无条件复查**而非按 key 精确过滤
- * （见 `UserDefaultsStore.registerListener` 与常量 `KEY_CHANGED_ANYWHERE`）。
+ * ⚠ iOS 的 `NSUserDefaultsDidChangeNotification` 只通知「变了」、**不带 key**，
+ * 所以回调里是无条件复查，而非按 key 精确过滤（见 `KEY_CHANGED_ANYWHERE`）。
  */
 @Composable
 fun rememberScheduleThemeMode(): ThemeMode {
@@ -114,8 +96,8 @@ fun rememberScheduleThemeMode(): ThemeMode {
     val themeMode = remember { mutableStateOf(loadScheduleThemeMode()) }
 
     DisposableEffect(prefs) {
-        // ⚠ 同 CourseScheduleTheme：iOS 传 `KEY_CHANGED_ANYWHERE` 哨兵（系统只通知
-        //   「有东西变了」，不带 key），按 key 精确过滤会让 iOS 永远收不到生效 → 无条件复查。
+        // ⚠ iOS 传 `KEY_CHANGED_ANYWHERE` 哨兵（系统通知不带 key），
+        //   按 key 精确过滤会让 iOS 永远收不到生效。
         val token = prefs.registerListener { key ->
             if (key == KEY_CHANGED_ANYWHERE ||
                 key == ThemeMode.SCHEDULE_THEME_MODE_KEY

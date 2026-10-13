@@ -3,7 +3,7 @@ package com.haooz.chedule.data
 /**
  * 应用私有目录里的一个文件 / 目录句柄。
  *
- * 只覆盖项目**实际用到**的能力（拼接 / 存在性 / 读 / 写 / 建目录），不做通用文件系统。
+ * 只覆盖项目**实际用到**的能力（拼接 / 存在性 / 读 / 写 / 建目录），不做通用文件系统 ——
  * `java.io.File` 在 Kotlin/Native 与 JS 上都不存在，所以必须抽象。
  */
 interface AppFile {
@@ -14,7 +14,7 @@ interface AppFile {
 
     fun readBytes(): ByteArray
 
-    /** 按 UTF-8 读取文本。等价迁移前 `java.io.File.readText()`。 */
+    /** 按 UTF-8 读取文本。 */
     fun readText(): String = readBytes().decodeToString()
 
     /** 覆盖写入。**会自动创建缺失的父目录**（调用方不必再手动 mkdirs）。 */
@@ -23,12 +23,7 @@ interface AppFile {
     /** 把本路径当作目录创建（含父级）。 */
     fun mkdirs()
 
-    /**
-     * 删除本文件（不存在时返回 false，不抛）。
-     *
-     * 给壁纸「持久化清除」用 —— 早先只有 Android 的 `File.delete()` 能删，
-     * 共享层只能靠「写空文件」近似，残留文件会让备份/迁移多带一份垃圾。
-     */
+    /** 删除本文件（不存在时返回 false，不抛）。 */
     fun delete(): Boolean = false
 
     /** 解析相对子路径（以 `/` 分隔）。 */
@@ -38,16 +33,10 @@ interface AppFile {
 /**
  * 应用文件系统入口。
  *
- * ## 为什么用注入而不是 expect/actual
+ * 与 [AppStorage] 同一模式：`:core` 只声明接口，平台实现由应用启动时注入 ——
+ * commonMain 才能保持平台中立（`linuxX64` 编译门禁），Android 继续用 `java.io.File`。
  *
- * 与 [AppStorage] 同一模式：`:core` 只声明接口，平台实现由应用启动时注入。
- * 这样 `:core` 的 commonMain 保持平台中立（`linuxX64` 编译门禁才能通过），
- * Android 侧继续用 `java.io.File`（行为零变化），
- * iOS 侧将来注入 `NSFileManager` 实现即可 —— 与 [KeyValueStore] 的处理方式一致。
- *
- * ## 初始化时机
- *
- * 必须在任何 [root] / [readAsset] 使用之前调用，否则抛异常而不是静默失败 ——
+ * ⚠ 必须在任何 [root] / [readAsset] 使用之前 [init]，否则**抛异常**而不是静默失败 ——
  * 静默返回空目录会让「学校索引读不出来」这类问题极难定位。
  */
 object AppFiles {
@@ -60,7 +49,7 @@ object AppFiles {
     /**
      * @param root 应用私有目录（Android 传 `context.filesDir`）
      * @param readAsset 读取打包进安装包的资源（Android 传 `context.assets`）。
-     *   读取失败时**抛异常**，由调用方决定如何降级 —— 保留原实现「失败打日志并跳过引导」的语义。
+     *   读取失败时抛异常，由调用方决定如何降级。
      */
     fun init(root: AppFile, readAsset: ((String) -> ByteArray)? = null) {
         rootFile = root

@@ -2,16 +2,7 @@ package com.haooz.chedule.ui.screens
 
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 
-// ⚠ 本页 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十四批）。
-//
-// 迁移动机与做法：设置页本体（手机端长列表 + 平板两栏外壳）没有任何 Android 依赖，
-// 唯一的「平台味」集中在平板分支的 `androidPane` 槽位 —— 8 个 dest 的接线
-// （SAF 文件选择 / 口令网络 / 无头 WebView / PackageManager 取图标 / 小部件刷新 /
-// 超级岛测试通知 / HttpURLConnection 拉节假日）逐字搬到宿主
-// `androidApp/.../ui/screens/AndroidSettingsScreen.kt`，本页只接收并转发这些槽位。
-//
-// 因此本文件里**不应该再出现任何 `android.*` / `androidx.activity` / `androidx.core`**；
-// 加回来之前先想想是不是该做成注入参数。
+// ⚠ 本文件不得出现 android.* / androidx.activity / androidx.core；平台能力做成注入参数。
 
 import com.haooz.chedule.data.minusWeeks
 
@@ -116,7 +107,7 @@ internal fun parseDate(dateStr: String): Triple<Int, Int, Int> {
         val parts = dateStr.split("/")
         Triple(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
     } catch (_: Exception) {
-        // kotlinx-datetime（R2 跨平台）：替代 JVM 的 java.util.Calendar
+        // kotlinx-datetime 替代 JVM 的 java.util.Calendar
         val d = todayLocalDate()
         Triple(d.year, d.monthNumber, d.dayOfMonth)
     }
@@ -131,7 +122,6 @@ internal fun getDaysInMonth(year: Int, month: Int): Int {
 }
 
 // 顶栏折叠期间会逐帧重组，提到顶层避免组合期每帧新建 Set
-// 说明：设置项的「二级页打开时压暗」只在平板布局需要，手机端不再追踪二级 Activity 栈。
 
 @Composable
 fun SettingsScreen(
@@ -146,12 +136,8 @@ fun SettingsScreen(
     onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
-    // ── 平台注入（宿主提供；桌面/iOS 用默认空实现）────────────────────────────
-    // 设置页的「平板两栏」外壳 TabletSettingsScreen 有 8 个平台专有 dest
-    // （提醒/口令导入/AI 导入/导出/本地备份/偏好/更新/关于），它们的本体早已迁进
-    // :ui-shared，但**接线全是 Android 代码**（SAF / OkHttp / WebView / PackageManager /
-    // WidgetUpdateCache / 超级岛…）。这些接线留在宿主 —— 见 androidApp 的
-    // `AndroidSettingsScreen.kt`，本页只负责把槽位转交下去。
+    // ── 平台注入（宿主提供；桌面/iOS 用默认空实现）──
+    // 平板两栏外壳的 8 个平台专有 dest 接线留在宿主，本页只负责转交槽位。
     /** 平台专有设置面板（8 个 dest）由宿主渲染；null 显示占位 */
     androidPane: (@Composable (TabletSettingsDest) -> Unit)? = null,
     /** 提醒页「测试通知」动作（Android 发超级岛/实时活动） */
@@ -169,9 +155,8 @@ fun SettingsScreen(
      */
     showUpdateSettings: Boolean = true,
     /**
-     * 是否显示「排班模式」入口（进入开关 + 已进入时的「退出排班模式」按钮 + 确认弹窗）
-     * ⚠ 传 false 时 `isShiftMode` 必为 false（iOS 侧永远进不去排班模式），
-     *   所以只需挡「进入」那两处；「退出」那处一并挡掉以防状态被外部置起。
+     * 是否显示「排班模式」入口。
+     * ⚠ 传 false 时 `isShiftMode` 必为 false，只需挡「进入」两处，「退出」也一并挡掉以防状态被外部置起。
      */
 ) {
     val totalWeeks by viewModel.totalWeeks.collectAsState()
@@ -208,7 +193,7 @@ fun SettingsScreen(
     var tempDay by remember { mutableIntStateOf(tempDayInit) }
 
     val backgroundColor = MiuixTheme.colorScheme.surface
-    // 平板：设置页左右两栏，原地静态切换，不跳 Activity
+    // 平板：设置页左右两栏，原地静态切换
     if (navBarStyle == "rail") {
         TabletSettingsScreen(
             viewModel = viewModel,
@@ -219,8 +204,7 @@ fun SettingsScreen(
             onExitShiftMode = onExitShiftMode,
             onEnterShiftMode = onEnterShiftMode,
             liquidGlassBackdrop = liquidGlassBackdrop,
-            // —— 8 个平台专有 dest（提醒/口令导入/AI 导入/导出/本地备份/偏好/更新/关于）——
-            // 分支体自原平板页 when(selected) 逐字迁入，由宿主 androidPane 槽位渲染
+            // —— 8 个平台专有 dest，由宿主 androidPane 槽位渲染 ——
             androidPane = androidPane,
             onSendTestNotification = onSendTestNotification,
             isIslandSupported = isIslandSupported,
@@ -374,9 +358,8 @@ fun SettingsScreen(
                                 summary = "管理课表的节数与课程时间",
                                 onClick = {
                                     FeatureLog.timeConfig("open")
-                                    // 已路由化：不再走 Activity。保存/删除作息时 repository 会
-                                    // notifyCourseChanged("settings")，CourseViewModel 与
-                                    // SettingsViewModel 都会自行刷新，无需 Activity 结果回调
+                                    // 已路由化：保存/删除作息时 repository 会 notifyCourseChanged("settings")，
+                                    // 各 VM 自行刷新，无需结果回调
                                     settingsRouter.navigate(AppRoute.CourseTimeSettings)
                                 }
                             )
@@ -591,8 +574,7 @@ fun SettingsScreen(
             }
         }
 
-        // show=false 时整个弹窗不渲染：iOS 上没有入口能把它打开，
-        // 但仍要挡 —— 万一 showShiftModeConfirmDialog 被别的路径置 true，别漏出弹窗。
+        // 即使 iOS 没有入口打开它也要挡：showShiftModeConfirmDialog 可能被别的路径置 true。
         OverlayDialog(
             title = "进入排班模式",
             summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
@@ -768,12 +750,8 @@ fun SettingsScreen(
                         text = "确定",
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            // ⚠ 原实现是 `String.format("%04d/%02d/%02d", …)` —— JVM 专有。
-                            // 本文件迁进 commonMain 后才被 checkKmpPurity + iOS 编译同时抓到
-                            // （在 :androidApp 里编了两年都没事，因为 Android 就是 JVM）。
-                            // 手写 padStart，格式逐字一致，且**不会像 LocalDate(...) 那样
-                            // 在月/日组合非法时抛异常**（tempDay 的 range 跟着月份变，
-                            // 换月瞬间可能短暂越界）。
+                            // ⚠ 手写 padStart（`String.format` 是 JVM 专有）；格式与迁移前逐字一致，且
+                            // 不会像 `LocalDate(...)` 那样在月/日组合非法时抛异常（换月瞬间 tempDay 可能短暂越界）。
                             val date = "${tempYear.toString().padStart(4, '0')}/" +
                                 "${tempMonth.toString().padStart(2, '0')}/" +
                                 tempDay.toString().padStart(2, '0')
@@ -882,11 +860,3 @@ fun SettingsScreen(
 
     }
 }
-
-
-// 「导入课表」JSON 解析（parseFullScheduleJson / 拾光格式）已迁 :core（kotlinx-serialization，
-// 原 Gson 走运行时反射、iOS 不存在）—— 见 com.haooz.chedule.data.ScheduleImportCodec.kt。
-//
-// ICS 解析（parseIcsFile）2026-10-11 也迁 :core —— 见 com.haooz.chedule.data.IcsCodec.kt。
-// 落库逻辑（applyScheduleData）随「课表导入/导出」页迁 :ui-shared ——
-// 见 com.haooz.chedule.ui.screens.ScheduleImportApply.kt。

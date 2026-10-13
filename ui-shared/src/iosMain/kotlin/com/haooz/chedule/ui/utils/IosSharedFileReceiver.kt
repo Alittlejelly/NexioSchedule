@@ -14,23 +14,11 @@ import platform.Foundation.NSURL
 import platform.Foundation.dataWithContentsOfURL
 
 /**
- * iOS 侧「外部分享进来一个文件」的接收器。
+ * iOS 侧「外部分享进来一个文件」的接收器 —— Swift 的 `.onOpenURL` 写，`CourseScheduleApp` 读。
  *
- * ## 与 Android 的对应关系
- *
- * Android 是 `MainActivity.onNewIntent` 解析 `Intent`，摊平成
- * `shareIntentUri` + `shareIntentVersion` 两个字段，`CourseScheduleApp` 组合时读它们。
- * iOS 没有 Intent —— 文件是通过 SwiftUI 的 `.onOpenURL` 送进来的
- * （用户在「文件」App / 其它 app 里点「用 Nexio课程表 打开」）。
- *
- * ## 为什么用 Compose 的 `mutableStateOf`
- *
- * Swift 调 [onOpenURL] 时不在 Compose 的组合作用域里。用普通字段的话，值虽然更新了，
- * **Compose 不会重组合** → 弹窗永远不出来（表现为「点了打开没反应」）。
- * 用 `mutableStateOf` 存，`CourseScheduleApp` 组合期读它时就自动订阅了。
- *
- * `version` 单调递增：同一个 URL 再次分享时靠它触发 `LaunchedEffect` 重跑
- * （与 Android 的 `shareIntentVersion` 同一套语义）。
+ * ⚠ 必须用 Compose 的 `mutableStateOf` 存：Swift 调 [onOpenURL] 时不在组合作用域，
+ * 普通字段值会更新但**不触发重组合** → 弹窗永远不出来（表现为「点了打开没反应」）。
+ * `version` 单调递增，同一 URL 再次分享时靠它触发 `LaunchedEffect` 重跑。
  */
 object IosSharedFileReceiver {
 
@@ -43,8 +31,7 @@ object IosSharedFileReceiver {
     /**
      * Swift 侧 `.onOpenURL` 入口。
      *
-     * @param url 打开的文件 URL（`file://...`）。传字符串而不是 `NSURL`，
-     *   免得把 Foundation 类型带进 Swift 的调用签名。
+     * @param url 打开的文件 URL（`file://...`）；传字符串而非 `NSURL`，避免 Foundation 类型进 Swift 签名。
      */
     fun onOpenURL(url: String) {
         if (url.isBlank()) return
@@ -61,9 +48,9 @@ object IosSharedFileReceiver {
     /**
      * 读该 URL 的全部文本（`CourseScheduleApp` 的 `onReadSharedFileText`）。
      *
-     * 与文件选择器同样要走**安全作用域**：外部分享进来的文件在 app 沙箱外，
-     * 不 `startAccessingSecurityScopedResource()` 会读到 null（静默失败）。
-     * 失败时这里已经提示过，页面不再重复报错（与该回调的约定一致）。
+     * ⚠ 外部分享进来的文件在 app 沙箱外，必须走安全作用域
+     * （`startAccessingSecurityScopedResource()`），否则读到 null（静默失败）。
+     * 失败时这里已提示过，页面不重复报错。
      */
     fun readText(urlString: String): String? {
         val url = NSURL.URLWithString(urlString) ?: run {

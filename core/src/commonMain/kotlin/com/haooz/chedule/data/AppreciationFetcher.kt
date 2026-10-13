@@ -7,27 +7,15 @@ data class AppreciationsPage(val items: List<AppreciationItem>, val hasMore: Boo
 
 /**
  * 云端捐赠列表拉取；网络异常或解析失败时返回空数据（App 端不再本地硬编码捐赠样本）。
- *
- * ## 迁移状态：三个 Android 依赖已全部解除，已下沉 `:core`
- *
- * | 原依赖 | 现状 |
- * |---|---|
- * | `OkHttpClient` + `HttpUrl` | ✅ [HttpService]，超时仍是 5s/5s |
- * | `org.json.JSONObject` / `JSONArray` | ✅ [parseJsonObject] / [optJsonArray] |
- * | `Context` | 本来就没有 |
- * | `AppreciationItem`（原在 `ui.data`） | ✅ 已一并归位到 `com.haooz.chedule.data` |
  */
 object AppreciationFetcher {
-    // 与公告/上报同源走明文 HTTP：HTTPS(443) 在该运营商网络下 TLS 握手被干扰（Connection reset），沿用 3000 直达后端
+    // 与公告/上报同源走明文 HTTP：HTTPS(443) 在该运营商网络下 TLS 握手被干扰，直达后端 3000
     private const val API_URL = "http://182.92.193.223:3000/api/appreciations"
     private const val TOP_URL = "http://182.92.193.223:3000/api/appreciations/top"
     const val PAGE_SIZE = 10
 
-    // 超时与迁移前一致（connect 5s / read 5s）
-    /**
-     * 可替换（`internal var`）以便 commonTest 注入 FakeHttpService。
-     * 用 var 而非 val：object 是全局单例，测试需要置换实现来覆盖分页/失败分支。
-     */
+    // ⚠ 超时与迁移前一致：connect 5s / read 5s
+    /** `internal var` 以便测试注入 FakeHttpService（object 单例需置换实现）。 */
     internal var http: HttpService =
         createHttpService(HttpTimeouts(connectSeconds = 5, readSeconds = 5))
 
@@ -35,8 +23,8 @@ object AppreciationFetcher {
     suspend fun fetch(offset: Int = 0, limit: Int = PAGE_SIZE): AppreciationsPage =
         withContext(ioDispatcher) {
             try {
-                // 迁移前用 HttpUrl.newBuilder() 拼查询参数；这里手工拼接，参数都是数字，
-                // 无需转义。若将来加入用户可控的字符串参数，必须改成 URL 编码。
+                // 手工拼接查询参数，参数都是数字故无需转义；
+                // 若将来加入用户可控的字符串参数，必须改成 URL 编码
                 val resp = http.get("$API_URL?limit=$limit&offset=$offset")
                 if (!resp.isSuccessful) return@withContext AppreciationsPage(emptyList(), false)
                 val json = parseJsonObject(resp.text)
@@ -60,7 +48,7 @@ object AppreciationFetcher {
             }
         }
 
-    /** 缺 `records` 字段时按空数组处理（对应迁移前的 `?: JSONArray()`）。 */
+    /** 缺 `records` 字段时按空数组处理。 */
     private fun kotlinx.serialization.json.JsonArray?.toItems(): List<AppreciationItem> {
         val array = this ?: return emptyList()
         val items = ArrayList<AppreciationItem>(array.length())

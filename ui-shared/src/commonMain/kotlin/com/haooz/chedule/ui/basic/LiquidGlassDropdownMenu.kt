@@ -79,7 +79,7 @@ import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 
 /** 外层为阴影预留的内缩；外部按"占位槽真实位置"摆放本控件时需要减掉它 */
-// 原为 internal；MainActivity（宿主层）要读它换算占位槽位置，跨模块必须 public
+// 宿主层要读它换算占位槽位置，跨模块须 public
 val LiquidGlassDropdownShadowPadding = 24.dp
 
 /** 收起态圆形按钮直径，也是容器变换的起点尺寸 */
@@ -90,10 +90,8 @@ private val PanelWidth = 200.dp
 private val PanelCornerRadius = 25.dp
 
 /**
- * 面板外投射阴影档位。
- *
- * ⚠️ ListPopup.kt 的 popupPanelShadow 有一份**同值副本**（那边是 miuix 通用组件，
- * 不反向依赖 app 层），调整时两处必须同步，否则两种弹窗阴影深浅不一。
+ * 面板外投射阴影档位。⚠️ ListPopup.kt 的 popupPanelShadow 有一份**同值副本**
+ * （那边是 miuix 通用组件，不反向依赖 app 层），调整时两处必须同步，否则两种弹窗阴影深浅不一。
  */
 private val ShadowColorLight = Color(0x1A000000)
 private val ShadowColorDark = Color(0x2E000000)
@@ -103,11 +101,9 @@ private const val ShadowExtend = 2f
 private const val ShadowAlphaGain = 3.2f
 
 /**
- * 右上角「更多」按钮与下拉菜单是**同一个控件**（容器变换）：
- * fraction=0 时是 42dp 玻璃盒（圆角 25dp 被钳成 21dp = 正圆），
- * fraction=1 时同一块玻璃长成 [PanelWidth] × 面板高的圆角矩形；图标与菜单项都在盒内随之裁剪。
- *
- * 已展开时还支持跟手滑动选菜单项（见 [dropdownPanelDragSelect]），无长按门槛。
+ * 右上角「更多」按钮与下拉菜单是**同一个控件**（容器变换）：fraction=0 时是 42dp 玻璃盒
+ * （圆角 25dp 被钳成正圆），fraction=1 时长成 [PanelWidth] × 面板高的圆角矩形。已展开时支持
+ * 跟手滑动选菜单项（见 [dropdownPanelDragSelect]），无长按门槛。
  */
 @Composable
 fun LiquidGlassDropdownMenu(
@@ -144,10 +140,8 @@ fun LiquidGlassDropdownMenu(
     // 跟手滑选：菜单项各自登记位置，手势逐帧命中测试
     val dragSelectState = remember { DropdownPanelDragSelectState() }
 
-    // 预测性返回：始终注册（否则动画未播完时立即返回会抓不到手势）
-    // 跨平台化：androidx.navigationevent 只有 Android artifact，改用 :miuix 的
-    // expect/actual 封装 rememberNavigationBack（Android 实现内部仍是 navigationevent，
-    // handler 与进度读取绑定同一份状态 —— 拆开会导致跟手动画失效）。
+    // 预测性返回：始终注册（否则动画未播完时立即返回会抓不到手势）。⚠️ handler 与进度读取
+    // 必须绑定同一份状态，拆开会导致跟手动画失效。
     val navBackState = rememberNavigationBack()
     val backProgress = remember { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
@@ -179,9 +173,7 @@ fun LiquidGlassDropdownMenu(
         },
     )
 
-    // 逐帧收手势进度：菜单缩回锚点
-    // backProgress() 语义与原 transitionState 判断等价：手势进行中返回连续进度，其余时间为 null
-    // （原代码的 "is InProgress && direction == TRANSITIONING_BACK" 即手势进行中）
+    // 逐帧收手势进度：菜单缩回锚点。backProgress() 手势进行中返回连续进度，其余时间为 null
     LaunchedEffect(Unit) {
         snapshotFlow { navBackState.backProgress() }
             .collect { progress ->
@@ -241,11 +233,8 @@ fun LiquidGlassDropdownMenu(
 
     // 读 fraction 驱动尺寸；不钳到 1，保留 spring 过冲（末尾回弹）
     val f = fraction.value
-    // 背景模糊度随展开进度过渡：收起态 8dp（与顶栏液态玻璃按钮一致），展开态 24dp（面板更大，需更强模糊）。
-    // 折射 lens(8, 24) 保持常量：它作用在边缘 SDF 上，面板变大时跟着涨反而会让边缘变形。
-    // drawBackdrop 靠「effects lambda 换引用」才会重算 blur/lens uniform
-    // （updateEffects 里 cachedEffectFn === effects 命中就复用旧 RenderEffect），
-    // 但每帧换引用又会让节点每帧重建 RenderEffect 并重录采样层；故量化成 8 档再喂进去。
+    // 模糊随展开过渡（收起 8dp → 展开 24dp）。折射 lens(8, 24) 必须保持常量：它作用在边缘 SDF 上，
+    // 随面板变大反而会让边缘变形。effects lambda 换引用才重算，但每帧换会让节点每帧重建 RenderEffect，故量化成 8 档。
     val blurStep = (f.coerceIn(0f, 1f) * 8f).roundToInt()
     val blurDp = 8f + 16f * (blurStep / 8f)
     // 面板自然高度：由容器内的内容以全尺寸测量得到，作为高度插值终点
@@ -306,17 +295,15 @@ fun LiquidGlassDropdownMenu(
                 // 拖动手势：放在 clip 之前，不受圆角裁剪影响
                 .then(interactiveHighlight.gestureModifier)
                 .drawBehind {
-                    // 与顶栏液态玻璃按钮同一套阴影：环形（外圈减内圈）+ 模糊/外扩随材质衰减
-                    // 用 materialVisible 而非 materialAlpha：收起态仍跟顶栏材质，展开后
-                    // 即使顶栏材质透明也要有阴影（材质可见度已按展开进度饱和到 1）
+                    // 与顶栏液态玻璃按钮同一套阴影：环形（外圈减内圈）+ 模糊/外扩随材质衰减。用
+                    // materialVisible 而非 materialAlpha：展开后即使顶栏材质透明也要有阴影。
                     val spread = materialVisible
                     if (spread > 0.01f) {
                         val shadowColor = if (isLightTheme) ShadowColorLight else ShadowColorDark
                         val blurRadius = ShadowBlur * density * spread
                         val shadowSpread = ShadowExtend * density * spread
                         val r = PanelCornerRadius.toPx()
-                        // 环形：外圈 roundrect CW + 内圈 roundrect CCW（winding 差集），
-                        // compose Path + miuix expect/actual 阴影（原为 android.graphics.Paint+BlurMaskFilter）
+                        // 环形：外圈 roundrect CW + 内圈 roundrect CCW（winding 差集）
                         val ringPath = Path().apply {
                             addRoundRect(
                                 RoundRect(
@@ -338,7 +325,7 @@ fun LiquidGlassDropdownMenu(
                         }
                         drawBlurredPathShadow(
                             path = ringPath,
-                            // 原实现：alpha × ShadowAlphaGain 后 clamp 到 255 —— 浮点域同算
+                            // alpha × ShadowAlphaGain 在浮点域 clamp（不提前压到 255，避免精度损失）
                             color = shadowColor.copy(
                                 alpha = (shadowColor.alpha * ShadowAlphaGain).coerceAtMost(1f),
                             ),

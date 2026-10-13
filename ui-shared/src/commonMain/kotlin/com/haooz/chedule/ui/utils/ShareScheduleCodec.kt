@@ -6,21 +6,8 @@ import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
 import com.haooz.chedule.data.TimeRoutine
 
-// ════════════════════════════════════════════════════════════════════════
-//  分享/导出课表的**数据契约**：组装（写出）与解析（读入）两半
-//
-//  2026-10-11 自 `:androidApp` 的 `ScheduleExport.kt` / `ScheduleImport.kt`
-//  拆出并迁入 `:ui-shared`（第二十三批）。
-//
-//  拆出的判据：这两组函数**只碰 `CourseRepository` 与 `Map<String, Any>`**，
-//  一行 Android / java 依赖都没有；而它们所在的两个文件里还挤着
-//  `ShareCodeApi`（OkHttp + Gson）、`ShareImageGenerator`（Bitmap）、
-//  `WakeUpHeadlessBridge`（WebView）这些纯 Android 实现。
-//  数据契约跟平台实现挤在一起 → 「课表导入/导出」页迁 commonMain 时会连带
-//  反向依赖整个 Android 模块（同 `ExtractedShareTools` 当初的拆出理由）。
-//
-//  ⚠ 「导入 / 导出」两条路必须**成对改**：字段名动一处，两边都要动。
-// ════════════════════════════════════════════════════════════════════════
+// 分享/导出课表的**数据契约**：组装（写出）与解析（读入）两半。
+// ⚠ 「导入 / 导出」两条路必须**成对改**：字段名动一处，两边都要动。
 
 // ── 1. 组装侧：CourseRepository → 分享/导出 JSON Map ──────────────
 
