@@ -33,6 +33,18 @@ object StatsReporter {
     private var deviceId: String? = null
 
     /**
+     * 平台标签：服务端按此维度分平台统计。
+     * `sdkLevel` 是 Android 专有字段（>0 即 Android）；Apple 体系是 iOS；其余归桌面。
+     * 老版 iOS 客户端 brand 是 osFamily 名（"IOS"）也要能归进 iOS，所以两个词都认。
+     */
+    internal fun platformTag(device: DeviceInfo): String = when {
+        device.sdkLevel > 0 -> "android"
+        device.brand.equals("Apple", ignoreCase = true) ||
+            device.brand.equals("IOS", ignoreCase = true) -> "ios"
+        else -> "desktop"
+    }
+
+    /**
      * 仅供测试：清空内存缓存，模拟进程冷启动。`deviceId` 会跨测试用例残留，
      * 而 [AppStorage] 在测试里会被重设为新的内存实现，不同步会让「已落盘」断言假失败。
      */
@@ -54,7 +66,8 @@ object StatsReporter {
     }
 
     /** 组装上报负载：设备ID、事件类型、时间戳 + 设备/系统/App 信息。
-     *  `internal` 而非 private：字段名是服务端既有统计口径，用测试锁住。 */
+     *  `internal` 而非 private：字段名是服务端既有统计口径，用测试锁住。
+     *  `platform` 是新增维度（android / ios / desktop），服务端不认识时会忽略，不影响旧口径。 */
     internal fun buildPayload(eventType: String): String {
         val device = currentDeviceInfo()
         return jsonObjectOf(
@@ -67,6 +80,7 @@ object StatsReporter {
             "manufacturer" to device.manufacturer,
             "android_version" to device.osVersion,
             "sdk_level" to device.sdkLevel,
+            "platform" to platformTag(device),
         ).toString()
     }
 
