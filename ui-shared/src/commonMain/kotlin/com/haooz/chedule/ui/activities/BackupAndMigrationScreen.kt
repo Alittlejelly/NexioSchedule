@@ -29,7 +29,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
@@ -42,13 +41,13 @@ import com.haooz.chedule.data.NoopScheduleFileController
 import com.haooz.chedule.data.ScheduleFileController
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.WebDavManager
 import com.haooz.chedule.data.encodeBackupJson
 import com.haooz.chedule.data.formatDateTimeMinute
 import com.haooz.chedule.data.formatIcsTimestamp
 import com.haooz.chedule.data.localDateTimeAt
 import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.data.parseIcsFile
-import com.haooz.chedule.data.WebDavManager
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.navigation.AppRoute

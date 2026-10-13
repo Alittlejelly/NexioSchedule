@@ -39,35 +39,36 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.haooz.chedule.data.parseJsonArray
-import com.haooz.chedule.data.parseJsonObject
-import com.haooz.chedule.data.optJsonArray
-import com.haooz.chedule.data.optJsonObject
-import com.haooz.chedule.data.optString
-import com.haooz.chedule.data.optInt
-import com.haooz.chedule.data.hasKey
-import com.haooz.chedule.data.isJsonNull
-import com.haooz.chedule.data.length
-import kotlinx.serialization.json.JsonObject
-import kotlinx.coroutines.launch
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TimeRoutine
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.TimeRoutine
 import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.hasKey
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.isJsonNull
+import com.haooz.chedule.data.optInt
+import com.haooz.chedule.data.optJsonArray
+import com.haooz.chedule.data.optString
+import com.haooz.chedule.data.parseJsonArray
+import com.haooz.chedule.data.parseJsonObject
 import com.haooz.chedule.data.school.AdapterData
 import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.ScriptRepository
+import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.web.NoopWebHost
+import com.haooz.chedule.ui.web.WebHost
+import com.haooz.chedule.ui.web.WebHostConfig
+import com.haooz.chedule.ui.web.WebHostEvents
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -75,13 +76,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.ui.web.NoopWebHost
-import com.haooz.chedule.ui.web.WebHost
-import com.haooz.chedule.ui.web.WebHostConfig
-import com.haooz.chedule.ui.web.WebHostEvents
+import kotlinx.serialization.json.JsonObject
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -97,11 +95,10 @@ import top.yukonga.miuix.kmp.icon.extended.Update
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
-import com.haooz.chedule.ui.utils.screenWidthDp
+import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 /**
  * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。

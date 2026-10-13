@@ -37,18 +37,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.screens.ClassEndEffectSettings
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.viewmodel.SettingsViewModel
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.theme_preview_light
+import com.haooz.chedule.uishared.resources.theme_preview_night
 import com.haooz.chedule.viewmodel.settingsViewModel
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -57,17 +56,16 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import top.yukonga.miuix.kmp.layout.isTabletWidth
-import org.jetbrains.compose.resources.painterResource
-import com.haooz.chedule.uishared.resources.Res
-import com.haooz.chedule.uishared.resources.theme_preview_light
-import com.haooz.chedule.uishared.resources.theme_preview_night
-import org.jetbrains.compose.resources.DrawableResource
 
 @Composable
 fun PreferenceSettingsScreen(

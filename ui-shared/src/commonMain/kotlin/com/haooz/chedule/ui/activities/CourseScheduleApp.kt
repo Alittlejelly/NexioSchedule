@@ -961,9 +961,9 @@ fun CourseScheduleApp(
     LaunchedEffect(privacyConsented) {
         // 合规：未同意隐私政策前不进行云同步等网络行为
         if (!privacyConsented) return@LaunchedEffect
-        val syncManager = com.haooz.chedule.data.SyncManager.getInstance()
-        val repository = com.haooz.chedule.data.CourseRepository()
-        val webDavManager = com.haooz.chedule.data.WebDavManager {
+        val syncManager = SyncManager.getInstance()
+        val repository = CourseRepository()
+        val webDavManager = WebDavManager {
             onHolidayDataChanged()
         }
         syncManager.start(repository, webDavManager)
@@ -988,13 +988,13 @@ fun CourseScheduleApp(
     val eveningSections by settingsViewModel.eveningSections.collectAsState()
     val configuredSectionTimes by settingsViewModel.sectionTimes.collectAsState()
     val totalSections = morningSections + afternoonSections + eveningSections
-    val holidayDataRevision by com.haooz.chedule.data.HolidayManager.dataRevision.collectAsState()
+    val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
     // 只在「返回」时刷新；冷启动首次 onResume 时 ViewModel 刚加载完，再全量刷会拖慢首屏
     LaunchedEffect(resumeCount) {
         // 作息按日期自动切换：跨过生效日期后补一次提醒重排。
         // 只是比对 prefs 里记的 key，几乎零开销，所以冷启动这一次也跑
         withContext(ioDispatcher) {
-            com.haooz.chedule.data.CourseRepository().syncRoutineAfterDateChange()
+            CourseRepository().syncRoutineAfterDateChange()
         }
         if (resumeCount > 1) {
             withContext(ioDispatcher) {
@@ -1007,11 +1007,11 @@ fun CourseScheduleApp(
     // 节假日/调休保存不走课程 reload；resume 时对比 HolidayManager 版本，变了才 bump dataVersion
     var seenHolidayVersion by remember {
         mutableLongStateOf(
-            com.haooz.chedule.data.HolidayManager.getVersion()
+            HolidayManager.getVersion()
         )
     }
     LaunchedEffect(resumeCount, holidayDataRevision) {
-        val holidayV = com.haooz.chedule.data.HolidayManager.getVersion()
+        val holidayV = HolidayManager.getVersion()
         if (holidayV != seenHolidayVersion) {
             seenHolidayVersion = holidayV
             viewModel.bumpDataVersion()
@@ -1055,7 +1055,7 @@ fun CourseScheduleApp(
     // 侧栏伸缩后强制续录 + 顶栏糊层重采样：否则采样停在旧帧，切页才会恢复
     val railBlurResampleEpoch = remember { mutableIntStateOf(0) }
     val railForceRecordFrames = remember { intArrayOf(0) }
-    LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.expanded, navBarStyle) {
+    LaunchedEffect(TabletNavSideState.expanded, navBarStyle) {
         if (navBarStyle != "rail") return@LaunchedEffect
         railForceRecordFrames[0] = 12
         delay(360.milliseconds)
@@ -1123,7 +1123,7 @@ fun CourseScheduleApp(
     )
 
     suspend fun animateFloatState(
-        state: androidx.compose.runtime.MutableFloatState,
+        state: MutableFloatState,
         target: Float,
         spec: androidx.compose.animation.core.AnimationSpec<Float>,
         initialVelocity: Float = 0f
@@ -1181,7 +1181,7 @@ fun CourseScheduleApp(
     var customizeCoverActive by remember { mutableStateOf(false) }
     val customizeCoverScale = remember { Animatable(1f) }
     val customizeCoverAlpha = remember { Animatable(1f) }
-    val wallpaperRepository = remember { com.haooz.chedule.data.CourseRepository() }
+    val wallpaperRepository = remember { CourseRepository() }
     var combinations by remember { mutableStateOf(listOf<ScheduleCombination>()) }
     var currentCombinationIndex by remember { mutableIntStateOf(0) }
     var wallpaperBitmap by remember { mutableStateOf(WallpaperStore.currentImageBitmap()) }
@@ -1244,7 +1244,7 @@ fun CourseScheduleApp(
     var savedWallpaperBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var savedWallpaperOffset by remember { mutableStateOf(wallpaperOffset) }
     var savedWallpaperScale by remember { mutableFloatStateOf(wallpaperScale) }
-    var savedAppearance by remember { mutableStateOf(com.haooz.chedule.data.AppearanceConfig()) }
+    var savedAppearance by remember { mutableStateOf(AppearanceConfig()) }
     // 进入搭配页时的原始搭配；滑动切换不更新（退出非应用时还原）
     var originalCombinationIndex by remember { mutableIntStateOf(0) }
     var originalWallpaperBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -1259,12 +1259,12 @@ fun CourseScheduleApp(
     var pendingEnterCutout by remember { mutableStateOf(false) }
 
     // 外观从当前搭配派生，编辑只写 combinations；未加载时回退启动缓存防冷启动闪默认值
-    fun currentAppearance(): com.haooz.chedule.data.AppearanceConfig =
+    fun currentAppearance(): AppearanceConfig =
         combinations.getOrNull(currentCombinationIndex)
             ?.let { AppearanceConfig.fromCombination(it) }
             ?: AppearanceStore.cachedConfig
 
-    fun applyAppearance(value: com.haooz.chedule.data.AppearanceConfig) {
+    fun applyAppearance(value: AppearanceConfig) {
         val idx = currentCombinationIndex
         if (idx in combinations.indices) {
             combinations = combinations.toMutableList().also { list ->
@@ -1417,10 +1417,10 @@ fun CourseScheduleApp(
     var switchOverlayActive by remember { mutableStateOf(false) }
     var switchCardSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
     // 形变插值起止依据（窗口坐标系）
-    var switchCardBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var switchCardBounds by remember { mutableStateOf<Rect?>(null) }
     // 退出时拿不到截图则退而用它
     var switchCurrentCardBounds by remember {
-        mutableStateOf<androidx.compose.ui.geometry.Rect?>(
+        mutableStateOf<Rect?>(
             null
         )
     }
@@ -1487,13 +1487,13 @@ fun CourseScheduleApp(
     val currentDayOfWeek = todayLocalDate().dayOfWeek.isoDayNumber
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
     val dataVersion by viewModel.dataVersion.collectAsState()
-    val teachingWeekRepository = remember { com.haooz.chedule.data.CourseRepository.getInstance() }
+    val teachingWeekRepository = remember { CourseRepository.getInstance() }
     val teachingWeekRules = remember(teachingWeekRepository, dataVersion, classStartTime) {
         teachingWeekRepository.getTeachingWeekReorganizations()
     }
     // 节假日/调休保存后需能重算跳周；resume 时刷新版本号
     val holidayVersion = remember(resumeCount, holidayDataRevision) {
-        com.haooz.chedule.data.HolidayManager.getVersion()
+        HolidayManager.getVersion()
     }
 
     val basePage = (currentWeek - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
@@ -1532,14 +1532,14 @@ fun CourseScheduleApp(
     SideEffect { PageBackdropSnapshot.hasWallpaper.value = pageBehindHasWallpaper }
 
     // 二级页侧栏点选主 tab（无转场回来后处理）
-    LaunchedEffect(com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab) {
-        val pending = com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab
+    LaunchedEffect(TabletNavSideState.pendingMainTab) {
+        val pending = TabletNavSideState.pendingMainTab
         if (pending in 0..4 && shiftModeInitialized) {
             // 手机端只有 3 页，侧栏带过来的页号要按实际页数收口
             val target = pending.coerceAtMost(mainPagerPageCount - 1)
             selectedTab = target
             mainPagerState.scrollToPage(target)
-            com.haooz.chedule.ui.components.TabletNavSideState.pendingMainTab = -1
+            TabletNavSideState.pendingMainTab = -1
         }
     }
 
@@ -2397,14 +2397,14 @@ fun CourseScheduleApp(
             mainPagerState.currentPage, isShiftMode, showDetail, showCustomizePage, showSwitchSchedule,
             isWindowCutoutActive, shortcutMenuVisible, isDraggingCard, floatingCardVisible,
             dataVersion, currentWeek, totalWeeks, currentCombinationIndex, effectiveIsDark,
-            wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value,
+            wallpaperBitmap, TabletNavSideState.expanded, scheduleShowCourseDetail.value,
             pagerState.currentPage
         ) {
             listOf(
                 mainPagerState.currentPage, isShiftMode, showDetail, showCustomizePage, showSwitchSchedule,
                 isWindowCutoutActive, shortcutMenuVisible, isDraggingCard, floatingCardVisible,
                 dataVersion, currentWeek, totalWeeks, currentCombinationIndex, effectiveIsDark,
-                wallpaperBitmap, com.haooz.chedule.ui.components.TabletNavSideState.expanded, scheduleShowCourseDetail.value,
+                wallpaperBitmap, TabletNavSideState.expanded, scheduleShowCourseDetail.value,
                 pagerState.currentPage
             )
         }
@@ -2436,7 +2436,7 @@ fun CourseScheduleApp(
             var lastBlurEpoch = -1
             {
                 // 侧栏进度只在 draw 阶段读，不进组合
-                val expand = com.haooz.chedule.ui.components.TabletNavSideState.expandProgress.floatValue
+                val expand = TabletNavSideState.expandProgress.floatValue
                 val expandMoving = expand != lastRailExpand
                 lastRailExpand = expand
                 val epochBumped = latestRailBlurEpoch != lastBlurEpoch
@@ -2876,7 +2876,7 @@ fun CourseScheduleApp(
                                     onJumpWeek = { viewModel.showJumpWeekDialog() },
                                     onCourseManage = {
                                         popupRouter.navigate(
-                                            com.haooz.chedule.ui.navigation.AppRoute.CourseManage
+                                            AppRoute.CourseManage
                                         )
                                     },
                                     onEnterCustomize = {
@@ -3608,7 +3608,7 @@ fun CourseScheduleApp(
                                                 isShiftMode = false,
                                                 onExitShiftMode = {},
                                                 onEnterShiftMode = {
-                                                    com.haooz.chedule.ui.utils.FeatureLog.shift("enter_loading")
+                                                    FeatureLog.shift("enter_loading")
                                                     showShiftLoading = true
                                                     isExitingShift = false
                                                 },
@@ -3675,7 +3675,7 @@ fun CourseScheduleApp(
                                             shiftViewModel = shiftViewModel,
                                             isShiftMode = true,
                                             onExitShiftMode = {
-                                                com.haooz.chedule.ui.utils.FeatureLog.shift("exit_loading")
+                                                FeatureLog.shift("exit_loading")
                                                 showShiftLoading = true
                                                 isExitingShift = true
                                             },
@@ -4083,12 +4083,12 @@ fun CourseScheduleApp(
                         },
                     )
                     // 节点常驻组合树、仅 show 控显隐，退出动画才能播完
-                    var notice by remember { mutableStateOf<com.haooz.chedule.data.Notice?>(null) }
+                    var notice by remember { mutableStateOf<Notice?>(null) }
                     LaunchedEffect(privacyConsented) {
                         // 合规：未同意隐私政策前不拉取公告（不触网）
                         if (!privacyConsented) return@LaunchedEffect
-                        val n = com.haooz.chedule.data.NoticeFetcher.fetch()
-                        if (n != null && com.haooz.chedule.data.NoticeFetcher.shouldShow(n)) {
+                        val n = NoticeFetcher.fetch()
+                        if (n != null && NoticeFetcher.shouldShow(n)) {
                             notice = n
                         }
                     }
@@ -4112,7 +4112,7 @@ fun CourseScheduleApp(
                                     modifier = Modifier.weight(1f),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                        com.haooz.chedule.data.NoticeFetcher.markSeen(n)
+                                        NoticeFetcher.markSeen(n)
                                         notice = null
                                     }
                                 )
@@ -4200,7 +4200,7 @@ fun CourseScheduleApp(
                             // 侧栏遮罩圆角由宿主注入（同一份 px）
                             screenCornerRadiusPx = screenCornerRadius,
                             onSidebarExpandedChange = {
-                                com.haooz.chedule.ui.components.TabletNavSideState.expanded = it
+                                TabletNavSideState.expanded = it
                             },
                             showBackToNow = !isShiftMode &&
                                 !showDetail &&
@@ -4518,7 +4518,7 @@ fun CourseScheduleApp(
                         icon = MiuixIcons.Edit,
                         label = "编辑",
                         onClick = {
-                            com.haooz.chedule.ui.utils.FeatureLog.course("edit_shortcut")
+                            FeatureLog.course("edit_shortcut")
                             shortcutMenuVisible = false
                             dismissFloatingCard()
                             coroutineScope.launch {
@@ -4532,7 +4532,7 @@ fun CourseScheduleApp(
                         icon = MiuixIcons.Copy,
                         label = "复制",
                         onClick = {
-                            com.haooz.chedule.ui.utils.FeatureLog.course("copy_shortcut")
+                            FeatureLog.course("copy_shortcut")
                             copiedCourseForPaste = activeShortcutCourse
                             shortcutMenuVisible = false
                             dismissFloatingCard()
@@ -4547,7 +4547,7 @@ fun CourseScheduleApp(
                         icon = MiuixIcons.Delete,
                         label = "删除",
                         onClick = {
-                            com.haooz.chedule.ui.utils.FeatureLog.course("delete_shortcut")
+                            FeatureLog.course("delete_shortcut")
                             deleteConfirmCourse = activeShortcutCourse
                             shortcutMenuVisible = false
                             dismissFloatingCard()
@@ -5319,7 +5319,7 @@ fun CourseScheduleApp(
                                 "bmp=${screenBitmapBmp != null} bounds=$cardBounds"
                             )
                             switchAnimJob?.cancel()
-                            val cardBoundsInScreen = androidx.compose.ui.geometry.Rect(
+                            val cardBoundsInScreen = Rect(
                                 left = switchContentRootX + cardBounds.left,
                                 top = switchContentRootY + cardBounds.top,
                                 right = switchContentRootX + cardBounds.right,
@@ -5418,13 +5418,13 @@ fun CourseScheduleApp(
             show = showShiftLoading,
             onShiftReady = {
                 if (isExitingShift) {
-                    com.haooz.chedule.ui.utils.FeatureLog.shift("exit_confirmed")
+                    FeatureLog.shift("exit_confirmed")
                     shiftViewModel.exitShiftMode()
                     selectedTab = 0
                     selectedTab = 0
                     coroutineScope.launch { mainPagerState.scrollToPage(0) }
                 } else {
-                    com.haooz.chedule.ui.utils.FeatureLog.shift("enter_confirmed")
+                    FeatureLog.shift("enter_confirmed")
                     shiftViewModel.enterShiftMode()
                 }
             },
@@ -5439,7 +5439,7 @@ fun CourseScheduleApp(
 private fun SwitchMorphOverlay(
     active: Boolean,
     progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
-    cardBounds: androidx.compose.ui.geometry.Rect?,
+    cardBounds: Rect?,
     cardSnapshot: ImageBitmap?,
     mainSnapshot: ImageBitmap?,
     screenCornerRadius: Float,

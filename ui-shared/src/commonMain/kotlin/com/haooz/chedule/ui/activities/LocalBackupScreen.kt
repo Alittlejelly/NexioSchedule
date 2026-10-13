@@ -40,29 +40,22 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.haooz.chedule.data.toJsonMap
-import com.haooz.chedule.data.encodeBackupJson
+import com.haooz.chedule.data.BackupFileController
+import com.haooz.chedule.data.BackupFileInfo
+import com.haooz.chedule.data.BackupPayload
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.parseBackupPayload
-import com.haooz.chedule.data.BackupPayload
-import com.haooz.chedule.data.BackupFileInfo
-import com.haooz.chedule.data.BackupFileController
 import com.haooz.chedule.data.NoopBackupFileController
+import com.haooz.chedule.data.TeachingWeekReorganization
+import com.haooz.chedule.data.encodeBackupJson
 import com.haooz.chedule.data.formatCompactStamp
 import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.nowLocalDateTime
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import com.haooz.chedule.data.parseBackupPayload
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.toJsonMap
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.viewmodel.CourseViewModel
-import com.haooz.chedule.viewmodel.ScheduleViewModel
-import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
@@ -77,13 +70,16 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 
 /** 课表名可能含路径分隔符/非法字符，直接拼进文件名会写失败或写到意外位置 */

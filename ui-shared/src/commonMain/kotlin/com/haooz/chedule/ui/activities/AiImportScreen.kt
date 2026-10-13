@@ -50,13 +50,10 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.Course
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.screens.AddCourseDialog
-import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.courseViewModel
@@ -73,12 +70,15 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import com.haooz.chedule.data.randomUuidV4
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun AiImportScreen(
@@ -86,7 +86,6 @@ fun AiImportScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     viewModel: CourseViewModel = courseViewModel(),
     settingsViewModel: SettingsViewModel = settingsViewModel(),
-    backdrop: top.yukonga.miuix.kmp.blur.LayerBackdrop? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     // 平台宿主注入：复制提示词到系统剪切板（由宿主实现，桌面/iOS 默认空实现）
     onCopyToClipboard: (String) -> Unit = {}
@@ -146,7 +145,7 @@ fun AiImportScreen(
     // 等底部弹窗退出动画（320ms）播完后再执行删除并卸载弹窗
     LaunchedEffect(showEditDialog) {
         if (!showEditDialog && editingCourseSnapshot != null) {
-            delay(340)
+            delay(340.milliseconds)
             if (pendingDelete && editingCourseIndex in parsedCourses.indices) {
                 parsedCourses.removeAt(editingCourseIndex)
             }
@@ -208,7 +207,6 @@ fun AiImportScreen(
             snapshotFlow { listState.firstVisibleItemScrollOffset }
                 .collect { offset -> listScrollY = offset }
         }
-        val density = androidx.compose.ui.platform.LocalDensity.current
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize()
