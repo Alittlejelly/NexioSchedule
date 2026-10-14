@@ -1,7 +1,12 @@
 package com.haooz.chedule.wearable
 
-import com.haooz.chedule.data.HolidayEntry
+import com.haooz.chedule.data.HolidayEntries
+import com.haooz.chedule.data.minusDays
+import com.haooz.chedule.data.plusDays
+import com.haooz.chedule.data.plusWeeks
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.data.toJson
+import kotlinx.datetime.LocalDate
 
 import android.content.Context
 import com.haooz.chedule.data.CourseRepository
@@ -23,7 +28,9 @@ import com.haooz.chedule.data.NexioLog
  * - courses：整学期全部课程，不过滤周次；dayOfWeek 1=周一…7=周日；
  *   startWeek/endWeek 为原始值（0=未设置），weekType 0全周/1单周/2双周，
  *   selectedWeeks 非空时优先于上面三者
- * - holidays：HolidayEntry[]，缺失则手表无法显示调休日
+ * - holidays：HolidayEntry[]，缺失则手表无法显示调休日。
+ *   ⚠ 数组顺序即优先级：手表端只取第一条命中，不认 custom / 年份优先级，
+ *     排序与去重见 buildHolidaysJson，改动前务必读 HolidayEntries.forFlatPush。
  *
  * 手表端周次 = floorDiv(开学日到当天天数 + (开学日星期-1), 7) + 1，再用 current_week
  * 校准偏移（±2 内吸收）；周次过滤与 Course.isActiveInWeek 严格一致。
@@ -32,6 +39,15 @@ object WatchPayload {
 
     private const val PROTOCOL = "nexio.schedule"
     private const val VERSION = 4
+
+    /**
+     * 假期下发窗口在学期首尾 / 今天之外的额外余量（天）。
+     *
+     * 手表端只能线性扫数组取第一条命中，没法像手机端那样按「custom + 年份优先级」挑，
+     * 所以重活只能在手机端做完（见 [HolidayEntries.forFlatPush]）；这个窗口只负责
+     * 把历史年份的存量挡在包外。留 60 天足够覆盖跨年学期 + 前后翻看。
+     */
+    private const val HOLIDAY_WINDOW_PAD_DAYS = 60L
 
     /** 整表推送 JSON。课程取 Course 原始值，周次过滤与星期坐标系都交给手表端。 */
     // USELESS_ELVIS / ELVIS_ALWAYS_NULL：Course 字段声明为非空 String，但 Gson UnsafeAllocator
@@ -86,7 +102,7 @@ object WatchPayload {
             .put("afternoon", periodTimesJson(repository, "afternoon", sid))
             .put("evening", periodTimesJson(repository, "evening", sid))
 
-        val holidaysArr = buildHolidaysJson(context)
+        val holidaysArr = buildHolidaysJson(repository, sid)
         NexioLog.i(
             "WatchPayload",
             "buildFull sid=$sid total=${all.size} packed=${courseArr.length()} " +
@@ -107,11 +123,23 @@ object WatchPayload {
             .toString()
     }
 
-    /** HolidayEntry → 手表 holidays 数组（字段与 HolidayEntry.toJson 一致） */
-    private fun buildHolidaysJson(context: Context): JSONArray {
+    /**
+     * HolidayEntry → 手表 holidays 数组（字段与 HolidayEntry.toJson 一致）。
+     *
+     * ⚠ 顺序即语义：手表端只按数组顺序取第一条命中，没有 `custom` / 年份优先级概念。
+     * 所以排序 + 去重必须在手机端做完（[HolidayEntries.forFlatPush]），否则自定义
+     * 调休 / 当年条目会被更早年份的同名条目盖掉，手表换课跟错。
+     */
+    private fun buildHolidaysJson(repository: CourseRepository, scheduleId: String): JSONArray {
         val arr = JSONArray()
-        val entries = HolidayManager.loadAllByYear().values.flatten()
-        for (entry in entries) {
+        val today = todayLocalDate()
+        val (windowFirst, windowLast) = holidayWindow(repository, scheduleId, today)
+        for (entry in HolidayEntries.forFlatPush(
+            entriesByYear = HolidayManager.loadAllByYear(),
+            today = today,
+            windowFirst = windowFirst,
+            windowLast = windowLast,
+        )) {
             // ⚠ 必须包一层 JSONObject(...)：entry.toJson() 现在返回 kotlinx 的 JsonObject
             // （不是 org.json 的类型），直接 put 进去会被 org.json 当成未知对象转成
             // 一个**带引号的字符串**，手表侧就解析不出结构了。转成 JSON 文本再解析回来
@@ -119,6 +147,26 @@ object WatchPayload {
             arr.put(JSONObject(entry.toJson().toString()))
         }
         return arr
+    }
+
+    /**
+     * 下发窗口 = min(学期首日, 今天) .. max(学期末日, 今天)，两端各留 [HOLIDAY_WINDOW_PAD_DAYS]。
+     *
+     * 取并集是必要的：学期可能还没开始（新生），也可能早已结束，
+     * 但手表端仍会按今天所在的周展示课表。
+     */
+    private fun holidayWindow(
+        repository: CourseRepository,
+        scheduleId: String,
+        today: LocalDate,
+    ): Pair<LocalDate, LocalDate> {
+        // 开学日缺失/脏值时 getClassStartTime 已回退成今天，这里再兜一层纯属防御
+        val semesterStart =
+            CourseRepository.parseFlexibleDate(repository.getClassStartTime(scheduleId)) ?: today
+        val semesterLast = semesterStart.plusWeeks(repository.getTotalWeeks(scheduleId).toLong())
+        val first = minOf(semesterStart, today).minusDays(HOLIDAY_WINDOW_PAD_DAYS)
+        val last = maxOf(semesterLast, today).plusDays(HOLIDAY_WINDOW_PAD_DAYS)
+        return first to last
     }
 
     /** 节次时间 → 手表格式 {相对节次号: 'HH:mm-HH:mm'}（getPeriodTimes 本身即此格式） */
