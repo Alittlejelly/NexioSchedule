@@ -25,6 +25,7 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseScheduleDateBounds
+import com.haooz.chedule.data.CourseTimeSpan
 import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.DayScheduleResolver.DayScheduleResolution
 import com.haooz.chedule.data.HolidayCourseExclusion
@@ -874,7 +875,9 @@ object CourseReminderHelper {
             val startMin = (startParts[0].toIntOrNull() ?: 0) * 60 + (startParts[1].toIntOrNull() ?: 0)
             val endMin = (endParts[0].toIntOrNull() ?: 0) * 60 + (endParts[1].toIntOrNull() ?: 0)
 
-            if (currentMinutes in startMin until endMin) {
+            // 跨午夜课（23:00-00:30）的 `startMin until endMin` 是空区间，不修会整段掉回
+            // 30 分钟兜底刷新；0 点后的尾巴属于昨天那节课，不在今日课表里
+            if (CourseTimeSpan.isActiveAt(startMin, endMin, currentMinutes)) {
                 hasActiveCourse = true
                 break
             }
@@ -1868,7 +1871,8 @@ object CourseReminderHelper {
                     teacher = course.teacher,
                     courseStartMillis = courseStartMillis,
                     courseEndMillis = safeEndMillis,
-                    notificationId = ISLAND_NOTIFICATION_ID
+                    notificationId = ISLAND_NOTIFICATION_ID,
+                    isCustomTime = course.hasValidCustomTime()
                 )
             } else {
                 showPreClassCountdownNotification(
@@ -1892,11 +1896,13 @@ object CourseReminderHelper {
                 teacher = course.teacher,
                 courseStartMillis = courseStartMillis,
                 courseEndMillis = safeEndMillis,
-                notificationId = ISLAND_NOTIFICATION_ID
+                notificationId = ISLAND_NOTIFICATION_ID,
+                isCustomTime = course.hasValidCustomTime()
             )
             scheduleIslandExpandAlarm(
                 context, alarmManager, course.name, course.classroom,
-                course.getTimeDisplayText(), startTime, endTime, courseStartMillis
+                course.getTimeDisplayText(), startTime, endTime, courseStartMillis,
+                isCustomTime = course.hasValidCustomTime()
             )
         } else {
             showPreClassCountdownNotification(
@@ -1920,7 +1926,8 @@ object CourseReminderHelper {
         startTime: String,
         endTime: String?,
         courseStartMillis: Long,
-        notificationId: Int = ISLAND_NOTIFICATION_ID
+        notificationId: Int = ISLAND_NOTIFICATION_ID,
+        isCustomTime: Boolean = false
     ) {
         val expandIntent = Intent(context, IslandExpandReceiver::class.java).apply {
             putExtra(IslandExpandReceiver.EXTRA_COURSE_NAME, courseName)
@@ -1928,6 +1935,7 @@ object CourseReminderHelper {
             putExtra(IslandExpandReceiver.EXTRA_SECTION, section)
             putExtra(IslandExpandReceiver.EXTRA_START_TIME, startTime)
             putExtra(IslandExpandReceiver.EXTRA_END_TIME, endTime ?: "")
+            putExtra(IslandExpandReceiver.EXTRA_IS_CUSTOM_TIME, isCustomTime)
             // 必须与倒计时岛同 ID，"已上课"才能原地替换而非另起一个岛
             putExtra(IslandExpandReceiver.EXTRA_NOTIFICATION_ID, notificationId)
             putExtra(IslandExpandReceiver.EXTRA_COURSE_START_MILLIS, courseStartMillis)
@@ -2001,7 +2009,8 @@ object CourseReminderHelper {
                 startTime = state.startTime,
                 endTime = state.endTime.ifEmpty { null },
                 notificationId = state.notificationId,
-                testMode = testMode
+                testMode = testMode,
+                isCustomTime = state.isCustomTime
             )
             return
         }
@@ -2024,7 +2033,8 @@ object CourseReminderHelper {
                         startTime = state.startTime,
                         endTime = state.endTime,
                         notificationId = state.notificationId,
-                        testMode = testMode
+                        testMode = testMode,
+                        isCustomTime = state.isCustomTime
                     )
                 }
             }
@@ -2041,7 +2051,8 @@ object CourseReminderHelper {
                 startTime = state.startTime,
                 endTime = state.endTime,
                 notificationId = state.notificationId,
-                testMode = testMode
+                testMode = testMode,
+                isCustomTime = state.isCustomTime
             )
         }
     }

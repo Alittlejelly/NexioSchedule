@@ -16,6 +16,7 @@ import androidx.core.graphics.createBitmap
 import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.CourseTimeSpan
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -149,7 +150,7 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
                 if (startParts.size == 2 && endParts.size == 2) {
                     val startMin = (startParts[0].toIntOrNull() ?: 0) * 60 + (startParts[1].toIntOrNull() ?: 0)
                     val endMin = (endParts[0].toIntOrNull() ?: 0) * 60 + (endParts[1].toIntOrNull() ?: 0)
-                    if (currentMinutes in startMin until endMin) {
+                    if (CourseTimeSpan.isActiveAt(startMin, endMin, currentMinutes)) {
                         allCourses.filter { it.id != displayCourse.id }
                     } else allCourses
                 } else allCourses
@@ -173,9 +174,11 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         val inCourse = displayCourse != null && run {
             val sp = startTime.split(":")
             val ep = endTime.split(":")
-            sp.size == 2 && ep.size == 2 &&
-                currentMinutes in ((sp[0].toIntOrNull() ?: 0) * 60 + (sp[1].toIntOrNull() ?: 0)) until
-                ((ep[0].toIntOrNull() ?: 0) * 60 + (ep[1].toIntOrNull() ?: 0))
+            sp.size == 2 && ep.size == 2 && CourseTimeSpan.isActiveAt(
+                (sp[0].toIntOrNull() ?: 0) * 60 + (sp[1].toIntOrNull() ?: 0),
+                (ep[0].toIntOrNull() ?: 0) * 60 + (ep[1].toIntOrNull() ?: 0),
+                currentMinutes,
+            )
         }
         val signature = buildString {
             append(dark).append('|').append(paddingMode)

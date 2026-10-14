@@ -28,14 +28,36 @@ enum NativeCourseNotifier {
             write: { write(notices: $0) },
             cancelAll: { cancelAll() },
             requestAuthorization: { requestAuthorization() },
+            refreshAuthorization: { refreshAuthorization() },
             sendTestNotification: { sendTestNotification() }
         )
     }
 
     // MARK: - Registration
 
+    /// Serializes cancel/write end to end: the snapshot, the removal and the adds all
+    /// complete before the next operation enters, so a later snapshot can never miss
+    /// the previous batch's adds (stale notices surviving) and a cancel can never
+    /// snapshot ahead of an in-flight write (reminders firing after being turned off).
+    private static let writeQueue = DispatchQueue(
+        label: "com.haooz.iosschedule.course-reminder.write"
+    )
+
+    /// Runs `body` on `writeQueue` and blocks the queue until `body`'s completion is
+    /// signalled. The completion runs on the daemon queue, not `writeQueue`, so the
+    /// wait cannot deadlock. The timeout only guards against a completion that never
+    /// arrives, which would otherwise wedge every later reminder update.
+    private static func serialized(_ body: @escaping (@escaping () -> Void) -> Void) {
+        writeQueue.async {
+            let done = DispatchSemaphore(value: 0)
+            body { done.signal() }
+            if done.wait(timeout: .now() + 10) == .timedOut {
+                reminderLog.error("notification batch timed out; later writes may interleave")
+            }
+        }
+    }
+
     private static func write(notices: [IosCourseNotifier.Notice]) {
-        let center = UNUserNotificationCenter.current()
         let requests = notices.map { notice -> UNNotificationRequest in
             let content = UNMutableNotificationContent()
             content.title = notice.title
@@ -58,59 +80,101 @@ enum NativeCourseNotifier {
         }
 
         // Cancel-then-write: pending requests read back asynchronously, so a diff is
-        // not possible. Cancel is idempotent, mirroring Android's
-        // cancelAllAlarms + scheduleAllAlarms ordering.
-        cancelAll()
-        for request in requests {
-            center.add(request) { error in
-                if let error {
-                    reminderLog.error(
-                        "add \(request.identifier) failed: \(error, privacy: .public)"
-                    )
+        // not possible. Removal and adds are issued from inside the snapshot
+        // completion, so the removal is guaranteed to precede the adds — identical
+        // identifiers across writes made the old caller-side ordering able to delete
+        // the batch it had just registered.
+        serialized { finish in
+            let center = UNUserNotificationCenter.current()
+            center.getPendingNotificationRequests { pending in
+                let ids = pending
+                    .map(\.identifier)
+                    .filter { Self.hasCourseReminderPrefix($0) }
+                if !ids.isEmpty {
+                    center.removePendingNotificationRequests(withIdentifiers: ids)
                 }
+                for request in requests {
+                    center.add(request) { error in
+                        if let error {
+                            reminderLog.error(
+                                "add \(request.identifier) failed: \(error, privacy: .public)"
+                            )
+                        }
+                    }
+                }
+                reminderLog.info("scheduled \(requests.count) notices")
+                finish()
             }
         }
-        reminderLog.info("scheduled \(requests.count) notices")
     }
 
     private static func cancelAll() {
-        let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { requests in
-            let ids = requests
-                .map(\.identifier)
-                .filter {
-                    $0.hasPrefix(IosCourseNotifier.shared.ID_PREFIX_PRE_CLASS) ||
-                        $0.hasPrefix(IosCourseNotifier.shared.ID_PREFIX_NEXT_DAY)
+        serialized { finish in
+            let center = UNUserNotificationCenter.current()
+            center.getPendingNotificationRequests { requests in
+                let ids = requests
+                    .map(\.identifier)
+                    .filter { Self.hasCourseReminderPrefix($0) }
+                if !ids.isEmpty {
+                    center.removePendingNotificationRequests(withIdentifiers: ids)
                 }
-            guard !ids.isEmpty else { return }
-            center.removePendingNotificationRequests(withIdentifiers: ids)
+                finish()
+            }
         }
     }
 
+    private static func hasCourseReminderPrefix(_ id: String) -> Bool {
+        id.hasPrefix(IosCourseNotifier.shared.ID_PREFIX_PRE_CLASS) ||
+            id.hasPrefix(IosCourseNotifier.shared.ID_PREFIX_NEXT_DAY)
+    }
+
     // MARK: - Authorization
+
+    /// Kotlin's queued authorization callbacks reach Compose state and toasts, so hop
+    /// to main: UNUserNotificationCenter completions run on the daemon's XPC queue.
+    private static func reportAuthorization(granted: Bool) {
+        DispatchQueue.main.async {
+            IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: granted)
+        }
+    }
+
+    /// Launch-time seed of Kotlin's `authorized` cache, without showing the prompt.
+    /// Reports `true` only — `false` is the default, and a stale `.notDetermined`
+    /// answer must not clobber a grant that landed while this query was in flight.
+    private static func refreshAuthorization() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                reportAuthorization(granted: true)
+            default:
+                break
+            }
+        }
+    }
 
     private static func requestAuthorization() {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
-                IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: true)
+                reportAuthorization(granted: true)
 
             case .notDetermined:
                 center.requestAuthorization(options: [.alert, .sound, .badge]) {
                     granted, _ in
-                    // Writes back into Kotlin's cache; reschedule() must run again
-                    // for the notices to actually land.
-                    IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: granted)
+                    // Kotlin flushes every callback queued by ensureAuthorization with
+                    // this answer, so a reschedule() that ran before the prompt lands
+                    // its notices right here — no second trigger needed.
+                    reportAuthorization(granted: granted)
                 }
 
             case .denied:
                 // Already denied: the system will not prompt again. Report false so
                 // the settings page takes its "open System Settings" branch.
-                IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: false)
+                reportAuthorization(granted: false)
 
             @unknown default:
-                IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: false)
+                reportAuthorization(granted: false)
             }
         }
     }

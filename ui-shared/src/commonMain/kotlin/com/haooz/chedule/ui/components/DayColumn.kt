@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.CourseTimeSpan
 import kotlinx.coroutines.delay
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.kyant.backdrop.edgelight.edgeLight
@@ -759,7 +760,7 @@ internal fun rememberIsOngoing(startTime: String, endTime: String): Boolean {
             val nowMinutes = now.hour * 60 + now.minute
             ongoing = parseSpecialHm(startTime)?.let { s ->
                 val e = parseSpecialHm(endTime) ?: return@let false
-                nowMinutes in s until e
+                CourseTimeSpan.isActiveAt(s, e, nowMinutes)
             } ?: false
             delay(30_000L)
         }

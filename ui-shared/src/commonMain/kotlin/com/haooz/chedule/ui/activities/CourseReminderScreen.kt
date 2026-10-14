@@ -126,6 +126,9 @@ fun CourseReminderScreen(
     // show Xiaomi-specific sub-options (Shizuku, left/right slot, AOD).
     var showIslandCard by remember { mutableStateOf(false) }
     val isHyperIsland = isIslandSupported
+    // 槽位卡片 vs「实时动态右侧」卡片的分界：HyperOS 上超级岛开关关闭时要回落到
+    // 实时动态右侧（此刻生效的是 live_right_mode，岛的槽位键不生效）；iOS 恒走槽位卡片
+    val showSlotCard = showIslandCard && (islandNotification || !isHyperIsland)
 
     // 实况通知右侧显示：0=课程名称，1=上课地点，2=倒计时
     var liveRightMode by remember { mutableIntStateOf(reminderPrefs.getInt("live_right_mode", 0)) }
@@ -790,8 +793,8 @@ fun CourseReminderScreen(
                             ),
                         )
 
-                        if (!showIslandCard) {
-                            // No live container on either side: fallback to standard notification slot.
+                        if (!showSlotCard) {
+                            // 无生效的 live container：普通通知槽位卡（live_right_mode 生效的地方）
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
