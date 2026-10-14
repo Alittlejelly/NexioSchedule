@@ -626,7 +626,6 @@ fun CustomizeScheduleScreen(
             coroutineScope {
                 launch { buttonAlphaAnim.animateTo(1f, tween(250)) }
                 launch {
-                    if (shiftNativeChromeOneFrame) withFrameNanos { }
                     sheetOffsetY.animateTo(
                         0f,
                         tween(350, easing = CustomizePageEasing)
