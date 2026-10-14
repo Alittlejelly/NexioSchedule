@@ -15,6 +15,7 @@ import androidx.core.graphics.createBitmap
 import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.CourseTimeSpan
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -224,8 +225,9 @@ class CourseWidgetProviderPad : AppWidgetProvider() {
         if (startParts.size != 2 || endParts.size != 2) return null
         val startMinutes = (startParts[0].toIntOrNull() ?: 0) * 60 + (startParts[1].toIntOrNull() ?: 0)
         val endMinutes = (endParts[0].toIntOrNull() ?: 0) * 60 + (endParts[1].toIntOrNull() ?: 0)
-        return if (currentMinutes in startMinutes until endMinutes) {
-            endMinutes - currentMinutes
+        // 跨午夜课按下课 + 1440 算，否则 23:30 的「50 分钟后下课」会算成负数
+        return if (CourseTimeSpan.isActiveAt(startMinutes, endMinutes, currentMinutes)) {
+            CourseTimeSpan.endOffsetMinutes(startMinutes, endMinutes) - currentMinutes
         } else null
     }
 

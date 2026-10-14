@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.CourseTimeSpan
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 import com.haooz.chedule.data.NexioLog
@@ -182,8 +183,13 @@ class TodayCoursesProvider : ContentProvider() {
         val end = CourseReminderHelper.getCourseEndTime(course, repository)
         val startMinutes = start?.toMinutes() ?: -1
         val endMinutes = end?.toMinutes() ?: -1
-        val isNow = if (!isTomorrow && startMinutes < endMinutes && currentMinutes in startMinutes until endMinutes) 1 else 0
-        val remaining = if (isNow == 1) endMinutes - currentMinutes else 0
+        // start/end 缺失时为 -1，必须挡住：isActiveAt 对 -1/-1 会按跨午夜误判
+        val isNow = if (!isTomorrow && startMinutes >= 0 && endMinutes >= 0 &&
+            CourseTimeSpan.isActiveAt(startMinutes, endMinutes, currentMinutes)
+        ) 1 else 0
+        val remaining = if (isNow == 1) {
+            CourseTimeSpan.endOffsetMinutes(startMinutes, endMinutes) - currentMinutes
+        } else 0
         val sectionText = course.getSectionText()
         val startText = start.orEmpty()
         // 详情按规格区分：2x2=开始时间｜地点；4x2=节次｜地点｜教师；自定义时间课不显示节次

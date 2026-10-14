@@ -15,6 +15,7 @@ import androidx.core.graphics.createBitmap
 import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.CourseTimeSpan
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -147,9 +148,11 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
         val inCourse = displayCourse != null && run {
             val sp = startTime.split(":")
             val ep = endTime.split(":")
-            sp.size == 2 && ep.size == 2 &&
-                currentMinutes in ((sp[0].toIntOrNull() ?: 0) * 60 + (sp[1].toIntOrNull() ?: 0)) until
-                ((ep[0].toIntOrNull() ?: 0) * 60 + (ep[1].toIntOrNull() ?: 0))
+            sp.size == 2 && ep.size == 2 && CourseTimeSpan.isActiveAt(
+                (sp[0].toIntOrNull() ?: 0) * 60 + (sp[1].toIntOrNull() ?: 0),
+                (ep[0].toIntOrNull() ?: 0) * 60 + (ep[1].toIntOrNull() ?: 0),
+                currentMinutes,
+            )
         }
         val dotCourses = if (displayCourse != null && !showTomorrow && inCourse) {
             allCourses.filter { it.id != displayCourse.id }

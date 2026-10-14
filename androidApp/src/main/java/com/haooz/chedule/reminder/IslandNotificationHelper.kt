@@ -72,6 +72,8 @@ object IslandNotificationHelper {
         private const val K_END_TIME = "end_time"
         private const val K_START_MILLIS = "start_millis"
         private const val K_END_MILLIS = "end_millis"
+        // 自定义时间课没有节次，section 里装的是时间范围，展示时必须跳过
+        private const val K_CUSTOM_TIME = "custom_time"
 
         data class Snapshot(
             val notificationId: Int,
@@ -83,7 +85,8 @@ object IslandNotificationHelper {
             val startMillis: Long,
             val endMillis: Long,
             val switched: Boolean,
-            val switchedAt: Long
+            val switchedAt: Long,
+            val isCustomTime: Boolean
         )
 
         private fun prefName(testMode: Boolean) = if (testMode) PREF_TEST else PREF
@@ -98,7 +101,8 @@ object IslandNotificationHelper {
             endTime: String,
             startMillis: Long,
             endMillis: Long,
-            testMode: Boolean = false
+            testMode: Boolean = false,
+            isCustomTime: Boolean = false
         ) {
             context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
                 putBoolean(K_ACTIVE, true)
@@ -107,11 +111,13 @@ object IslandNotificationHelper {
                 putInt(K_NOTIFICATION_ID, notificationId)
                 putString(K_COURSE_NAME, courseName)
                 putString(K_CLASSROOM, classroom)
+                // section 原样存，供 isResolvedCourse 比对；自定义时间课只跳过展示
                 putString(K_SECTION, section)
                 putString(K_START_TIME, startTime)
                 putString(K_END_TIME, endTime)
                 putLong(K_START_MILLIS, startMillis)
                 putLong(K_END_MILLIS, endMillis)
+                putBoolean(K_CUSTOM_TIME, isCustomTime)
             }
         }
 
@@ -130,7 +136,8 @@ object IslandNotificationHelper {
                 startMillis = startMillis,
                 endMillis = p.getLong(K_END_MILLIS, 0L),
                 switched = p.getBoolean(K_SWITCHED, false),
-                switchedAt = p.getLong(K_SWITCHED_AT, 0L)
+                switchedAt = p.getLong(K_SWITCHED_AT, 0L),
+                isCustomTime = p.getBoolean(K_CUSTOM_TIME, false)
             )
         }
 
@@ -537,6 +544,25 @@ object IslandNotificationHelper {
         return json.toString()
     }
 
+    // 课前 / 已上课通用正文：节次｜地点｜教师。自定义时间课的 section 是「开始 - 结束」，
+    // 带上会在标题的上课时间后重复一段，与小组件、卡片详情同口径跳过
+    private fun buildIslandContent(
+        section: String,
+        classroom: String,
+        teacher: String,
+        isCustomTime: Boolean
+    ): String = buildString {
+        if (!isCustomTime && section.isNotEmpty()) append(section)
+        if (classroom.isNotEmpty()) {
+            if (isNotEmpty()) append("｜")
+            append(classroom)
+        }
+        if (teacher.isNotEmpty()) {
+            if (isNotEmpty()) append("｜")
+            append(teacher)
+        }
+    }
+
     // 课中提醒：模板9（文本组件2 + 识别图形组件1 + 按钮组件2）
     private fun buildInClassIslandParamsJson(
         context: Context,
@@ -545,7 +571,8 @@ object IslandNotificationHelper {
         section: String,
         startTime: String,
         endTime: String,
-        courseEndMillis: Long
+        courseEndMillis: Long,
+        isCustomTime: Boolean = false
     ): String {
         val json = JSONObject()
         val prefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
@@ -557,13 +584,15 @@ object IslandNotificationHelper {
         val now = System.currentTimeMillis()
         val counting = courseEndMillis > now
         val aodTitle = if (aodMode == 1) classroom.ifEmpty { courseName } else courseName
+        // 自定义时间课的 section 是「开始 - 结束」，再拼一次会变成「时间｜时间」
+        val showSection = section.isNotEmpty() && !isCustomTime
         val baseContent = buildString {
             if (startTime.isNotEmpty()) append(startTime)
             if (endTime.isNotEmpty() && endTime != startTime) {
                 if (isNotEmpty()) append(" - ")
                 append(endTime)
             }
-            if (section.isNotEmpty()) {
+            if (showSection) {
                 if (isNotEmpty()) append("｜")
                 append(section)
             }
@@ -784,21 +813,19 @@ object IslandNotificationHelper {
         endTime: String? = null,
         courseStartMillis: Long,
         courseEndMillis: Long = 0L,
-        notificationId: Int = ISLAND_NOTIFICATION_ID
+        notificationId: Int = ISLAND_NOTIFICATION_ID,
+        isCustomTime: Boolean = false
     ) {
         val title = if (startTime.isNotEmpty()) "$courseName $startTime" else courseName
-        val content = buildString {
-            if (section.isNotEmpty()) append(section)
-            if (classroom.isNotEmpty()) append("｜").append(classroom)
-            if (teacher.isNotEmpty()) append("｜").append(teacher)
-        }
+        val content = buildIslandContent(section, classroom, teacher, isCustomTime)
 
         // 开始时间已过：不要画永远走不完的倒计时，直接走分流入口
         if (courseStartMillis <= System.currentTimeMillis()) {
             NexioLog.w(TAG, "sendPreClassIslandNotification: start time already passed ($startTime), fallback to class start")
             IslandState.save(
                 context, notificationId, courseName, classroom, section,
-                startTime, endTime ?: "", courseStartMillis, courseEndMillis
+                startTime, endTime ?: "", courseStartMillis, courseEndMillis,
+                isCustomTime = isCustomTime
             )
             onClassStart(
                 context = context,
@@ -807,7 +834,8 @@ object IslandNotificationHelper {
                 section = section,
                 startTime = startTime,
                 endTime = endTime,
-                notificationId = notificationId
+                notificationId = notificationId,
+                isCustomTime = isCustomTime
             )
             return
         }
@@ -826,7 +854,8 @@ object IslandNotificationHelper {
             startTime = startTime,
             endTime = endTime ?: "",
             startMillis = courseStartMillis,
-            endMillis = courseEndMillis
+            endMillis = courseEndMillis,
+            isCustomTime = isCustomTime
         )
         // 立即切到每分钟刷新，否则对账形同虚设
         kickWidgetRefresh(context)
@@ -896,7 +925,7 @@ object IslandNotificationHelper {
         )
 
         val title = "$courseName $startTime"
-        val content = "第3~4节｜博A201"
+        val content = buildIslandContent(section, classroom, teacher = "", isCustomTime = false)
 
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -969,13 +998,16 @@ object IslandNotificationHelper {
         startTime: String,
         endTime: String? = null,
         notificationId: Int = ISLAND_NOTIFICATION_ID,
-        testMode: Boolean = false
+        testMode: Boolean = false,
+        isCustomTime: Boolean = false
     ) {
         val effectiveTestMode = testMode || isIslandTestId(notificationId)
         val state = IslandState.snapshot(context, effectiveTestMode)
         val startMillis = state?.startMillis ?: System.currentTimeMillis()
         val endMillis = state?.endMillis ?: 0L
         val inClassOn = CourseReminderHelper.isInClassEnabled(context)
+        // 与入参取或：state 存着课前那一刻的判定，兜住旧闹钟/漏传
+        val effectiveCustomTime = isCustomTime || state?.isCustomTime == true
 
         if (inClassOn) {
             val showNow = endMillis > startMillis &&
@@ -990,7 +1022,8 @@ object IslandNotificationHelper {
                     startTime = startTime,
                     endTime = endTime ?: "",
                     notificationId = notificationId,
-                    testMode = effectiveTestMode
+                    testMode = effectiveTestMode,
+                    isCustomTime = effectiveCustomTime
                 )
             } else {
                 // 「距下课」未进窗或无有效下课时间：只收倒计时，不发已上课；
@@ -1010,7 +1043,8 @@ object IslandNotificationHelper {
             startTime = startTime,
             endTime = endTime,
             notificationId = notificationId,
-            testMode = effectiveTestMode
+            testMode = effectiveTestMode,
+            isCustomTime = effectiveCustomTime
         )
     }
 
@@ -1023,7 +1057,8 @@ object IslandNotificationHelper {
         startTime: String,
         endTime: String? = null,
         notificationId: Int = ISLAND_NOTIFICATION_ID,
-        testMode: Boolean = false
+        testMode: Boolean = false,
+        isCustomTime: Boolean = false
     ) {
         if (!isIslandSupported(context)) return
 
@@ -1044,10 +1079,7 @@ object IslandNotificationHelper {
         manager.cancel(activeIdFor(notificationId, inClass = true))
 
         val title = if (startTime.isNotEmpty()) "$courseName $startTime" else courseName
-        val content = buildString {
-            if (section.isNotEmpty()) append(section)
-            if (classroom.isNotEmpty()) append("｜").append(classroom)
-        }
+        val content = buildIslandContent(section, classroom, teacher = "", isCustomTime = isCustomTime)
 
         sendIslandNotification(
             context = context,
@@ -1079,7 +1111,8 @@ object IslandNotificationHelper {
         startTime: String,
         endTime: String,
         notificationId: Int = ISLAND_NOTIFICATION_ID,
-        testMode: Boolean = false
+        testMode: Boolean = false,
+        isCustomTime: Boolean = false
     ) {
         if (!isIslandSupported(context)) return
 
@@ -1106,7 +1139,8 @@ object IslandNotificationHelper {
             section = section.ifEmpty { state?.section ?: "" },
             startTime = startTime,
             endTime = endTime,
-            courseEndMillis = endMillis
+            courseEndMillis = endMillis,
+            isCustomTime = isCustomTime || state?.isCustomTime == true
         )
 
         sendIslandNotification(

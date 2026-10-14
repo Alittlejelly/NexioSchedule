@@ -42,6 +42,24 @@ class CrossMidnightTimeTest {
     }
 
     @Test
+    fun `正在上课判定只认跨午夜课的今晚这一段`() {
+        val start = hm("23:00")
+        val end = hm("00:30")
+        assertTrue(CourseTimeSpan.isActiveAt(start, end, hm("23:30")))
+        assertTrue(CourseTimeSpan.isActiveAt(start, end, hm("23:59")))
+        // 0 点后的尾巴属于昨天那节课，今日课表里没有它
+        assertFalse(CourseTimeSpan.isActiveAt(start, end, hm("00:10")))
+        assertFalse(CourseTimeSpan.isActiveAt(start, end, hm("22:59")))
+
+        // 普通时段保持半开区间语义
+        assertTrue(CourseTimeSpan.isActiveAt(hm("08:00"), hm("09:40"), hm("08:30")))
+        assertFalse(CourseTimeSpan.isActiveAt(hm("08:00"), hm("09:40"), hm("09:40")))
+
+        // 起止相同（脏数据）按非进行中处理
+        assertFalse(CourseTimeSpan.isActiveAt(hm("08:00"), hm("08:00"), hm("09:00")))
+    }
+
+    @Test
     fun `跨午夜课与次日零点的课判出冲突`() {
         // 这是本次修复的关键：旧逻辑 newStart < existingEnd 直接比较，
         // 23:00 与 00:30 永不相交 → 允许同时添加，实际会撞车

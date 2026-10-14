@@ -28,6 +28,18 @@ object WearableScheduleSync {
     private const val TAG = "WearableScheduleSync"
     private const val PROTOCOL = "nexio.schedule"
 
+    /** 上一包推送刚落地、期间又攒下变更，补推时用的归因名。 */
+    private const val REASON_PUSH_DRAINED = "push-drained"
+
+    /**
+     * 即使没有 pending 也要推的原因。
+     *
+     * - `watch-request`：手表主动要数据
+     * - `node-ready`：节点刚连上
+     * - `push-drained`：上一包还没落地时的合并请求，必须补
+     */
+    private val FORCED_PUSH_REASONS = setOf("watch-request", "node-ready", REASON_PUSH_DRAINED)
+
     private val initialized = AtomicBoolean(false)
     private val pushing = AtomicBoolean(false)
     private val pendingPush = AtomicBoolean(false)
@@ -179,35 +191,53 @@ object WearableScheduleSync {
     private fun schedulePush(delayMs: Long, reason: String) {
         val exec = scheduler ?: Executors.newSingleThreadScheduledExecutor().also { scheduler = it }
         exec.schedule({
-            if (pendingPush.compareAndSet(true, false) || reason == "watch-request" || reason == "node-ready") {
+            // 无 pending 的强制原因（手表请求 / 节点就绪 / 上一次推送刚落地）也要推；
+            // 其余情况下 pending 已被前面的 compareAndSet 吃掉，就说明没什么要补的。
+            if (pendingPush.compareAndSet(true, false) || reason in FORCED_PUSH_REASONS) {
                 ensurePermissionThenPush(reason)
             }
         }, delayMs, TimeUnit.MILLISECONDS)
     }
 
     private fun doPush(reason: String, scheduleName: String, id: String) {
-        if (pushing.get()) {
+        if (!pushing.compareAndSet(false, true)) {
+            // 上一次还没发完就记账重排，等它落地再补一次，避免连点「推送到手环」连发多包
             pendingPush.set(true)
+            pendingScheduleName = scheduleName
             return
         }
-        pushing.set(true)
         try {
             val repo = CourseRepository.getInstance()
             // v4 整表推送：一次下发完整学期（课程+周次规则+设置+节次时间+假期），
             // 手表自行推算任意日期。
             val payload = WatchPayload.buildFullJson(repo, appContext, scheduleName)
-            val api = messageApi ?: return
+            val api = messageApi ?: run {
+                releasePushSlot()
+                return
+            }
             api.sendMessage(id, payload.toByteArray(Charsets.UTF_8))
                 .addOnSuccessListener {
                     NexioLog.i(TAG, "push ok ($reason), node=$id, bytes=${payload.length}")
+                    // ⚠ 推送槽必须在这里、也就是 sendMessage 真正落地后才释放。
+                    //   放进 finally 的话会在 sendMessage 还没回调时就把标记清掉，
+                    //   合帧形同虚设，连点「推送到手环」会连发多包。
+                    releasePushSlot()
                 }
                 .addOnFailureListener { e ->
                     NexioLog.w(TAG, "push fail ($reason): ${e.message}")
+                    releasePushSlot()
                 }
         } catch (e: Exception) {
             NexioLog.w(TAG, "push error ($reason): ${e.message}")
-        } finally {
-            pushing.set(false)
+            releasePushSlot()
+        }
+    }
+
+    /** 释放推送槽；期间又攒下了变更就立刻补推一次。 */
+    private fun releasePushSlot() {
+        pushing.set(false)
+        if (pendingPush.get()) {
+            schedulePush(0L, REASON_PUSH_DRAINED)
         }
     }
 

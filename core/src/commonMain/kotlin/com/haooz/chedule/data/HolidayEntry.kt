@@ -78,4 +78,80 @@ object HolidayEntries {
                 .thenBy { yearRank.getValue(it.first) }
         ).map { it.second }
     }
+
+    /**
+     * 为「只能整表下发、且只能线性扫数组取第一条命中」的弱算力端（小米穿戴 rpk）
+     * 挑出可直接下发的条目，**返回顺序即优先级**。
+     *
+     * ⚠ 为什么要多这一层：手表端没有 `custom` 这个概念，只能按数组顺序第一条命中即采用。
+     * 直接把按年 map 摊平下发，命中哪条取决于「年份升序 + 年内插入顺序」——
+     * 自定义条目、当年条目会被更早年份的同名条目盖掉，调休跟错课。
+     * 这里按 [entriesForDate] 的同一套优先级排好序，再剔掉被高优先级条目完全遮住的条目，
+     * 使得**对任意日期**，对端线性扫到的第一条与手机端 [entriesForDate] 的首条一致。
+     *
+     * @param today 决定年份优先级锚点（当年 > 上一年 > 更早倒序），与手机端查询口径一致。
+     * @param windowFirst/windowLast 只下发与该日期窗口有交集的条目，顺带挡掉历史年份存量。
+     */
+    fun forFlatPush(
+        entriesByYear: Map<Int, List<HolidayEntry>>,
+        today: LocalDate,
+        windowFirst: LocalDate,
+        windowLast: LocalDate,
+    ): List<HolidayEntry> {
+        if (windowLast < windowFirst) return emptyList()
+
+        // 与 entriesForDate 逐字同款：当年 > 上一年 > 更早的年份倒序。
+        // 不在表里的年份（未来年份等）排到末尾。
+        val yearRank = buildList {
+            add(today.year)
+            add(today.year - 1)
+            addAll(entriesByYear.keys.filter { it < today.year - 1 }.sortedDescending())
+        }.distinct().withIndex().associate { it.value to it.index }
+
+        // 摊平顺序必须与 entriesForDate 的迭代顺序一致：yearRank 升序、同年内保持存储顺序。
+        // 之后再按「稳定排序 + 自然下标」复刻它的 custom 降序。
+        //
+        // ⚠ 千万不要在这里补 start/end 之类的排序键：同年同 custom 且区间重叠时
+        // （中秋 10/05-10/06 套在国庆 10/01-10/07 里）entriesForDate 靠稳定排序保留
+        // 存储顺序，一旦按 start 重排就会选到不同的条目，两端直接换错课。
+        val ranked = entriesByYear.entries
+            .sortedBy { yearRank[it.key] ?: yearRank.size }
+            .flatMap { (_, entries) -> entries }
+            .withIndex()
+            .mapNotNull { (naturalIndex, entry) ->
+                val start = runCatching { LocalDate.parse(entry.date) }.getOrNull()
+                    ?: return@mapNotNull null
+                // 与 HolidayEntry.matches 同款语义：endDate 空 = 单日；
+                // 坏值在手机端永远匹配不上，这里同样丢掉。
+                val end = if (entry.endDate.isBlank()) {
+                    start
+                } else {
+                    runCatching { LocalDate.parse(entry.endDate) }.getOrNull()
+                        ?: return@mapNotNull null
+                }
+                if (end < windowFirst || start > windowLast) return@mapNotNull null
+                Ranked(entry, naturalIndex, start, end)
+            }
+            .sortedWith(
+                compareByDescending<Ranked> { it.entry.custom }.thenBy { it.naturalIndex }
+            )
+
+        val kept = mutableListOf<HolidayEntry>()
+        val keptRanges = mutableListOf<Pair<LocalDate, LocalDate>>()
+        for (item in ranked) {
+            val shadowed = keptRanges.any { (from, to) -> from <= item.start && item.end <= to }
+            if (shadowed) continue
+            kept += item.entry
+            keptRanges += item.start to item.end
+        }
+        return kept
+    }
+
+    private data class Ranked(
+        val entry: HolidayEntry,
+        /** 摊平后的自然下标，用来在 custom 打平时复刻稳定排序的存储顺序 */
+        val naturalIndex: Int,
+        val start: LocalDate,
+        val end: LocalDate,
+    )
 }

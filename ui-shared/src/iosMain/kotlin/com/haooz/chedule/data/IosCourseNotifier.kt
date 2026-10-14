@@ -12,6 +12,9 @@ import kotlinx.datetime.atTime
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.todayIn
+import platform.Foundation.NSThread
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import kotlin.concurrent.Volatile
 
 /**
@@ -90,6 +93,21 @@ object IosCourseNotifier {
     /** Parameterless by design; the result comes back via [requestAuthorizationFromSwift]. */
     private var nativeRequestAuthorization: () -> Unit = {}
 
+    /** 不弹窗的权限查询，冷启动从 [install] 打一发，给 [authorized] 播种系统真实状态。 */
+    private var nativeRefreshAuthorization: () -> Unit = {}
+
+    /**
+     * 等待异步授权回包的回调队列。提前回 `false` 会丢掉调用方的待执行动作
+     * （开关不翻转、reschedule 无通知可写）；[requestAuthorizationFromSwift] 用真实
+     * 结果冲刷，「授权 → 排程」不需要第二次触发。Swift 的每个分支都必回包，队列一定被冲掉。
+     */
+    private val pendingAuthorization = mutableListOf<(Boolean) -> Unit>()
+
+    /** 双保险；真正的约束是主线程收口，见 [ensureAuthorization]。 */
+    private val authLock = Any()
+
+    private var authorizationRequestInFlight = false
+
     /**
      * One pending notice. Mirrors the Swift side field for field.
      *
@@ -107,22 +125,43 @@ object IosCourseNotifier {
         write: (List<Notice>) -> Unit,
         cancelAll: () -> Unit,
         requestAuthorization: () -> Unit,
+        refreshAuthorization: () -> Unit = {},
         sendTestNotification: () -> Unit = {},
     ) {
         nativeWrite = write
         nativeCancelAll = cancelAll
         nativeRequestAuthorization = requestAuthorization
+        nativeRefreshAuthorization = refreshAuthorization
         nativeSendTestNotification = sendTestNotification
         installed = true
+        // Seed `authorized` from the system state without ever showing the prompt.
+        nativeRefreshAuthorization()
     }
 
     fun sendTestNotification() {
         if (installed) nativeSendTestNotification()
     }
 
-    /** Called by Swift once the authorization dialog resolves. */
+    /** Swift 的授权回包（冷启动播种 + 真实结果），冲刷 [pendingAuthorization]。 */
     fun requestAuthorizationFromSwift(granted: Boolean) {
-        authorized = granted
+        // Swift 的 reportAuthorization 已 hop 主线程；这里再兜一层底，
+        // 保证回调（进 Compose state / toast）一定在主线程执行
+        onMain {
+            authorized = granted
+            val waiting = synchronizedOn(authLock) {
+                authorizationRequestInFlight = false
+                val copy = pendingAuthorization.toList()
+                pendingAuthorization.clear()
+                copy
+            }
+            waiting.forEach { it(granted) }
+        }
+    }
+
+    /** [block] 保证在主线程执行；已是主线程则同步跑，避免无谓的下一帧延迟。 */
+    private fun onMain(block: () -> Unit) {
+        if (NSThread.currentThread.isMainThread) block()
+        else dispatch_async(dispatch_get_main_queue(), block)
     }
 
     // MARK: Rescheduling
@@ -159,18 +198,19 @@ object IosCourseNotifier {
         if (preClass) {
             for (offset in 0 until WINDOW_DAYS) {
                 val date = today.plus(DatePeriod(days = offset))
-                val yearEntries = entriesByYear[date.year] ?: continue
+                // 年份缺失只代表「当天无节假日豁免」，不能跳过整天（否则从未拉取过
+                // 节假日数据的安装会丢掉全部课前提醒）
                 val resolution = DayScheduleResolver.resolveDaySchedule(
                     date = date,
                     repository = repo,
-                    holidayEntriesByYear = mapOf(date.year to yearEntries),
+                    holidayEntriesByYear = entriesByYear,
                 )
                 pending += preClassNotices(date, resolution, repo)
             }
         }
 
         if (nextDay) {
-            nextDayNotice(today, repo)?.let { pending += it }
+            nextDayNotice(today, repo, entriesByYear)?.let { pending += it }
         }
 
         // Keep the nearest ones when over the cap: day 14 can wait for the next pass,
@@ -255,13 +295,17 @@ object IosCourseNotifier {
     }
 
     /** Tomorrow's courses in one notice at the configured time. */
-    private fun nextDayNotice(today: LocalDate, repo: CourseRepository): Notice? {
+    private fun nextDayNotice(
+        today: LocalDate,
+        repo: CourseRepository,
+        entriesByYear: Map<Int, List<HolidayEntry>>,
+    ): Notice? {
         val tomorrow = today.plus(DatePeriod(days = 1))
-        val yearEntries = HolidayManager.loadAllByYear()[tomorrow.year] ?: return null
+        // 同 writeAll：年份缺失只是「无豁免」，不能取消这条提醒
         val resolution = DayScheduleResolver.resolveDaySchedule(
             date = tomorrow,
             repository = repo,
-            holidayEntriesByYear = mapOf(tomorrow.year to yearEntries),
+            holidayEntriesByYear = entriesByYear,
         )
         if (resolution.courses.isEmpty()) return null
 
@@ -294,11 +338,17 @@ object IosCourseNotifier {
     }
 
     /**
-     * Requests notification permission. Calls back synchronously when already
-     * granted; otherwise the system dialog appears. The callback may run on any
-     * thread.
+     * 请求通知权限：已有授权（或宿主未接入）同步回包，否则等 Swift 的回包再冲刷。
+     * 回调一律在主线程执行，可直接碰 UI 状态。
      */
     fun ensureAuthorization(onResult: (Boolean) -> Unit) {
+        // 主线程收口：Swift 的回包在主线程清空 pendingAuthorization，而 reschedule()
+        // 可能从 IO 线程进来（WebDAV / 本地全量恢复的 onHolidayDataChanged 就在
+        // ioDispatcher 上调用），不收口就是普通 ArrayList 的并发读写
+        if (!NSThread.currentThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { ensureAuthorization(onResult) }
+            return
+        }
         if (authorized) {
             onResult(true)
             return
@@ -307,11 +357,18 @@ object IosCourseNotifier {
             onResult(false)
             return
         }
-        // The dialog is asynchronous: Swift reports the outcome through
-        // [requestAuthorizationFromSwift], so callers must reschedule once it lands.
-        onResult(authorized)
-        val request = nativeRequestAuthorization
-        request()
+        // 排队而不是立刻回 false：提前回会让开关动作被丢、reschedule() 无通知可写
+        // 一次 native 往返够一批：弹窗期间的连点只入队
+        val startRequest = synchronizedOn(authLock) {
+            pendingAuthorization += onResult
+            if (authorizationRequestInFlight) {
+                false
+            } else {
+                authorizationRequestInFlight = true
+                true
+            }
+        }
+        if (startRequest) nativeRequestAuthorization()
     }
 
     fun isAuthorized(): Boolean = authorized

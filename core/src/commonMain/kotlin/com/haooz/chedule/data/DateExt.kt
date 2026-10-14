@@ -125,6 +125,17 @@ object CourseTimeSpan {
         if (endMin > startMin) endMin else endMin + 1440
 
     /**
+     * 「正在上课」判定（分钟版的 [coursePeriodOngoing]，给按 `"HH:mm"` 解析成分钟的调用方用）。
+     * 跨午夜只认 `[start, 24:00)` —— 0 点后的尾巴属于前一天，不在今日课表里；
+     * 起止相同按非进行中处理（LocalTime 版视为 24 小时，这边多是脏数据/解析失败的 `0,0`）。
+     */
+    fun isActiveAt(startMin: Int, endMin: Int, currentMin: Int): Boolean = when {
+        endMin < startMin -> currentMin >= startMin
+        startMin == endMin -> false
+        else -> currentMin in startMin until endMin
+    }
+
+    /**
      * 两个时段是否重叠。
      *
      * 跨午夜时段（[crossesMidnight] 为 true）先按「次日尾巴」展开成两段：

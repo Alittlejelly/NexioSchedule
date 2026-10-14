@@ -17,6 +17,8 @@ class IslandExpandReceiver : BroadcastReceiver() {
         const val EXTRA_SECTION = "section"
         const val EXTRA_START_TIME = "start_time"
         const val EXTRA_END_TIME = "end_time"
+        // 自定义时间课没有节次，切换到「已上课 / 课中」时据此跳过 section 展示
+        const val EXTRA_IS_CUSTOM_TIME = "is_custom_time"
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_COURSE_START_MILLIS = "course_start_millis"
     }
@@ -50,6 +52,7 @@ class IslandExpandReceiver : BroadcastReceiver() {
         val section = intent.getStringExtra(EXTRA_SECTION) ?: ""
         val startTime = intent.getStringExtra(EXTRA_START_TIME) ?: ""
         val endTime = intent.getStringExtra(EXTRA_END_TIME) ?: ""
+        val isCustomTime = intent.getBooleanExtra(EXTRA_IS_CUSTOM_TIME, false)
         // 传倒计时岛的 ID；onClassStart 内部按开关分流到「已上课」或「课中」独立 ID
         val notificationId = intent.getIntExtra(
             EXTRA_NOTIFICATION_ID,
@@ -65,7 +68,8 @@ class IslandExpandReceiver : BroadcastReceiver() {
             endTime = endTime,
             notificationId = notificationId,
             // 测试岛 ID 必须映射到 testMode，否则 snapshot 读真实课表 state，课中分流会错
-            testMode = IslandNotificationHelper.isIslandTestId(notificationId)
+            testMode = IslandNotificationHelper.isIslandTestId(notificationId),
+            isCustomTime = isCustomTime
         )
     }
 }

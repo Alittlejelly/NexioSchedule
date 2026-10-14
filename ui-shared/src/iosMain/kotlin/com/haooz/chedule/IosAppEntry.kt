@@ -160,6 +160,12 @@ private val backupFileController = IosBackupFileController()
  */
 private val reminderController = IosReminderController()
 
+/**
+ * 节假日数据变更（拉取/备份恢复/云同步恢复）的平台副作用：重排提醒。
+ * 不注入的话，待发通知会继续按旧节假日数据排。
+ */
+private val onHolidayDataChanged: () -> Unit = { IosCourseNotifier.reschedule() }
+
 /** The retained main content; UIKit applies the shared main-layer transition. */
 @Composable
 internal fun NexioIosMain(host: IosAppHost) {
@@ -202,6 +208,8 @@ internal fun NexioIosMain(host: IosAppHost) {
                     onSystemBarsChanged = { statusDark, _ ->
                         IosSystemBars.update(statusDark)
                     },
+                    // 节假日数据变更 → 重排提醒
+                    onHolidayDataChanged = onHolidayDataChanged,
                     // 相册选壁纸：PHPicker → UIImage（系统已按 EXIF 校正方向）→ 降到屏幕像素
                     // → skia 解码成 ImageBitmap。必须在 iOS 侧降采样：共享层拿到位图直接原样用。
                     onPickWallpaperImage = { onPicked -> wallpaperPicker.pick(onPicked) },
@@ -305,6 +313,8 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.LocalBackup -> LocalBackupRoute(
             router = router,
             backupFileController = backupFileController,
+            // 全量恢复会写节假日数据 → 重排提醒
+            onHolidayDataChanged = onHolidayDataChanged,
         )
         AppRoute.AiImport -> AiImportRoute(
             router = router,
@@ -313,7 +323,10 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             },
         )
         // 节假日：网络拉取走跨平台 HttpService（iOS = NSURLSession）
-        AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
+        AppRoute.HolidaySettings -> HolidaySettingsRoute(
+            router = router,
+            onHolidayDataChanged = onHolidayDataChanged,
+        )
         // 小部件引导：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
         AppRoute.WidgetIntro -> WidgetIntroRoute(router)
         // Course reminders: local notifications for pre-class and tomorrow's summary.
@@ -340,8 +353,11 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
                 },
             )
         }
-        // WebDAV：备份/恢复本体已在 :core，只差提醒重排副作用
-        AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
+        // WebDAV：备份/恢复本体已在 :core；恢复成功后要重排提醒
+        AppRoute.WebDavSettings -> WebDavSettingsRoute(
+            router = router,
+            onHolidayDataChanged = onHolidayDataChanged,
+        )
         // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）+ 三条口令导入。
         // 口令取回与星链是纯 HTTP（共享 HttpService = NSURLSession），WakeUp 走无头
         // WKWebView（IosWakeUpImport）。口令**导出**与手环推送仍是 Android 专有。
@@ -349,6 +365,7 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             router = router,
             mode = ScheduleDataManageMode.Import,
             scheduleFileController = fileController,
+            onHolidayDataChanged = onHolidayDataChanged,
             onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
             onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
@@ -356,6 +373,7 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             router = router,
             mode = ScheduleDataManageMode.Export,
             scheduleFileController = fileController,
+            onHolidayDataChanged = onHolidayDataChanged,
             onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
             onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
@@ -363,6 +381,7 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             router = router,
             mode = ScheduleDataManageMode.Backup,
             scheduleFileController = fileController,
+            onHolidayDataChanged = onHolidayDataChanged,
             onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
             onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
