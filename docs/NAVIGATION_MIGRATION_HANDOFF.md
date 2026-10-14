@@ -36,7 +36,15 @@ MainActivity.setContent
 
 3. **返回上一页滚动状态丢失** → `AppNavHost` 里必须用 `SaveableStateHolder`：
    `stateHolder.SaveableStateProvider(route.id) { content(route) }`。
-   已知取舍：被弹出的页面**不** `removeState`，重新打开会回到上次位置。
+   但**语义要自己收口**：holder 只在「在栈期间」有用（整栈常驻保住了栈内页），
+   一旦出栈，组合销毁时 holder 会把那一层的 `rememberSaveable` 全存下来，
+   重开同一页就回到上次位置。`AppRouter` 允许同一路由重复入栈，用户要的明明是
+   「在栈里保状态、出栈即重置」（二级页保一级、三级页保一级+二级）。
+   **出栈当帧就 `stateHolder.removeState(key)`**，别等退出动画播完 ——
+   中断路径（出场没播完又 push 了别的页）会让那一层提前离开组合，
+   那时 `SaveableStateHolderImpl` 里的 registry 已经摘掉、`onDispose` 不会再写回，想清也清不掉。
+   key 要自己复算（`exitLayerKey`）且**必须与 `layerKeys` 完全一致**，
+   否则销掉的是另一个 key，出栈页的滚动位置照样被恢复。
 
 4. **转场别用 fadeIn/fadeOut**：子页全屏不透明，转场带透明度会让主界面透出来
    （用户报「动画那么奇怪」）。只滑不淡。

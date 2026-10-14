@@ -25,7 +25,7 @@ NATIVE_HEADER_EXPANDED_ROUTES=1 bash iosApp/Tests/run-native-header-smoke.sh
 
 They also explicitly skip when invoked directly without the opt-in XCTest runner environment.
 
-Production currently enables 17 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, ScheduleBackup, About, and CourseTimeSettings. CourseManage, ScheduleImport, and EducationalImport retain Compose navigation. CourseTimeSettings retains its route-local Compose card morph with native cancel/save controls. The bar stays visible: entry immediately selects editor controls, and exit immediately restores parent back. A parent-back tap during closing is accepted and deferred until save and disposal finish. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
+Production currently enables 18 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, ScheduleBackup, ScheduleImport, About, and CourseTimeSettings. CourseManage and EducationalImport retain Compose navigation. CourseTimeSettings retains its route-local Compose card morph with native cancel/save controls. The bar stays visible: entry immediately selects editor controls, and exit immediately restores parent back. A parent-back tap during closing is accepted and deferred until save and disposal finish. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
 
 ## System appearance regression
 

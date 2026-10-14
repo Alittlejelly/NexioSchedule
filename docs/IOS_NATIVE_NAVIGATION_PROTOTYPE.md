@@ -58,6 +58,15 @@ page, including its original text header, is translated; the transparent native
 navigation bar stays outside that content container and transitions its actions
 independently. Reduced Motion uses a short crossfade.
 
+The moving page is also clipped to the screen corner radius for the duration of
+the transition, matching `PageLayer.clipDuringTransition` on the Compose side:
+only the upper (incoming, or outgoing on pop) page is rounded — the revealed page
+below must keep a square outline — and the clip is removed on completion so the
+system's own screen rounding is not doubled. The radius comes from the same
+`rememberScreenCornerRadiusPx` probe the Compose path uses; because Swift cannot
+read Compose snapshot state, `IosAppHost.screenCornerRadiusPoints` carries it
+across, and `0` (not yet resolved) simply means "do not clip".
+
 The custom edge-swipe driver is linear while dragging. **Its finish/cancel settle
 uses UIKit easing**, not Compose's remaining-global-curve continuation. New gestures
 and menu pushes are gated while a navigation transition is in flight. Therefore

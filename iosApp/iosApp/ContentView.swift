@@ -187,6 +187,11 @@ private final class AppHostController: UIViewController {
     init(host: IosAppHost) {
         self.host = host
         super.init(nibName: nil, bundle: nil)
+        // The last row of the long-press back menu is this retained root. Same reason as
+        // NativeDocumentPageController: Compose draws the visible header, UIKit only needs a
+        // parent-facing label, and the bar must not render one.
+        title = "主界面"
+        navigationItem.title = nil
     }
 
     required init?(coder: NSCoder) {
