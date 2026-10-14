@@ -239,11 +239,7 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var overscrollRaw = 0f
                 val viewportPx = size.width.toFloat().coerceAtLeast(1f)
                 tracker.addPosition(down.uptimeMillis, down.position)
-                // ⚠ 手势主体必须整体包在 try 里，finally 关掉 dragChannel。
-                // scrollWorker 的 `for (delta in channel)` 只有 close() 才会退出，而它手里
-                // 攥着 pagerState.scroll 的互斥锁；漏关一次，这把锁就被永久占用 ——
-                // 之后滑动、返回今日、跳周（都走 animateScrollToPage）会全部挂起，
-                // 表现就是「只剩当前一页，怎么都翻不动」。
+                // 手势主体必须整体包在 try 里，finally 关掉 dragChannel
                 try {
                     while (true) {
                         // Initial：在子级 verticalScroll 之前拿到事件，锁横后才能拦住纵向

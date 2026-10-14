@@ -41,6 +41,14 @@ class HostNavigationState {
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
+    /**
+     * 课表外观页（开洞）期间，原生顶栏右侧是否继续保留。
+     *
+     * 开洞时主内容整体缩放，原生 chrome 在缩放层之外、得由宿主自己做同一套变换，
+     * 否则右上角菜单只能被清空（「一进外观页就消失」）。Android 顶栏/底栏都在
+     * Compose 缩放层内，不需要这个开关。
+     */
+    var keepsNativeHeaderDuringCutout by mutableStateOf(false)
     /** Root-hosted library keeps the existing card morph instead of pushing a document. */
     val scheduleLibraryChrome = NativeDocumentChrome()
     /** iOS installs a root overlay destination beneath its native navigation bar. */
@@ -64,6 +72,12 @@ class HostOverlayState {
 
 internal class HostOverlayEntry {
     var active by mutableStateOf(false)
+    /**
+     * 渲染层：false = 弹窗层（`MiuixPopupHost`）之下（默认），true = 之上。
+     * Android 的 overlay 就地渲染、天然在弹窗之上；iOS 两者是兄弟节点，得显式分层
+     * （例：课程详情页必须盖住弹出它的「课程详情」底部弹窗）。
+     */
+    var abovePopups by mutableStateOf(false)
     var content by mutableStateOf<@Composable () -> Unit>({})
 }
 
@@ -73,6 +87,8 @@ val LocalHostOverlays = staticCompositionLocalOf<HostOverlayState?> { null }
 @Composable
 fun BoxScope.HostedOverlay(
     active: Boolean,
+    /** 见 [HostOverlayEntry.abovePopups]；宿主无分层概念时忽略（Android 就地渲染）。 */
+    abovePopups: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val host = LocalHostOverlays.current
@@ -86,6 +102,7 @@ fun BoxScope.HostedOverlay(
     val entry = remember(host) { HostOverlayEntry() }
     SideEffect {
         entry.active = active
+        entry.abovePopups = abovePopups
         entry.content = {
             MiuixTheme(colors = colors, textStyles = textStyles) {
                 CompositionLocalProvider(LocalForcedDarkTheme provides forcedDark) {
@@ -103,10 +120,13 @@ fun BoxScope.HostedOverlay(
 @Composable
 fun HostOverlayContent(
     state: HostOverlayState,
+    /** 只渲染该层：false = 弹窗之下（默认），true = 弹窗之上。见 [HostOverlayEntry.abovePopups]。 */
+    abovePopups: Boolean = false,
     drawInactiveEntries: () -> Boolean = { true },
 ) {
     Box(Modifier.fillMaxSize()) {
         for (entry in state.entries) {
+            if (entry.abovePopups != abovePopups) continue
             androidx.compose.runtime.key(entry) {
                 // Keep the composition alive without drawing or hit-testing hidden root chrome.
                 Box(Modifier.fillMaxSize().layout { measurable, constraints ->

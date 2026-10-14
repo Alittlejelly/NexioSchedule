@@ -99,8 +99,10 @@ fun ScheduleTopBar(
     gradientColorOverride: Color? = null,
 ) {
     if (!visible || liquidGlassBackdrop == null) return
-    val hostedMore = LocalHostNavigation.current != null
-    val nativeHeader = LocalHostNavigation.current?.showsNativeHeader == true
+    // iOS 主界面右上角那一排（「更多」UIMenu + 课表切换）已由原生 chrome 接管
+    // （见 iosApp/ContentView 的 mainMoreItem / mainSwitchItem）：有宿主导航即 iOS，
+    // Compose 这一侧整排都不渲染。Android / desktop 没有宿主导航，照常显示。
+    val hostOwnsTopRight = LocalHostNavigation.current != null
     val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
 
     val titleText = when {
@@ -166,7 +168,7 @@ fun ScheduleTopBar(
                                     shadowAlpha = shadowAlpha,
                                 )
                             } else {
-                                if (!isShiftMode && !nativeHeader) {
+                                if (!isShiftMode && !hostOwnsTopRight) {
                                     LiquidTopBarButton(
                                         onClick = {
                                             onOpenSwitchSchedule()
@@ -184,7 +186,7 @@ fun ScheduleTopBar(
                                     modifier = Modifier
                                         .size(42.dp)
                                         .then(
-                                            if (hostedMore && !nativeHeader) Modifier
+                                            if (!hostOwnsTopRight) Modifier
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null,
