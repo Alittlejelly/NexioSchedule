@@ -2,8 +2,20 @@
 
 [versions]
 # 构建工具
-agp = "9.2.1"                         # Android Gradle Plugin
+agp = "9.2.1"                        # Android Gradle Plugin
+composeMultiplatform = "1.12.0"     # Compose Multiplatform（backdrop 模块用；Android 上映射回 AndroidX Compose）
+kyantShapes = "1.2.1"              # io.github.kyant0:shapes，backdrop 的依赖，本项目 ui/effects/shapes 同源
 kotlin = "2.4.10"                     # Kotlin 编译器（含 Compose 编译插件）
+
+# 跨平台（:core KMP 模块）
+kotlinxDatetime = "0.6.2"             # kotlinx-datetime：java.time 的 KMP 替代（0.7+ 重命名了 monthNumber→month、Clock 改为 kotlin.time 别名，留到阶段 2 再评估升级）
+# 协程：:androidApp 一直是靠 Compose 传递依赖拿到的 1.9.0。:core 必须显式声明（KMP 模块不能指望
+# 下游传递），版本取与 :androidApp 已解析一致的值，避免版本对齐产生额外噪音。
+kotlinxCoroutines = "1.9.0"
+# JSON：替代 org.json（Android 平台提供，JVM/iOS 都没有）。
+# 只用 JsonElement 动态解析，**不需要 kotlinx-serialization 编译器插件**（免去给 :androidApp 加 plugin）。
+# 实测依赖只有 stdlib + serialization-core，不牵连协程 —— 这点与 Ktor 不同，已核实。
+kotlinxSerialization = "1.9.0"
 
 # AndroidX 基础
 coreKtx = "1.18.0"                    # AndroidX Core KTX
@@ -14,7 +26,14 @@ material3 = "1.5.0-alpha19"           # Material3 (MotionScheme 公开 API 需�
 webkit = "1.17.0"                     # AndroidX WebKit（document-start 脚本注入，桌面版视口需在页面脚本前生效）
 
 # 第三方 UI
-miuix = "0.9.3"                       # Miuix 小米风格组件库
+# ⚠ 必须与 composeMultiplatform 版本匹配：0.9.3 是 compose 1.11.1 构建的，
+# 其 skiko 调用（Image.makeShader 的 Matrix33 旧签名）在 CMP 1.12.0 的
+# skiko 0.150.1（Matrix33 已是 value class，签名变 float[] + 方法名混淆）上
+# 运行即 NoSuchMethodError —— 桌面端（第一个真跑 skiko 的目标）2026-10-10 实测踩中。
+# 0.9.4 用 compose 1.12.0 构建，签名匹配。升级 CMP 时这两个版本要一起动。
+miuix = "0.9.4"
+# navigation3-ui 是独立版本线：maven 上没有 0.9.4，最高 0.9.3（单独 pin 住）
+miuixNavigation3 = "0.9.3"
 # Backdrop 已 fork 到本地源码，不再声明远程依赖
 
 materialKolor = "4.1.1"               # Material Color for Multiplatform（miuix theme 依赖）
@@ -49,11 +68,18 @@ miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-a
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }             # 图标资源
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }               # 模糊效果
 miuix-squircle = { group = "top.yukonga.miuix.kmp", name = "miuix-squircle-android", version.ref = "miuix" }       # 超椭圆形状
-miuix-navigation3 = { group = "top.yukonga.miuix.kmp", name = "miuix-navigation3-ui-android", version.ref = "miuix" }  # Navigation3 导航
+miuix-navigation3 = { group = "top.yukonga.miuix.kmp", name = "miuix-navigation3-ui-android", version.ref = "miuixNavigation3" }  # Navigation3 导航
 
 # ===== 序列化 / 网络 =====
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }                                     # JSON 序列化
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version = "4.12.0" }                                  # HTTP 客户端
+
+# ===== 跨平台 =====
+kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyantShapes" }
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" } # java.time 的 KMP 替代
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" } # StateFlow 等（跨平台）
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" } # runTest（suspend 函数的单元测试）
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" } # org.json 的跨平台替代
 
 # Shizuku
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }                              # Shizuku 运行时 API
@@ -67,5 +93,8 @@ materialKolor-utilities = { group = "com.materialkolor", name = "material-color-
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }     # Android 应用插件
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library" }         # AGP 9 起 KMP 模块的 Android 目标专用插件；classpath 上已有，不可带版本
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }  # Compose 编译插件
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform" }  # KMP 插件（:core）；AGP 9 内置 Kotlin 工具链，classpath 上已有，不能再声明版本否则报
 # 注：AGP 9.0 起内置 Kotlin 支持，不再需要 org.jetbrains.kotlin.android 插件

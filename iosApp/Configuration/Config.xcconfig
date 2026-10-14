@@ -1,0 +1,29 @@
+// Nexio课程表 · iOS App 构建配置
+//
+// 改 bundle id / 显示名 / 开发团队只改这里，不要动 project.pbxproj。
+// ⚠ 本文件被 pbxproj 的 baseConfigurationReference 引用，删掉会导致构建失败。
+
+PRODUCT_NAME = NexioSchedule
+PRODUCT_BUNDLE_IDENTIFIER = com.haooz.iosschedule
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+// 真机签名用的团队；模拟器构建可以留空，上真机前填自己的 Apple Developer Team ID
+DEVELOPMENT_TEAM =
+
+// Compose Multiplatform 要求的最低系统版本（UIKit + Skiko 渲染路径实测门槛）
+//
+// ⚠ 产品决策（2026-10）：从 16.0 提到 **26.1**。原因见
+// docs/KMP_IOS_MIGRATION_PLAN.md §7「iOS 功能落差」—— 上课通知的课中常驻
+// （对应 Android 的超级岛）只能走 iOS 26 的 AlarmKit / ActivityKit，
+// 而这两套框架在 16.x 上根本不存在；留在 16.0 等于要为一小撮存量设备
+// 维护一套「只有课前通知」的降级分支。提到 26.1 后新代码不再需要
+// `if #available(iOS 26, *)` 版本分支。
+IPHONEOS_DEPLOYMENT_TARGET = 26.1
+
+// Kotlin framework 的搜索路径。第一项是 build phase 脚本建的**固定软链**，
+// 指向 gradle 本次实际产出的 framework（见 project.pbxproj 的 \"Build Kotlin Framework\"）；
+// 第二项是 gradle 原始的按-SDK 分目录输出，留着做兜底。
+// ⚠ 不要只留第二项：换 destination（模拟器 ⇄ 真机、不同 iOS 版 SDK）目录名就变了，
+//   会报 "Unable to resolve module dependency 'NexioShared'"，且看不出是路径问题。
+FRAMEWORK_SEARCH_PATHS = $(SRCROOT)/Frameworks $(SRCROOT)/../ui-shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)

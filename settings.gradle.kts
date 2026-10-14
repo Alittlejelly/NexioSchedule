@@ -24,6 +24,12 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Nexio课程表"
-include(":app")
+include(":androidApp")
+include(":backdrop")
+include(":core")
+include(":miuix")
+// 共享 UI 模块（android + jvm 双目标），Android 与桌面端共用同一批页面。
+include(":ui-shared")
+include(":desktopApp")
  
 

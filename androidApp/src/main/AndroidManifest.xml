@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 用于天气按当前位置查询（优先精确 GPS，回退粗略网络定位） -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:ignore="RequestInstallPackagesPolicy" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <!-- 精准闹钟：需用户在系统「闹钟和提醒」中手动授权，应用内提供申请入口。
+         不声明 USE_EXACT_ALARM——该系统权限安装即自动授予，仅限核心功能为闹钟/日历/计时器的应用。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 上课勿扰：读取/修改系统勿扰模式，需用户在「免打扰访问权限」中授权 -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <application
+        android:name=".NexioApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/nexio_schedule"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:resizeableActivity="true"
+        android:roundIcon="@mipmap/nexio_schedule_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.课程表"
+        tools:ignore="UnusedAttribute">
+
+        <!-- HyperOS 无极窗口 2.0：支持窗口在一定尺寸范围内任意缩放 -->
+        <property
+            android:name="miui.window.CVW_ENABLED"
+            android:value="true" />
+        <!-- CVW_MODE: 1=全无极 2=竖无极 3=横无极 -->
+        <property
+            android:name="miui.window.CVW_MODE"
+            android:value="1" />
+        <activity
+            android:name=".ui.activities.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:alwaysRetainTaskState="true"
+            android:theme="@style/Theme.课程表"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name=".ImportAlias"
+            android:targetActivity=".ui.activities.MainActivity"
+            android:exported="true"
+            android:label="导入课程表"
+            android:theme="@style/Theme.课程表"
+            tools:ignore="InvalidManifestAttribute">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="text/calendar" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/calendar" />
+            </intent-filter>
+        </activity-alias>
+
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <provider
+            android:name=".provider.TodayCoursesProvider"
+            android:authorities="${applicationId}.courses"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <receiver
+            android:name=".reminder.AlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".reminder.IslandExpandReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="com.haooz.chedule.ACTION_ISLAND_EXPAND" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".reminder.IslandDismissReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".reminder.WidgetRefreshReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".reminder.CourseStartReceiver"
+            android:exported="false" />
+
+        <!-- 上课勿扰：接收实况通知/超级岛按钮与上课、下课闹钟（exported：需要系统通知栏发送广播） -->
+        <receiver
+            android:name=".reminder.ClassDndReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="com.haooz.chedule.ACTION_CLASS_DND_TOGGLE" />
+                <action android:name="com.haooz.chedule.ACTION_CLASS_DND_START" />
+                <action android:name="com.haooz.chedule.ACTION_CLASS_DND_END" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".reminder.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- 应用更新后系统会清空本 app 的全部闹钟，需重新注册 -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <!-- 用户手动调时间或换时区：RTC_WAKEUP 闹钟按旧时刻已无意义 -->
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".widget.CourseWidgetProviderStandard"
+            android:exported="true"
+            android:label="课程提醒">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/appwidget_course_reminder_standard" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TodayCourseWidgetProviderStandard"
+            android:exported="true"
+            android:label="今日课程">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/appwidget_today_course_standard" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.CourseWidgetProviderPad"
+            android:exported="true"
+            android:label="课程提醒(Pad)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/appwidget_course_reminder_pad" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TodayCourseWidgetProviderPad"
+            android:exported="true"
+            android:label="今日课程(Pad)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/appwidget_today_course_pad" />
+        </receiver>
+    </application>
+
+</manifest>

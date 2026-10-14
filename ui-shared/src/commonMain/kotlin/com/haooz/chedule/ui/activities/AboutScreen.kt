@@ -1,0 +1,1163 @@
+package com.haooz.chedule.ui.activities
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode as ComposeBlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.data.changelogData
+import com.haooz.chedule.ui.effects.background.BgEffectBackground
+import com.haooz.chedule.ui.effects.miuix.rememberBlurBackdrop
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
+import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.haooz.chedule.data.DiagnosticRecorder
+import com.haooz.chedule.data.NoopDiagnosticRecorder
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.ioDispatcher
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_github
+import com.haooz.chedule.uishared.resources.ic_gitee
+
+@Composable
+fun AboutScreen(
+    onBack: () -> Unit,
+    liquidGlassBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    embedded: Boolean = false,
+    /** 弹窗的玻璃采样层：内嵌时传全屏层，使弹窗能采样到左侧内容 */
+    dialogBackdrop: Backdrop? = null,
+    /**
+     * 打开子页面（更新日志 / 开源协议 / 隐私政策）。
+     *
+     * 这三页已经从独立 Activity 改成路由，所以**必须由宿主决定怎么跳**：
+     * - 路由宿主（[com.haooz.chedule.ui.activities.AboutActivity]）→ `router.navigate(...)`
+     * - 平板设置页内嵌（还没路由化）→ `startActivity(AboutActivity + 初始路由)`
+     *
+     * 默认空实现是为了让签名向后兼容；**两处调用点都显式传了**，别依赖默认值。
+     * ⚠ 注意这里只接管这三页；「交流与反馈」「赞赏作者」仍是独立 Activity，
+     * 继续走 `startActivity`。
+     */
+    onNavigate: (AppRoute) -> Unit = {},
+    /** 应用版本号（宿主从 packageManager 取）；桌面/iOS 用各自来源 */
+    appVersion: String = "未知版本",
+    /** 应用名 */
+    appName: String = "Nexio课程表",
+    /** 应用图标（已裁边的 ImageBitmap）；null 不显示（回退为首字母文本） */
+    appIcon: ImageBitmap? = null,
+    /** 撤回隐私同意后退出应用（Android = activity.finishAffinity）；桌面/iOS 空实现 */
+    onExitApp: () -> Unit = {},
+    /** 诊断录制控制器（Android = CrashLogHelper 包装）；桌面/iOS 用 NoopDiagnosticRecorder */
+    diagnosticRecorder: DiagnosticRecorder = NoopDiagnosticRecorder,
+) {
+    // Embedded panes keep their own chrome even when an ancestor has a native page.
+    val nativeChrome = LocalNativeDocumentChrome.current.takeUnless { embedded }
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
+    val tintArgb = MiuixTheme.colorScheme.primary.toArgb().toLong()
+    SideEffect {
+        nativeChrome?.title = "关于应用"
+        nativeChrome?.tintArgb = tintArgb
+    }
+
+    // 弹窗默认跟随自身玻璃层；内嵌时由外层指定全屏层
+    val dialogGlass: Backdrop = dialogBackdrop ?: liquidGlassBackdrop
+    val hapticFeedback = LocalHapticFeedback.current
+    val scrollBehavior = rememberSharedScrollBehavior()
+    val uriHandler = LocalUriHandler.current
+    val isInDark = isAppDarkTheme()
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
+
+    val backdrop = rememberBlurBackdrop()
+    val lazyListState = rememberLazyListState()
+    val uiScope = rememberCoroutineScope()
+    var recordingActive by remember { mutableStateOf(diagnosticRecorder.isRecording) }
+    var canShareRecording by remember { mutableStateOf(diagnosticRecorder.hasReadyRecording) }
+    var recordingElapsedSec by remember { mutableStateOf(0) }
+    var exportingCrashLog by remember { mutableStateOf(false) }
+
+    // 恢复上次被中断的录制：Application 启动已在后台做，这里兜底等待一次再读状态
+    // （ensureRecovered 是磁盘恢复，保持在 IO 调度器上；commonMain 无 Dispatchers.IO，用 :core 的 ioDispatcher）
+    LaunchedEffect(Unit) {
+        withContext(ioDispatcher) {
+            diagnosticRecorder.ensureRecovered()
+        }
+        recordingActive = diagnosticRecorder.isRecording
+        canShareRecording = diagnosticRecorder.hasReadyRecording
+        recordingElapsedSec = (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
+    }
+
+    // 录制倒计时；到 30 分钟自动结束并点亮分享
+    LaunchedEffect(recordingActive) {
+        if (!recordingActive) return@LaunchedEffect
+        while (recordingActive) {
+            diagnosticRecorder.ensureRecordingNotExpired()
+            recordingActive = diagnosticRecorder.isRecording
+            canShareRecording = diagnosticRecorder.hasReadyRecording
+            recordingElapsedSec = (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
+            if (!diagnosticRecorder.isRecording) break
+            kotlinx.coroutines.delay(1000)
+        }
+        canShareRecording = diagnosticRecorder.hasReadyRecording
+    }
+
+    val scrollProgress by remember {
+        derivedStateOf {
+            when {
+                lazyListState.firstVisibleItemIndex > 0 -> 1f
+                else -> {
+                    val spacer = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "logoSpacer" }
+                    if (spacer != null && spacer.size > 0) {
+                        (lazyListState.firstVisibleItemScrollOffset.toFloat() / spacer.size).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                }
+            }
+        }
+    }
+    
+    var dynamicBackground by remember { mutableStateOf(true) }
+    var showRepoDialog by remember { mutableStateOf(false) }
+    var showRevokeDialog by remember { mutableStateOf(false) }
+
+    val logoBlend = remember(isInDark) {
+        if (isInDark) {
+            listOf(
+                BlendColorEntry(Color(0xe6a1a1a1), BlurBlendMode.ColorDodge),
+                BlendColorEntry(Color(0x4de6e6e6), BlurBlendMode.LinearLight),
+                BlendColorEntry(Color(0xff1af500), BlurBlendMode.Lab),
+            )
+        } else {
+            listOf(
+                BlendColorEntry(Color(0xcc4a4a4a), BlurBlendMode.ColorBurn),
+                BlendColorEntry(Color(0xff4f4f4f), BlurBlendMode.LinearLight),
+                BlendColorEntry(Color(0xff1af200), BlurBlendMode.Lab),
+            )
+        }
+    }
+
+    val cardBlend = remember(isInDark) {
+        if (isInDark) {
+            listOf(
+                BlendColorEntry(Color(0x4DA9A9A9), BlurBlendMode.Luminosity),
+                BlendColorEntry(Color(0x1A9C9C9C), BlurBlendMode.PlusDarker),
+            )
+        } else {
+            listOf(
+                BlendColorEntry(Color(0x340034F9), BlurBlendMode.Overlay),
+                BlendColorEntry(Color(0xB3FFFFFF), BlurBlendMode.HardLight),
+            )
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
+        topBar = {
+            // 内嵌到 pad 设置页右栏时，About 仍自绘顶栏糊层/遮罩/标题，仅隐藏返回按钮
+            ProgressiveBlurTopBar(
+                backdrop = liquidGlassBackdrop,
+                tintIntensity = scrollProgress * 0.2f,
+                topInsetAdjustment = nativeBarInset,
+            ) {
+                CollapsibleTopAppBar(
+                    title = "关于应用",
+                    largeTitle = "关于应用",
+                    showLargeTitle = false,
+                    showSmallTitle = scrollProgress > 0.5f,
+                    showShadow = scrollProgress >= 1f,
+                    // 关于页渐变遮罩保持随滚动显隐
+                    gradientOverlayScrollTriggered = true,
+                    modifier = Modifier,
+                    scrollBehavior = scrollBehavior,
+                    contentPadding = {},
+                    startAction = if (embedded || nativeChrome != null) null else { backdropAlpha, shadowAlpha ->
+                        LiquidTopBarButton(
+                            onClick = { onBack() },
+                            backdrop = liquidGlassBackdrop,
+                            icon = MiuixIcons.ChevronBackward,
+                            contentDescription = "返回",
+                            performHapticFeedback = false,
+                            iconSize = 24.dp,
+                            iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
+                            backdropAlpha = backdropAlpha,
+                            shadowAlpha = shadowAlpha,
+                        )
+                    },
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MiuixTheme.colorScheme.background)
+                .then(
+                    Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                )
+        ) {
+            BgEffectBackground(
+                dynamicBackground = dynamicBackground,
+                isFullSize = true,
+                modifier = Modifier.fillMaxSize(),
+                bgModifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
+                alpha = { 1f - scrollProgress },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            top = innerPadding.calculateTopPadding() + 72.dp,
+                            start = WindowInsets.displayCutout.asPaddingValues()
+                                .calculateLeftPadding(LayoutDirection.Ltr),
+                            end = WindowInsets.displayCutout.asPaddingValues()
+                                .calculateRightPadding(LayoutDirection.Ltr),
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // 应用图标由宿主注入（Android 宿主负责 drawable→Bitmap→裁边→ImageBitmap）；
+                    // null 时回退为首字母文本
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(100.dp)
+                            .graphicsLayer {
+                                val iconProgress =
+                                    ((scrollProgress - 0.35f) / 0.15f).coerceIn(0f, 1f)
+                                alpha = 1 - iconProgress
+                                scaleX = 1 - (iconProgress * 0.05f)
+                                scaleY = 1 - (iconProgress * 0.05f)
+                            }
+                    ) {
+                        if (appIcon != null) {
+                            Image(
+                                bitmap = appIcon,
+                                contentDescription = null,
+                                modifier = Modifier.size(88.dp),
+                            )
+                        } else {
+                            Text(
+                                text = appName.take(1),
+                                color = MiuixTheme.colorScheme.onPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 42.sp,
+                            )
+                        }
+                    }
+                    Text(
+                        modifier = Modifier
+                            .padding(top = 12.dp, bottom = 5.dp)
+                            .graphicsLayer {
+                                val nameProgress =
+                                    ((scrollProgress - 0.20f) / 0.15f).coerceIn(0f, 1f)
+                                alpha = 1 - nameProgress
+                                scaleX = 1 - (nameProgress * 0.05f)
+                                scaleY = 1 - (nameProgress * 0.05f)
+                            }
+                            .then(
+                                if (backdrop != null) {
+                                    Modifier.textureBlur(
+                                        backdrop = backdrop,
+                                        shape = ContinuousRoundedRectangle(16.dp),
+                                        blurRadius = 150f,
+                                        colors = BlurDefaults.blurColors(
+                                            blendColors = logoBlend,
+                                        ),
+                                        contentBlendMode = ComposeBlendMode.DstIn,
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                        text = appName,
+                        color = MiuixTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 35.sp,
+                    )
+                    Text(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                val verProgress =
+                                    ((scrollProgress - 0.05f) / 0.15f).coerceIn(0f, 1f)
+                                alpha = 1 - verProgress
+                                scaleX = 1 - (verProgress * 0.05f)
+                                scaleY = 1 - (verProgress * 0.05f)
+                            },
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        text = "v$appVersion",
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical()
+                        .scrollEndHaptic(
+                            hapticFeedbackType = HapticFeedbackType.TextHandleMove
+                        )
+                        .then(
+                            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                        ),
+                    contentPadding = PaddingValues(
+                        top = innerPadding.calculateTopPadding() +
+                                if (WindowInsets.statusBars.asPaddingValues()
+                                        .calculateTopPadding() - nativeBarInset > 0.dp
+                                ) (-8).dp else (-20).dp,
+                        start = WindowInsets.displayCutout.asPaddingValues()
+                            .calculateLeftPadding(LayoutDirection.Ltr) + tabletHorizontalPadding,
+                        end = WindowInsets.displayCutout.asPaddingValues()
+                            .calculateRightPadding(LayoutDirection.Ltr) + tabletHorizontalPadding,
+                    ),
+                ) {
+                    item(key = "logoSpacer") {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(340.dp),
+                        )
+                    }
+                    item(key = "about") {
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 16.dp)
+                                .then(
+                                    if (backdrop != null) {
+                                        Modifier.textureBlur(
+                                            backdrop = backdrop,
+                                            shape = ContinuousRoundedRectangle(20.dp),
+                                            blurRadius = 60f,
+                                            colors = BlurDefaults.blurColors(
+                                                blendColors = cardBlend,
+                                            ),
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                            colors = CardDefaults.defaultColors(
+                                if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
+                                Color.Transparent,
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (!embedded) {
+                                    ArrowPreference(
+                                        title = "交流与反馈",
+                                        onClick = {
+                                            onNavigate(AppRoute.Communication)
+                                        }
+                                    )
+                                }
+                                ArrowPreference(
+                                    title = "项目仓库",
+                                    onClick = {
+                                        showRepoDialog = true
+                                    }
+                                )
+                                if (!embedded) {
+                                    ArrowPreference(
+                                        title = "捐赠支持",
+                                        endActions = {
+                                            Text(
+                                                text = "请作者喝杯咖啡",
+                                                fontSize = 14.sp,
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            )
+                                        },
+                                        onClick = {
+                                            onNavigate(AppRoute.AppreciateAuthor)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item(key = "changelog") {
+                            Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .then(
+                                    if (backdrop != null) {
+                                        Modifier.textureBlur(
+                                            backdrop = backdrop,
+                                            shape = ContinuousRoundedRectangle(20.dp),
+                                            blurRadius = 60f,
+                                            colors = BlurDefaults.blurColors(
+                                                blendColors = cardBlend,
+                                            ),
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                            colors = CardDefaults.defaultColors(
+                                if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
+                                Color.Transparent,
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onNavigate(AppRoute.Changelog)
+                                        }
+                                        .padding(
+                                            start = 16.dp,
+                                            end = 13.dp,
+                                            top = 17.dp,
+                                            bottom = 12.dp
+                                        ),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "更新日志",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.onSurface
+                                    )
+                                    Icon(
+                                        imageVector = MiuixIcons.Basic.ArrowRight,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                    )
+                                }
+                                val recentChangelog = changelogData.take(3)
+                                val expandedStates = List(recentChangelog.size) { index ->
+                                    val expandedState = remember { mutableStateOf(index == 0) }
+                                    expandedState
+                                }
+                                val rotations = List(recentChangelog.size) { index ->
+                                    val rotation by animateFloatAsState(
+                                        targetValue = if (expandedStates[index].value) 90f else -90f,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "changelogRotation$index"
+                                    )
+                                    rotation
+                                }
+                                recentChangelog.forEachIndexed { index, entry ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandedStates[index].value =
+                                                    !expandedStates[index].value
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(
+                                                    start = 20.dp,
+                                                    end = 18.dp,
+                                                    top = if (index == 0) 12.dp else 17.dp,
+                                                    bottom = 17.dp
+                                                ),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = entry.version,
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MiuixTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = entry.date,
+                                                fontSize = 14.sp,
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Icon(
+                                                imageVector = MiuixIcons.ChevronForward,
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .graphicsLayer {
+                                                        rotationZ = rotations[index]
+                                                    },
+                                                tint = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            )
+                                        }
+                                        AnimatedVisibility(
+                                            visible = expandedStates[index].value,
+                                            enter = expandVertically(),
+                                            exit = shrinkVertically()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(
+                                                    start = 18.dp,
+                                                    end = 18.dp,
+                                                    bottom = 14.dp
+                                                )
+                                            ) {
+                                                entry.changes.forEach { change ->
+                                                    Row(modifier = Modifier.padding(bottom = 2.dp)) {
+                                                        Text(
+                                                            text = "• ",
+                                                            fontSize = 14.sp,
+                                                            lineHeight = 22.sp,
+                                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                        )
+                                                        Text(
+                                                            text = change,
+                                                            fontSize = 14.sp,
+                                                            lineHeight = 22.sp,
+                                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (index < recentChangelog.lastIndex) {
+                                        Spacer(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 18.dp)
+                                                .height(0.5.dp)
+                                                .background(
+                                                    MiuixTheme.colorScheme.onSurfaceVariantActions.copy(
+                                                        alpha = 0.07f
+                                                    )
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item(key = "thanks") {
+                        Column(
+                            modifier = Modifier
+                                .padding(
+                                    bottom = WindowInsets.navigationBars.asPaddingValues()
+                                        .calculateBottomPadding()
+                                )
+                                .fillParentMaxHeight(),
+                        ) {
+                            var expanded by remember { mutableStateOf(true) }
+                            val rotation by animateFloatAsState(
+                                targetValue = if (expanded) 90f else -90f,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "thanksRotation"
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .clip(ContinuousRoundedRectangle(20.dp))
+                                    .clickable { expanded = !expanded }
+                                    .then(
+                                        if (backdrop != null) {
+                                            Modifier.textureBlur(
+                                                backdrop = backdrop,
+                                                shape = ContinuousRoundedRectangle(20.dp),
+                                                blurRadius = 60f,
+                                                colors = BlurDefaults.blurColors(
+                                                    blendColors = cardBlend,
+                                                ),
+                                            )
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                                colors = CardDefaults.defaultColors(
+                                    if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
+                                    Color.Transparent,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = 18.dp,
+                                            end = 18.dp,
+                                            top = 20.dp,
+                                            bottom = 17.dp
+                                        )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "特别致谢",
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MiuixTheme.colorScheme.onSurface
+                                        )
+                                        Icon(
+                                            imageVector = MiuixIcons.ChevronForward,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .graphicsLayer {
+                                                    rotationZ = rotation
+                                                },
+                                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    AnimatedVisibility(
+                                        visible = expanded,
+                                        enter = expandVertically(),
+                                        exit = shrinkVertically()
+                                    ) {
+                                        Column {
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Miuix",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/compose-miuix-ui/miuix")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "Yukonga",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Capsule",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/Kyant0/Capsule")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "Kyant0",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "OkHttp",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/square/okhttp")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "Square",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "warehouse",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/XingHeYuZhuan/shiguang_warehouse")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "XingHeYuZhuan",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Shizuku",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/RikkaApps/Shizuku")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "RikkaApps",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Backdrop",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier.clickable {
+                                                        uriHandler.openUri("https://github.com/Kyant0/AndroidLiquidGlass")
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "Kyant0",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .then(
+                                        if (backdrop != null) {
+                                            Modifier.textureBlur(
+                                                backdrop = backdrop,
+                                                shape = ContinuousRoundedRectangle(20.dp),
+                                                blurRadius = 60f,
+                                                colors = BlurDefaults.blurColors(
+                                                    blendColors = cardBlend,
+                                                ),
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                colors = CardDefaults.defaultColors(
+                                    if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
+                                    Color.Transparent,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                                ) {
+                                    Text(
+                                        text = "功能日志录制",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.onSurface
+                                    )
+                                    val remainSec =
+                                        ((diagnosticRecorder.maxRecordMs / 1000L) - recordingElapsedSec)
+                                            .coerceAtLeast(0)
+                                    val mm = remainSec / 60
+                                    val ss = remainSec % 60
+                                    val statusText = when {
+                                        recordingActive ->
+                                            // 跨平台替代 String.format("%02d")（checkKmpPurity 拦截 + Locale 字形问题）
+                                            "录制中… 剩余 ${mm}:${ss.toString().padStart(2, '0')} \n正在记入日志，崩溃/被杀自动结束"
+                                        canShareRecording ->
+                                            when (diagnosticRecorder.readyReason) {
+                                                "crash" -> "检测到崩溃，日志已自动保存，可直接分享"
+                                                "process_killed" -> "上次进程被杀，已自动结束录制，可分享"
+                                                "timeout_30min" -> "录制已达 30 分钟上限，可分享"
+                                                else -> "录制已结束，可分享给开发者"
+                                            }
+                                        else ->
+                                            "点击开始录制后请复现问题，结束后点分享。\n日志仅存本机，需你主动分享才会离开设备"
+                                    }
+                                    Text(
+                                        text = statusText,
+                                        fontSize = 13.sp,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        modifier = Modifier.padding(top = 6.dp, bottom = 14.dp)
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        TextButton(
+                                            text = if (recordingActive) "结束录制" else "开始录制",
+                                            onClick = {
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                                exportingCrashLog = true
+                                                uiScope.launch {
+                                                    val ok = withContext(ioDispatcher) {
+                                                        if (diagnosticRecorder.isRecording) {
+                                                            diagnosticRecorder.stopRecording("manual")
+                                                        } else {
+                                                            diagnosticRecorder.startRecording()
+                                                        }
+                                                    }
+                                                    exportingCrashLog = false
+                                                    recordingActive = diagnosticRecorder.isRecording
+                                                    canShareRecording = diagnosticRecorder.hasReadyRecording
+                                                    recordingElapsedSec =
+                                                        (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
+                                                    showToast(when {
+                                                            !ok && recordingActive -> "录制已在进行"
+                                                            ok && recordingActive -> "已开始录制，最长 30 分钟"
+                                                            ok && !recordingActive -> "录制已结束，可分享"
+                                                            else -> "操作失败，请重试"
+                                                        })
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            enabled = !exportingCrashLog,
+                                            colors = if (recordingActive) {
+                                                ButtonDefaults.textButtonColorsPrimary()
+                                            } else {
+                                                ButtonDefaults.textButtonColors()
+                                            }
+                                        )
+                                        TextButton(
+                                            text = "分享",
+                                            onClick = {
+                                                if (!canShareRecording) return@TextButton
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                                exportingCrashLog = true
+                                                uiScope.launch {
+                                                    val ok = withContext(ioDispatcher) {
+                                                        diagnosticRecorder.shareReadyRecording()
+                                                    }
+                                                    exportingCrashLog = false
+                                                    showToast(if (ok) "已打开分享，请把日志发给开发者" else "分享失败，请重试")
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            enabled = canShareRecording && !exportingCrashLog,
+                                            colors = if (canShareRecording) {
+                                                ButtonDefaults.textButtonColorsPrimary()
+                                            } else {
+                                                ButtonDefaults.textButtonColors()
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.defaultColors(
+                                    color = Color.Transparent,
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "© 2026 Nexio课程表 · ",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                        )
+                                        // 开源协议入口：应用内展示 AGPL-3.0 全文，与隐私政策入口同构
+                                        Text(
+                                            text = "开源协议",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    onNavigate(AppRoute.License)
+                                                }
+                                                .padding(start = 4.dp)
+                                        )
+                                    }
+                                    // 隐私政策入口 + 撤回同意：用户可随时查阅政策或撤回授权
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "《隐私政策》",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.primary,
+                                            modifier = Modifier.clickable {
+                                                onNavigate(AppRoute.PrivacyPolicy)
+                                            }
+                                        )
+                                        Text(
+                                            text = "撤回同意",
+                                            fontSize = 13.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            modifier = Modifier.clickable {
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                                showRevokeDialog = true
+                                            }
+                                        )
+                                    }
+                                    // APP 备案号：按工信部要求在「关于」页面显著位置展示
+                                    Text(
+                                        text = "闽ICP备2026037367号-2A",
+                                        fontSize = 13.sp,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
+        OverlayDialog(
+            title = "项目仓库",
+            show = showRepoDialog,
+            liquidGlassBackdrop = dialogGlass,
+            onDismissRequest = { showRepoDialog = false }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(ContinuousRoundedRectangle(18.dp))
+                            .clickable {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                uriHandler.openUri("https://github.com/HaoZai000/NexioSchedule")
+                            }
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                    ) {
+                        Image(
+                            modifier = Modifier.size(48.dp),
+                            painter = painterResource(Res.drawable.ic_github),
+                            contentDescription = "GitHub",
+                            colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onSurface)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "GitHub",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(ContinuousRoundedRectangle(18.dp))
+                            .clickable {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                uriHandler.openUri("https://gitee.com/com_haooz_account/hyper_schedule")
+                            }
+                            .padding(horizontal = 24.dp, vertical = 12.dp)
+                    ) {
+                        Image(
+                            modifier = Modifier.size(48.dp),
+                            painter = painterResource(Res.drawable.ic_gitee),
+                            contentDescription = "Gitee"
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Gitee",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                TextButton(
+                    text = "完成",
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        showRepoDialog = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // 撤回隐私政策同意：确认后清空同意状态并关闭整个应用
+        OverlayDialog(
+            title = "撤回隐私政策同意",
+            summary = "撤回后将关闭应用，且需要重新同意隐私政策才能继续使用。确定撤回吗？",
+            show = showRevokeDialog,
+            liquidGlassBackdrop = dialogGlass,
+            onDismissRequest = { showRevokeDialog = false }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextButton(
+                    text = "取消",
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        showRevokeDialog = false
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    text = "撤回并退出",
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        com.haooz.chedule.data.PrivacyConsent.revoke()
+                        showRevokeDialog = false
+                        onExitApp()
+                    },
+                    textColor = Color(0xFFF44336),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+

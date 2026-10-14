@@ -2,8 +2,13 @@
 
 # --- Android / Gradle 构建输出 ---
 /build
-app/build
-app/release
+androidApp/build
+androidApp/release
+core/build
+backdrop/build
+miuix/build
+ui-shared/build
+desktopApp/build
 local.properties
 
 # --- IDE 配置 ---
@@ -38,8 +43,18 @@ server/
 temp_*/
 
 # --- 教务索引（release 构建由 downloadEduIndex 从 gitee 拉取，勿提交） ---
-app/src/main/assets/eduloader/school_index.pb
+androidApp/src/main/assets/eduloader/school_index.pb
 
 # --- 工作助手本地目录 ---
 .workbuddy/
+.workbuddy-ai/
 
+
+# --- iOS 构建输出 ---
+iosApp/build/
+iosApp/DerivedData/
+iosApp/buildDerived/
+*.xcuserdatad/
+
+# iOS 侧 build phase 生成的 framework 软链（见 project.pbxproj 的脚本）
+iosApp/Frameworks/

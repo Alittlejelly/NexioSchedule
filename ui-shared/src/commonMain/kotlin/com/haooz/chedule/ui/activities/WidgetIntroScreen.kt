@@ -1,0 +1,463 @@
+/** 小组件使用引导页面 - Screen */
+package com.haooz.chedule.ui.activities
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.CourseRepository
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import com.haooz.chedule.ui.basic.OverlayDropdownMenu
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownDefaults
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.ui.graphics.Color as ComposeColor
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_miuix_logo
+import com.haooz.chedule.uishared.resources.ic_widget_clock
+import com.haooz.chedule.uishared.resources.ic_widget_location
+
+/**
+ * @param onRequestWidgetRefresh 小组件边距改完后通知宿主刷新已添加的小组件。
+ *   小组件是 **Android 专有**（`AppWidgetManager` + `RemoteViews`），iOS 是 WidgetKit、
+ *   桌面端根本没有 —— 所以这里只暴露「刷新」这一个动作，具体实现由宿主注入。
+ *   与 `SchoolSelectionScreen(onAdapterSelected)` / `CourseTimeSettingsScreen(onEditRoutine)`
+ *   同一套路：**平台专有能力留在宿主，页面本体保持平台中立**。
+ */
+@Composable
+fun WidgetIntroScreen(
+    scrollBehavior: SharedScrollBehavior? = null,
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    onRequestWidgetRefresh: () -> Unit = {},
+) {
+    val hapticFeedback = LocalHapticFeedback.current
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+    val backdropColor = MiuixTheme.colorScheme.surface
+    val backdrop = rememberLayerBackdrop {
+        drawRect(backdropColor)
+        drawContent()
+    }
+
+    Scaffold(
+        topBar = {}
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(backdrop)
+        ) {
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = tabletHorizontalPadding)
+                    .overScrollVertical()
+                    .collapsibleTopInset(scrollBehavior)
+                    .then(
+                        scrollBehavior?.let { Modifier.nestedScroll(it.nestedScrollConnection) } ?: Modifier
+                    )
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + (if (isTablet) 24.dp else 12.dp)))
+
+                val pagerState = rememberPagerState(pageCount = { 2 })
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth()
+                ) { page ->
+                    when (page) {
+                        0 -> WidgetPreviewToday()
+                        1 -> WidgetPreviewSmall2x2()
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 页面指示器
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(2) { index ->
+                        val isSelected = pagerState.currentPage == index
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected)
+                                        MiuixTheme.colorScheme.primary
+                                    else
+                                        MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.12f)
+                                )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(48.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    FeatureItem("今日课程一目了然", "桌面显示当天课程、时间、地点和教师信息")
+                    FeatureItem("明日课程提前预览", "开启次日课程提醒后，智能显示明日课程")
+                    FeatureItem("进行中课程高亮", "正在上课的课程高亮显示剩余时间")
+                    FeatureItem("智能显示状态", "智能提醒今日课程当前状态")
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                val repository = remember { CourseRepository() }
+                var paddingMode by remember { mutableIntStateOf(repository.getWidgetPaddingMode()) }
+                WidgetPaddingSelector(
+                    selectedMode = paddingMode,
+                    liquidGlassBackdrop = liquidGlassBackdrop,
+                    onSelect = { mode ->
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                        paddingMode = mode
+                        repository.setWidgetPaddingMode(mode)
+                        // 写库之后让宿主刷小组件（`WidgetUpdateCache` 在 Android 专有的 widget 包里，
+                        // 本页不直接依赖它 —— 桌面端没有小组件，宿主传空实现即可）。
+                        onRequestWidgetRefresh()
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(120.dp))
+            }
+
+            // 底部「添加到桌面」已上提到 WidgetIntroActivity
+        }
+    }
+}
+
+@Composable
+private fun WidgetPreviewToday() {
+    val isDark = isAppDarkTheme()
+    val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor(0xFFF7F7F7)
+    val cardBg = if (isDark) ComposeColor(0xFF262626) else ComposeColor.White
+    val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
+    val titleColor = if (isDark) ComposeColor(0x77FFFFFF) else ComposeColor(0x77000000)
+    val nameColor = if (isDark) ComposeColor(0xFFEEEEEE) else ComposeColor(0xFF1A1A1A)
+    val infoColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
+    val timeStartColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
+    val timeEndColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
+    val nowColor = if (isDark) ComposeColor(0xFF42A5F5) else ComposeColor(0xFF2196F3)
+
+    Card(
+        cornerRadius = 22.dp,
+        modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(bgColor)
+                .padding(horizontal = 11.dp, vertical = 9.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = painterResource(Res.drawable.ic_miuix_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp).padding(end = 6.dp).graphicsLayer(scaleY = -1f),
+                    alpha = 0.8f
+                )
+                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = titleColor, fontFamily = FontFamily.SansSerif)
+                Spacer(modifier = Modifier.weight(1f))
+                Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = titleColor, fontFamily = FontFamily.SansSerif)
+            }
+
+            CourseCardPreview("08:00", "09:35", "高等数学", "第1-2节｜A301｜张老师", ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor)
+            Spacer(modifier = Modifier.height(8.dp))
+            CourseCardPreview("14:00", "15:35", "大学英语", "第5-6节｜B205｜李老师", ComposeColor(0xFF2196F3), "25分钟结束", ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor)
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun WidgetPreviewSmall2x2() {
+    val isDark = isAppDarkTheme()
+    val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor.White
+    val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
+    val titleColor = if (isDark) ComposeColor(0x99FFFFFF) else ComposeColor(0x99000000)
+    val nameColor = if (isDark) ComposeColor(0xFFEEEEEE) else ComposeColor(0xFF1A1A1A)
+    val infoColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
+    val remainingColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
+
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(166.dp)
+                .height(166.dp)
+                .border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
+                .background(bgColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 10.dp, end = 10.dp, top = 12.dp, bottom = 14.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 4.dp, bottom = 4.dp, top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(Res.drawable.ic_miuix_logo),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer(scaleY = -1f),
+                        alpha = 0.8f
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    // Title: 14sp bold
+                    Text("周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                    Spacer(modifier = Modifier.weight(1f))
+                    // Week: 14sp bold
+                    Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                }
+
+                // Course content: gravity=bottom, weight=1
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    // Course name: 17sp, paddingStart=4dp, paddingTop=8dp, paddingBottom=4dp, marginBottom=4dp
+                    Text(
+                        "高等数学",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = nameColor,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
+                    )
+
+                    // Time row: marginStart=4dp, marginBottom=2dp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Icon: 12dp, marginEnd=6dp
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(Res.drawable.ic_widget_clock),
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            alpha = 0.5f
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        // Text: 14sp
+                        Text("08:00 - 09:35", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = infoColor, fontFamily = FontFamily.SansSerif)
+                    }
+
+                    // Location row: marginStart=4dp, marginBottom=16dp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, bottom = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Icon: 12dp, marginEnd=6dp
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(Res.drawable.ic_widget_location),
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            alpha = 0.5f
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        // Text: 14sp
+                        Text("A301", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = infoColor, fontFamily = FontFamily.SansSerif, maxLines = 1)
+                    }
+                }
+
+                // Remaining info: marginStart=4dp, text 12sp
+                Row(
+                    modifier = Modifier.padding(start = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "还剩 2 节课",
+                        fontSize = 12.sp,
+                        color = remainingColor,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(ComposeColor(0xFF4CAF50), CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(ComposeColor(0xFF2196F3), CircleShape)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CourseCardPreview(
+    startTime: String, endTime: String, name: String, info: String,
+    barColor: ComposeColor, remaining: String?,
+    cardBg: ComposeColor, nameColor: ComposeColor, infoColor: ComposeColor,
+    timeStartColor: ComposeColor, timeEndColor: ComposeColor, nowColor: ComposeColor
+) {
+    Card(
+        cornerRadius = 12.dp,
+        modifier = Modifier.fillMaxWidth().height(54.dp),
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(cardBg)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.width(35.dp), horizontalAlignment = Alignment.Start) {
+                Text(startTime, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeStartColor, fontFamily = FontFamily.SansSerif)
+                Text(endTime, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeEndColor, fontFamily = FontFamily.SansSerif)
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(modifier = Modifier.width(4.dp).height(32.dp).background(barColor, com.kyant.capsule.ContinuousRoundedRectangle(2.dp)))
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nameColor, maxLines = 1)
+                Text(info, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = infoColor, fontFamily = FontFamily.SansSerif)
+            }
+            if (remaining != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(remaining, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nowColor)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureItem(title: String, description: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Box(modifier = Modifier.size(8.dp).padding(top = 7.dp).background(MiuixTheme.colorScheme.primary, com.kyant.capsule.ContinuousRoundedRectangle(4.dp)))
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(description, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantActions)
+        }
+    }
+}
+
+@Composable
+private fun WidgetPaddingSelector(
+    selectedMode: Int,
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    onSelect: (Int) -> Unit
+) {
+    val entry = DropdownEntry(
+        items = listOf(
+            DropdownItem(
+                text = "标准",
+                selected = selectedMode == 0,
+                onClick = { onSelect(0) }
+            ),
+            DropdownItem(
+                text = "4×6",
+                selected = selectedMode == 1,
+                onClick = { onSelect(1) }
+            ),
+            DropdownItem(
+                text = "4×7",
+                selected = selectedMode == 2,
+                onClick = { onSelect(2) }
+            ),
+            DropdownItem(
+                text = "4×6 无字",
+                selected = selectedMode == 3,
+                onClick = { onSelect(3) }
+            ),
+            DropdownItem(
+                text = "4×7 无字",
+                selected = selectedMode == 4,
+                onClick = { onSelect(4) }
+            ),
+        )
+    )
+    val liquidGlassDropdownColors = DropdownDefaults.dropdownColors(
+        containerColor = ComposeColor.Transparent,
+        selectedContainerColor = ComposeColor.Transparent,
+    )
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(),
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        OverlayDropdownMenu(
+            title = "小组件适应布局",
+            entry = entry,
+            collapseOnSelection = true,
+            liquidGlassBackdrop = liquidGlassBackdrop,
+            dropdownColors = liquidGlassDropdownColors,
+        )
+    }
+}

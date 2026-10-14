@@ -1,0 +1,300 @@
+/** 排班课表页面 */
+package com.haooz.chedule.ui.screens
+
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.TeachingWeekPosition
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import com.haooz.chedule.ui.components.SectionColumn
+import com.haooz.chedule.ui.components.ShiftDayColumn
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
+import com.haooz.chedule.viewmodel.ShiftViewModel
+import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
+import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+
+internal data class ShiftSchedulePageDayRangeKey(
+    val week: Int,
+    val smartWeekend: Boolean,
+    val scheduleDataVersion: Int,
+)
+
+@Composable
+fun ShiftScheduleScreen(
+    shiftViewModel: ShiftViewModel,
+    settingsViewModel: com.haooz.chedule.viewmodel.SettingsViewModel,
+    pagerState: androidx.compose.foundation.pager.PagerState,
+    scheduleDataVersion: Int = 0,
+    cardHeightPerSection: Float = 54f,
+    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    scheduleScrollBehavior: SharedScrollBehavior? = null,
+    /** 是否自由形态窗口（小米平板分屏/PC 模式）；Android 宿主注入，桌面/iOS 恒 false */
+    isInFreeformWindow: Boolean = false,
+    /** 自由形态窗口的标题栏高度（isInFreeformWindow=true 时用于顶距计算）；默认 56.dp */
+    titleBarHeight: androidx.compose.ui.unit.Dp = 56.dp,
+) {
+    val shiftScheduleCourses by shiftViewModel.shiftScheduleCourses.collectAsState()
+    val shiftScheduleSections by shiftViewModel.shiftScheduleSections.collectAsState()
+    val repository = remember { CourseRepository.getInstance() }
+    val hasReorganizedComparison = remember(shiftScheduleCourses.keys, scheduleDataVersion) {
+        (shiftScheduleCourses.keys + repository.getCurrentScheduleId()).any { name ->
+            repository.getTeachingWeekReorganizations(name).isNotEmpty()
+        }
+    }
+    val isDark = isAppDarkTheme()
+    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val isTablet = isTabletWidth()
+    val nativeChromeInset = LocalHostNavigation.current
+        ?.takeIf { it.showsNativeTabBar && !isTablet }
+        ?.bottomBarInset?.toFloat()?.dp
+    val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
+    val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
+
+    var showDetail by remember { mutableStateOf(false) }
+    var detailCourses by remember { mutableStateOf<List<Pair<String, Course>>>(emptyList()) }
+
+    val maxMorning = remember(shiftScheduleSections) {
+        shiftScheduleSections.values.maxOfOrNull { it.first } ?: 4
+    }
+    val maxAfternoon = remember(shiftScheduleSections) {
+        shiftScheduleSections.values.maxOfOrNull { it.second } ?: 4
+    }
+    val maxEvening = remember(shiftScheduleSections) {
+        shiftScheduleSections.values.maxOfOrNull { it.third } ?: 4
+    }
+    val totalSections = maxMorning + maxAfternoon + maxEvening
+
+    val wallpaperBackdropColor = schedulePageBackgroundColor(isDark)
+
+    Box(modifier = Modifier.fillMaxSize().background(wallpaperBackdropColor)) {
+
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        beyondViewportPageCount = 0
+    ) { page ->
+        val week = page + 1
+        val scrollState = rememberScrollState()
+        val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
+        val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (scheduleScrollBehavior != null) Modifier.nestedScroll(scheduleScrollBehavior.nestedScrollConnection)
+                    else Modifier
+                )
+                .overScrollVertical()
+                .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove)
+                .verticalScroll(scrollState)
+                .padding(
+                    top = statusBarHeight +
+                        if (isInFreeformWindow) titleBarHeight + 40.dp else 96.dp,
+                    bottom = nativeChromeInset?.plus(24.dp) ?: 140.dp
+                )
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isTablet) Modifier.padding(horizontal = 24.dp) else Modifier
+                        )
+                ) {
+                    SectionColumn(
+                        totalSections = totalSections,
+                        morningSections = maxMorning,
+                        afternoonSections = maxAfternoon,
+                        eveningSections = maxEvening,
+                        sectionTimes = sectionTimes,
+                        cardHeightPerSection = cardHeightPerSection,
+                        isTablet = isTablet
+                    )
+
+                    val pageDayRange = remember(
+                        ShiftSchedulePageDayRangeKey(week, smartWeekend, scheduleDataVersion),
+                    ) {
+                        (1..5).toList() + settingsViewModel.getWeekendDaysForWeek(week).filter { it in 6..7 }
+                    }
+
+                    pageDayRange.forEach { dayOfWeek ->
+                        val actualDate = remember(week, dayOfWeek, scheduleDataVersion) {
+                            repository.dateForTeachingWeekDay(week, dayOfWeek)
+                        }
+                        val schedulePositions = remember(actualDate, shiftScheduleCourses, scheduleDataVersion, hasReorganizedComparison) {
+                            if (!hasReorganizedComparison) {
+                                shiftScheduleCourses.keys.associateWith { TeachingWeekPosition(week.toLong(), dayOfWeek) }
+                            } else actualDate?.let { date ->
+                                shiftScheduleCourses.keys.associateWith { name ->
+                                    repository.teachingWeekPositionForDate(date, name)
+                                }
+                            }.orEmpty()
+                        }
+                        ShiftDayColumn(
+                            dayOfWeek = dayOfWeek,
+                            allScheduleCourses = shiftScheduleCourses,
+                            morningSections = maxMorning,
+                            afternoonSections = maxAfternoon,
+                            eveningSections = maxEvening,
+                            schedulePositions = schedulePositions,
+                            onSlotClick = { _, _, courses ->
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                detailCourses = courses
+                                showDetail = true
+                            },
+                            cardHeightPerSection = cardHeightPerSection,
+                            isTablet = isTablet,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                val morningHeight = (maxMorning * cardHeightPerSection).toInt()
+                val afternoonHeight = (maxAfternoon * cardHeightPerSection).toInt()
+                val dinnerBreakY = morningHeight + 24 + afternoonHeight
+
+                val dividerShape = ContinuousRoundedRectangle(12.dp)
+                val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
+                val dividerBaseColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isDark) Color(0xFF121212) else Color(0xFFF0F0F0)
+
+                @Composable
+                fun BreakDivider(offsetY: Int, text: String) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().offset(y = offsetY.dp)
+                            .height(24.dp)
+                            .padding(vertical = 2.dp)
+                            .padding(horizontal = dividerHorizontalPadding)
+                            .background(dividerBaseColor, dividerShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = text,
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        )
+                    }
+                }
+                BreakDivider(morningHeight, "午休")
+                BreakDivider(dinnerBreakY, "晚休")
+            }
+        }
+    }
+
+    } // wallpaper Box
+
+
+    val detailContent: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .overScrollVertical()
+                .scrollEndHaptic(
+                    hapticFeedbackType = HapticFeedbackType.TextHandleMove
+                )
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
+            detailCourses.forEach { (scheduleName, course) ->
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    insideMargin = PaddingValues(0.dp),
+                    pressFeedbackType = PressFeedbackType.None,
+                    showIndication = true,
+                    colors = CardDefaults.defaultColors(
+                        color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+                        contentColor = MiuixTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Text(
+                            text = scheduleName,
+                            style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${course.name}  ${course.getTimeDisplayText()}",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(if (isTablet) 0.dp else 260.dp))
+        }
+    }
+
+    if (isTablet) {
+        BlurBottomSheetTablet(
+            show = showDetail,
+            title = "课表详情",
+            dimBackground = true,
+            isBottomAligned = true,
+            liquidGlassBackdrop = liquidGlassBackdrop,
+            onDismissRequest = { showDetail = false },
+            content = detailContent
+        )
+    } else {
+        BlurBottomSheet(
+            show = showDetail,
+            title = "课表详情",
+            liquidGlassBackdrop = liquidGlassBackdrop,
+            dimBackground = true,
+            onDismissRequest = { showDetail = false },
+            content = detailContent
+        )
+    }
+}
