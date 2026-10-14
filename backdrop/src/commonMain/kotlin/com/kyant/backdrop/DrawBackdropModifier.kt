@@ -296,44 +296,42 @@ private class DrawBackdropNode(
 
     private val drawBackdropLayer: DrawScope.() -> Unit = drawBackdropLayer@{
         val layer = graphicsLayer
-        if (layer != null) {
-            val padding = padding
+        val padding = padding
 
-            // 直采：既没有 RenderEffect（无模糊/折射运算）也没有 padding（不需要外扩），
-            // 录进离屏缓冲再画出来就是纯粹白搬一次 —— 直接在当前 canvas 上采样
-            if (padding == 0f && layer.renderEffect == null) {
-                val canvas = drawContext.canvas
-                canvas.save()
-                // 先按卡片边界裁剪，避免把整张源/烘焙层扫一遍
-                canvas.clipRect(0f, 0f, size.width, size.height)
-                onDrawBackdrop {
-                    with(backdrop) {
-                        drawBackdrop(
-                            density = effectScope,
-                            coordinates = layoutCoordinates,
-                            layerBlock = layerBlock
-                        )
-                    }
+        // 直采：既没有 RenderEffect（无模糊/折射运算）也没有 padding（不需要外扩），
+        // 录进离屏缓冲再画出来就是纯粹白搬一次 —— 直接在当前 canvas 上采样
+        if (layer == null || (padding == 0f && layer.renderEffect == null)) {
+            val canvas = drawContext.canvas
+            canvas.save()
+            // 先按卡片边界裁剪，避免把整张源/烘焙层扫一遍
+            canvas.clipRect(0f, 0f, size.width, size.height)
+            onDrawBackdrop {
+                with(backdrop) {
+                    drawBackdrop(
+                        density = effectScope,
+                        coordinates = layoutCoordinates,
+                        layerBlock = layerBlock
+                    )
                 }
-                canvas.restore()
-                return@drawBackdropLayer
             }
-
-            recordLayer(
-                this@DrawBackdropNode,
-                layer,
-                size = IntSize(
-                    size.width.toInt() + padding.toInt() * 2,
-                    size.height.toInt() + padding.toInt() * 2
-                ),
-                block = recordBackdropBlock
-            )
-
-            layer.topLeft =
-                if (padding != 0f) IntOffset(-padding.toInt(), -padding.toInt())
-                else IntOffset.Zero
-            drawLayer(layer)
+            canvas.restore()
+            return@drawBackdropLayer
         }
+
+        recordLayer(
+            this@DrawBackdropNode,
+            layer,
+            size = IntSize(
+                size.width.toInt() + padding.toInt() * 2,
+                size.height.toInt() + padding.toInt() * 2
+            ),
+            block = recordBackdropBlock
+        )
+
+        layer.topLeft =
+            if (padding != 0f) IntOffset(-padding.toInt(), -padding.toInt())
+            else IntOffset.Zero
+        drawLayer(layer)
     }
 
     override fun MeasureScope.measure(
@@ -423,24 +421,37 @@ private class DrawBackdropNode(
     }
 
     private fun updateEffects() {
-        if (!isRenderEffectSupported()) return
+        if (!isRenderEffectSupported()) {
+            graphicsLayer?.renderEffect = null
+            padding = 0f
+            return
+        }
 
         effectScope.apply(effects)
-        graphicsLayer?.renderEffect = effectScope.renderEffect
+        val effect = effectScope.renderEffect
+        // 只有真要离屏运算（RenderEffect）或要外扩（padding）时才建层。
+        // 折射关闭 / 共享烘焙模糊这类「直采」路径整条都不碰离屏缓冲，
+        // 几十张课卡就省下几十个 GraphicsLayer 的创建与释放。
+        if (effect != null || effectScope.padding != 0f) {
+            obtainGraphicsLayer().renderEffect = effect
+        } else {
+            graphicsLayer?.renderEffect = null
+        }
         padding = effectScope.padding
     }
 
-    override fun onAttach() {
-        val graphicsContext = requireGraphicsContext()
-        graphicsLayer = graphicsContext.createGraphicsLayer()
+    private fun obtainGraphicsLayer(): GraphicsLayer {
+        return graphicsLayer
+            ?: requireGraphicsContext().createGraphicsLayer().also { graphicsLayer = it }
+    }
 
+    override fun onAttach() {
         observeEffects()
     }
 
     override fun onDetach() {
-        val graphicsContext = requireGraphicsContext()
         graphicsLayer?.let { layer ->
-            graphicsContext.releaseGraphicsLayer(layer)
+            requireGraphicsContext().releaseGraphicsLayer(layer)
             graphicsLayer = null
         }
 

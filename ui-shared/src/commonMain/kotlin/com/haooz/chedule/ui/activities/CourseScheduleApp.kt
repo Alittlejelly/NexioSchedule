@@ -1566,6 +1566,16 @@ fun CourseScheduleApp(
         lastAutoPage = autoAdvancePage
     }
 
+    // 切 tab 时强制放掉周 pager 上可能残留的 scroll 锁。
+    //
+    // 翻页手势若在半途被取消（pointerInput 重启 / 页面重组合），持锁的 scroll 协程可能
+    // 没把锁还回来；之后滑动、返回今日、跳周（都走 animateScrollToPage）会全部挂起，
+    // 表现就是「只剩当前一页，怎么都翻不动」。
+    // PreventUserInput 是最高优先级，会抢占并取消当前持锁者；block 为空 → 立刻归还。
+    LaunchedEffect(mainPagerState.currentPage) {
+        runCatching { pagerState.scroll(MutatePriority.PreventUserInput) { } }
+    }
+
     var todaySelectedDayOfWeek by remember { mutableIntStateOf(currentDayOfWeek) }
     var todayIsToday by remember { mutableStateOf(true) }
     var scrollToTodayTrigger by remember { mutableIntStateOf(0) }

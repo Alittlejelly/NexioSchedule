@@ -239,95 +239,105 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var overscrollRaw = 0f
                 val viewportPx = size.width.toFloat().coerceAtLeast(1f)
                 tracker.addPosition(down.uptimeMillis, down.position)
-                while (true) {
-                    // Initial：在子级 verticalScroll 之前拿到事件，锁横后才能拦住纵向
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    tracker.addPosition(change.uptimeMillis, change.position)
-                    if (!change.pressed) break
-                    if (latestBlock.value()) break
-                    val dx = change.positionChangeIgnoreConsumed().x
-                    val dy = change.positionChangeIgnoreConsumed().y
-                    accX += dx
-                    accY += dy
-                    if (dx != 0f || dy != 0f) lastMoveUptimeMillis = change.uptimeMillis
-                    if (!locked) {
-                        val ax = abs(accX)
-                        val ay = abs(accY)
-                        val yDominant = ay >= touchSlop && ay > ax * domRatio
-                        when {
-                            ax >= touchSlop && ax >= ay * domRatio -> {
-                                xDominant = true
-                                locked = true
+                // ⚠ 手势主体必须整体包在 try 里，finally 关掉 dragChannel。
+                // scrollWorker 的 `for (delta in channel)` 只有 close() 才会退出，而它手里
+                // 攥着 pagerState.scroll 的互斥锁；漏关一次，这把锁就被永久占用 ——
+                // 之后滑动、返回今日、跳周（都走 animateScrollToPage）会全部挂起，
+                // 表现就是「只剩当前一页，怎么都翻不动」。
+                try {
+                    while (true) {
+                        // Initial：在子级 verticalScroll 之前拿到事件，锁横后才能拦住纵向
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        if (!change.pressed) break
+                        if (latestBlock.value()) break
+                        val dx = change.positionChangeIgnoreConsumed().x
+                        val dy = change.positionChangeIgnoreConsumed().y
+                        accX += dx
+                        accY += dy
+                        if (dx != 0f || dy != 0f) lastMoveUptimeMillis = change.uptimeMillis
+                        if (!locked) {
+                            val ax = abs(accX)
+                            val ay = abs(accY)
+                            val yDominant = ay >= touchSlop && ay > ax * domRatio
+                            when {
+                                ax >= touchSlop && ax >= ay * domRatio -> {
+                                    xDominant = true
+                                    locked = true
+                                }
+                                yDominant -> {
+                                    locked = true
+                                }
+                                // 两轴接近：取位移大的一轴锁定，不并行
+                                ax >= touchSlop && ay >= touchSlop -> {
+                                    xDominant = ax >= ay
+                                    locked = true
+                                }
                             }
-                            yDominant -> {
-                                locked = true
-                            }
-                            // 两轴接近：取位移大的一轴锁定，不并行
-                            ax >= touchSlop && ay >= touchSlop -> {
-                                xDominant = ax >= ay
-                                locked = true
-                            }
-                        }
-                        if (xDominant && scrollWorker == null) {
-                            settleJob.value?.cancel()
-                            settleJob.value = null
-                            overscrollJob.value?.cancel()
-                            overscrollJob.value = null
-                            val channel = Channel<Float>(Channel.UNLIMITED)
-                            dragChannel = channel
-                            scrollWorker = scope.launch {
-                                try {
-                                    pagerState.scroll(MutatePriority.UserInput) {
-                                        dragState.startScrollOffset =
-                                            pagerState.currentPage + pagerState.currentPageOffsetFraction
-                                        // 回弹未结束就再次按住时接上当前偏移，小位移下 visual≈raw
-                                        if (overscrollX.floatValue != 0f && overscrollRaw == 0f) {
-                                            overscrollRaw = overscrollX.floatValue
-                                        }
-                                        for (delta in channel) {
-                                            var remaining = delta
-                                            // 反向拖动先收回回弹，抵完再交给 pager
-                                            if (overscrollRaw != 0f && remaining != 0f &&
-                                                sign(remaining) != sign(overscrollRaw)
-                                            ) {
-                                                val reduce =
-                                                    if (abs(remaining) >= abs(overscrollRaw)) {
-                                                        -overscrollRaw
-                                                    } else {
-                                                        remaining
-                                                    }
-                                                overscrollRaw += reduce
-                                                remaining -= reduce
-                                                overscrollX.floatValue =
-                                                    dampedOverscroll(overscrollRaw, viewportPx)
+                            if (xDominant && scrollWorker == null) {
+                                settleJob.value?.cancel()
+                                settleJob.value = null
+                                overscrollJob.value?.cancel()
+                                overscrollJob.value = null
+                                val channel = Channel<Float>(Channel.UNLIMITED)
+                                dragChannel = channel
+                                scrollWorker = scope.launch {
+                                    try {
+                                        pagerState.scroll(MutatePriority.UserInput) {
+                                            dragState.startScrollOffset =
+                                                pagerState.currentPage + pagerState.currentPageOffsetFraction
+                                            // 回弹未结束就再次按住时接上当前偏移，小位移下 visual≈raw
+                                            if (overscrollX.floatValue != 0f && overscrollRaw == 0f) {
+                                                overscrollRaw = overscrollX.floatValue
                                             }
-                                            if (remaining != 0f) {
-                                                val consumed = scrollBy(remaining)
-                                                val leftover = remaining - consumed
-                                                // 末端 scrollBy 吃不下 → 橡皮筋超出
-                                                if (abs(leftover) > 0.25f) {
-                                                    overscrollRaw = (overscrollRaw + leftover)
-                                                        .coerceIn(-viewportPx, viewportPx)
+                                            for (delta in channel) {
+                                                var remaining = delta
+                                                // 反向拖动先收回回弹，抵完再交给 pager
+                                                if (overscrollRaw != 0f && remaining != 0f &&
+                                                    sign(remaining) != sign(overscrollRaw)
+                                                ) {
+                                                    val reduce =
+                                                        if (abs(remaining) >= abs(overscrollRaw)) {
+                                                            -overscrollRaw
+                                                        } else {
+                                                            remaining
+                                                        }
+                                                    overscrollRaw += reduce
+                                                    remaining -= reduce
                                                     overscrollX.floatValue =
                                                         dampedOverscroll(overscrollRaw, viewportPx)
                                                 }
+                                                if (remaining != 0f) {
+                                                    val consumed = scrollBy(remaining)
+                                                    val leftover = remaining - consumed
+                                                    // 末端 scrollBy 吃不下 → 橡皮筋超出
+                                                    if (abs(leftover) > 0.25f) {
+                                                        overscrollRaw = (overscrollRaw + leftover)
+                                                            .coerceIn(-viewportPx, viewportPx)
+                                                        overscrollX.floatValue =
+                                                            dampedOverscroll(overscrollRaw, viewportPx)
+                                                    }
+                                                }
                                             }
                                         }
+                                    } finally {
+                                        workerDone.complete(Unit)
                                     }
-                                } finally {
-                                    workerDone.complete(Unit)
                                 }
                             }
                         }
+                        if (!xDominant) continue
+                        dragChannel?.trySend(-dx)
+                        // Initial consume：子级（verticalScroll / 课卡手势）本帧不再看到位移
+                        change.consume()
                     }
-                    if (!xDominant) continue
-                    dragChannel?.trySend(-dx)
-                    // Initial consume：子级（verticalScroll / 课卡手势）本帧不再看到位移
-                    change.consume()
+                } finally {
+                    // 抬手 / blockGesture / 手势被取消 —— 任何退出路径都要走到这里。
+                    // close() 幂等，正常路径先关一次也无所谓。
+                    dragChannel?.close()
+                    dragChannel = null
                 }
-                dragChannel?.close()
-                dragChannel = null
                 // AwaitPointerEventScope 不能 join；回 scope 等 worker 放锁后再落页
                 if (xDominant) {
                     val trackedVelocity =

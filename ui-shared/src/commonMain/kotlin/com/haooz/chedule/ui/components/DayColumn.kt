@@ -835,12 +835,13 @@ fun SpecialBandOverlay(
                         }
                     }
                 }
+            // 两层纯色压成一次 drawRect（见 flattenStackedFills）
+            val bandSurfaceColor = remember(bgColor, overlayColor) {
+                flattenStackedFills(bgColor, overlayColor)
+            }
             // onDrawSurface 必须固定，否则每次重组都重新录制壁纸层并重跑 GPU 模糊
-            val onBandSurface: DrawScope.() -> Unit = remember(bgColor, overlayColor) {
-                {
-                    drawRect(bgColor)
-                    drawRect(overlayColor)
-                }
+            val onBandSurface: DrawScope.() -> Unit = remember(bandSurfaceColor) {
+                { drawRect(bandSurfaceColor) }
             }
             val outlineColor = remember(bgColor) { bgColor.copy(alpha = 0.05f) }
             val outlineStroke = remember(density) { Stroke(with(density) { 2.dp.toPx() }) }

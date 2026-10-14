@@ -260,14 +260,14 @@ fun CourseCard(
                         }
                     }
                 }
+            // 白/黑底 + 课程色压成一次 drawRect（两次全卡 fill 是每卡每帧的固定成本）
+            val surfaceColor = remember(cardColor, overlayColor) {
+                flattenStackedFills(overlayColor, cardColor)
+            }
             // onDrawSurface 每次重组新建会令 drawBackdrop 判不等，每次重录壁纸层并重跑 GPU 模糊
             val onCardSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
-                remember(cardColor, overlayColor) {
-                    {
-                        // 白/黑底在下，课程色在上
-                        drawRect(overlayColor)
-                        drawRect(cardColor)
-                    }
+                remember(surfaceColor) {
+                    { drawRect(surfaceColor) }
                 }
             val outlineColor = remember(cardColor) { cardColor.copy(alpha = 0.05f) }
             val outlineStroke = remember(localDensity) {
@@ -691,6 +691,34 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
             )
         }
     }
+}
+
+/**
+ * 把「底下一层纯色 + 上面一层纯色」的两次 SrcOver 叠加压成**一次** drawRect。
+ *
+ * 两次全卡 fill 是每卡每帧的固定成本，而两层都是已知 alpha 的纯色，叠加结果
+ * 仍然是「单一半透明色盖在壁纸上」，可以逐像素等价地折叠：
+ *
+ * ```
+ * W --bottom(a1)--> W(1-a1) + S1·a1 --top(a2)--> W(1-a1)(1-a2) + S1·a1(1-a2) + S2·a2
+ *                                    ≡ W(1-A) + S·A
+ * A = 1-(1-a1)(1-a2)      S = S1·w1 + S2·w2
+ * w1 = a1(1-a2)/A         w2 = a2/A        （w1 + w2 ≡ 1，是凸组合，不会越界）
+ * ```
+ */
+internal fun flattenStackedFills(bottom: Color, top: Color): Color {
+    val a1 = bottom.alpha
+    val a2 = top.alpha
+    val a = 1f - (1f - a1) * (1f - a2)
+    if (a <= 0f) return Color.Transparent
+    val w1 = a1 * (1f - a2) / a
+    val w2 = a2 / a
+    return Color(
+        red = bottom.red * w1 + top.red * w2,
+        green = bottom.green * w1 + top.green * w2,
+        blue = bottom.blue * w1 + top.blue * w2,
+        alpha = a
+    )
 }
 
 // 超椭圆 outline 构建昂贵，滑动时约 40~80 张×2 页；仅尺寸/圆角/layoutDirection 变时重建
