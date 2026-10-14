@@ -216,7 +216,7 @@ private final class AppHostController: UIViewController {
         chromeController.onLayout = { [weak self] in
             self?.reportBottomInset()
         }
-        // 原生截屏桥：把含 TabBar 的全屏图交给 Compose 补快照
+        // 原生截屏桥：把含底栏与导航栏的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
             IosNativeCapture.shared.store(data: self?.captureScreenPNG())
         }
@@ -226,7 +226,7 @@ private final class AppHostController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateMainTransform()
-        updateChromeTransform()
+        updateCutoutTransform()
         reportTopInset()
         reportBottomInset()
     }
@@ -271,7 +271,7 @@ private final class AppHostController: UIViewController {
         mainContainer.accessibilityElementsHidden = overlayActive
         updateMainHeaderControls()
         updateMainTransform()
-        updateChromeTransform()
+        updateCutoutTransform()
         reportTopInset()
         reportBottomInset()
     }
@@ -288,18 +288,33 @@ private final class AppHostController: UIViewController {
         if navigationItem.leftBarButtonItem != nil {
             navigationItem.setLeftBarButtonItems(nil, animated: animated)
         }
-        let showHeader = host.showsNativeHeader && !host.nativePageActive
+        // 开洞（外观页）与详情页期间都保留 items：外观页这一排跟着主内容一起缩放，
+        // 详情页盖满全屏、原生栏本来就被挡住。清空再设回会让 iOS 26 重建整块 platter
+        let showHeader = (host.showsNativeHeader || host.keepsNativeHeaderDuringCutout) &&
+            !host.nativePageActive
+        // 已经在外观页里时「课表外观」项无意义（再点会重跑一次入场）
+        let includeCustomize = !host.keepsNativeHeaderDuringCutout
         let targetItems: [UIBarButtonItem]
         if showHeader {
-            switch host.selectedTab {
-            case 0:
-                mainMoreItem.menu = makeTodayMenu()
-                targetItems = [mainMoreItem]
-            case 1:
-                mainMoreItem.menu = makeScheduleMenu()
-                targetItems = [mainMoreItem, mainSwitchItem]
-            default:
-                targetItems = []
+            if host.shiftMode {
+                // ⚠ 排班模式只有两页，页序与非排班模式不同：0 = 排班课表，1 = 设置
+                if host.selectedTab == 0 {
+                    mainMoreItem.menu = scheduleMenu(includeCustomize: includeCustomize)
+                    targetItems = [mainMoreItem]
+                } else {
+                    targetItems = []
+                }
+            } else {
+                switch host.selectedTab {
+                case 0:
+                    mainMoreItem.menu = todayMenu(includeCustomize: includeCustomize)
+                    targetItems = [mainMoreItem]
+                case 1:
+                    mainMoreItem.menu = scheduleMenu(includeCustomize: includeCustomize)
+                    targetItems = [mainMoreItem, mainSwitchItem]
+                default:
+                    targetItems = []
+                }
             }
         } else {
             targetItems = []
@@ -373,7 +388,32 @@ private final class AppHostController: UIViewController {
         host.performMainAction(actionId: "switchSchedule")
     }
 
-    private func makeScheduleMenu() -> UIMenu {
+    /// ⚠ `updateMainHeaderControls` 被 `applyState` 逐帧调用，每次新建 UIMenu 会让
+    /// 导航栏 platter 反复更新（观感即「顶栏重载」）。按「排班模式 / 是否带课表外观项」缓存。
+    private var scheduleMenuCache: (shift: Bool, customize: Bool, menu: UIMenu)?
+    private var todayMenuCache: (shift: Bool, customize: Bool, menu: UIMenu)?
+
+    private func scheduleMenu(includeCustomize: Bool) -> UIMenu {
+        if let cached = scheduleMenuCache, cached.shift == host.shiftMode,
+           cached.customize == includeCustomize {
+            return cached.menu
+        }
+        let menu = makeScheduleMenu(includeCustomize: includeCustomize)
+        scheduleMenuCache = (host.shiftMode, includeCustomize, menu)
+        return menu
+    }
+
+    private func todayMenu(includeCustomize: Bool) -> UIMenu {
+        if let cached = todayMenuCache, cached.shift == host.shiftMode,
+           cached.customize == includeCustomize {
+            return cached.menu
+        }
+        let menu = makeTodayMenu(includeCustomize: includeCustomize)
+        todayMenuCache = (host.shiftMode, includeCustomize, menu)
+        return menu
+    }
+
+    private func makeScheduleMenu(includeCustomize: Bool = true) -> UIMenu {
         var actions: [UIAction] = [
             UIAction(title: "跳转周数", image: UIImage(systemName: "calendar.badge.clock")) { [weak self] _ in
                 self?.host.performMainAction(actionId: "jumpWeek")
@@ -386,51 +426,57 @@ private final class AppHostController: UIViewController {
                 }
             )
         }
-        actions.append(
-            UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
-                self?.host.performMainAction(actionId: "customize")
-            }
-        )
+        if includeCustomize {
+            actions.append(
+                UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
+                    self?.host.performMainAction(actionId: "customize")
+                }
+            )
+        }
         return UIMenu(children: actions)
     }
 
-    private func makeTodayMenu() -> UIMenu {
-        let actions: [UIAction] = [
+    private func makeTodayMenu(includeCustomize: Bool = true) -> UIMenu {
+        var actions: [UIAction] = [
             UIAction(title: "跳转日期", image: UIImage(systemName: "calendar")) { [weak self] _ in
                 self?.host.performMainAction(actionId: "jumpToDate")
             },
             UIAction(title: "课程管理", image: UIImage(systemName: "books.vertical")) { [weak self] _ in
                 self?.host.performMainAction(actionId: "courseManage")
-            },
-            UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
-                self?.host.performMainAction(actionId: "customize")
             }
         ]
+        if includeCustomize {
+            actions.append(
+                UIAction(title: "课表外观", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
+                    self?.host.performMainAction(actionId: "customize")
+                }
+            )
+        }
         return UIMenu(children: actions)
     }
 
-    /// 开洞（课表外观）时把原生 TabBar 跟着主内容一起上移缩小。
-    private func updateChromeTransform() {
-        let scale = CGFloat(min(1, max(0.65, host.cutoutScale)))
-        let screenH = view.bounds.height
+    /// 以 `pivot`（整屏坐标）为原点把 `target` 缩放 `scale`
+    private func applyCutoutScale(_ scale: CGFloat, to target: UIView, pivot: CGPoint) {
+        let center = target.center
+        var transform = CGAffineTransform(scaleX: scale, y: scale)
+        transform.tx = (1 - scale) * (pivot.x - center.x)
+        transform.ty = (1 - scale) * (pivot.y - center.y)
+        if target.transform != transform { target.transform = transform }
+    }
+
+    /// 开洞（课表外观）时把原生 chrome（底栏容器 + 导航栏）跟着主内容一起移动缩小。
+    /// 两者都不在 Compose 的缩放层里，得自己施加同一套变换（scale + 洞心原点）。
+    private func updateCutoutTransform() {
         let screenW = view.bounds.width
-        guard scale < 0.999, screenH > 0, screenW > 0 else {
-            if chromeContainer.transform != .identity {
-                chromeContainer.transform = .identity
-            }
-            return
+        let screenH = view.bounds.height
+        guard screenW > 0, screenH > 0 else { return }
+        let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
+        let scale = raw < 0.999 ? raw : 1
+        let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
+        applyCutoutScale(scale, to: chromeContainer, pivot: pivot)
+        if let bar = navigationController?.navigationBar {
+            applyCutoutScale(scale, to: bar, pivot: pivot)
         }
-        let layer = chromeContainer.layer
-        let centerX = screenW * 0.5
-        let centerY = screenH * CGFloat(host.cutoutCenterYRatio)
-        let newAnchor = CGPoint(x: 0.5, y: CGFloat(host.cutoutCenterYRatio))
-        let oldAnchor = CGPoint(x: 0.5, y: 0.5)
-        layer.position = CGPoint(
-            x: centerX + (layer.position.x - centerX) * (oldAnchor.x - newAnchor.x),
-            y: centerY + (layer.position.y - centerY) * (oldAnchor.y - newAnchor.y)
-        )
-        layer.anchorPoint = newAnchor
-        chromeContainer.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 
     private func updateMainTransform() {
@@ -446,7 +492,10 @@ private final class AppHostController: UIViewController {
         // Keep the retained root's geometry stable while a document covers it.
         // Hiding its controls must not clear the Compose header's reserved space.
         guard !host.nativePageActive else { return }
-        let showHeader = host.showsNativeHeader || host.scheduleLibraryActive
+        // ⚠ 开洞期间也要算进来：inset 归零会让 Compose 顶栏换一套排布（多留 40dp、
+        // 顶栏高度不同），主内容一缩放就跟原生栏错开约 40pt
+        let showHeader = host.showsNativeHeader || host.scheduleLibraryActive ||
+            host.keepsNativeHeaderDuringCutout
         let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
         guard abs(lastTopInset - inset) > 0.5 else { return }
         lastTopInset = inset
@@ -485,14 +534,19 @@ private final class AppHostController: UIViewController {
         ])
     }
 
-    /// 全屏截图（含原生 TabBar），PNG 字节。供 Compose 侧补进切换课表页快照 ——
+    /// 全屏截图（含底栏与导航栏右上角菜单），PNG 字节。供 Compose 侧补进快照。
+    ///
+    /// ⚠ 必须从 **window** 渲染：只画 `self.view` 漏导航栏（它是 self.view 的兄弟）；
+    /// 只画 `navigationController.view` 也漏右上角菜单 —— iOS 26 的导航栏按钮由
+    /// SwiftUI hosting + portal 渲染，从菜单点过一次后被 reparent 到 nav bar 子树之外。
     private func captureScreenPNG() -> Data? {
+        guard let container = viewIfLoaded?.window ?? navigationController?.view ?? viewIfLoaded else { return nil }
         let format = UIGraphicsImageRendererFormat.default()
-        format.scale = view.window?.screen.scale ?? UIScreen.main.scale
+        format.scale = container.window?.screen.scale ?? UIScreen.main.scale
         format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: view.bounds.size, format: format)
+        let renderer = UIGraphicsImageRenderer(size: container.bounds.size, format: format)
         let image = renderer.image { _ in
-            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            container.drawHierarchy(in: container.bounds, afterScreenUpdates: true)
         }
         return image.pngData()
     }

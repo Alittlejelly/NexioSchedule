@@ -909,6 +909,11 @@ private fun MorePopupMenus(
     }
 }
 
+/**
+ * 点「课表外观」到开始截屏的等待，所有入口共用。
+ */
+private const val CUSTOMIZE_ENTRY_DELAY_MS = 320L
+
 @Composable
 fun CourseScheduleApp(
     privacyConsented: Boolean = true,
@@ -1074,6 +1079,8 @@ fun CourseScheduleApp(
     var detailCardHeight by remember { mutableFloatStateOf(0f) }
     var detailSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
     var showDetail by remember { mutableStateOf(false) }
+    // 详情页退出中：主内容提前恢复绘制（快照垫底），画出来后再撤快照。见 onBackStart。
+    var detailExiting by remember { mutableStateOf(false) }
 
     var detailFromToday by remember { mutableStateOf(false) }
     var detailTargetWeek by remember { mutableIntStateOf(0) }
@@ -1566,11 +1573,6 @@ fun CourseScheduleApp(
     }
 
     // 切 tab 时强制放掉周 pager 上可能残留的 scroll 锁。
-    //
-    // 翻页手势若在半途被取消（pointerInput 重启 / 页面重组合），持锁的 scroll 协程可能
-    // 没把锁还回来；之后滑动、返回今日、跳周（都走 animateScrollToPage）会全部挂起，
-    // 表现就是「只剩当前一页，怎么都翻不动」。
-    // PreventUserInput 是最高优先级，会抢占并取消当前持锁者；block 为空 → 立刻归还。
     LaunchedEffect(mainPagerState.currentPage) {
         runCatching { pagerState.scroll(MutatePriority.PreventUserInput) { } }
     }
@@ -2196,6 +2198,8 @@ fun CourseScheduleApp(
         detailCardHeight = cardHeight
         detailFromToday = fromToday
         detailTargetWeek = targetWeek
+        // 重新进入：上次退出若没来得及复位（异常路径），这里兜底
+        detailExiting = false
         coroutineScope.launch {
             // 隐藏课程前先截全屏，保证快照完整
             val fullSnapshot = captureMainContentBitmap()
@@ -2239,10 +2243,12 @@ fun CourseScheduleApp(
         }
     }
 
-    // 顶栏「课表外观」与长按按钮共用
+    // 顶栏「课表外观」与长按按钮共用；所有入口都直接调这个，延迟统一在这里
+    // （见 CUSTOMIZE_ENTRY_DELAY_MS），调用点不要再各自加 delay。
     val enterCustomizePage: () -> Unit = {
         FeatureLog.t("课表外观", "enter")
         coroutineScope.launch {
+            delay(CUSTOMIZE_ENTRY_DELAY_MS.milliseconds)
             val screenW = windowInfo.containerSize.width.toFloat()
             customizeExitTargetScale = (screenW * 0.65f) / screenW
             val oldCombSnapshots = combinations.mapNotNull { it.snapshot }
@@ -2418,6 +2424,7 @@ fun CourseScheduleApp(
                 host.onCourseManage = null
                 host.onEnterCustomize = null
                 host.onJumpToDate = null
+                host.keepsNativeHeaderDuringCutout = false
             }
         }
     }
@@ -2426,19 +2433,19 @@ fun CourseScheduleApp(
             host.scheduleLibraryActive = nativeBottomBar && !isTablet && showSwitchSchedule && !switchExiting
             host.scheduleLibraryTransitionActive = switchCapturingSnapshot || switchAnimRunning || switchPendingReverse ||
                 (showSwitchSchedule && switchExiting)
+            // ⚠ 不含 `!showDetail`：详情页盖满全屏，原生顶栏本就被挡住。
             host.showsNativeHeader = nativeBottomBar && !isTablet && !isWindowCutoutActive &&
-                !showCustomizePage && (!showSwitchSchedule || switchExiting) && !showDetail
+                !showCustomizePage && (!showSwitchSchedule || switchExiting)
+            // 课表外观页（含开洞进出场）：原生顶栏不清空，宿主拿 cutoutScale 自己施加与
+            // 主内容/底栏同一套变换 —— 右上角菜单跟着一起移动缩小，而不是消失。
+            host.keepsNativeHeaderDuringCutout = nativeBottomBar && !isTablet &&
+                (showCustomizePage || isWindowCutoutActive)
             host.onOpenSwitchSchedule = { openScheduleLibrary() }
             host.onJumpWeek = { viewModel.showJumpWeekDialog() }
             host.onCourseManage = {
                 router.navigate(AppRoute.CourseManage)
             }
-            host.onEnterCustomize = {
-                coroutineScope.launch {
-                    delay(200.milliseconds)
-                    enterCustomizePage()
-                }
-            }
+            host.onEnterCustomize = { enterCustomizePage() }
             host.onJumpToDate = { todayJumpToDateTrigger++ }
         }
     }
@@ -2766,12 +2773,7 @@ fun CourseScheduleApp(
                                             },
                                             onOpenSwitchSchedule = { openScheduleLibrary() },
                                             onJumpWeek = { viewModel.showJumpWeekDialog() },
-                                            onEnterCustomize = {
-                                                coroutineScope.launch {
-                                                    delay(200.milliseconds)
-                                                    enterCustomizePage()
-                                                }
-                                            },
+                                            onEnterCustomize = enterCustomizePage,
                                             isTablet = isTablet,
                                             isShiftMode = isShiftMode,
                                             liquidGlassBackdrop = chromeBackdrop,
@@ -2872,12 +2874,7 @@ fun CourseScheduleApp(
                                         isToday = todayIsToday,
                                         onBackToToday = { scrollToTodayTrigger++ },
                                         onJumpToDate = { todayJumpToDateTrigger++ },
-                                        onEnterCustomize = {
-                                            coroutineScope.launch {
-                                                delay(200.milliseconds)
-                                                enterCustomizePage()
-                                            }
-                                        },
+                                        onEnterCustomize = enterCustomizePage,
                                         scrollBehavior = todayScrollBehavior,
                                         visible = showTodayTitle,
                                         blurResampleKey = railBlurResampleEpoch.intValue,
@@ -2932,8 +2929,9 @@ fun CourseScheduleApp(
                                     todayMaterialAlpha = todayMaterialAlpha.value,
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     isShiftMode = isShiftMode,
-                                    // 平板（rail）右上角不显示「更多」；原生 Header 激活时由系统 UIMenu 接管
-                                    enabled = navBarStyle != "rail" && hostNavigation?.showsNativeHeader != true,
+                                    // 平板（rail）右上角不显示「更多」：跳转/管理/外观都在侧栏里。
+                                    // iOS 主界面右上角那颗已由原生 UIMenu 接管，Compose 侧恒不渲染
+                                    enabled = navBarStyle != "rail" && hostNavigation == null,
                                     // 预测性返回由 LiquidGlassDropdownMenu 内部驱动同一个 fraction Animatable，
                                     // 外面再 snapTo/animateTo 会和它互相 cancel，动画直接卡死。
                                     onJumpWeek = { viewModel.showJumpWeekDialog() },
@@ -2942,12 +2940,7 @@ fun CourseScheduleApp(
                                             AppRoute.CourseManage
                                         )
                                     },
-                                    onEnterCustomize = {
-                                        coroutineScope.launch {
-                                            delay(200.milliseconds)
-                                            enterCustomizePage()
-                                        }
-                                    },
+                                    onEnterCustomize = enterCustomizePage,
                                     onJumpToDate = { todayJumpToDateTrigger++ },
                                 )
                         }
@@ -2955,8 +2948,9 @@ fun CourseScheduleApp(
                         MiuixPopupHost()
                     }
                 ) { paddingValues ->
-                    // 详情动画期间用快照占位；占位须吃满触摸，避免事件穿到卡片
-                    val mainContentHidden = showDetail && mainContentSnapshot != null
+                    // 详情动画期间用快照占位；占位须吃满触摸，避免事件穿到卡片。
+                    // detailExiting 期间主内容恢复绘制（快照垫底），见 onBackStart。
+                    val mainContentHidden = showDetail && mainContentSnapshot != null && !detailExiting
                     // 不门控 combinations.isEmpty()：网格只依赖 viewModel，与壁纸加载解耦
                     // backdrop 挂在未 padding 的全屏层：录制原点固定在屏幕
                     Box(
@@ -5055,72 +5049,87 @@ fun CourseScheduleApp(
                 onSystemBarsChanged(false, false)
             }
         }
-        if (showDetail) {
-            val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
-            val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
-            val classStartTime by viewModel.classStartTime.collectAsState()
-            // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
-            // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
-            val detailSnapshotImage = remember(detailSnapshot) { detailSnapshot }
-            CourseDetailScreen(
-                courses = detailCourses,
-                cardLeft = detailCardLeft,
-                cardTop = detailCardTop,
-                cardWidth = detailCardWidth,
-                cardHeight = detailCardHeight,
-                screenWidth = windowInfo.containerSize.width.toFloat(),
-                screenHeight = windowInfo.containerSize.height.toFloat(),
-                screenCornerRadius = screenCornerRadius,
-                cardSnapshot = detailSnapshotImage,
-                sectionTimes = sectionTimes,
-                classStartTime = classStartTime,
-                teachingWeekReorganizations = teachingWeekRules,
-                targetWeek = detailTargetWeek,
-                onBackStart = {
-                    coroutineScope.launch {
-                        launch {
-                            backgroundScale.animateTo(
-                                1f,
-                                animationSpec = tween(350, easing = OobeCubicOutEasing)
-                            )
-                        }
-                        launch {
-                            managePageBlurRadius.animateTo(
-                                0f,
-                                animationSpec = tween(350, easing = OobeCubicOutEasing)
-                            )
-                        }
-                    }
-                },
-                onBack = {
-                    showDetail = false
-                    hiddenCourseIds = emptySet()
-                    // 延迟清快照，让内容先重组完；移出组合后再 recycle 独立副本
-                    coroutineScope.launch {
-                        delay(16.milliseconds)
-                        val oldMain = mainContentSnapshot
-                        val oldDetail = detailSnapshot
-                        mainContentSnapshot = null
-                        detailSnapshot = null
-                        recycleSnapshot(
-                            oldDetail,
-                            oldMain,
-                            WallpaperStore.currentImageBitmap(),
-                            wallpaperBitmap,
-                            savedWallpaperBitmap,
-                            originalWallpaperBitmap,
-                        )
-                        recycleSnapshot(
-                            oldMain,
-                            WallpaperStore.currentImageBitmap(),
-                            wallpaperBitmap,
-                            savedWallpaperBitmap,
-                            originalWallpaperBitmap,
-                        )
-                    }
-                }
-            )
         }
+        // 课程详情页必须盖在弹窗层之上（见 HostOverlayEntry.abovePopups）：它是在课程表弹出的
+        // 「课程详情」底部弹窗里点卡片长出来的，弹窗得留在它下面（对齐 Android 的层级）。
+        HostedOverlay(
+            active = showDetail || detailSnapshot != null,
+            abovePopups = true,
+        ) {
+            if (showDetail) {
+                val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
+                val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
+                val classStartTime by viewModel.classStartTime.collectAsState()
+                // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
+                // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
+                val detailSnapshotImage = remember(detailSnapshot) { detailSnapshot }
+                CourseDetailScreen(
+                    courses = detailCourses,
+                    cardLeft = detailCardLeft,
+                    cardTop = detailCardTop,
+                    cardWidth = detailCardWidth,
+                    cardHeight = detailCardHeight,
+                    screenWidth = windowInfo.containerSize.width.toFloat(),
+                    screenHeight = windowInfo.containerSize.height.toFloat(),
+                    screenCornerRadius = screenCornerRadius,
+                    cardSnapshot = detailSnapshotImage,
+                    sectionTimes = sectionTimes,
+                    classStartTime = classStartTime,
+                    teachingWeekReorganizations = teachingWeekRules,
+                    targetWeek = detailTargetWeek,
+                    onBackStart = {
+                        detailExiting = true
+                        coroutineScope.launch {
+                            launch {
+                                backgroundScale.animateTo(
+                                    1f,
+                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                )
+                            }
+                            launch {
+                                managePageBlurRadius.animateTo(
+                                    0f,
+                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                )
+                            }
+                            // 等主内容重绘出来再撤快照（快照仍在，不会闪黑）
+                            withFrameNanos { }
+                            withFrameNanos { }
+                            val oldMain = mainContentSnapshot
+                            mainContentSnapshot = null
+                            recycleSnapshot(
+                                oldMain,
+                                WallpaperStore.currentImageBitmap(),
+                                wallpaperBitmap,
+                                savedWallpaperBitmap,
+                                originalWallpaperBitmap,
+                            )
+                        }
+                    },
+                    onBack = {
+                        hiddenCourseIds = emptySet()
+                        // ⚠ 详情页延后一帧再消失：morph 结束时卡片已缩回原位，此刻 sheet 里
+                        // 的原卡片还没画出来，同帧摘掉详情页就闪一帧空白。
+                        coroutineScope.launch {
+                            withFrameNanos { }
+                            showDetail = false
+                            detailExiting = false
+                            // 快照已在 onBackStart 撤掉；等两帧（重组/布局/绘制走完）再清详情快照
+                            withFrameNanos { }
+                            withFrameNanos { }
+                            val oldDetail = detailSnapshot
+                            detailSnapshot = null
+                            recycleSnapshot(
+                                oldDetail,
+                                WallpaperStore.currentImageBitmap(),
+                                wallpaperBitmap,
+                                savedWallpaperBitmap,
+                                originalWallpaperBitmap,
+                            )
+                        }
+                    }
+                )
+            }
         }
         // Retain the card morph below native navigation chrome, not in the modal layer.
         androidx.compose.runtime.CompositionLocalProvider(
@@ -5647,8 +5656,8 @@ private fun TodayTopBar(
 ) {
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
-    val hostedMore = LocalHostNavigation.current != null
-    val nativeHeader = LocalHostNavigation.current?.showsNativeHeader == true
+    // 同 ScheduleTopBar：iOS 今日页右上角由原生 UIMenu 接管，Compose 侧不渲染
+    val hostOwnsTopRight = LocalHostNavigation.current != null
     // 平板：标题避让侧栏后左对齐用的附加修饰符
     val titleRailPadding = if (isTabletLiquidGlass) {
         com.haooz.chedule.ui.components.tabletNavRailStartPadding().padding(start = 12.dp)
@@ -5715,7 +5724,7 @@ private fun TodayTopBar(
                             modifier = Modifier
                                 .size(42.dp)
                                 .then(
-                                    if (hostedMore && !nativeHeader) Modifier
+                                    if (!hostOwnsTopRight) Modifier
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,

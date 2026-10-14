@@ -716,17 +716,7 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
 }
 
 /**
- * 把「底下一层纯色 + 上面一层纯色」的两次 SrcOver 叠加压成**一次** drawRect。
- *
- * 两次全卡 fill 是每卡每帧的固定成本，而两层都是已知 alpha 的纯色，叠加结果
- * 仍然是「单一半透明色盖在壁纸上」，可以逐像素等价地折叠：
- *
- * ```
- * W --bottom(a1)--> W(1-a1) + S1·a1 --top(a2)--> W(1-a1)(1-a2) + S1·a1(1-a2) + S2·a2
- *                                    ≡ W(1-A) + S·A
- * A = 1-(1-a1)(1-a2)      S = S1·w1 + S2·w2
- * w1 = a1(1-a2)/A         w2 = a2/A        （w1 + w2 ≡ 1，是凸组合，不会越界）
- * ```
+ * 把「底下一层纯色 + 上面一层纯色」的两次 SrcOver 叠加压成**一次** drawRect
  */
 internal fun flattenStackedFills(bottom: Color, top: Color): Color {
     val a1 = bottom.alpha

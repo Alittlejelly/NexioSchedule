@@ -270,6 +270,7 @@ class IosAppHost {
     val shiftMode: Boolean get() = navigation.shiftMode
     val showsNativeTabBar: Boolean get() = navigation.showsNativeTabBar
     val showsNativeHeader: Boolean get() = navigation.showsNativeHeader
+    val keepsNativeHeaderDuringCutout: Boolean get() = navigation.keepsNativeHeaderDuringCutout
     val isDark: Boolean get() = navigation.isDark
     val overlayActive: Boolean
         get() = router.hasOverlay || navigationOverlayActive || overlays.isActive || popupHost.isActive || scheduleLibraryOverlays.isActive
@@ -305,6 +306,8 @@ class IosAppHost {
                         nativePages.isEmpty() && !router.hasOverlay && !navigationOverlayActive
                     }
                     MiuixPopupHost()
+                    // 顺序即层级：课程详情页（overlay）必须盖在弹窗层之上
+                    HostOverlayContent(overlays, abovePopups = true)
                 }
                 val appDark = isAppDarkTheme()
                 val hasNativePages = nativePages.isNotEmpty()
@@ -336,6 +339,7 @@ class IosAppHost {
                             },
                             nativeTransitionInFlight,
                             showsNativeHeader,
+                            keepsNativeHeaderDuringCutout,
                             scheduleLibraryActive,
                             scheduleLibraryTransitionActive,
                             navigation.scheduleLibraryChrome.snapshot(),
@@ -410,6 +414,7 @@ private data class NativeHostSnapshot(
     val nativeChrome: List<NativeDocumentChromeSnapshot>,
     val nativeTransitionInFlight: Boolean,
     val showsNativeHeader: Boolean,
+    val keepsNativeHeaderDuringCutout: Boolean,
     val scheduleLibraryActive: Boolean,
     val scheduleLibraryTransitionActive: Boolean,
     val scheduleLibraryChrome: NativeDocumentChromeSnapshot,

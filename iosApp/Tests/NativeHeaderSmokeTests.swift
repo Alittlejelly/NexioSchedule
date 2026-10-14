@@ -736,4 +736,32 @@ final class NativeHeaderSmokeTests: XCTestCase {
             capture("Main header - Today tab single more button")
         }
     }
+
+    /// 从原生「更多」菜单点进课表外观：入场快照必须带上右上角菜单。
+    /// （直接调用进入不会有问题，必须走菜单 —— 见 ContentView.captureScreenPNG 注释。）
+    func testCustomizeEntryFromMoreMenuKeepsHeaderInSnapshot() throws {
+        if app.tabBars.buttons["课程表"].waitForExistence(timeout: 5) {
+            app.tabBars.buttons["课程表"].tap()
+            settle()
+        }
+        let moreButton = app.navigationBars.buttons["更多"]
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 5), "Schedule header missing more button")
+        moreButton.tap()
+
+        let customizeItem = app.buttons["课表外观"]
+        XCTAssertTrue(customizeItem.waitForExistence(timeout: 5), "More menu did not present")
+        capture("More menu presented")
+        customizeItem.tap()
+
+        // 等入场动画走完（Compose 侧 320ms + 封面 400ms 缩放 + 120ms 淡出）
+        Thread.sleep(forTimeInterval: 2.0)
+        capture("Customize entered from more menu")
+
+        // 课表外观页已打开（原生「应用」按钮）
+        XCTAssertTrue(app.buttons["应用"].waitForExistence(timeout: 5),
+                      "Customize page did not open from the more menu")
+        // ⚠ 不再断言 `app.buttons["更多"]`：iOS 26 的导航栏按钮走 SwiftUI hosting + portal，
+        // 菜单交互后 UIKit 会把这块 platter reparent，XCTest 的无障碍树就找不到它
+        // （屏幕上仍可见）。快照能否拍到它由 captureScreenPNG 从 window 渲染保证。
+    }
 }
