@@ -23,18 +23,20 @@ import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.DOWNSAMPLE_SCALE
 import com.kyant.backdrop.internal.InverseLayerScope
 import com.kyant.backdrop.isRenderEffectSupported
 import kotlin.math.roundToInt
 
 /**
+ * 烘焙层的分辨率比例。1f = 与源层同分辨率。
+ */
+const val BLUR_BAKE_SCALE = 1f
+
+/**
  * 共享预模糊 Backdrop。
  *
- * 包含一个预渲染的降采样+模糊 GraphicsLayer（sharedSampledLayer）。
- * DrawBackdropNode 检测到此属性后，跳过独立壁纸录制，从此层采样，
- * 实现多卡片共享同一底采样图。
- *
+ * 壁纸只模糊**一次**（预渲染时把模糊结果烘焙进 [blurredLayer]），
+ * 之后所有课程卡片都从这张图上裁剪采样 —— 运行时高斯模糊开销为 0。
  * @param source 原始壁纸 LayerBackdrop（用于降级和坐标获取）
  */
 @Stable
@@ -45,18 +47,21 @@ class SharedBlurBackdrop(
     override val isCoordinatesDependent: Boolean = true
 
     /**
-     * 共享降采样+预模糊层。
-     * 由预渲染 Modifier 在壁纸变化时填充。
-     * DrawBackdropNode 通过 Backdrop.sharedSampledLayer 读取。
+     * 烘焙好的模糊壁纸层。模糊已固化，drawLayer 时不再有模糊运算。
+     * 由预渲染 Modifier 在壁纸/模糊半径变化时重录。
      */
-    override var sharedSampledLayer: GraphicsLayer? by mutableStateOf(null)
+    override var blurredLayer: GraphicsLayer? by mutableStateOf(null)
         internal set
 
     /**
-     * 共享层实际使用的降采样比例。
-     * DrawBackdropNode 检查是否匹配，不匹配时跳过共享模式。
+     * 烘焙层相对源层的缩放比例（< 1 表示降采样烘焙）。
+     *
+     * 采样侧会按 1/n 放大回全屏坐标，所以它对按压缩放的反向补偿**没有影响**
+     * （那条链路用的是节点尺寸，跟这张层的分辨率无关）。
+     * 降采样的收益是实打实的：几十张卡随机采样同一张层，纹理面积小 → 采样带宽和
+     * cache 局部性一起改善；而内容本来就是模糊的，放大回来看不出差别。
      */
-    var sharedDownsampleScale: Float = DOWNSAMPLE_SCALE
+    var blurredScale: Float = BLUR_BAKE_SCALE
         internal set
 
     // 原 fork 里的 `var sampledBitmap: android.graphics.Bitmap?` 已删除：
@@ -79,36 +84,36 @@ class SharedBlurBackdrop(
 
     fun release() {
         // GraphicsLayer cleanup is handled by SharedBlurRecorderNode.onDetach()
-        sharedSampledLayer = null
+        blurredLayer = null
     }
 
     /**
      * 创建预渲染 Modifier。在指定 Composable 的 draw 阶段
-     * 将壁纸源录制到 sharedSampledLayer（降采样+预模糊）。
+     * 把壁纸源模糊一次并**烘焙**进 blurredLayer。
      *
      * 该 Modifier 应附加到壁纸 Box 之后的不可见 Box 上，
      * 确保 source.graphicsLayer 已被录制。
      *
      * @param blurRadiusPx 模糊半径（px）
-     * @param downsampleScale 降采样比例，默认使用全局 DOWNSAMPLE_SCALE
+     * @param downsampleScale 烘焙分辨率比例，默认 1f（全分辨率）
      */
     /**
      * @param sourceKey 源内容指纹（壁纸 bitmap / 缩放 / 偏移 / 亮度 / 主题色等）。
-     *   它没变时说明源层内容和上一帧逐像素相同，可以整段跳过重新录制——
-     *   滑动课表、开关弹窗这类场景下壁纸是静止的，重录纯属白烧。
+     *   它没变时说明源层内容和上一帧逐像素相同，可以整段跳过重新烘焙——
+     *   滑动课表、开关弹窗这类场景下壁纸是静止的，重烘焙纯属白烧。
      *   注意：指纹必须覆盖所有会改变源层内容的因素，否则会用到过期采样。
      */
     fun preRenderModifier(
         blurRadiusPx: Float,
-        downsampleScale: Float = DOWNSAMPLE_SCALE,
+        downsampleScale: Float = BLUR_BAKE_SCALE,
         sourceKey: Any? = null
     ): Modifier {
         return SharedBlurRecorderElement(this, blurRadiusPx, downsampleScale, sourceKey)
     }
 
     /**
-     * 共享模式下此方法不被 DrawBackdropNode 调用（走共享层分支）。
-     * 保留作为 Backdrop 接口实现和降级路径。
+     * 采样入口：画**已烘焙的模糊层**（模糊开销为 0）；
+     * 还没烘焙好时退回原始源层，保证不会出现空白。
      */
     override fun DrawScope.drawBackdrop(
         density: Density,
@@ -117,6 +122,11 @@ class SharedBlurBackdrop(
     ) {
         val coordinates = coordinates ?: return
         val layerCoordinates = source.layerCoordinates ?: return
+
+        val baked = blurredLayer
+        // 烘焙过了才按它的分辨率放大；降级到原始源层时源层是全分辨率，不用缩放
+        val n = if (baked != null) blurredScale else 1f
+
         withTransform({
             if (layerBlock != null) {
                 with(obtainInverseLayerScope()) { inverseTransform(density, layerBlock) }
@@ -127,8 +137,15 @@ class SharedBlurBackdrop(
                 coordinates.positionInWindow() - layerCoordinates.positionInWindow()
             }
             translate(-offset.x, -offset.y)
+            // 层像素 q 对应全屏 q/n，放大回全屏坐标，再交给上面的反向补偿。
+            // 必须是这一串的最后一步（最先作用于层像素）：
+            //   q --scale(1/n)--> q/n --translate(-offset)--> q/n - offset --inverse-->
+            // 与 inverseTransform 期望的「全屏坐标 - offset」正好对上。
+            if (n != 1f) {
+                scale(1f / n, 1f / n)
+            }
         }) {
-            drawLayer(source.graphicsLayer)
+            drawLayer(baked ?: source.graphicsLayer)
         }
     }
 
@@ -143,7 +160,7 @@ class SharedBlurBackdrop(
 private class SharedBlurRecorderElement(
     private val sharedBackdrop: SharedBlurBackdrop,
     private val blurRadiusPx: Float,
-    private val downsampleScale: Float = DOWNSAMPLE_SCALE,
+    private val downsampleScale: Float = BLUR_BAKE_SCALE,
     private val sourceKey: Any? = null
 ) : ModifierNodeElement<SharedBlurRecorderNode>() {
 
@@ -194,11 +211,18 @@ private class SharedBlurRecorderElement(
 private class SharedBlurRecorderNode(
     var sharedBackdrop: SharedBlurBackdrop,
     var blurRadiusPx: Float,
-    var downsampleScale: Float = DOWNSAMPLE_SCALE,
+    var downsampleScale: Float = BLUR_BAKE_SCALE,
     var sourceKey: Any? = null
 ) : DrawModifierNode, Modifier.Node() {
 
+    /**
+     * 中间层：源内容 + BlurEffect。只用于烘焙，不直接给采样侧用
+     * （RenderEffect 是 drawLayer 时才应用的，直接采样会每张卡重跑一次全屏模糊）。
+     */
     private var blurLayer: GraphicsLayer? = null
+
+    /** 持久层：烘焙结果，模糊已固化，无 RenderEffect。 */
+    private var bakedLayer: GraphicsLayer? = null
 
     private var needsRecord = true
     private var recordedW = 0
@@ -212,36 +236,16 @@ private class SharedBlurRecorderNode(
 
         if (!isRenderEffectSupported()) return
 
-        val layer = blurLayer ?: return
+        val blur = blurLayer ?: return
+        val baked = bakedLayer ?: return
 
         val targetW = (size.width * downsampleScale).roundToInt().coerceAtLeast(1)
         val targetH = (size.height * downsampleScale).roundToInt().coerceAtLeast(1)
 
-        // 源内容、模糊半径、目标尺寸都没变 → 复用上一帧的录制结果，跳过整段降采样+模糊
-        if (needsRecord || recordedW != targetW || recordedH != targetH) {
-            val sourceLayer = sharedBackdrop.source.graphicsLayer
-            // 将壁纸源录制到降采样层
-            layer.record(IntSize(targetW, targetH)) {
-                drawContext.canvas.save()
-                drawContext.canvas.scale(downsampleScale, downsampleScale)
-                drawLayer(sourceLayer)
-                drawContext.canvas.restore()
-            }
-            needsRecord = false
-            recordedW = targetW
-            recordedH = targetH
-
-            // 注入到共享 Backdrop
-            sharedBackdrop.sharedSampledLayer = layer
-            sharedBackdrop.sharedDownsampleScale = downsampleScale
-            sharedBackdrop.contentVersion++
-        }
-
-        // 模糊挂在共享层 RenderEffect 上：drawLayer 时生效，保证课卡毛玻璃正确。
-        // 只在半径真正变化时赋值，避免每帧 new BlurEffect 让图层反复失效。
+        // 只在半径真正变化时赋值，避免每帧 new BlurEffect 让图层反复失效
         if (recordedBlurRadius != blurRadiusPx) {
             recordedBlurRadius = blurRadiusPx
-            layer.renderEffect = if (blurRadiusPx > 0f) {
+            blur.renderEffect = if (blurRadiusPx > 0f) {
                 val scaledBlur = blurRadiusPx * downsampleScale
                 BlurEffect(
                     null,
@@ -250,6 +254,33 @@ private class SharedBlurRecorderNode(
                     TileMode.Clamp
                 )
             } else null
+            needsRecord = true
+        }
+
+        // 源内容、模糊半径、目标尺寸都没变 → 复用上一帧的烘焙结果，跳过整段模糊
+        if (needsRecord || recordedW != targetW || recordedH != targetH) {
+            val sourceLayer = sharedBackdrop.source.graphicsLayer
+
+            // 1) 源 -> 中间层
+            blur.record(IntSize(targetW, targetH)) {
+                drawContext.canvas.save()
+                drawContext.canvas.scale(downsampleScale, downsampleScale)
+                drawLayer(sourceLayer)
+                drawContext.canvas.restore()
+            }
+
+            // 2) 烘焙：把带 BlurEffect 的中间层画进持久层，模糊就此固化
+            baked.record(IntSize(targetW, targetH)) {
+                drawLayer(blur)
+            }
+            baked.renderEffect = null
+
+            needsRecord = false
+            recordedW = targetW
+            recordedH = targetH
+
+            sharedBackdrop.blurredLayer = baked
+            sharedBackdrop.blurredScale = downsampleScale
             sharedBackdrop.contentVersion++
         }
     }
@@ -257,6 +288,7 @@ private class SharedBlurRecorderNode(
     override fun onAttach() {
         val graphicsContext = requireGraphicsContext()
         blurLayer = graphicsContext.createGraphicsLayer()
+        bakedLayer = graphicsContext.createGraphicsLayer()
         needsRecord = true
         recordedBlurRadius = Float.NaN
     }
@@ -267,7 +299,11 @@ private class SharedBlurRecorderNode(
             graphicsContext.releaseGraphicsLayer(layer)
             blurLayer = null
         }
-        sharedBackdrop.sharedSampledLayer = null
+        bakedLayer?.let { layer ->
+            graphicsContext.releaseGraphicsLayer(layer)
+            bakedLayer = null
+        }
+        sharedBackdrop.blurredLayer = null
         needsRecord = true
         recordedBlurRadius = Float.NaN
     }

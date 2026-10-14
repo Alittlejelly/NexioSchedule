@@ -11,11 +11,12 @@ interface Backdrop {
     val isCoordinatesDependent: Boolean
 
     /**
-     * 共享降采样+预模糊层。
-     * 保留仅为兼容：采样链路已回退到源库实现（每帧独立录制），
-     * DrawBackdropNode 不再读取它。
+     * **已烘焙**的模糊源层：模糊结果在预渲染时就固化进这张层，
+     * 采样侧 drawLayer 时不再有任何模糊运算。
+     *
+     * 非 null 时实现应当在 [drawBackdrop] 里画它，而不是原始源层。
      */
-    val sharedSampledLayer: GraphicsLayer? get() = null
+    val blurredLayer: GraphicsLayer? get() = null
 
     /**
      * 源内容版本号。

@@ -581,6 +581,7 @@ private fun PendingSectionBox(
                 val density = LocalDensity.current
                 val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
                 val surfaceColor = remember(isDark) { if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f) }
+                // SharedBlurBackdrop 的 drawBackdrop 画已烘焙的模糊层，不用再 blur
                 val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
                 val pendingEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(isSharedBlur, blurPx) {
                     {
@@ -821,6 +822,7 @@ fun SpecialBandOverlay(
                 if (isDark) Color.Black.copy(alpha = cardSurfaceAlpha.coerceIn(0f, 1f))
                 else Color.White.copy(alpha = cardSurfaceAlpha.coerceIn(0f, 1f))
             }
+            // SharedBlurBackdrop 的 drawBackdrop 画已烘焙的模糊层，不用再 blur
             val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
             val bandEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
                 remember(isSharedBlur, blurPx, lensRadiusPx, lensStrengthPx, cardRefraction) {

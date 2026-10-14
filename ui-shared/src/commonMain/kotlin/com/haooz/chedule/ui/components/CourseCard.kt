@@ -246,6 +246,8 @@ fun CourseCard(
                 if (isDark) Color.Black.copy(alpha = cardSurfaceAlpha.coerceIn(0f, 1f))
                 else Color.White.copy(alpha = cardSurfaceAlpha.coerceIn(0f, 1f))
             }
+            // backdrop 是 SharedBlurBackdrop 时，它的 drawBackdrop 画的是**已烘焙好的
+            // 模糊壁纸层**，卡片不用再 blur —— 那正是「模糊 0 开销」的那一半。
             val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
             val backdropEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
                 remember(isSharedBlur, blurPx, lensRadiusPx, lensStrengthPx, cardRefraction) {

@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -261,11 +263,11 @@ private class DrawBackdropNode(
 
     private var graphicsLayer: GraphicsLayer? = null
 
-    private val layoutLayerBlock: GraphicsLayerScope.() -> Unit = {
-        clip = true
-        shape = shapeProvider.shape
-        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-    }
+    // 外形裁剪路径缓存：尺寸/圆角未变时不重建 Path
+    private var clipPathCache: androidx.compose.ui.graphics.Path? = null
+    private var clipPathRadius = Float.NaN
+    private var clipPathW = Float.NaN
+    private var clipPathH = Float.NaN
 
     private var layoutCoordinates: LayoutCoordinates? by mutableStateOf(null, neverEqualPolicy())
 
@@ -292,10 +294,30 @@ private class DrawBackdropNode(
         }
     }
 
-    private val drawBackdropLayer: DrawScope.() -> Unit = {
+    private val drawBackdropLayer: DrawScope.() -> Unit = drawBackdropLayer@{
         val layer = graphicsLayer
         if (layer != null) {
             val padding = padding
+
+            // 直采：既没有 RenderEffect（无模糊/折射运算）也没有 padding（不需要外扩），
+            // 录进离屏缓冲再画出来就是纯粹白搬一次 —— 直接在当前 canvas 上采样
+            if (padding == 0f && layer.renderEffect == null) {
+                val canvas = drawContext.canvas
+                canvas.save()
+                // 先按卡片边界裁剪，避免把整张源/烘焙层扫一遍
+                canvas.clipRect(0f, 0f, size.width, size.height)
+                onDrawBackdrop {
+                    with(backdrop) {
+                        drawBackdrop(
+                            density = effectScope,
+                            coordinates = layoutCoordinates,
+                            layerBlock = layerBlock
+                        )
+                    }
+                }
+                canvas.restore()
+                return@drawBackdropLayer
+            }
 
             recordLayer(
                 this@DrawBackdropNode,
@@ -319,8 +341,9 @@ private class DrawBackdropNode(
         constraints: Constraints
     ): MeasureResult {
         val placeable = measurable.measure(constraints)
+        // 改成在 draw 阶段按外形 clipPath：无额外合成层，也不强制离屏。
         return layout(placeable.width, placeable.height) {
-            placeable.placeWithLayer(IntOffset.Zero, layerBlock = layoutLayerBlock)
+            placeable.place(IntOffset.Zero)
         }
     }
 
@@ -329,6 +352,35 @@ private class DrawBackdropNode(
             updateEffects()
         }
 
+        val contentScope = this
+        val outline = shapeProvider.shape.createOutline(size, layoutDirection, this)
+        when (outline) {
+            is androidx.compose.ui.graphics.Outline.Rectangle ->
+                clipRect(outline.rect.left, outline.rect.top, outline.rect.right, outline.rect.bottom) {
+                    contentScope.drawCardContents()
+                }
+            is androidx.compose.ui.graphics.Outline.Rounded -> {
+                val rr = outline.roundRect
+                // Path 重建不便宜：宽高/圆角未变时复用
+                val w = size.width
+                val h = size.height
+                val radius = rr.topLeftCornerRadius.x
+                var path = clipPathCache
+                if (path == null || clipPathW != w || clipPathH != h || clipPathRadius != radius) {
+                    path = androidx.compose.ui.graphics.Path().apply { addRoundRect(rr) }
+                    clipPathCache = path
+                    clipPathW = w
+                    clipPathH = h
+                    clipPathRadius = radius
+                }
+                clipPath(path) { contentScope.drawCardContents() }
+            }
+            is androidx.compose.ui.graphics.Outline.Generic ->
+                clipPath(outline.path) { contentScope.drawCardContents() }
+        }
+    }
+
+    private fun ContentDrawScope.drawCardContents() {
         onDrawBehind?.invoke(this)
         drawBackdropLayer()
         onDrawSurface?.invoke(this)
@@ -395,5 +447,6 @@ private class DrawBackdropNode(
         effectScope.reset()
         layoutCoordinates = null
         exportedBackdrop?.layerCoordinates = null
+        clipPathCache = null
     }
 }
