@@ -12,16 +12,21 @@ import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.IosBackupFileController
+import com.haooz.chedule.data.IosCourseLiveActivity
+import com.haooz.chedule.data.IosCourseNotifier
 import com.haooz.chedule.data.IosScheduleFileController
 import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.IosWallpaperPicker
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.NsFileAppFile
 import com.haooz.chedule.data.PrivacyConsent
+import com.haooz.chedule.data.ScheduleChangeSink
+import com.haooz.chedule.data.ScheduleEffects
 import com.haooz.chedule.data.StatsReporter
 import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
+import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.ui.activities.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
@@ -32,6 +37,7 @@ import com.haooz.chedule.ui.utils.IosSharedFileReceiver
 import com.haooz.chedule.ui.utils.IosShareImport
 import com.haooz.chedule.ui.utils.rememberIosShareAction
 import com.haooz.chedule.ui.utils.IosSystemBars
+import com.haooz.chedule.ui.utils.IosReminderController
 import com.haooz.chedule.ui.utils.IosToast
 import com.haooz.chedule.ui.navigation.AboutRoute
 import com.haooz.chedule.ui.navigation.AiImportRoute
@@ -39,6 +45,7 @@ import com.haooz.chedule.ui.navigation.AppreciateAuthorRoute
 import com.haooz.chedule.ui.navigation.AppNavHost
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.AppRouter
+import com.haooz.chedule.viewmodel.settingsViewModel
 import com.haooz.chedule.ui.navigation.BackupAndMigrationRoute
 import com.haooz.chedule.ui.navigation.ChangelogRoute
 import com.haooz.chedule.ui.navigation.CommunicationRoute
@@ -72,9 +79,7 @@ import platform.UIKit.UIPasteboard
  * - [AppStorage]：第一次 `AppStorage.store(...)` 抛
  * - [AppFiles]：第一次 `AppFiles.root` 抛（表现为「学校索引读不出来」）
  *
- * 这里**只做三件套**。Toast 不用注入 —— `showToast` 在 `:core` 的 `nativeMain`
- * 已有 actual（落到日志）；`ScheduleEffects` 也不注入（未注入时静默丢弃，
- * iOS 还没有提醒 / 小组件实现）。
+ * Also injects the toast host, the wallpaper backend and the schedule-change sink.
  */
 fun bootstrapNexioIos() {
     val version = NSBundle.mainBundle
@@ -103,6 +108,33 @@ fun bootstrapNexioIos() {
     // 原生提示条：把 `showToast` 接到 UIKit HUD。导入/导出/分享/选壁纸全靠它给反馈，
     // 不注入的话 native actual 只打日志 → 用户看到的是「点了没反应」。
     IosToast.install()
+
+    // Course reminders. Without this sink the effects are dropped silently, which
+    // shows up as "added a class but the reminder never updated".
+    // Must precede anything that mutates the schedule: first-run import and
+    // schedule switching both trigger a reschedule.
+    ScheduleEffects.init(IosScheduleChangeSink)
+}
+
+/**
+ * iOS [ScheduleChangeSink].
+ *
+ * Only [rescheduleReminders] has a counterpart: [syncWearable] has no iOS build of
+ * the Xiaomi wearable SDK, and [refreshWidgets] has no WidgetKit extension yet
+ * (docs/KMP_IOS_MIGRATION_PLAN.md §7). Both stay empty rather than throwing, since
+ * the callers are shared-layer view models that should not crash on a missing
+ * platform capability.
+ */
+private object IosScheduleChangeSink : ScheduleChangeSink {
+    override fun rescheduleReminders() = IosCourseNotifier.reschedule()
+
+    override fun syncWearable(reason: String) {
+        NexioLog.d("IosScheduleChangeSink", "syncWearable($reason) ignored: no wearable on iOS")
+    }
+
+    override fun refreshWidgets() {
+        // No WidgetKit extension yet.
+    }
 }
 
 /**
@@ -119,6 +151,14 @@ private val wallpaperPicker = IosWallpaperPicker()
 
 /** 本地备份的文件读写（Documents/Neixo_Schedule 扫描 + UIDocumentPicker 选文件） */
 private val backupFileController = IosBackupFileController()
+
+/**
+ * Course reminder controller: local notice scheduling plus the Live Activity island.
+ *
+ * Process-wide singleton, same lifetime as the other four controllers. It only holds
+ * references to stateless objects, so nothing needs releasing when a page goes away.
+ */
+private val reminderController = IosReminderController()
 
 /** The retained main content; UIKit applies the shared main-layer transition. */
 @Composable
@@ -276,9 +316,30 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.HolidaySettings -> HolidaySettingsRoute(router)
         // 小部件引导：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
         AppRoute.WidgetIntro -> WidgetIntroRoute(router)
-        // 课程提醒：iOS 没有闹钟/超级岛，提醒控制器用 Noop、
-        // 测试通知不注入 → 底部按钮不渲染（宁可不给，也不给点了没反应的）
-        AppRoute.CourseReminder -> CourseReminderRoute(router)
+        // Course reminders: local notifications for pre-class and tomorrow's summary.
+        // Gaps vs Android (docs/KMP_IOS_MIGRATION_PLAN.md §7):
+        //  - no setAlarmClock counterpart, so pre-class notices may fire late;
+        //  - the in-class island can only start from a tap or while foregrounded,
+        //    so the island switch here means "start the activity when I tap a notice";
+        //  - DND / exact alarm / battery / Shizuku have no system API and their
+        //    entries stay hidden.
+        AppRoute.CourseReminder -> {
+            val islandNotification by settingsViewModel().islandNotification.collectAsState()
+            CourseReminderRoute(
+                router = router,
+                reminderController = reminderController,
+                testActionLabel = if (islandNotification) "测试灵动岛" else "测试通知",
+                onSendTestNotification = {
+                    if (islandNotification) {
+                        IosCourseLiveActivity.startTest()
+                        showToast("已启动灵动岛测试")
+                    } else {
+                        IosCourseNotifier.sendTestNotification()
+                        showToast("已发送测试通知")
+                    }
+                },
+            )
+        }
         // WebDAV：备份/恢复本体已在 :core，只差提醒重排副作用
         AppRoute.WebDavSettings -> WebDavSettingsRoute(router)
         // 课表导入/导出/备份：接 iOS 原生文件选择器（UIDocumentPicker）+ 三条口令导入。

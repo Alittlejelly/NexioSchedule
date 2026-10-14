@@ -43,6 +43,22 @@ interface ReminderController {
     /** 设备是否支持超级岛（非 HyperOS 返回 false） */
     fun isIslandSupported(): Boolean
 
+    /**
+     * Whether this platform has a Live Activity container (iOS Dynamic Island /
+     * lock screen).
+     *
+     * Kept separate from [isIslandSupported] on purpose: that one probes for HyperOS
+     * super island, which enables Xiaomi-specific controls (Shizuku, left/right
+     * slot, AOD). This method only reports whether a live container exists at all.
+     * iOS 26+ is always true, but skips the Xiaomi-specific sub-options.
+     *
+     * The shared screen computes:
+     * `showIslandCard = isIslandSupported() || supportsLiveActivity()`.
+     *
+     * Defaults to false so desktops never need to implement it.
+     */
+    fun supportsLiveActivity(): Boolean = false
+
     /** Shizuku 服务是否在运行 */
     fun isShizukuRunning(): Boolean
 

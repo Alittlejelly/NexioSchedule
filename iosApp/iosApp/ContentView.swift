@@ -13,6 +13,8 @@ struct ContentView: View {
 
 /// Retains the original Compose app beneath native document navigation.
 private struct ComposeRootRepresentable: UIViewControllerRepresentable {
+    @Environment(\.colorScheme) private var systemColorScheme
+
     func makeUIViewController(context: Context) -> UIViewController {
         // 状态栏样式：**交给系统自适应**，App 侧不接管。
         //
@@ -30,11 +32,16 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
         IosToast.shared.nativeShow = { message, longDuration in
             NativeToast.show(message, longDuration: longDuration.boolValue)
         }
-        return NativeSessionController(host: IosAppHost())
+        let host = IosAppHost()
+        // Read the enclosing SwiftUI environment, not a child with an app/page style override.
+        // Seed the host before any Compose controller creates its first composition.
+        host.updateSystemDarkTheme(isDark: systemColorScheme == .dark)
+        return NativeSessionController(host: host)
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-        // Kotlin publishes state changes through the host callback.
+        (uiViewController as? NativeSessionController)?
+            .updateSystemDarkTheme(isDark: systemColorScheme == .dark)
     }
 }
 
@@ -71,6 +78,10 @@ private final class NativeSessionController: UIViewController {
             }
         }
         applyState()
+    }
+
+    func updateSystemDarkTheme(isDark: Bool) {
+        host.updateSystemDarkTheme(isDark: isDark)
     }
 
     private func applyState() {

@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -27,8 +28,12 @@ import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
 const val APP_PREFS_NAME = "app_preferences"
 const val KEY_HAPTIC_FEEDBACK = "haptic_feedback_enabled"
 
+/** Unmodified system appearance; null lets hosts without a bridge use Compose's fallback. */
+val LocalSystemDarkTheme = staticCompositionLocalOf<Boolean?> { null }
+
 @Composable
 fun CourseScheduleTheme(
+    systemDarkTheme: Boolean? = null,
     content: @Composable () -> Unit
 ) {
     val prefs = remember { AppStorage.store("app_theme_prefs") }
@@ -67,21 +72,21 @@ fun CourseScheduleTheme(
         }
     }
 
-    // 稳定 ThemeController：只改 colorSchemeMode，避免 remember(themeMode) 换实例导致组合树重建
-    val controller = remember {
-        ThemeController(
-            when (themeMode.value) {
-                "light" -> ColorSchemeMode.Light
-                "dark" -> ColorSchemeMode.Dark
-                else -> ColorSchemeMode.System
-            }
-        )
+    // iOS supplies the system appearance from outside the overridden UIKit subtree.
+    // Both Miuix colors and app-theme readers must use this same source to avoid feedback.
+    val appDark = when (themeMode.value) {
+        "light" -> false
+        "dark" -> true
+        else -> systemDarkTheme
     }
-    controller.colorSchemeMode = when (themeMode.value) {
-        "light" -> ColorSchemeMode.Light
-        "dark" -> ColorSchemeMode.Dark
-        else -> ColorSchemeMode.System
+    val colorSchemeMode = when (appDark) {
+        false -> ColorSchemeMode.Light
+        true -> ColorSchemeMode.Dark
+        null -> ColorSchemeMode.System
     }
+    // Keep the controller stable while preferences or the system appearance change.
+    val controller = remember { ThemeController(colorSchemeMode) }
+    controller.colorSchemeMode = colorSchemeMode
     // 捕获当前（系统默认）触感实现，封装为受开关控制的门控实现
     val defaultHaptic = LocalHapticFeedback.current
     val gatedHaptic = remember(defaultHaptic) {
@@ -98,14 +103,10 @@ fun CourseScheduleTheme(
         content = {
             CompositionLocalProvider(
                 LocalHapticFeedback provides gatedHaptic,
-                // :miuix 读不到 :core 偏好，Skia 侧靠这个 Local 拿「应用内深浅色」；
-                // 不 provide 时 iOS/桌面会退回跟随系统。
-                // ⚠ `system` 必须传 null（退回 isSystemInDarkTheme()），不能当成「非 dark 即 light」。
-                LocalAppSettingDark provides when (themeMode.value) {
-                    "dark" -> true
-                    "light" -> false
-                    else -> null
-                },
+                LocalSystemDarkTheme provides systemDarkTheme,
+                // A null system source retains the platform fallback on other hosts.
+                // iOS resolves automatic mode using the externally supplied system appearance.
+                LocalAppSettingDark provides appDark,
                 // :miuix 需要的 App 能力注入点（避免 :miuix → :app 反向依赖）；
                 // 效果与迁移前一致，调用点无需逐个改。
                 LocalChromeLensEnabled provides AppMaterialSettings.chromeLensEnabled(),

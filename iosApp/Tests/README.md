@@ -27,6 +27,28 @@ They also explicitly skip when invoked directly without the opt-in XCTest runner
 
 Production currently enables 17 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, ScheduleBackup, About, and CourseTimeSettings. CourseManage, ScheduleImport, and EducationalImport retain Compose navigation. CourseTimeSettings retains its route-local Compose card morph with native cancel/save controls. The bar stays visible: entry immediately selects editor controls, and exit immediately restores parent back. A parent-back tap during closing is accepted and deferred until save and disposal finish. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
 
+## System appearance regression
+
+The theme check is opt-in. Use a simulator fixture with automatic theme mode enabled,
+no wallpaper, and no schedule-specific theme override. Run it once for each system appearance:
+
+```sh
+xcrun simctl ui booted appearance dark
+TEST_RUNNER_SYSTEM_THEME_EXPECTED=dark \
+  NATIVE_HEADER_TEST_FILTER=testAutomaticThemeColdLaunchAndManualOverride \
+  bash iosApp/Tests/run-native-header-smoke.sh
+# Repeat with appearance light and TEST_RUNNER_SYSTEM_THEME_EXPECTED=light.
+```
+
+The test checks cold launch before navigation, the retained settings tab, native preferences,
+manual themes opposite to and matching the system, restoring automatic mode without popping,
+and return to the retained root. It restores automatic mode after manual checks. The screenshot
+assertion samples an empty page gutter; retained screenshots also permit native chrome inspection.
+It does not automatically change system appearance mid-test. To check that path, keep the app
+running and switch `xcrun simctl ui booted appearance light/dark` without navigating. Also switch
+appearance while the app is backgrounded and activate it again. Wallpaper overrides and physical
+hardware are separate checks.
+
 ## Native time-editor controls: final verification
 
 - `/tmp/nexio-editor-native-uikit-ui/Smoke.xcresult`: two selected methods passed, zero failures. Verifies native cancel/save, section dialog cancellation, left-slot frame within 1 pt before/after entry and scrolling, keyboard cancellation, parent geometry within 3 pt, unchanged-draft native save, and rapid cancel/parent-back with no explicit test sleeps between those taps. XCTest may still wait for UIKit idle; exact first-frame timing and a continuously sampled button-morph trajectory are not claimed.

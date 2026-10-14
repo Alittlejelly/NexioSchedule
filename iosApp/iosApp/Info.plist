@@ -50,6 +50,15 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+	  实时活动（Live Activity）总开关。缺这项 Activity.request 直接抛
+	  ActivityAuthorizationError.denied，且**不弹任何提示** —— 表现为
+	  「点了通知但灵动岛不出来」。
+	  ⚠ Widget Extension（iosApp/CourseWidget）的 entitlements 里也要有
+	  com.apple.developer.activity-kit，两端缺一不可。
+	-->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

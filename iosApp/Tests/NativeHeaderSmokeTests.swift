@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// Runs against an already-installed simulator app; the runner does not link production sources.
 final class NativeHeaderSmokeTests: XCTestCase {
@@ -270,6 +271,68 @@ final class NativeHeaderSmokeTests: XCTestCase {
         capture("Privacy - native back from original About entry")
         nativeBack()
         requireNativeHeader("关于应用")
+    }
+
+    /// Opt in with TEST_RUNNER_SYSTEM_THEME_EXPECTED=dark/light and set simctl appearance first.
+    /// The simulator fixture must use automatic mode and no wallpaper/theme override.
+    func testAutomaticThemeColdLaunchAndManualOverride() throws {
+        let expected = ProcessInfo.processInfo.environment["SYSTEM_THEME_EXPECTED"]
+        try XCTSkipUnless(expected == "dark" || expected == "light",
+                          "Set the system appearance and opt into the theme regression fixture")
+        let systemDark = expected == "dark"
+
+        func requireAppearance(_ dark: Bool, _ phase: String) throws {
+            settle()
+            let image = try XCTUnwrap(app.screenshot().image.cgImage)
+            // The empty right gutter stays outside text, cards and native glass chrome.
+            let pixel = try XCTUnwrap(image.cropping(to: CGRect(
+                x: CGFloat(image.width) * 0.98, y: CGFloat(image.height) * 0.5,
+                width: 1, height: 1)))
+            var rgba = [UInt8](repeating: 0, count: 4)
+            try rgba.withUnsafeMutableBytes { bytes in
+                let context = try XCTUnwrap(CGContext(
+                    data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            }
+            let brightness = Double(Int(rgba[0]) + Int(rgba[1]) + Int(rgba[2])) / (3 * 255)
+            capture("Theme - \(phase)")
+            XCTAssertTrue(dark ? brightness < 0.25 : brightness > 0.65,
+                          "\(phase): expected \(dark ? "dark" : "light"), brightness=\(brightness)")
+        }
+
+        try requireAppearance(systemDark, "cold launch before opening any page")
+        showSettings()
+        try requireAppearance(systemDark, "retained settings tab")
+        open("应用偏好设置")
+        requireNativeHeader("应用偏好设置")
+        try requireAppearance(systemDark, "native preferences in automatic mode")
+        let automatic = app.switches.matching(NSPredicate(
+            format: "label CONTAINS %@", "自动切换深色模式")).firstMatch
+        XCTAssertTrue(automatic.exists, app.debugDescription)
+        // Compose exposes the labeled preference row and its selected toggle as siblings.
+        let toggle = try XCTUnwrap(app.switches.allElementsBoundByIndex.first {
+            $0.frame.width < 100 && $0.frame.intersects(automatic.frame) && $0.isHittable
+        }, app.debugDescription)
+        XCTAssertTrue(toggle.isSelected, "Fixture must start in automatic mode")
+        defer {
+            if automatic.exists && !toggle.isSelected { automatic.tap() }
+        }
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@",
+                                         systemDark ? "浅色模式" : "深色模式")).firstMatch.tap()
+        try requireAppearance(!systemDark, "manual override opposite to system")
+        XCTAssertFalse(toggle.isSelected)
+        // Selecting the system-matching box must remain manual until automatic is enabled.
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@",
+                                         systemDark ? "深色模式" : "浅色模式")).firstMatch.tap()
+        try requireAppearance(systemDark, "manual override matching system")
+        XCTAssertFalse(toggle.isSelected)
+        automatic.tap()
+        try requireAppearance(systemDark, "automatic restored without leaving page")
+        XCTAssertTrue(toggle.isSelected)
+        nativeBack()
+        try requireAppearance(systemDark, "retained root after pop")
     }
 
     func testPreferenceHeaderPreservesOriginalControlsAndLegacyReturn() throws {

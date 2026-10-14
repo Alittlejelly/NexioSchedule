@@ -42,6 +42,7 @@ import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.screens.ClassEndEffectSettings
+import com.haooz.chedule.ui.theme.LocalSystemDarkTheme
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.theme_preview_light
 import com.haooz.chedule.uishared.resources.theme_preview_night
@@ -105,7 +106,7 @@ fun PreferenceSettingsScreen(
     val themePrefs = remember { AppStorage.store("app_theme_prefs") }
     var themeMode by remember { mutableStateOf(themePrefs.getString("theme_mode", "system")) }
     // 自动（跟随系统）模式下，用系统当前主题决定高亮哪个色框
-    val systemDark = isSystemInDarkTheme()
+    val systemDark = LocalSystemDarkTheme.current ?: isSystemInDarkTheme()
     val effectiveDark = when (themeMode) {
         "dark" -> true
         "light" -> false
