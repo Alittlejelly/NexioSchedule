@@ -138,6 +138,7 @@ import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.ui.components.TabletNavSideState
 import com.haooz.chedule.ui.components.UpdateDialog
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.navigation.AppRoute
@@ -160,6 +161,8 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.HostedOverlay
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
+import com.haooz.chedule.ui.utils.clipDuringTransition
+import com.haooz.chedule.ui.utils.clipScreenCorners
 import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.cropImageBitmap
@@ -1413,12 +1416,12 @@ fun CourseScheduleApp(
             cutoutMainScale.snapTo(0.65f)
             cutoutMainScale.animateTo(
                 0.75f,
-                tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                tween(400, easing = CustomizePageEasing)
             )
         } else {
             cutoutMainScale.animateTo(
                 1f,
-                tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                tween(400, easing = CustomizePageEasing)
             )
         }
     }
@@ -1615,6 +1618,47 @@ fun CourseScheduleApp(
 
     val screenCornerRadius = rememberScreenCornerRadiusPx()
 
+    // 设置页的「卡片」圆角 = 屏幕圆角（与 [AppNavHost] 的转场裁切同一把尺）
+    val settingsPageIndex = if (isShiftMode) 1 else 2
+    val settingsClipRadiusDp = with(density) { screenCornerRadius.toDp() }
+    val settingsPageClipShape = remember(settingsClipRadiusDp) {
+        if (screenCornerRadius > 0f) ContinuousRoundedRectangle(settingsClipRadiusDp) else null
+    }
+    // 顶栏糊带：只圆**顶部两角**（四角全圆会把 120dp 高的糊带变成药丸）
+    val settingsTopBarClipShape = remember(settingsClipRadiusDp) {
+        if (screenCornerRadius > 0f) {
+            ContinuousRoundedRectangle(
+                topStart = settingsClipRadiusDp,
+                topEnd = settingsClipRadiusDp,
+            )
+        } else {
+            null
+        }
+    }
+    val settingsCardOnScreen = remember(mainPagerState, isShiftMode) {
+        {
+            val scrollPos = mainPagerState.currentPage +
+                mainPagerState.currentPageOffsetFraction
+            scrollPos > settingsPageIndex - 1f
+        }
+    }
+    // 平板（rail）主界面切页是瞬时的（scrollToPage，无动画），圆角卡片机制不参与。
+    val mainTabTransitionAnimated = navBarStyle != "rail"
+    val settingsPageClipModifier =
+        if (mainTabTransitionAnimated) {
+            Modifier
+                .fillMaxSize()
+                .clipScreenCorners(settingsPageClipShape)
+        } else {
+            Modifier
+        }
+    val settingsTopBarClipModifier =
+        if (mainTabTransitionAnimated) {
+            Modifier.clipDuringTransition(settingsTopBarClipShape, settingsCardOnScreen)
+        } else {
+            Modifier
+        }
+
     val coroutineScope = rememberCoroutineScope()
     val mainTabAnimation = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
     val mainTabGeneration = remember { intArrayOf(0) }
@@ -1657,11 +1701,15 @@ fun CourseScheduleApp(
             host.shiftMode = isShiftMode
             host.showsNativeTabBar = nativeBottomBar
             host.isDark = effectiveIsDark
-            // 开洞缩放进度：iOS 原生 TabBar 在主内容合成根之外，拿不到缩放层，
             // 需由Swift 读这个值自行施加同样变换（对齐 Android 上 Compose 底栏的行为）
             host.cutoutScale = cutoutMainScale.value
             host.cutoutCenterYRatio = cutoutCenterYRatio
         }
+    }
+    // 外观页弹窗让位时主内容的纵向位移，改由主内容自己的 graphicsLayer 块直推
+    // 引用固定，避免每帧新建 lambda 让 iOS 侧 update() 比对失败。
+    val pushCutoutChromeOffset = remember(hostNavigation) {
+        { offsetY: Double -> hostNavigation?.onCutoutChromeOffsetY?.invoke(offsetY) }
     }
     // 内容区（切天/周）一有横向手势：立刻取消未完成的主 tab 平移，吸回当前页，避免露出隔壁页
     val cancelUnfinishedMainTabAnim by rememberUpdatedState {
@@ -2296,7 +2344,7 @@ fun CourseScheduleApp(
             launch {
                 customizeCoverScale.animateTo(
                     0.75f,
-                    tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                    tween(400, easing = CustomizePageEasing)
                 )
             }
             launch {
@@ -2596,7 +2644,10 @@ fun CourseScheduleApp(
                             // 与 CustomizeScheduleScreen 共享同一 Animatable，像素级同帧
                             val sheetScale = cutoutMainScale.value
                             val sheetScaleProg = ((sheetScale - 0.65f) / (1f - 0.65f)).coerceIn(0f, 1f)
-                            translationY = sheetOffsetY.value * (1f - sheetScaleProg)
+                            val contentOffsetY = sheetOffsetY.value * (1f - sheetScaleProg)
+                            translationY = contentOffsetY
+                            // 同一个 graphicsLayer 块在**绘制阶段**跑
+                            pushCutoutChromeOffset((contentOffsetY / density.density).toDouble())
                             if (isCustomizeExiting) {
                                 transformOrigin = TransformOrigin(0.5f, 0.58f)
                             }
@@ -2733,6 +2784,9 @@ fun CourseScheduleApp(
                                                 }
                                             }
                                         )
+                                        // 滑出中的课表糊带同样裁顶部两角：否则它在卡片左缘留一条
+                                        // 方切口，卡片上方的圆角被它顶掉。
+                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     // 锁本页主题：共享顶栏槽外层主题跟 selectedTab 变，
                                     // 切到设置页（浅色）时课程表顶栏遮罩会跟着跳浅
@@ -2740,28 +2794,16 @@ fun CourseScheduleApp(
                                         if (captureThemeActive) captureThemeIsDark
                                         else wallpaperForcedDark
                                     ) {
-                                        val lockedSurface = MiuixTheme.colorScheme.surface
                                         ScheduleTopBar(
                                             visible = true,
                                             pagerCurrentPage = pagerState.currentPage,
                                             currentWeek = currentWeek,
                                             isHoliday = viewingIsHoliday,
-                                            isViewingCurrentWeek = isViewingCurrentWeek,
                                             dayRange = dayRange,
                                             currentDayOfWeek = currentDayOfWeek,
                                             isCurrentWeek = pagerState.currentPage + 1 == currentWeek && currentWeek in 1..totalWeeks,
                                             weekDates = weekDates,
                                             isReorganized = teachingWeekRules.isNotEmpty(),
-                                            onBackToCurrentWeek = {
-                                                coroutineScope.launch {
-                                                    val targetPage =
-                                                        (currentWeek - 1).coerceIn(
-                                                            0,
-                                                            (totalWeeks - 1).coerceAtLeast(0)
-                                                        )
-                                                    pagerState.animateScrollToPage(targetPage)
-                                                }
-                                            },
                                             onOpenSwitchSchedule = { openScheduleLibrary() },
                                             onJumpWeek = { viewModel.showJumpWeekDialog() },
                                             onEnterCustomize = enterCustomizePage,
@@ -2774,7 +2816,6 @@ fun CourseScheduleApp(
                                             onMoreSlotTop = { if (canSampleMoreSlot) moreSlotTopPx.value = it },
                                             onMoreMaterial = { scheduleMaterialAlpha.value = it },
                                             onMoreExpand = { showMorePopup = true },
-                                            gradientColorOverride = lockedSurface,
                                         )
                                     }
                                 }
@@ -2809,6 +2850,9 @@ fun CourseScheduleApp(
                                                 }
                                             }
                                         )
+                                        // ⚠ 顶栏槽画在 pager **之上**：不跟着裁，
+                                        // 这条全宽糊带会盖住卡片上方的两个圆角。
+                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     SettingsTopBar(
                                         liquidGlassBackdrop = chromeBackdrop,
@@ -2857,7 +2901,6 @@ fun CourseScheduleApp(
                                     if (captureThemeActive) captureThemeIsDark
                                     else todayPageForcedDark
                                 ) {
-                                    val lockedSurface = MiuixTheme.colorScheme.surface
                                     TodayTopBar(
                                         liquidGlassBackdrop = chromeBackdrop,
                                         navBarStyle = navBarStyle,
@@ -2873,7 +2916,6 @@ fun CourseScheduleApp(
                                         onMoreSlotTop = { if (canSampleMoreSlot) moreSlotTopPx.value = it },
                                         onMoreMaterial = { todayMaterialAlpha.value = it },
                                         onMoreExpand = { showTodayMorePopup = true },
-                                        gradientColorOverride = lockedSurface,
                                     )
                                 }
                             }
@@ -2962,7 +3004,7 @@ fun CourseScheduleApp(
                             )
                         ) {
                         // 共享壁纸层：铺满全屏（含侧栏下），与 rail 让位无关，侧栏伸缩时像素不动。
-                            // 今日↔课程表：壁纸钉死不动；课程表→设置：壁纸随页平移，侧栏下用背景色盖住。
+                            // 壁纸任何切页都钉死不动：课程表→设置靠「圆角设置卡片滑过来盖住壁纸」。
                             val sharedWallpaperBitmap =
                                 if (showCustomizePage && !isWindowCutoutActive) originalWallpaperBitmap
                                 else wallpaperBitmap
@@ -2991,7 +3033,7 @@ fun CourseScheduleApp(
                                 }
                             }
                             if (showSharedWallpaperLayer && sharedWallpaperBitmap != null) {
-                                // 全屏垫背景色 + 裁切：壁纸切页平移时露出的空隙由背景色盖住（侧栏下始终有内容，不出漏）
+                                // 全屏垫背景色 + 裁切：页滑走露出的空隙由背景色/壁纸垫住（侧栏下始终有内容，不出漏）
                                 val wallpaperPadColor =
                                     MiuixTheme.colorScheme.surface
                                 Box(
@@ -3038,20 +3080,6 @@ fun CourseScheduleApp(
                                 val sharedWallpaperImage = remember(sharedWallpaperBitmap) {
                                     sharedWallpaperBitmap
                                 }
-                                // 课程表页索引：正常模式 1；滚过它去设置时壁纸开始位移
-                                val schedulePageIndex = if (isShiftMode) 0 else 1
-                                // 今日↔课程表壁纸钉死不动，只有越过课程表去设置时像素才随位移变化。
-                                val sharedWallpaperMustRecord =
-                                    remember(mainPagerState, schedulePageIndex) {
-                                        {
-                                            val scrollPos = mainPagerState.currentPage +
-                                                mainPagerState.currentPageOffsetFraction
-                                            val moving = scrollPos > schedulePageIndex
-                                            moving &&
-                                                (mainPagerState.isScrollInProgress ||
-                                                    abs(mainPagerState.currentPageOffsetFraction) > 0.001f)
-                                        }
-                                    }
                                 Image(
                                     bitmap = sharedWallpaperImage,
                                     contentDescription = null,
@@ -3067,9 +3095,7 @@ fun CourseScheduleApp(
                                                 sharedBrightness,
                                                 displayAppearance.wallpaperBlur,
                                                 sharedMinScale,
-                                                schedulePageIndex,
                                             ),
-                                            mustRecord = sharedWallpaperMustRecord
                                         )
                                         .graphicsLayer {
                                             val s = maxOf(sharedWallpaperScale, sharedMinScale)
@@ -3077,25 +3103,10 @@ fun CourseScheduleApp(
                                             scaleY = s
                                             // 缩放/平移裁在自身 bounds 内，避免突出课程表页画进侧栏
                                             clip = true
-                                            val scrollPos = mainPagerState.currentPage +
-                                                mainPagerState.currentPageOffsetFraction
-                                            // 今日/课程表区间内固定；越过课程表去设置时壁纸跟页
-                                            // 手机横向（向左），平板竖向（向上）
-                                            val settingsShift =
-                                                if (scrollPos > schedulePageIndex) {
-                                                    val span =
-                                                        if (navBarStyle == "rail") screenHPx else screenWPx
-                                                    -(scrollPos - schedulePageIndex) * span
-                                                } else {
-                                                    0f
-                                                }
-                                            if (navBarStyle == "rail") {
-                                                translationX = sharedWallpaperOffset.x
-                                                translationY = sharedWallpaperOffset.y + settingsShift
-                                            } else {
-                                                translationX = sharedWallpaperOffset.x + settingsShift
-                                                translationY = sharedWallpaperOffset.y
-                                            }
+                                            // 只用用户自己设的偏移：切页时壁纸是静止底图，
+                                            // 圆角卡片从它上面盖过来（见 settingsPageClipModifier）
+                                            translationX = sharedWallpaperOffset.x
+                                            translationY = sharedWallpaperOffset.y
                                             renderEffect = sharedBlurEffect
                                         },
                                     contentScale = ContentScale.Fit,
@@ -3104,40 +3115,6 @@ fun CourseScheduleApp(
                                 }
                             }
 
-                            // 平移跟设置页同步，避免切回浅色课程表时侧栏下闪白。
-                            run {
-                                val settingsPageIndex = if (isShiftMode) 1 else 2
-                                // 锁定应用主题背景色，不随课程表页/壁纸锁色变化
-                                val settingsCoverTranslation by remember(mainPagerState, isShiftMode, navBarStyle) {
-                                    derivedStateOf {
-                                        val scrollPos = mainPagerState.currentPage +
-                                            mainPagerState.currentPageOffsetFraction
-                                        (settingsPageIndex - scrollPos)
-                                    }
-                                }
-                                val settingsCoverController = remember {
-                                    ThemeController(
-                                        if (appSettingDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
-                                    )
-                                }
-                                settingsCoverController.colorSchemeMode =
-                                    if (appSettingDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
-                                MiuixTheme(controller = settingsCoverController) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .graphicsLayer {
-                                                val t = settingsCoverTranslation
-                                                if (navBarStyle == "rail") {
-                                                    translationY = t * screenHPx
-                                                } else {
-                                                    translationX = t * screenWPx
-                                                }
-                                            }
-                                            
-                                    )
-                                }
-                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -3648,6 +3625,7 @@ fun CourseScheduleApp(
                                         }
                                         settingsThemeController.colorSchemeMode =
                                             if (settingsDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
+                                        Box(modifier = settingsPageClipModifier) {
                                         MiuixTheme(controller = settingsThemeController) {
                                             CompositionLocalProvider(LocalForcedDarkTheme provides settingsPageForcedDark) {
                                         RenderSettingsPane(
@@ -3672,6 +3650,7 @@ fun CourseScheduleApp(
                                             )
                                         )
                                             }
+                                        }
                                         }
                                     }
                                     3 -> {
@@ -3718,30 +3697,32 @@ fun CourseScheduleApp(
                                         titleBarHeight = 56.dp,
                                     )
 
-                                    1 -> RenderSettingsPane(
-                                        settingsPane,
-                                        SettingsPaneArgs(
-                                            viewModel = viewModel,
-                                            scheduleViewModel = scheduleViewModel,
-                                            settingsViewModel = settingsViewModel,
-                                            shiftViewModel = shiftViewModel,
-                                            isShiftMode = true,
-                                            onExitShiftMode = {
-                                                FeatureLog.shift("exit_loading")
-                                                showShiftLoading = true
-                                                isExitingShift = true
-                                            },
-                                            onEnterShiftMode = {
-                                                showShiftLoading = true
-                                                isExitingShift = false
-                                            },
-                                            navBarStyle = navBarStyle,
-                                            onScrollYChanged = { _ -> },
-                                            settingsScrollBehavior = settingsScrollBehavior,
-                                            liquidGlassBackdrop = liquidGlassBackdrop,
-                                            showUpdateSettings = showUpdateSettings,
+                                    1 -> Box(modifier = settingsPageClipModifier) {
+                                        RenderSettingsPane(
+                                            settingsPane,
+                                            SettingsPaneArgs(
+                                                viewModel = viewModel,
+                                                scheduleViewModel = scheduleViewModel,
+                                                settingsViewModel = settingsViewModel,
+                                                shiftViewModel = shiftViewModel,
+                                                isShiftMode = true,
+                                                onExitShiftMode = {
+                                                    FeatureLog.shift("exit_loading")
+                                                    showShiftLoading = true
+                                                    isExitingShift = true
+                                                },
+                                                onEnterShiftMode = {
+                                                    showShiftLoading = true
+                                                    isExitingShift = false
+                                                },
+                                                navBarStyle = navBarStyle,
+                                                onScrollYChanged = { _ -> },
+                                                settingsScrollBehavior = settingsScrollBehavior,
+                                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                                showUpdateSettings = showUpdateSettings,
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                             }
@@ -4282,17 +4263,11 @@ fun CourseScheduleApp(
                             modifier = Modifier.fillMaxSize().zIndex(22f),
                         )
                     }
-                    // 平板设置：标题与分界线画在顶栏模糊之上，跟设置页切页平移。
+                    // 平板设置：标题与分界线画在顶栏模糊之上。
                     // 主题锁定 appSettingDark：不随课程表/壁纸锁色瞬间切换。
+                    // ⚠ 平板主界面切页是瞬时的（scrollToPage，无动画），这里不挂跟位位移与圆角裁切
+                    //   —— 那套只服务手机的「圆角卡片盖住壁纸」转场。
                     if (navBarStyle == "rail" && !isShiftMode) {
-                        val settingsChromePageIndex = 2
-                        val settingsChromeTranslation by remember(mainPagerState) {
-                            derivedStateOf {
-                                val scrollPos = mainPagerState.currentPage +
-                                    mainPagerState.currentPageOffsetFraction
-                                (settingsChromePageIndex - scrollPos)
-                            }
-                        }
                         val settingsChromeController = remember {
                             ThemeController(
                                 if (appSettingDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
@@ -4301,14 +4276,7 @@ fun CourseScheduleApp(
                         settingsChromeController.colorSchemeMode =
                             if (appSettingDark) ColorSchemeMode.Dark else ColorSchemeMode.Light
                         MiuixTheme(controller = settingsChromeController) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        translationY =
-                                            settingsChromeTranslation * screenHPx
-                                    }
-                            ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
                                 com.haooz.chedule.ui.screens.TabletSettingsChromeOverlay()
                             }
                         }
@@ -4979,7 +4947,7 @@ fun CourseScheduleApp(
                             targetValue = 1f,
                             animationSpec = tween(
                                 500,
-                                easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                                easing = CustomizePageEasing
                             )
                         )
                     }
@@ -4989,7 +4957,7 @@ fun CourseScheduleApp(
                                 targetValue = 1f,
                                 animationSpec = tween(
                                     500,
-                                    easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                                    easing = CustomizePageEasing
                                 )
                             )
                         }
@@ -4998,7 +4966,7 @@ fun CourseScheduleApp(
                                 targetValue = 1f,
                                 animationSpec = tween(
                                     400,
-                                    easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                                    easing = CustomizePageEasing
                                 )
                             )
                         }
@@ -5009,7 +4977,7 @@ fun CourseScheduleApp(
                                 targetValue = 0f,
                                 animationSpec = tween(
                                     500,
-                                    easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                                    easing = CustomizePageEasing
                                 )
                             )
                         }
@@ -5019,7 +4987,7 @@ fun CourseScheduleApp(
                             targetValue = 1f,
                             animationSpec = tween(
                                 500,
-                                easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                                easing = CustomizePageEasing
                             )
                         )
                     }
@@ -5687,8 +5655,6 @@ private fun TodayTopBar(
     onMoreSlotTop: (Float) -> Unit = {},
     onMoreMaterial: (Float) -> Unit = {},
     onMoreExpand: () -> Unit = {},
-    /** 渐变遮罩色；见 [ScheduleTopBar]。今日页同样跟壁纸锁色，需锁住避免切页跳色 */
-    gradientColorOverride: Color? = null,
 ) {
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
@@ -5718,9 +5684,7 @@ private fun TodayTopBar(
             largeTitle = titleText,
             modifier = Modifier.zIndex(1f),
             scrollBehavior = scrollBehavior,
-            // 今日页渐变遮罩保持随滚动显隐
-            gradientOverlayScrollTriggered = true,
-            gradientColorOverride = gradientColorOverride,
+            showGradientOverlay = false,
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
             titleStartAligned = isTabletLiquidGlass,
             titleModifier = titleRailPadding,

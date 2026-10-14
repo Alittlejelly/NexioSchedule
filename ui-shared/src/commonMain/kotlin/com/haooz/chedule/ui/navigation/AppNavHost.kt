@@ -17,20 +17,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutSoftStartEasing
 import com.haooz.chedule.ui.effects.motion.SecondaryPageExitEasing
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import com.haooz.chedule.ui.utils.clipDuringTransition
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.async
@@ -389,16 +386,6 @@ private fun PageLayer(
 }
 
 /**
- * 转场中间态才把页面裁成屏幕圆角，到位后恢复直角 —— 系统窗口本身已有圆角，
- * Compose 再裁一次会在角上叠出双圆角。
- *
- * ⚠ 在 draw 阶段自己 `clipPath`，**不用** `graphicsLayer { clip = true }`：
- * 后者会给整页套一层离屏 layer，可能干扰页内的 `layerBackdrop` 采样。
- */
-private fun Modifier.clipDuringTransition(shape: Shape?, inFlight: () -> Boolean): Modifier =
-    if (shape == null) this else this then TransitionClipElement(shape, inFlight)
-
-/**
  * 暂停绘制（「整栈常驻」策略的一半，另一半是栈内每层都保持组合）。
  *
  * [paused] 在 draw 阶段读 —— 恢复绘制时由快照观察自动失效重画；
@@ -424,36 +411,6 @@ private class SkipDrawNode(
     override fun ContentDrawScope.draw() {
         if (!paused()) drawContent()
         // paused 时什么都不画：组合、状态、协程全部保留，只是不进渲染
-    }
-}
-
-private data class TransitionClipElement(
-    private val shape: Shape,
-    private val inFlight: () -> Boolean,
-) : ModifierNodeElement<TransitionClipNode>() {
-    override fun create() = TransitionClipNode(shape, inFlight)
-    override fun update(node: TransitionClipNode) {
-        node.shape = shape
-        node.inFlight = inFlight
-    }
-}
-
-private class TransitionClipNode(
-    var shape: Shape,
-    var inFlight: () -> Boolean,
-) : Modifier.Node(), DrawModifierNode {
-    private val path = Path()
-
-    // inFlight() 在这里读进度 → 只 invalidate draw，不会触发重组
-    override fun ContentDrawScope.draw() {
-        if (!inFlight() || size.isEmpty()) {
-            drawContent()
-            return
-        }
-        path.rewind()
-        path.addOutline(shape.createOutline(size, layoutDirection, this))
-        // clipPath 的 block receiver 是 DrawScope，drawContent() 得指名外层
-        clipPath(path) { this@draw.drawContent() }
     }
 }
 

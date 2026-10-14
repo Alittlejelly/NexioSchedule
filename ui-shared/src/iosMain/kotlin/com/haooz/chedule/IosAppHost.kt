@@ -278,6 +278,19 @@ class IosAppHost {
     val cutoutScale: Float get() = navigation.cutoutScale
     val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
 
+    /**
+     * Per-frame push of the main content's vertical offset while the customize page's sheet is
+     * open (pt, negative = up, `-1` = none). Called from Compose's **draw phase** on the main
+     * thread, so UIKit applies it in the same frame as the content it has to follow.
+     * Assigned by Swift; must stay a plain callback — routing it through host state would put
+     * it a frame or two behind.
+     */
+    var onCutoutChromeOffset: ((Double) -> Unit)? = null
+
+    init {
+        navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
+    }
+
     val mainController: UIViewController by lazy {
         ComposeUIViewController {
             HostEnvironment {
