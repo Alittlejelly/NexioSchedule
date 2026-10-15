@@ -18,6 +18,9 @@ class NativeDocumentChrome {
     var action by mutableStateOf<NativeDocumentAction?>(null)
     var leading by mutableStateOf<NativeDocumentAction?>(null)
     var secondaryAction by mutableStateOf<NativeDocumentAction?>(null)
+    var bottomBar by mutableStateOf<NativeDocumentBottomBar?>(null)
+    /** true = 顶栏整个交给系统（原生导航栏画标题），页面不画 Compose 渐变模糊顶栏 */
+    var usesSystemHeader by mutableStateOf(false)
     /** Outer navigation waits for the editor's save and reverse morph to finish. */
     var contentOverlayActive by mutableStateOf(false)
     /** Editor controls override the retained parent's chrome without competing publishers. */
@@ -25,6 +28,44 @@ class NativeDocumentChrome {
     val effectiveAction: NativeDocumentAction? get() = editor?.save ?: action
     val effectiveLeading: NativeDocumentAction? get() = editor?.cancel ?: leading
     val effectiveSecondaryAction: NativeDocumentAction? get() = if (editor == null) secondaryAction else null
+}
+
+/**
+ * 原生底部悬浮条（iOS）：玻璃材质与布局由系统控件渲染，页面只发布语义。
+ * Android / 桌面没有 chrome，这条恒为 null，页面仍用 Compose 画的底部胶囊。
+ */
+data class NativeDocumentBottomBar(
+    val title: String,
+    val subtitle: String,
+    val badge: String,
+    val toggleSymbol: String,
+    val toggleLabel: String,
+    val toggleEnabled: Boolean = true,
+    val primarySymbol: String,
+    val primaryLabel: String,
+    val primaryEnabled: Boolean = true,
+    val onToggle: () -> Unit,
+    val onPrimary: () -> Unit,
+)
+
+/** 发布底部悬浮条；传 null 表示本页没有（原生侧会收起）。 */
+@Composable
+fun NativeDocumentBottomBarEffect(bar: NativeDocumentBottomBar?) {
+    val chrome = LocalNativeDocumentChrome.current ?: return
+    SideEffect { chrome.bottomBar = bar }
+    DisposableEffect(chrome) {
+        onDispose { chrome.bottomBar = null }
+    }
+}
+
+/** 顶栏交给系统（原生导航栏标题 + 材质），页面不再画 Compose 渐变模糊顶栏。 */
+@Composable
+fun NativeDocumentSystemHeaderEffect(enabled: Boolean) {
+    val chrome = LocalNativeDocumentChrome.current ?: return
+    SideEffect { chrome.usesSystemHeader = enabled }
+    DisposableEffect(chrome) {
+        onDispose { chrome.usesSystemHeader = false }
+    }
 }
 
 /** A route-local editor owns native controls, but keeps its original content transition. */

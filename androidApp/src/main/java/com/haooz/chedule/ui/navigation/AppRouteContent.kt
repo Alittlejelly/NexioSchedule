@@ -250,6 +250,7 @@ fun AppRouteContent(
             isInFreeformWindow = isInFreeformWindow(),
         )
         AppRoute.EducationalImport -> AndroidEducationalImportRoute(router)
+        AppRoute.WebImport -> AndroidWebImportRoute(router)
     }
 }
 
@@ -383,21 +384,24 @@ private fun AndroidAboutRoute(router: AppRouter) {
 }
 
 /**
- * 教务系统导入（原 `EducationalImportActivity`，673 行，2026-10-10 并入单 Activity 路由）。
+ * 教务导入（学校 / 适配器选择，原 `EducationalImportActivity` 并入单 Activity 路由）。
  *
- * 与原 Activity 的对应关系：
- * - `onCreate` 里的 `startUpdate(this)` → 进入路由即 `startUpdateIfNeeded()`（原时机）
- * - `finish()` → `router.popBack()`（原「退出页面」语义；WebView 分支的内部返回由 Screen 自管）
- * - `onMultiWindowModeChanged` → 宿主 MainActivity 的 `isInFreeformWindow`（经 [isInFreeformWindow] 读取）
- * - `forceUpdate(context)`（Toast 结果）→ [EduImportUpdater.forceUpdate]，Context 用组合期的 LocalContext
- * - 系统栏 / adjustResize / configChanges：MainActivity 的 Manifest 条目已覆盖（与原条目逐项同款）
+ * 进入路由即 `startUpdateIfNeeded()`（原 `onCreate` 时机）；自由窗口判定经
+ * [isInFreeformWindow] 读宿主 MainActivity；系统栏 / configChanges 由 Manifest 覆盖。
  */
 @Composable
 private fun AndroidEducationalImportRoute(router: AppRouter) {
-    // 只有网页宿主与自由窗口判定是 Android 专有，其余在 :ui-shared
     com.haooz.chedule.ui.navigation.EducationalImportRoute(
         router = router,
-        webHostFactory = { config, events -> rememberAndroidWebHost(config, events) },
         isInFreeformWindow = isInFreeformWindow(),
+    )
+}
+
+/** 网页导入：教务导入的第二步，独立一层（返回先回学校选择页）。 */
+@Composable
+private fun AndroidWebImportRoute(router: AppRouter) {
+    com.haooz.chedule.ui.navigation.WebImportRoute(
+        router = router,
+        webHostFactory = { config, events -> rememberAndroidWebHost(config, events) },
     )
 }

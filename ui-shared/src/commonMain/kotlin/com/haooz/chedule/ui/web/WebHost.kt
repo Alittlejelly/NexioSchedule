@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.Course
 
 // ════════════════════════════════════════════════════════════════════════
@@ -35,6 +36,13 @@ class WebHostConfig(
     val isDesktopMode: Boolean,
     /** 内容顶部让位高度（顶栏 + 状态栏） */
     val contentTopPadding: Dp,
+    /**
+     * 内容底部额外让位高度（悬浮控件高度）。
+     *
+     * iOS 侧叠加到系统安全区之上写进 `scrollView.contentInset`，避免内容被底部悬浮条挡住；
+     * Android 的 WebView 在 Compose 里走自己的布局，不使用这个值。
+     */
+    val contentBottomPadding: Dp = 0.dp,
 )
 
 /**

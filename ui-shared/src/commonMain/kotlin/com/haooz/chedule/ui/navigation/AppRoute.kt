@@ -111,11 +111,18 @@ sealed interface AppRoute {
     }
 
     /**
-     * 教务系统导入（「教务系统导入」）。页面本体见 `ui/screens/EducationalImportScreen.kt`；
-     * WebView 注入仍为 Android 专有。
+     * 教务系统导入 —— 学校/适配器选择。页面本体见 `ui/screens/EducationalImportScreen.kt`。
      */
     data object EducationalImport : AppRoute {
         override val id: String get() = "educational_import"
+    }
+
+    /**
+     * 教务导入的网页导入页：选完学校/适配器后从右侧推入（独立一层，返回先回选择页）。
+     * 选中项经 `EduImportSelection` 传递 —— 路由只有稳定 id，没有参数通道。
+     */
+    data object WebImport : AppRoute {
+        override val id: String get() = "web_import"
     }
 
     companion object {
@@ -141,6 +148,7 @@ sealed interface AppRoute {
             CourseTimeSettings.id -> CourseTimeSettings
             CourseManage.id -> CourseManage
             EducationalImport.id -> EducationalImport
+            WebImport.id -> WebImport
             else -> null
         }
     }

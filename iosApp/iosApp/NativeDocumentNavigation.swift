@@ -95,7 +95,10 @@ final class NativeDocumentNavigationController: UINavigationController,
         for controller in viewControllers {
             let wanted: String?
             if controller === top {
-                wanted = nil
+                // 「顶栏交给系统」的页（如网页导入）标题归导航栏，否则导航栏保持空标题
+                wanted = (controller as? NativeDocumentPageController)?.usesSystemHeader == true
+                    ? (controller as? NativeDocumentPageController)?.pageTitle
+                    : nil
             } else if let page = controller as? NativeDocumentPageController {
                 wanted = page.pageTitle
             } else {
@@ -238,8 +241,88 @@ private final class NativeDocumentPageController: UIViewController {
     private let host: IosAppHost
     private let contentController: UIViewController
     private var appliedActionState: NativeActionState?
+    private var appliedBottomBarState: BottomBarState?
     private lazy var backItem = makeLeadingItem(symbol: "chevron.backward")
     private lazy var cancelItem = makeLeadingItem(symbol: "xmark")
+
+    /// 底部悬浮条的状态快照：只用来判重，避免每次布局都重建系统控件。
+    private struct BottomBarState: Equatable {
+        let visible: Bool
+        let title: String
+        let subtitle: String
+        let badge: String
+        let toggleSymbol: String
+        let toggleLabel: String
+        let toggleEnabled: Bool
+        let primarySymbol: String
+        let primaryLabel: String
+        let primaryEnabled: Bool
+    }
+
+    // ── 底部悬浮条：玻璃材质、按钮与安全区都交给系统控件 ──
+    // 页面只发布语义，这里用 UIVisualEffectView(UIGlassEffect()) + 系统按钮渲染，
+    // 挂在 safeAreaLayoutGuide.bottomAnchor 上，home indicator 让位由系统算。
+    private lazy var bottomGlass: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIGlassEffect())
+        // 真胶囊：半径在 viewDidLayoutSubviews 里按实际高度取一半
+        // （cornerCurve 用 circular —— continuous 在半圆处会显扁）
+        view.layer.cornerCurve = .circular
+        view.clipsToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
+    private lazy var bottomTitleLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }()
+
+    private lazy var bottomBadgeLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
+        return label
+    }()
+
+    private lazy var bottomSubtitleLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .footnote)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
+        label.numberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }()
+
+    private lazy var bottomToggleButton: UIButton = {
+        let button = UIButton(configuration: .gray(), primaryAction: UIAction { [weak self] _ in
+            guard let self else { return }
+            self.host.performNativePageBottomToggle(routeId: self.routeId)
+        })
+        button.configuration?.cornerStyle = .capsule
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        return button
+    }()
+
+    private lazy var bottomPrimaryButton: UIButton = {
+        let button = UIButton(configuration: .gray(), primaryAction: UIAction { [weak self] _ in
+            guard let self else { return }
+            self.host.performNativePageBottomPrimary(routeId: self.routeId)
+        })
+        button.configuration?.cornerStyle = .capsule
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        return button
+    }()
 
     private func makeLeadingItem(symbol: String) -> UIBarButtonItem {
         let item = UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain,
@@ -275,6 +358,9 @@ private final class NativeDocumentPageController: UIViewController {
     }()
 
     var pageTitle: String { host.nativeRouteTitle(routeId: routeId) }
+
+    /// 本页是否把顶栏整个交给系统（原生导航栏标题 + 材质），Compose 不再画渐变模糊顶栏。
+    var usesSystemHeader: Bool { host.nativePageUsesSystemHeader(routeId: routeId) }
     var chromeTint: UIColor {
         let argb = host.nativePageTintArgb(routeId: routeId)
         // The first composition publishes its tint after the controller is created.
@@ -302,6 +388,8 @@ private final class NativeDocumentPageController: UIViewController {
     }
 
     func applyChromeState(interactionAllowed: Bool) {
+        // 底栏要独立于导航栏按钮的判重：导航栏状态没变时早退会让底栏刷不出来
+        updateBottomBar()
         let state = NativeActionState(
             leadingSymbol: host.nativePageLeadingSymbol(routeId: routeId),
             leadingLabel: host.nativePageLeadingLabel(routeId: routeId),
@@ -375,6 +463,36 @@ private final class NativeDocumentPageController: UIViewController {
         }
     }
 
+    /// 页面发布的底栏语义 → 系统控件状态。位置/材质/安全区由 UIKit 负责。
+    private func updateBottomBar() {
+        let state = BottomBarState(
+            visible: host.nativePageBottomBarVisible(routeId: routeId),
+            title: host.nativePageBottomBarTitle(routeId: routeId),
+            subtitle: host.nativePageBottomBarSubtitle(routeId: routeId),
+            badge: host.nativePageBottomBarBadge(routeId: routeId),
+            toggleSymbol: host.nativePageBottomBarToggleSymbol(routeId: routeId),
+            toggleLabel: host.nativePageBottomBarToggleLabel(routeId: routeId),
+            toggleEnabled: host.nativePageBottomBarToggleEnabled(routeId: routeId),
+            primarySymbol: host.nativePageBottomBarPrimarySymbol(routeId: routeId),
+            primaryLabel: host.nativePageBottomBarPrimaryLabel(routeId: routeId),
+            primaryEnabled: host.nativePageBottomBarPrimaryEnabled(routeId: routeId)
+        )
+        guard appliedBottomBarState != state else { return }
+        appliedBottomBarState = state
+        bottomGlass.isHidden = !state.visible
+        bottomTitleLabel.text = state.title
+        bottomBadgeLabel.text = state.badge
+        bottomSubtitleLabel.text = state.subtitle
+        bottomToggleButton.configuration?.image = UIImage(systemName: state.toggleSymbol)
+        bottomToggleButton.accessibilityLabel = state.toggleLabel
+        bottomToggleButton.isEnabled = state.toggleEnabled
+        bottomToggleButton.tintColor = .label
+        bottomPrimaryButton.configuration?.image = UIImage(systemName: state.primarySymbol)
+        bottomPrimaryButton.accessibilityLabel = state.primaryLabel
+        bottomPrimaryButton.isEnabled = state.primaryEnabled
+        bottomPrimaryButton.tintColor = state.primaryEnabled ? chromeTint : .tertiaryLabel
+    }
+
     @objc private func performLeadingAction() {
         guard appliedActionState?.leadingEnabled == true else { return }
         host.performNativePageLeadingAction(routeId: routeId)
@@ -404,11 +522,62 @@ private final class NativeDocumentPageController: UIViewController {
             content.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         contentController.didMove(toParent: self)
+        installBottomBar()
+    }
+
+    /// 底部悬浮条：挂在 safeArea 底部之上，内容用系统 Stack / Button 排。
+    private func installBottomBar() {
+        let titleRow = UIStackView(arrangedSubviews: [bottomTitleLabel, bottomBadgeLabel])
+        titleRow.axis = .horizontal
+        titleRow.alignment = .firstBaseline
+        titleRow.spacing = 8
+
+        let infoStack = UIStackView(arrangedSubviews: [titleRow, bottomSubtitleLabel])
+        infoStack.axis = .vertical
+        infoStack.spacing = 3
+
+        let buttonStack = UIStackView(arrangedSubviews: [bottomToggleButton, bottomPrimaryButton])
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 8
+
+        let rootStack = UIStackView(arrangedSubviews: [infoStack, buttonStack])
+        rootStack.axis = .horizontal
+        rootStack.alignment = .center
+        rootStack.spacing = 12
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
+
+        bottomGlass.contentView.addSubview(rootStack)
+        view.addSubview(bottomGlass)
+        NSLayoutConstraint.activate([
+            bottomGlass.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            bottomGlass.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            // home indicator 的让位由系统安全区给，不写死常数
+            bottomGlass.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12
+            ),
+            rootStack.leadingAnchor.constraint(
+                equalTo: bottomGlass.contentView.leadingAnchor, constant: 16
+            ),
+            rootStack.trailingAnchor.constraint(
+                equalTo: bottomGlass.contentView.trailingAnchor, constant: -12
+            ),
+            rootStack.topAnchor.constraint(
+                equalTo: bottomGlass.contentView.topAnchor, constant: 10
+            ),
+            rootStack.bottomAnchor.constraint(
+                equalTo: bottomGlass.contentView.bottomAnchor, constant: -10
+            ),
+        ])
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateComposeSafeArea()
+        // 胶囊：半径 = 实际高度的一半（内容字号/动态字体变了也跟着变）
+        let radius = bottomGlass.bounds.height / 2
+        if radius > 0, abs(bottomGlass.layer.cornerRadius - radius) > 0.5 {
+            bottomGlass.layer.cornerRadius = radius
+        }
     }
 
     override func viewSafeAreaInsetsDidChange() {

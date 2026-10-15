@@ -39,6 +39,7 @@ import com.haooz.chedule.ui.utils.rememberIosShareAction
 import com.haooz.chedule.ui.utils.IosSystemBars
 import com.haooz.chedule.ui.utils.IosReminderController
 import com.haooz.chedule.ui.utils.IosToast
+import com.haooz.chedule.ui.web.rememberIosWebHost
 import com.haooz.chedule.ui.navigation.AboutRoute
 import com.haooz.chedule.ui.navigation.AiImportRoute
 import com.haooz.chedule.ui.navigation.AppreciateAuthorRoute
@@ -52,6 +53,7 @@ import com.haooz.chedule.ui.navigation.CommunicationRoute
 import com.haooz.chedule.ui.navigation.CourseManageRoute
 import com.haooz.chedule.ui.navigation.CourseReminderRoute
 import com.haooz.chedule.ui.navigation.CourseTimeSettingsRoute
+import com.haooz.chedule.ui.navigation.EducationalImportRoute
 import com.haooz.chedule.ui.navigation.HolidaySettingsRoute
 import com.haooz.chedule.ui.navigation.LicenseRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
@@ -59,6 +61,7 @@ import com.haooz.chedule.ui.navigation.LocalBackupRoute
 import com.haooz.chedule.ui.navigation.PreferenceSettingsRoute
 import com.haooz.chedule.ui.navigation.PrivacyPolicyRoute
 import com.haooz.chedule.ui.navigation.UpdateSettingsRoute
+import com.haooz.chedule.ui.navigation.WebImportRoute
 import com.haooz.chedule.ui.navigation.WebDavSettingsRoute
 import com.haooz.chedule.ui.navigation.WidgetIntroRoute
 import platform.Foundation.NSBundle
@@ -388,7 +391,12 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         // 课表节数与时间 / 课程管理：iOS 没有自由小窗，传 false
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
-        // 教务导入要 WKWebView 桥接（IosWebHost 未写），暂不开
-        AppRoute.EducationalImport -> {}
+        // 教务导入（学校选择）：外壳全在 :ui-shared，无需平台能力（索引更新走共享 HttpService）。
+        AppRoute.EducationalImport -> EducationalImportRoute(router = router)
+        // 网页导入：独立一层（右侧推入），网页宿主用 WKWebView + JS 桥 shim（见 IosWebHost）。
+        AppRoute.WebImport -> WebImportRoute(
+            router = router,
+            webHostFactory = { config, events -> rememberIosWebHost(config, events) },
+        )
     }
 }

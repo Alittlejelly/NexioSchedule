@@ -95,6 +95,7 @@ import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.TimeConfigCardBounds
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
+import com.haooz.chedule.ui.activities.WebImportScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -152,15 +153,13 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 
 /**
- * 教务导入路由。
+ * 教务导入路由（学校 / 适配器选择）。
  *
- * @param webHostFactory 网页宿主工厂：Android 传 `AndroidWebHost`，iOS 传 `IosWebHost`（WKWebView）；本路由唯一必须注入的平台能力。
  * @param isInFreeformWindow Android 读 `Activity.isInMultiWindowMode`；桌面/iOS 没有自由窗口概念，传 false。
  */
 @Composable
 fun EducationalImportRoute(
     router: AppRouter,
-    webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost,
     isInFreeformWindow: Boolean = false,
 ) {
     // 进入页面即触发脚本索引更新（原 EducationalImportActivity.onCreate 时机，7 天节流）
@@ -169,11 +168,27 @@ fun EducationalImportRoute(
     val dataVersion by EduImportUpdater.dataVersion.collectAsState()
 
     EducationalImportScreen(
-        webHostFactory = webHostFactory,
         isInFreeformWindow = isInFreeformWindow,
         isUpdating = isUpdating,
         dataVersion = dataVersion,
         onForceUpdate = { EduImportUpdater.forceUpdate() },
+        onFinish = { router.popBack() },
+        // 用路由自己的 router（不用 LocalAppRouter：iOS 原生文档页容器不 provide 它）
+        onOpenWebImport = { router.navigate(AppRoute.WebImport) },
+    )
+}
+
+/**
+ * 网页导入路由：教务导入第二步，独立一层从右侧推入（返回先回学校选择页）。
+ * 选中项由 `EduImportSelection` 带入。
+ */
+@Composable
+fun WebImportRoute(
+    router: AppRouter,
+    webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost,
+) {
+    WebImportScreen(
+        webHostFactory = webHostFactory,
         onFinish = { router.popBack() },
     )
 }

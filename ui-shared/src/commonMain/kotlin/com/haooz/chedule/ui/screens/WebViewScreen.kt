@@ -4,7 +4,6 @@ package com.haooz.chedule.ui.screens
 // ⚠ 本文件不得出现 android.* / androidx.activity / androidx.core；
 // 需要新能力就往 WebHost 契约上加方法，而不是把平台类型带进来。
 
-import com.haooz.chedule.data.NexioLog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -69,6 +68,8 @@ import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
 import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.data.school.ScriptRepository
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -93,6 +94,9 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentBottomBar
+import com.haooz.chedule.ui.utils.NativeDocumentBottomBarEffect
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 
@@ -132,17 +136,17 @@ fun WebViewScreen(
     onImportComplete: (List<Course>) -> Unit,
     onTaskCompleted: () -> Unit = {},
     onPageTitleChanged: (String) -> Unit = {},
-    onDesktopModeChanged: (Boolean) -> Unit = {},
-    onAssetJsPathChanged: (String?) -> Unit = {},
     /** 顶栏空白区当前上屏色（已含插值），供顶栏标题/图标按明暗切黑白 */
     onTopColorChanged: (Color) -> Unit = {},
-    onExecuteImportRef: ((() -> Unit) -> Unit)? = null,
-    onToggleDesktopModeRef: ((() -> Unit) -> Unit)? = null,
     onReloadRef: ((() -> Unit) -> Unit)? = null,
     /** 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 用 [NoopWebHost]。 */
     webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
 ) {
     val isTablet = isTabletWidth()
+    // iOS 原生文档页把底部悬浮条交给系统控件，本页不再画 Compose 胶囊；Android / 桌面没有 chrome。
+    val nativeChrome = LocalNativeDocumentChrome.current
+    // 88dp = Swift 侧底栏高度（44 按钮 + 上下 10 内边距 + 12 安全区边距），给网页留出底部让位
+    val bottomBarHeight = 88.dp
     val tabletHorizontalPadding = if (isTablet) {
         val widthDp = screenWidthDp()
         ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
@@ -150,13 +154,11 @@ fun WebViewScreen(
     var loadingProgress by remember { mutableFloatStateOf(0f) }
     // 顶栏采样色：宿主逐帧上报（Android = PixelCopy）；null = 该平台没有这个能力，不画色带
     var topColor by remember { mutableStateOf<Color?>(null) }
-var pageTitle by remember { mutableStateOf("加载中...") }
+    var pageTitle by remember { mutableStateOf("加载中...") }
     // 平板默认桌面版，手机默认手机版（UA 与视口策略都跟着走，见 WebCompatDelegate）
     var isDesktopMode by remember { mutableStateOf(isTablet) }
     val hapticFeedback = LocalHapticFeedback.current
 
-    LaunchedEffect(isDesktopMode) { onDesktopModeChanged(isDesktopMode) }
-    LaunchedEffect(assetJsPath) { onAssetJsPathChanged(assetJsPath) }
     LaunchedEffect(pageTitle) { onPageTitleChanged(pageTitle) }
     val currentOnTopColorChanged by rememberUpdatedState(onTopColorChanged)
 
@@ -248,7 +250,10 @@ var pageTitle by remember { mutableStateOf("加载中...") }
             assetJsPath = assetJsPath,
             resourceFolder = school.resourceFolder,
             isDesktopMode = isDesktopMode,
-            contentTopPadding = contentTopPadding,
+            // iOS：顶部让位交给系统安全区，Compose 不推 WebView
+            contentTopPadding = if (nativeChrome != null) 0.dp else contentTopPadding,
+            // 原生底栏时给网页留出高度；Android 走自己的布局
+            contentBottomPadding = if (nativeChrome != null) bottomBarHeight else 0.dp,
         ),
         webHostEvents,
     )
@@ -296,6 +301,24 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         }
     }
 
+    // 原生底部悬浮条：页面只给语义，玻璃材质 / 布局 / 安全区由系统控件渲染
+    NativeDocumentBottomBarEffect(
+        if (nativeChrome != null) {
+            NativeDocumentBottomBar(
+                title = school.name,
+                subtitle = "登录教务系统 → 进入课表 → 执行导入",
+                badge = if (isDesktopMode) "桌面版" else "手机版",
+                toggleSymbol = "rectangle.on.rectangle",
+                toggleLabel = "切换手机版/桌面版",
+                primarySymbol = "square.and.arrow.down",
+                primaryLabel = "执行导入",
+                primaryEnabled = assetJsPath != null,
+                onToggle = { isDesktopMode = !isDesktopMode },
+                onPrimary = onExecuteImport,
+            )
+        } else null
+    )
+
     val scope = rememberCoroutineScope()
 
     val executeImportWithTable: (String) -> Unit = { tableId ->
@@ -306,7 +329,9 @@ var pageTitle by remember { mutableStateOf("加载中...") }
                 if (scriptFile != null) {
                     val jsCode = scriptFile.readText()
                     webHost.setImportTableId(tableId)
-                    val fullJsCode = "window.currentTableId = '$tableId';\n$jsCode"
+                    // 课表名可含引号/换行，必须转义成合法 JS 字面量（否则整段脚本语法错误）
+                    val tableIdLiteral = Json.encodeToString(tableId)
+                    val fullJsCode = "window.currentTableId = $tableIdLiteral;\n$jsCode"
                     webHost.evaluateJavascript(fullJsCode)
                     showToast("正在执行导入脚本...")
                 } else {
@@ -357,8 +382,6 @@ var pageTitle by remember { mutableStateOf("加载中...") }
         onBackCancelled = {},
     )
 
-    LaunchedEffect(onExecuteImportRef) { onExecuteImportRef?.invoke(onExecuteImport) }
-    LaunchedEffect(onToggleDesktopModeRef) { onToggleDesktopModeRef?.invoke { isDesktopMode = !isDesktopMode } }
     LaunchedEffect(onReloadRef) { onReloadRef?.invoke { webHost.reload() } }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -381,7 +404,8 @@ var pageTitle by remember { mutableStateOf("加载中...") }
             }
             Box(
                 modifier = Modifier
-                    .padding(top = contentTopPadding)
+                    // 原生文档页不推：让网页铺到导航栏下面，顶部让位由系统安全区处理
+                    .padding(top = if (nativeChrome != null) 0.dp else contentTopPadding)
                     .fillMaxSize()
             ) {
                 webHost.Content(
@@ -408,34 +432,37 @@ var pageTitle by remember { mutableStateOf("加载中...") }
             }
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp + tabletHorizontalPadding)
-                .padding(bottom = 24.dp)
-                .fillMaxWidth()
-                .drawBackdrop(
-                    backdrop = webContentBackdrop,
-                    shape = webDockShapeBlock,
-                    effects = webDockEffects,
-                    highlight = null,
-                    onDrawSurface = webDockOnDrawSurface
+        // 原生文档页（iOS）用系统控件画这条玻璃胶囊，Compose 再画一条就是双层
+        if (nativeChrome == null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp + tabletHorizontalPadding)
+                    .padding(bottom = 24.dp)
+                    .fillMaxWidth()
+                    .drawBackdrop(
+                        backdrop = webContentBackdrop,
+                        shape = webDockShapeBlock,
+                        effects = webDockEffects,
+                        highlight = null,
+                        onDrawSurface = webDockOnDrawSurface
+                    )
+                    .edgeLight(shape = ContinuousCapsule(), edgeLight = webDockEdgeLight)
+            ) {
+                WebImportDockContent(
+                    schoolName = school.name,
+                    isDesktopMode = isDesktopMode,
+                    onToggleDesktopMode = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                        isDesktopMode = !isDesktopMode
+                    },
+                    onExecuteImport = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onExecuteImport()
+                    },
+                    importEnabled = assetJsPath != null
                 )
-                .edgeLight(shape = ContinuousCapsule(), edgeLight = webDockEdgeLight)
-        ) {
-            WebImportDockContent(
-                schoolName = school.name,
-                isDesktopMode = isDesktopMode,
-                onToggleDesktopMode = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                    isDesktopMode = !isDesktopMode
-                },
-                onExecuteImport = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onExecuteImport()
-                },
-                importEnabled = assetJsPath != null
-            )
+            }
         }
     }
 }

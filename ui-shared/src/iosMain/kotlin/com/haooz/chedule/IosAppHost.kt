@@ -98,8 +98,12 @@ class IosAppHost {
 
     fun navigateNativeDocument(routeId: String) {
         val route = AppRoute.fromId(routeId) ?: return
-        if (!route.isNativeDocument() || floatingOverlayActive || nativeContentOverlayActive ||
-            nativeTransitionInFlight || requestedPopDepth != null) return
+        // ⚠ guard 只拦 UIKit 自己的转场状态（编辑器开着 / 转场中 / 有待处理的 pop）。
+        // ⚠ 绝不拦 floatingOverlayActive（Compose 弹窗）：弹窗与 pushViewController 互不干扰，
+        // 拦了会让「选适配器」弹窗里点学校被静默吞掉（Android 无此 guard）。
+        if (!route.isNativeDocument() || nativeContentOverlayActive ||
+            nativeTransitionInFlight || requestedPopDepth != null
+        ) return
         val usedKeys = nativePages.map { it.stateKey }.toSet()
         var stateKey = route.id
         var occurrence = 2
@@ -191,6 +195,56 @@ class IosAppHost {
         if (action.enabled && !action.busy) action.onClick()
     }
 
+    /** 本页是否把顶栏整个交给系统（原生导航栏显示标题、页面不画 Compose 顶栏） */
+    fun nativePageUsesSystemHeader(routeId: String): Boolean =
+        nativePage(routeId).chrome.usesSystemHeader
+
+    // ── 底部悬浮条（用系统控件渲染，见 Swift 侧 NativeDocumentNavigation）──
+
+    // ⚠ 只判本页有没有底栏：底栏属于页面内容，转场时应跟页面一起移动，
+    // 不能用 pageVisibleAndInteractive（会让它在转场中突然消失）。
+    fun nativePageBottomBarVisible(routeId: String): Boolean =
+        nativePage(routeId).chrome.bottomBar != null
+
+    fun nativePageBottomBarTitle(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.title.orEmpty()
+
+    fun nativePageBottomBarSubtitle(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.subtitle.orEmpty()
+
+    fun nativePageBottomBarBadge(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.badge.orEmpty()
+
+    fun nativePageBottomBarToggleSymbol(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.toggleSymbol.orEmpty()
+
+    fun nativePageBottomBarToggleLabel(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.toggleLabel.orEmpty()
+
+    fun nativePageBottomBarToggleEnabled(routeId: String): Boolean =
+        pageControlsAllowed(routeId) && nativePage(routeId).chrome.bottomBar?.toggleEnabled == true
+
+    fun nativePageBottomBarPrimarySymbol(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.primarySymbol.orEmpty()
+
+    fun nativePageBottomBarPrimaryLabel(routeId: String): String =
+        nativePage(routeId).chrome.bottomBar?.primaryLabel.orEmpty()
+
+    fun nativePageBottomBarPrimaryEnabled(routeId: String): Boolean =
+        pageControlsAllowed(routeId) && nativePage(routeId).chrome.bottomBar?.primaryEnabled == true
+
+    fun performNativePageBottomToggle(routeId: String) {
+        if (!pageControlsAllowed(routeId)) return
+        val bar = nativePage(routeId).chrome.bottomBar ?: return
+        if (bar.toggleEnabled) bar.onToggle()
+    }
+
+    fun performNativePageBottomPrimary(routeId: String) {
+        if (!pageControlsAllowed(routeId)) return
+        val bar = nativePage(routeId).chrome.bottomBar ?: return
+        if (bar.primaryEnabled) bar.onPrimary()
+    }
+
     fun performNativePageLeadingAction(routeId: String) {
         if (!nativePageLeadingEnabled(routeId)) return
         val leading = nativePage(routeId).chrome.effectiveLeading
@@ -219,6 +273,8 @@ class IosAppHost {
                 CompositionLocalProvider(
                     LocalNativeDocumentChrome provides page.chrome,
                     LocalSaveableStateRegistry provides page.registry,
+                    // ⚠ 必须给：页里 navigate 读 LocalAppRouter，而它默认值是 error(...)
+                    LocalAppRouter provides router,
                 ) {
                     Surface(Modifier.fillMaxSize(), color = MiuixTheme.colorScheme.surface) {
                         NexioIosRouteContent(router, page.route)
@@ -346,21 +402,8 @@ class IosAppHost {
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
                             nativeRouteIds, floatingOverlayActive,
-                            nativePages.map { page ->
-                                val action = page.chrome.effectiveAction
-                                val editor = page.chrome.editor
-                                val leading = page.chrome.effectiveLeading
-                                val secondary = page.chrome.effectiveSecondaryAction
-                                NativeDocumentChromeSnapshot(
-                                    editor?.title ?: page.chrome.title, page.chrome.tintArgb,
-                                    action?.symbol, action?.label, action?.enabled,
-                                    action?.busy, action?.successful, page.chrome.contentOverlayActive,
-                                    editor != null, leading?.symbol, leading?.label,
-                                    leading?.enabled, leading?.busy,
-                                    secondary?.symbol, secondary?.label, secondary?.enabled,
-                                    secondary?.busy, secondary?.successful,
-                                )
-                            },
+                            // 逐字段快照（含底栏与系统标题开关）—— 见 NativeDocumentChrome.snapshot
+                            nativePages.map { it.chrome.snapshot() },
                             nativeTransitionInFlight,
                             showsNativeHeader,
                             keepsNativeHeaderDuringCutout,
@@ -368,7 +411,9 @@ class IosAppHost {
                             scheduleLibraryTransitionActive,
                             navigation.scheduleLibraryChrome.snapshot(),
                         )
-                    }.collect { onStateChanged?.invoke() }
+                    }.collect {
+                        onStateChanged?.invoke()
+                    }
                 }
             }
         }
@@ -476,18 +521,33 @@ private data class NativeDocumentChromeSnapshot(
     val secondaryEnabled: Boolean?,
     val secondaryBusy: Boolean?,
     val secondarySuccessful: Boolean?,
+    // ⚠ 底栏与「顶栏交给系统」也要进快照，否则变化不触发 Swift 刷新（底栏不出现 / 标题停在旧值）
+    val usesSystemHeader: Boolean,
+    val bottomBarVisible: Boolean,
+    val bottomTitle: String,
+    val bottomSubtitle: String,
+    val bottomBadge: String,
+    val bottomToggleSymbol: String,
+    val bottomPrimarySymbol: String,
+    val bottomToggleEnabled: Boolean,
+    val bottomPrimaryEnabled: Boolean,
 )
 
 private fun NativeDocumentChrome.snapshot(): NativeDocumentChromeSnapshot {
     val action = effectiveAction
     val leading = effectiveLeading
     val secondary = effectiveSecondaryAction
+    val bar = bottomBar
     return NativeDocumentChromeSnapshot(
         editor?.title ?: title, tintArgb,
         action?.symbol, action?.label, action?.enabled, action?.busy, action?.successful,
         contentOverlayActive, editor != null,
         leading?.symbol, leading?.label, leading?.enabled, leading?.busy,
         secondary?.symbol, secondary?.label, secondary?.enabled, secondary?.busy, secondary?.successful,
+        usesSystemHeader,
+        bar != null, bar?.title.orEmpty(), bar?.subtitle.orEmpty(), bar?.badge.orEmpty(),
+        bar?.toggleSymbol.orEmpty(), bar?.primarySymbol.orEmpty(),
+        bar?.toggleEnabled == true, bar?.primaryEnabled == true,
     )
 }
 
@@ -524,6 +584,10 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.ScheduleImport -> "课表导入"
     AppRoute.About -> "关于应用"
     AppRoute.CourseTimeSettings -> "课表节数与时间"
-    AppRoute.EducationalImport -> null
+    // 网页导入页与选择页同级：必须是原生文档（走 Compose 栈会被原生文档挡住）
+    AppRoute.WebImport -> "网页导入"
+    // ⚠ 必须是原生文档：从「课表导出/导入/备份」这些原生文档页跳进来，
+    // 走 Compose 栈会被上面压着的原生文档挡住（表现为「点了没反应」）
+    AppRoute.EducationalImport -> "教务导入"
     AppRoute.CourseManage -> "课程管理"
 }

@@ -1,6 +1,6 @@
 /**
- * 教务系统导入页面（Screen 主体），由路由 `AppRoute.EducationalImport` 打开。
- * 网页宿主经 [WebHost] 注入（见 webHostFactory）。
+ * 教务导入第一步：学校 / 适配器选择，由路由 `AppRoute.EducationalImport` 打开。
+ * 选完跳独立路由 `AppRoute.WebImport`（见 WebImportScreen）。
  */
 package com.haooz.chedule.ui.activities
 
@@ -9,9 +9,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,10 +31,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -52,17 +56,16 @@ import com.haooz.chedule.data.optJsonArray
 import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.parseJsonArray
 import com.haooz.chedule.data.parseJsonObject
-import com.haooz.chedule.data.school.AdapterData
-import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.ScriptRepository
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentAction
+import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
+import com.haooz.chedule.ui.utils.NativeDocumentLeadingActionEffect
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.web.EduImportSelection
 import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.web.NoopWebHost
-import com.haooz.chedule.ui.web.WebHost
-import com.haooz.chedule.ui.web.WebHostConfig
-import com.haooz.chedule.ui.web.WebHostEvents
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -90,7 +93,6 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Close
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Update
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
@@ -101,18 +103,21 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 /**
- * 教务导入页主体：学校选择（tab/搜索/列表）与 WebView 导入两个分支。
+ * 学校 / 适配器选择页主体。
  * @param dataVersion 数据版本号，+1 触发列表刷新
  */
 @Composable
 fun EducationalImportScreen(
-    /** 网页宿主工厂：Android 注入 `AndroidWebHost`，桌面/iOS 用 [NoopWebHost]。 */
-    webHostFactory: @Composable (WebHostConfig, WebHostEvents) -> WebHost = { _, _ -> NoopWebHost },
     isInFreeformWindow: Boolean,
     isUpdating: Boolean,
     dataVersion: Int,
     onForceUpdate: () -> Unit,
     onFinish: () -> Unit,
+    /**
+     * 选完学校/适配器后打开网页导入页（独立路由）。
+     * ⚠ 由路由层注入而非页内读 `LocalAppRouter`：iOS 原生文档页容器不 provide 它，默认值会抛 error。
+     */
+    onOpenWebImport: () -> Unit,
 ) {
     val courseViewModel = courseViewModel()
     val scheduleViewModel = scheduleViewModel()
@@ -121,6 +126,14 @@ fun EducationalImportScreen(
     val scheduleNames by scheduleViewModel.scheduleNames.collectAsState()
     val currentScheduleName by scheduleViewModel.currentScheduleName.collectAsState()
 
+    // 本页只做学校 / 适配器选择：顶栏标题与渐变模糊由 Compose 画，
+    // 左右两个按钮在 iOS 原生文档下由 Swift 画（避免双层）。整页系统化只用于 WebImportScreen。
+    val nativeChrome = LocalNativeDocumentChrome.current
+    val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
+    val showNavigationActions = nativeChrome == null
+    // ⚠ 必须在组合期取好：SideEffect 的 lambda 不是 @Composable，读不了 MiuixTheme
+    val chromeTint = MiuixTheme.colorScheme.primary.toArgb().toLong()
+
     val backgroundColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(backgroundColor)
@@ -128,10 +141,6 @@ fun EducationalImportScreen(
     }
     val liquidGlassBackdrop: LayerBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val scrollBehavior = rememberSharedScrollBehavior()
-
-    var currentScreen by remember { mutableStateOf("selection") }
-    var selectedSchool by remember { mutableStateOf<SchoolData?>(null) }
-    var selectedAdapter by remember { mutableStateOf<AdapterData?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
@@ -144,343 +153,208 @@ fun EducationalImportScreen(
         }
     }
 
-    var isDesktopMode by remember { mutableStateOf(false) }
-    var currentAssetJsPath by remember { mutableStateOf<String?>(null) }
-    var executeImportAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var toggleDesktopModeAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var webPageTitle by remember { mutableStateOf("加载中...") }
-    // 页面顶部取色：按亮度定顶栏标题/图标的黑白，不跟应用深浅色主题
-    var webTopColor by remember { mutableStateOf(Color.White) }
-    val webTopIsLight = remember(webTopColor) {
-        val lum = 0.299f * webTopColor.red + 0.587f * webTopColor.green + 0.114f * webTopColor.blue
-        lum >= 0.55f
+    val isTablet = isTabletWidth()
+    val tabletHorizontalPadding = if (isTablet) {
+        val widthDp = screenWidthDp()
+        ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
+    } else 0.dp
+    val hapticFeedback = LocalHapticFeedback.current
+    val displayTabs = listOf("学校导入", "通用工具")
+
+    // 标题发布放在 Scaffold 外：content lambda 会被缓存，放里面不保证重新执行
+    SideEffect {
+        nativeChrome?.title = "选择学校"
+        nativeChrome?.tintArgb = chromeTint
     }
-    val webBarContentColor = if (webTopIsLight) Color.Black else Color.White
-    var reloadWebViewAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val webViewScrollBehavior = rememberSharedScrollBehavior()
+    NativeDocumentLeadingActionEffect(
+        if (nativeChrome != null) {
+            NativeDocumentAction(symbol = "chevron.backward", label = "返回", onClick = onFinish)
+        } else null
+    )
+    NativeDocumentActionEffect(
+        NativeDocumentAction(
+            symbol = "arrow.clockwise",
+            label = "更新",
+            enabled = !isUpdating,
+            busy = isUpdating,
+            onClick = onForceUpdate,
+        )
+    )
 
-    when (currentScreen) {
-        "selection" -> {
-            val isTablet = isTabletWidth()
-            val tabletHorizontalPadding = if (isTablet) {
-                val widthDp = screenWidthDp()
-                ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
-            } else 0.dp
-            val hapticFeedback = LocalHapticFeedback.current
-            val displayTabs = listOf("学校导入", "通用工具")
+    Scaffold(
+        modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset))
+    ) { paddingValues ->
+        val topBarHeightDp = with(LocalDensity.current) {
+            (scrollBehavior.currentHeightPx).toDp()
+        }
+        val statusBarHeight = WindowInsets.statusBars
+            .asPaddingValues().calculateTopPadding()
+        // iOS 上 statusBars 含原生导航栏，模糊带按纯状态栏算，否则多出一条导航栏高度
+        val blurHeight = 80.dp +
+            (statusBarHeight - nativeBarInset).coerceAtLeast(0.dp) + 120.dp
+        // ⚠ 不再加 nativeBarInset：consumeWindowInsets 已把原生导航栏那截扣掉，再加会多出 54
+        val contentTopInset = paddingValues.calculateTopPadding()
 
-            Scaffold { paddingValues ->
-                val topBarHeightDp = with(LocalDensity.current) {
-                    (scrollBehavior.currentHeightPx).toDp()
+        var searchBackdropAlpha by remember { mutableFloatStateOf(0f) }
+        var searchShadowAlpha by remember { mutableFloatStateOf(0f) }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdrop(backdrop)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize().then(
+                        Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                    )
+                ) {
+                    com.haooz.chedule.ui.screens.SchoolSelectionScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        isUpdating = isUpdating,
+                        dataVersion = dataVersion,
+                        isInFreeformWindow = isInFreeformWindow,
+                        scrollBehavior = scrollBehavior,
+                        searchQuery = searchQuery,
+                        selectedTab = selectedTab,
+                        topContentPadding = contentTopInset + topBarHeightDp + 100.dp,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        onAdapterSelected = { school, adapter ->
+                            // 选中项经 EduImportSelection 带给独立路由（右侧推入），返回先回本页
+                            EduImportSelection.set(school, adapter)
+                            onOpenWebImport()
+                        }
+                    )
                 }
-                val statusBarHeight = WindowInsets.statusBars
-                    .asPaddingValues().calculateTopPadding()
-                val blurHeight = 80.dp + statusBarHeight + 120.dp
+            }
 
-                var searchBackdropAlpha by remember { mutableFloatStateOf(0f) }
-                var searchShadowAlpha by remember { mutableFloatStateOf(0f) }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .layerBackdrop(backdrop)
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize().then(
-                                Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
-                            )
-                        ) {
-                            com.haooz.chedule.ui.screens.SchoolSelectionScreen(
-                                modifier = Modifier.fillMaxSize(),
-                                isUpdating = isUpdating,
-                                dataVersion = dataVersion,
-                                isInFreeformWindow = isInFreeformWindow,
-                                scrollBehavior = scrollBehavior,
-                                searchQuery = searchQuery,
-                                selectedTab = selectedTab,
-                                topContentPadding = paddingValues.calculateTopPadding() + topBarHeightDp + 100.dp,
-                                liquidGlassBackdrop = liquidGlassBackdrop,
-                                onAdapterSelected = { school, adapter ->
-                                    selectedSchool = school
-                                    selectedAdapter = adapter
-                                    currentScreen = "webview"
-                                }
+            ProgressiveBlurTopBar(
+                backdrop = liquidGlassBackdrop,
+                height = blurHeight,
+                topInsetAdjustment = nativeBarInset,
+            ) {
+                CollapsibleTopAppBar(
+                    title = "选择学校",
+                    largeTitle = "选择学校",
+                    showLargeTitle = true,
+                    modifier = Modifier,
+                    scrollBehavior = scrollBehavior,
+                    contentPadding = {},
+                    gradientMaskHeight = CollapsedHeight + 190.dp,
+                    onAlphaChanged = { bd, sh ->
+                        searchBackdropAlpha = bd
+                        searchShadowAlpha = sh
+                    },
+                    // 原生文档页（iOS）这两个按钮由 Swift 画（见上面的 effect）
+                    startAction = if (showNavigationActions) {
+                        { backdropAlpha, shadowAlpha ->
+                            LiquidTopBarButton(
+                                onClick = onFinish,
+                                backdrop = liquidGlassBackdrop,
+                                icon = MiuixIcons.ChevronBackward,
+                                contentDescription = "返回",
+                                performHapticFeedback = false,
+                                iconSize = 25.dp,
+                                iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
+                                backdropAlpha = backdropAlpha,
+                                shadowAlpha = shadowAlpha,
                             )
                         }
-                    }
-
-                    ProgressiveBlurTopBar(
-                        backdrop = liquidGlassBackdrop,
-                        height = blurHeight,
-                    ) {
-                        CollapsibleTopAppBar(
-                            title = "选择学校",
-                            largeTitle = "选择学校",
-                            modifier = Modifier,
-                            scrollBehavior = scrollBehavior,
-                            contentPadding = {},
-                            gradientMaskHeight = CollapsedHeight + 190.dp,
-                            onAlphaChanged = { bd, sh ->
-                                searchBackdropAlpha = bd
-                                searchShadowAlpha = sh
-                            },
-                            startAction = { backdropAlpha, shadowAlpha ->
+                    } else null,
+                    endAction = if (showNavigationActions) {
+                        { backdropAlpha, shadowAlpha ->
+                            if (isUpdating) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = (-6).dp, y = (-4).dp)
+                                        .size(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            } else {
                                 LiquidTopBarButton(
-                                    onClick = onFinish,
+                                    onClick = onForceUpdate,
                                     backdrop = liquidGlassBackdrop,
-                                    icon = MiuixIcons.ChevronBackward,
-                                    contentDescription = "返回",
-                                    performHapticFeedback = false,
-                                    iconSize = 25.dp,
-                                    iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
+                                    icon = MiuixIcons.Normal.Update,
+                                    contentDescription = "更新",
+                                    iconSize = 28.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
                                 )
-                            },
-                            endAction = { backdropAlpha, shadowAlpha ->
-                                if (isUpdating) {
-                                    Box(
-                                        modifier = Modifier
-                                            .offset(x = (-6).dp, y = (-4).dp)
-                                            .size(40.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    }
-                                } else {
-                                    LiquidTopBarButton(
-                                        onClick = onForceUpdate,
-                                        backdrop = liquidGlassBackdrop,
-                                        icon = MiuixIcons.Normal.Update,
-                                        contentDescription = "更新",
-                                        iconSize = 28.dp,
-                                        backdropAlpha = backdropAlpha,
-                                        shadowAlpha = shadowAlpha,
-                                    )
-                                }
-                            },
-                        )
-                    }
-
-                    // :miuix 拿不到 App 偏好，isLightTheme 需显式传入，否则强制深浅色时底色与文字对不上。
-                    // isAppDarkTheme 是 @Composable，必须在组合期先取好，不能塞进下面那个 lambda。
-                    val searchIsLightTheme = !isAppDarkTheme()
-                    Column(
-                        modifier = Modifier
-                            .padding(top = paddingValues.calculateTopPadding() + topBarHeightDp)
-                            .fillMaxWidth()
-                    ) {
-                        SearchBar(
-                            modifier = Modifier.padding(
-                                top = 8.dp,
-                                bottom = 6.dp,
-                                start = 6.dp + tabletHorizontalPadding,
-                                end = 6.dp + tabletHorizontalPadding
-                            ),
-                            inputField = {
-                                InputField(
-                                    query = searchQuery,
-                                    onQueryChange = { searchQuery = it },
-                                    onSearch = { searchExpanded = false },
-                                    expanded = searchExpanded,
-                                    onExpandedChange = { searchExpanded = it },
-                                    label = "搜索学校",
-                                    backdrop = liquidGlassBackdrop,
-                                    backdropAlpha = searchBackdropAlpha,
-                                    shadowAlpha = searchShadowAlpha,
-                                    isLightTheme = { searchIsLightTheme },
-                                )
-                            },
-                            expanded = searchExpanded,
-                            onExpandedChange = { searchExpanded = it },
-                            actionIcon = MiuixIcons.Normal.Close,
-                            onActionClick = {
-                                searchExpanded = false
-                                searchQuery = ""
-                            },
-                            backdrop = liquidGlassBackdrop,
-                            backdropAlpha = searchBackdropAlpha,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 20.dp + tabletHorizontalPadding, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            displayTabs.forEachIndexed { index, tabName ->
-                                val isSelected = selectedTab == index
-                                Surface(
-                                    modifier = Modifier
-                                        .clip(ContinuousRoundedRectangle(20.dp))
-                                        .clickable {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                            selectedTab = index
-                                        },
-                                    color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant
-                                ) {
-                                    Box(
-                                        modifier = Modifier.padding(horizontal = 16.dp).height(35.dp).clip(ContinuousCapsule()),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = tabName,
-                                            fontSize = 14.sp,
-                                            color = if (isSelected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurfaceVariantActions
-                                        )
-                                    }
-                                }
                             }
                         }
-                    }
-                }
+                    } else null,
+                )
             }
-        }
-        "webview" -> {
-            val school = selectedSchool
-            val adapter = selectedAdapter
-            if (school != null && adapter != null) {
-                val hapticFeedback = LocalHapticFeedback.current
 
-                Scaffold { paddingValues ->
-                    val topBarHeightDp = with(LocalDensity.current) {
-                        (webViewScrollBehavior.currentHeightPx).toDp()
-                    }
-                    val statusBarHeight = WindowInsets.statusBars
-                        .asPaddingValues().calculateTopPadding()
-                    val blurHeight = statusBarHeight + CollapsedHeight + 40.dp
-                    // 顶栏与底部胶囊共用：录的是 WebView Offscreen 层
-                    val webContentBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
-
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        com.haooz.chedule.ui.screens.WebViewScreen(
-                            school = school,
-                            adapterId = adapter.adapterId,
-                            importUrl = adapter.importUrl,
-                            assetJsPath = adapter.assetJsPath,
-                            webContentBackdrop = webContentBackdrop,
-                            // 与选择页同构：Scaffold padding + 顶栏高度，内容贴在顶栏下
-                            contentTopPadding = (
-                                    paddingValues.calculateTopPadding() + topBarHeightDp + 12.dp
-                                    ).coerceAtLeast(0.dp),
-                            scheduleNames = scheduleNames,
-                            currentScheduleName = currentScheduleName,
-                            onBack = {
-                                selectedSchool = null
-                                currentScreen = "selection"
-                            },
-                            onImportComplete = { courses ->
-                                // AndroidBridge 已为导入课程设置 scheduleId（目标课表，空为当前课表）
-                                val targetScheduleId =
-                                    courses.firstOrNull()?.scheduleId?.takeIf { it.isNotEmpty() }
-                                if (targetScheduleId != null && targetScheduleId != currentScheduleName) {
-                                    scheduleViewModel.saveCoursesToSchedule(
-                                        targetScheduleId,
-                                        courses
-                                    )
-                                } else {
-                                    courseViewModel.replaceCourses(courses)
-                                }
-                                scheduleViewModel.refreshScheduleList()
-                                showToast("课程已保存，共 ${courses.size} 门课程")
-                            },
-                            onTaskCompleted = {
-                                val prefs = AppStorage.store("edu_import_prefs")
-                                val hasPresetTimeSlots =
-                                    prefs.getStringOrNull("preset_time_slots") != null
-                                val targetScheduleId = prefs.getStringOrNull("target_schedule_id")
-
-                                if (hasPresetTimeSlots) {
-                                    applyPresetTimeSlots(
-                                        settingsViewModel,
-                                        scheduleViewModel,
-                                        targetScheduleId
-                                    )
-                                }
-                                val hasStartDate =
-                                    prefs.getStringOrNull("semester_start_date") != null
-                                val hasTotalWeeks = prefs.getInt("semester_total_weeks", -1) > 0
-                                val hasClassDuration =
-                                    prefs.getInt("default_class_duration", -1) > 0
-                                val hasBreakDuration =
-                                    prefs.getInt("default_break_duration", -1) > 0
-                                val hasFirstDayOfWeek = prefs.getInt("first_day_of_week", -1) > 0
-                                if (hasStartDate || hasTotalWeeks || hasClassDuration || hasBreakDuration || hasFirstDayOfWeek) {
-                                    applyImportedScheduleConfig(courseViewModel, scheduleViewModel)
-                                }
-                                val hasComboSchedule =
-                                    prefs.getStringOrNull("combo_schedule") != null
-                                if (hasComboSchedule) {
-                                    applyComboSchedule(
-                                        settingsViewModel,
-                                        courseViewModel,
-                                        scheduleViewModel,
-                                        targetScheduleId
-                                    )
-                                }
-                            },
-                            onPageTitleChanged = { webPageTitle = it },
-                            onDesktopModeChanged = { isDesktopMode = it },
-                            onTopColorChanged = { webTopColor = it },
-                            onAssetJsPathChanged = { currentAssetJsPath = it },
-                            onExecuteImportRef = { action -> executeImportAction = action },
-                            onToggleDesktopModeRef = { action -> toggleDesktopModeAction = action },
-                            onReloadRef = { action -> reloadWebViewAction = action },
-                            // 网页本体（WebView / JS 桥 / PixelCopy 采色）在平台侧，这里只把宿主造出来注入。
-                            webHostFactory = webHostFactory,
+            // :miuix 拿不到 App 偏好，isLightTheme 需显式传入，否则强制深浅色时底色与文字对不上。
+            // isAppDarkTheme 是 @Composable，必须在组合期先取好，不能塞进下面那个 lambda。
+            val searchIsLightTheme = !isAppDarkTheme()
+            Column(
+                modifier = Modifier
+                    .padding(top = paddingValues.calculateTopPadding() + topBarHeightDp)
+                    .fillMaxWidth()
+            ) {
+                SearchBar(
+                    modifier = Modifier.padding(
+                        top = 8.dp,
+                        bottom = 6.dp,
+                        start = 6.dp + tabletHorizontalPadding,
+                        end = 6.dp + tabletHorizontalPadding
+                    ),
+                    inputField = {
+                        InputField(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            onSearch = { searchExpanded = false },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = "搜索学校",
+                            backdrop = liquidGlassBackdrop,
+                            backdropAlpha = searchBackdropAlpha,
+                            shadowAlpha = searchShadowAlpha,
+                            isLightTheme = { searchIsLightTheme },
                         )
-
-                        ProgressiveBlurTopBar(
-                            backdrop = webContentBackdrop,
-                            height = blurHeight,
-                            // 教务页多为白底：默认 surface 暗色 tint 会在顶上压一层黑罩
-                            tintIntensity = 0f,
+                    },
+                    expanded = searchExpanded,
+                    onExpandedChange = { searchExpanded = it },
+                    actionIcon = MiuixIcons.Normal.Close,
+                    onActionClick = {
+                        searchExpanded = false
+                        searchQuery = ""
+                    },
+                    backdrop = liquidGlassBackdrop,
+                    backdropAlpha = searchBackdropAlpha,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = 20.dp + tabletHorizontalPadding, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    displayTabs.forEachIndexed { index, tabName ->
+                        val isSelected = selectedTab == index
+                        Surface(
+                            modifier = Modifier
+                                .clip(ContinuousRoundedRectangle(20.dp))
+                                .clickable {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                    selectedTab = index
+                                },
+                            color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceVariant
                         ) {
-                            CollapsibleTopAppBar(
-                                title = webPageTitle,
-                                showLargeTitle = false,
-                                // 教务页自带顶栏空白区色条，不需要 AppBar 再叠黑白渐变遮罩
-                                showShadow = false,
-                                showGradientOverlay = false,
-                                titleColor = webBarContentColor,
-                                modifier = Modifier,
-                                scrollBehavior = webViewScrollBehavior,
-                                contentPadding = {},
-                                startAction = { backdropAlpha, shadowAlpha ->
-                                    LiquidTopBarButton(
-                                        onClick = {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                            selectedSchool = null
-                                            currentScreen = "selection"
-                                        },
-                                        backdrop = liquidGlassBackdrop,
-                                        icon = MiuixIcons.Close,
-                                        iconTint = webBarContentColor.copy(alpha = 0.85f),
-                                        contentDescription = "关闭",
-                                        performHapticFeedback = false,
-                                        iconSize = 22.dp,
-                                        backdropAlpha = backdropAlpha,
-                                        shadowAlpha = shadowAlpha,
-                                    )
-                                },
-                                endAction = { backdropAlpha, shadowAlpha ->
-                                    LiquidTopBarButton(
-                                        onClick = {
-                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                            reloadWebViewAction?.invoke()
-                                        },
-                                        backdrop = liquidGlassBackdrop,
-                                        icon = MiuixIcons.Refresh,
-                                        iconTint = webBarContentColor.copy(alpha = 0.85f),
-                                        contentDescription = "刷新",
-                                        performHapticFeedback = false,
-                                        iconSize = 24.dp,
-                                        backdropAlpha = backdropAlpha,
-                                        shadowAlpha = shadowAlpha,
-                                    )
-                                },
-                            )
+                            Box(
+                                modifier = Modifier.padding(horizontal = 16.dp).height(35.dp).clip(ContinuousCapsule()),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = tabName,
+                                    fontSize = 14.sp,
+                                    color = if (isSelected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurfaceVariantActions
+                                )
+                            }
                         }
                     }
                 }
@@ -493,7 +367,7 @@ fun EducationalImportScreen(
  * 应用教务脚本下发的预设时间段（JSON 存在 `edu_import_prefs`，导入完成后消费一次）。
  * 目标课表可能是非当前课表 —— 那时直接走 CourseRepository 写入，不动当前 UI 状态。
  */
-private fun applyPresetTimeSlots(
+internal fun applyPresetTimeSlots(
     settingsViewModel: SettingsViewModel,
     scheduleViewModel: ScheduleViewModel,
     targetScheduleId: String?
@@ -575,7 +449,7 @@ private fun applyPresetTimeSlots(
  * 应用教务脚本通过 saveCourseConfig 传回的课表配置（开学日 / 总周数 / 单节时长 / 周起始日）。
  * 一次性消费标记，读完整组清掉，防止残留旧值在下次导入时被误应用。
  */
-private fun applyImportedScheduleConfig(
+internal fun applyImportedScheduleConfig(
     courseViewModel: CourseViewModel,
     scheduleViewModel: ScheduleViewModel,
 ) {
@@ -675,7 +549,7 @@ private fun applyImportedScheduleConfig(
  * 应用教务脚本通过 saveComboSchedule 传回的组合作息方案（同一课表按日期区间切换作息）。
  * 时间槽是差量：只覆盖脚本提交的节次，其余沿用基础时间段，避免切换后未覆盖节次丢时间。
  */
-private fun applyComboSchedule(
+internal fun applyComboSchedule(
     settingsViewModel: SettingsViewModel,
     courseViewModel: CourseViewModel,
     scheduleViewModel: ScheduleViewModel,
@@ -789,7 +663,7 @@ private fun applyComboSchedule(
     }
 }
 
-/** comboSchedule 消费端模型（与 AndroidBridge.ComboScheduleJsonModel 同构） */
+/** 预设时间段：消费 `preset_time_slots` 存的 JSON */
 private data class PresetTimeSlot(
     val number: Int,
     val startTime: String,

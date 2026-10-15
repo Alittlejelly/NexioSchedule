@@ -10,10 +10,8 @@ import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
-import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.NexioLog
-import java.util.UUID
 
 private const val TAG = "AndroidBridge"
 
@@ -35,12 +33,7 @@ class AndroidBridge(
     private val gson: Gson = GsonBuilder()
         .create()
     private val handler = Handler(Looper.getMainLooper())
-    private val nameColorMap = mutableMapOf<String, Long>()
-    private var colorIndex = 0
     private var currentToast: Toast? = null
-
-    /** 当前导入的目标课表ID（执行导入前选择课表时设置，空 = 导入到当前课表） */
-    private var importTableId: String? = null
 
     /** 是否启用 POST 加头 + OkHttp 转发（默认 false：POST 走原生，避免 WAF 拒带 X-WebView-Post-Id 的请求） */
     @Volatile
@@ -57,9 +50,19 @@ class AndroidBridge(
         postForwardEnabled = enabled
     }
 
-    /** 设置导入的目标课表ID */
+    /**
+     * 负载解析 / 落盘 / 作息调用顺序全部在 :ui-shared 的 [EduImportBridgeCore] 里 ——
+     * iOS 的 WKWebView 走同一份，两端各写一遍必然漂移。本类只留平台活：
+     * 对话框三件套、toast、POST 转发开关、Promise 兑现。
+     */
+    private val core = EduImportBridgeCore(
+        onCoursesImported = onCourseImported,
+        onTaskCompleted = onTaskCompleted,
+    )
+
+    /** 设置导入的目标课表ID（每次执行导入脚本前都会调一次，顺带重置作息调用顺序状态） */
     fun setImportTableId(tableId: String?) {
-        this.importTableId = tableId
+        core.setImportTableId(tableId)
     }
 
     // ── 对话框三件套（结果经 promiseId 回传 JS）──────────────────────
@@ -108,7 +111,9 @@ class AndroidBridge(
                             val escaped = input.replace("'", "\\'")
                             resolveJsPromise(promiseId, "'$escaped'")
                         } else {
-                            val jsScript = "javascript:${validatorJsFunction}('${input.replace("'", "\\'")}')"
+                            // ⚠ 不要加 "javascript:" 前缀：`evaluateJavascript` 收的是
+                            // JS 源码不是 URL，前缀只是被当成 label 侥幸能跑，别依赖它。
+                            val jsScript = "${validatorJsFunction}('${input.replace("'", "\\'")}')"
                             webView.evaluateJavascript(jsScript) { result ->
                                 val error = result?.trim('"')
                                 if (error.isNullOrEmpty() || error.equals("false", ignoreCase = true)) {
@@ -167,192 +172,59 @@ class AndroidBridge(
         }
     }
 
-    /** JS 调用：将课程数据传回 Android 端进行保存 */
+    /** JS 调用：将课程数据传回原生保存 */
     @JavascriptInterface
     fun saveImportedCourses(coursesJsonString: String, promiseId: String) {
         NexioLog.d(TAG, "接收到课程数据，大小: ${coursesJsonString.length / 1024} KB")
-        handler.post {
-            try {
-                val importedCourses = gson.fromJson<List<ImportCourseJsonModel>>(
-                    coursesJsonString,
-                    object : TypeToken<List<ImportCourseJsonModel>>() {}.type
-                )
-
-                if (importedCourses.isNullOrEmpty()) {
-                    Toast.makeText(context, "导入失败：未解析到课程数据", Toast.LENGTH_LONG).show()
-                    rejectJsPromise(promiseId, "课程数据为空")
-                    return@post
-                }
-
-                // 目标课表与课程一并登记：后续 saveCourseConfig / apply 都以它为准。
-                // ⚠ null 必须显式 remove —— KeyValueEditor.putString 只收非空值，
-                // 不像 SharedPreferences 的 putString(k, null) 会隐式移除该键。
-                val targetId = importTableId
-                AppStorage.store("edu_import_prefs").edit {
-                    if (targetId != null) putString("target_schedule_id", targetId)
-                    else remove("target_schedule_id")
-                }
-
-                // name/teacher/position/weeks 等非空字段：脚本缺键时 Gson 会置 null，这里兜默认值
-                @Suppress(
-                    "USELESS_ELVIS",
-                    "SENSELESS_COMPARISON",
-                    "ELVIS_ALWAYS_NULL",
-                    "UNNECESSARY_SAFE_CALL"
-                )
-                val courses = importedCourses.map { json ->
-                    val color = json.color?.toLong()
-                        ?: getOrAssignColorByName(json.name ?: "")
-                    Course(
-                        id = json.id ?: UUID.randomUUID().toString(),
-                        name = json.name ?: "",
-                        classroom = json.position ?: "",
-                        teacher = json.teacher ?: "",
-                        dayOfWeek = json.day,
-                        startSection = json.startSection ?: 1,
-                        endSection = json.endSection ?: json.startSection ?: 1,
-                        startWeek = json.weeks?.minOrNull() ?: 1,
-                        endWeek = json.weeks?.maxOrNull() ?: 20,
-                        weekType = Course.WEEK_TYPE_ALL,
-                        selectedWeeks = json.weeks?.sorted() ?: emptyList(),
-                        colorRes = color,
-                        isCustomTime = json.isCustomTime,
-                        customStartTime = json.customStartTime,
-                        customEndTime = json.customEndTime,
-                        scheduleId = importTableId ?: ""
-                    )
-                }
-
-                Toast.makeText(context, "课程导入成功！共 ${courses.size} 门课程", Toast.LENGTH_SHORT).show()
-                onCourseImported(courses)
-                resolveJsPromise(promiseId, "true")
-            } catch (e: Exception) {
-                NexioLog.e(TAG, "课程导入解析失败", e)
-                NexioLog.e(TAG, "原始JSON: $coursesJsonString")
-                Toast.makeText(context, "课程导入失败: ${e.message}", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "课程导入失败: ${e.message}")
-            }
-        }
+        handler.post { dispatch("saveImportedCourses", coursesJsonString, promiseId, "课程导入成功") }
     }
 
-    /** JS 调用：将课表配置数据传回 Android 端进行保存 */
+    /** JS 调用：将课表配置数据传回原生保存 */
     @JavascriptInterface
     fun saveCourseConfig(configJsonString: String, promiseId: String) {
-        NexioLog.d(TAG, "接收到课表配置数据，大小: ${configJsonString.length} 字节")
-        handler.post {
-            try {
-                val config = gson.fromJson(configJsonString, CourseConfigJsonModel::class.java)
-                NexioLog.d(TAG, "课表配置解析成功: semesterStartDate=${config.semesterStartDate}, totalWeeks=${config.semesterTotalWeeks}")
-
-                val normalizedStart = com.haooz.chedule.data.CourseRepository
-                    .normalizeClassStartDate(config.semesterStartDate)
-                val targetId = importTableId
-                AppStorage.store("edu_import_prefs").edit {
-                    // 显式写/清：本次未传的字段不能残留上一次导入的值
-                    if (normalizedStart != null) {
-                        putString("semester_start_date", normalizedStart)
-                    } else {
-                        remove("semester_start_date")
-                    }
-                    if (config.semesterTotalWeeks > 0) {
-                        putInt("semester_total_weeks", config.semesterTotalWeeks)
-                    } else {
-                        remove("semester_total_weeks")
-                    }
-                    // 与课程同目标：作息未导入时也不能让开学日/周数落到别的课表。
-                    // null = 导入到当前课表，同样走显式 remove（同上）。
-                    if (targetId != null) putString("target_schedule_id", targetId)
-                    else remove("target_schedule_id")
-                    putInt("default_class_duration", config.defaultClassDuration)
-                    putInt("default_break_duration", config.defaultBreakDuration)
-                    putInt("first_day_of_week", config.firstDayOfWeek)
-                }
-
-                Toast.makeText(context, "课表配置导入成功", Toast.LENGTH_SHORT).show()
-                resolveJsPromise(promiseId, "true")
-            } catch (e: Exception) {
-                NexioLog.e(TAG, "课表配置解析失败: ${e.message}", e)
-                Toast.makeText(context, "配置导入失败: ${e.message}", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "配置导入失败: ${e.message}")
-            }
-        }
+        handler.post { dispatch("saveCourseConfig", configJsonString, promiseId, "课表配置导入成功") }
     }
 
-    /** JS 调用：将预设时间段数据传回 Android 端进行保存 */
+    /** JS 调用：将预设时间段数据传回原生保存 */
     @JavascriptInterface
     fun savePresetTimeSlots(timeSlotsJsonString: String, promiseId: String) {
-        handler.post {
-            try {
-                val timeSlots = gson.fromJson<List<TimeSlotJsonModel>>(
-                    timeSlotsJsonString,
-                    object : TypeToken<List<TimeSlotJsonModel>>() {}.type
-                )
-
-                val json = Gson().toJson(timeSlots)
-                val targetId = importTableId
-                AppStorage.store("edu_import_prefs").edit {
-                    putString("preset_time_slots", json)
-                    if (targetId != null) putString("target_schedule_id", targetId)
-                    else remove("target_schedule_id")
-                }
-
-                Toast.makeText(context, "时间段导入成功", Toast.LENGTH_SHORT).show()
-                resolveJsPromise(promiseId, "true")
-            } catch (e: Exception) {
-                NexioLog.e(TAG, "时间段数据解析失败: ${e.message}", e)
-                Toast.makeText(context, "时间段数据解析失败: ${e.message}", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "时间段数据解析失败: ${e.message}")
-            }
-        }
+        handler.post { dispatch("savePresetTimeSlots", timeSlotsJsonString, promiseId, "时间段导入成功") }
     }
 
-    /** JS 调用：将组合作息方案（官方文档 4. comboSchedule）数据传回 Android 端进行保存 */
+    /** JS 调用：将组合作息方案（官方 1.4 comboSchedule）数据传回原生保存 */
     @JavascriptInterface
     fun saveComboSchedule(comboJsonString: String, promiseId: String) {
-        NexioLog.d(TAG, "接收到组合作息数据，大小: ${comboJsonString.length} 字节")
-        handler.post {
-            try {
-                val combo = gson.fromJson(comboJsonString, ComboScheduleJsonModel::class.java)
-                NexioLog.d(TAG, "组合作息解析成功: name=${combo.name}, 方案数=${combo.publicSchedules.size}")
-
-                val targetId = importTableId
-                AppStorage.store("edu_import_prefs").edit {
-                    // 原样存，结构校验与转换交给消费端（与 preset_time_slots 同套路）
-                    putString("combo_schedule", comboJsonString)
-                    if (targetId != null) putString("target_schedule_id", targetId)
-                    else remove("target_schedule_id")
-                }
-
-                Toast.makeText(context, "组合作息导入成功", Toast.LENGTH_SHORT).show()
-                resolveJsPromise(promiseId, "true")
-            } catch (e: Exception) {
-                NexioLog.e(TAG, "组合作息解析失败: ${e.message}", e)
-                Toast.makeText(context, "组合作息导入失败: ${e.message}", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "组合作息导入失败: ${e.message}")
-            }
-        }
+        handler.post { dispatch("saveComboSchedule", comboJsonString, promiseId, "组合作息导入成功") }
     }
 
     /** JS 调用：通知 Native 端 JS 任务已逻辑完成 */
     @JavascriptInterface
     fun notifyTaskCompletion() {
-        importTableId = null
-        handler.post {
-            onTaskCompleted()
-        }
+        handler.post { dispatch("notifyTaskCompletion", "", null, null) }
     }
 
     // ── 私有工具 ────────────────────────────────────────────────────
 
-    private fun getOrAssignColorByName(courseName: String): Long {
-        val trimmedName = courseName.trim()
-        val existingColor = nameColorMap[trimmedName]
-        if (existingColor != null) return existingColor
-
-        val color = Course.courseColors[colorIndex % Course.courseColors.size]
-        colorIndex++
-        nameColorMap[trimmedName] = color
-        return color
+    /**
+     * 统一走 :ui-shared 的 [EduImportBridgeCore]：契约拒绝与解析失败都转成 Promise reject，
+     * 成功才 toast。平台侧不再自己解析脚本负载（两端各写一遍必然漂移）。
+     */
+    private fun dispatch(method: String, payload: String, promiseId: String?, okToast: String?) {
+        val result = try {
+            core.handle(method, listOf(payload))
+        } catch (e: EduBridgeReject) {
+            NexioLog.w(TAG, "$method 被拒绝: ${e.message}")
+            Toast.makeText(context, e.message ?: "导入失败", Toast.LENGTH_LONG).show()
+            promiseId?.let { rejectJsPromise(it, e.message ?: "导入失败") }
+            return
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "$method 处理异常", e)
+            Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+            promiseId?.let { rejectJsPromise(it, "导入失败: ${e.message}") }
+            return
+        }
+        if (okToast != null) Toast.makeText(context, okToast, Toast.LENGTH_SHORT).show()
+        promiseId?.let { resolveJsPromise(it, result ?: "true") }
     }
 
     private fun resolveJsPromise(promiseId: String, result: String) {
@@ -364,54 +236,6 @@ class AndroidBridge(
         webView.evaluateJavascript("window._rejectAndroidPromise('$promiseId', '$escapedError');", null)
     }
 
-    // ── JS 导入负载 JSON 模型（字段名与适配脚本约定逐字对齐，勿改）────
-
-    data class ImportCourseJsonModel(
-        val id: String? = null,
-        val name: String,
-        val teacher: String = "",
-        val position: String = "",
-        val day: Int,
-        val startSection: Int? = null,
-        val endSection: Int? = null,
-        val weeks: List<Int> = emptyList(),
-        val isCustomTime: Boolean = false,
-        val customStartTime: String? = null,
-        val customEndTime: String? = null,
-        val color: Int? = null,
-        val remark: String? = null
-    )
-
-    data class CourseConfigJsonModel(
-        val semesterStartDate: String? = null,
-        val semesterTotalWeeks: Int = 20,
-        val defaultClassDuration: Int = 45,
-        val defaultBreakDuration: Int = 10,
-        val firstDayOfWeek: Int = 1
-    )
-
-    data class TimeSlotJsonModel(
-        val number: Int,
-        val startTime: String,
-        val endTime: String,
-        val alias: String? = null
-    )
-
-    /**
-     * 官方文档 4. comboSchedule 组合作息方案：同一课表在不同日期区间使用不同作息
-     * （如夏季/冬季），整个对象可选。
-     * 模板负载：{ name, publicSchedules: [{ name, startDate, endDate,
-     * timeSlots: [{number, startTime, endTime}] }] }
-     */
-    data class ComboScheduleJsonModel(
-        val name: String = "",
-        val publicSchedules: List<ComboScheduleItemJsonModel> = emptyList()
-    )
-
-    data class ComboScheduleItemJsonModel(
-        val name: String = "",
-        val startDate: String? = null,
-        val endDate: String? = null,
-        val timeSlots: List<TimeSlotJsonModel> = emptyList()
-    )
+    // 脚本负载的解析与 JSON 模型已随逻辑一起上提到 :ui-shared 的 EduImportBridgeCore
+    // （kotlinx-serialization 逐字段读 —— Kotlin/Native 上没有 Gson 反射）。
 }
