@@ -199,7 +199,8 @@ fun ShiftScheduleScreen(
 
                 val dividerShape = ContinuousRoundedRectangle(12.dp)
                 val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
-                val dividerBaseColor = if (isDark) Color(0xFF121212) else Color(0xFFF0F0F0)
+                val dividerBaseColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isDark) Color(0xFF121212) else Color(0xFFF0F0F0)
 
                 @Composable
                 fun BreakDivider(offsetY: Int, text: String) {

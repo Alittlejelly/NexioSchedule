@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.WeekRangeSelectGrid
+import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -86,9 +87,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
@@ -169,9 +168,7 @@ fun AddCourseDialog(
     val isDark = isAppDarkTheme()
     // 嵌套弹窗在 root popup host，强制跟随应用主题而非壁纸主题
     val appDialogDark = rememberAppSettingDark()
-    val appDialogController = remember(appDialogDark) {
-        ThemeController(if (appDialogDark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
-    }
+    val appDialogController = rememberAppThemeController(isDark = appDialogDark)
     // 二级弹窗在弹窗作用域外读不到 LocalSheetContentBackdrop，用非快照 holder 接收
     val sheetContentBackdropHolder = remember { BackdropHolder() }
 

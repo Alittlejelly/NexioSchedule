@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.ui.theme.scheduleAccentColor
 
 /**
  * 左侧时间列宽度。横带要自己留出同样宽的起始边，子块才能和 DayColumn 逐列对齐，
@@ -117,7 +118,7 @@ fun SectionColumn(
 private fun SectionItem(section: Int, startTime: String, endTime: String, yOffset: Int, cardHeightPerSection: Float = 54f, isCurrentSection: Boolean = false, hasWallpaper: Boolean = false, sectionNames: Map<Int, String> = emptyMap(), isDark: Boolean) {
     val onSurfaceColor = MiuixTheme.colorScheme.onSurface
     val onSurfaceVariantColor = MiuixTheme.colorScheme.onSurfaceVariantActions
-    val highlightColor = Color(0xFF3482FF)
+    val highlightColor = scheduleAccentColor()
     val baseBody2 = MiuixTheme.textStyles.body2
     val baseFootnote2 = MiuixTheme.textStyles.footnote2
 

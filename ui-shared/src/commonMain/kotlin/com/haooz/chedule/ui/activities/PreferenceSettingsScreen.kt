@@ -49,6 +49,8 @@ import com.haooz.chedule.uishared.resources.theme_preview_night
 import com.haooz.chedule.viewmodel.settingsViewModel
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import com.haooz.chedule.ui.theme.KEY_MONET_COLOR
+import com.haooz.chedule.ui.theme.isMonetColorAvailable
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
@@ -105,6 +107,7 @@ fun PreferenceSettingsScreen(
 
     val themePrefs = remember { AppStorage.store("app_theme_prefs") }
     var themeMode by remember { mutableStateOf(themePrefs.getString("theme_mode", "system")) }
+    var monetEnabled by remember { mutableStateOf(themePrefs.getBoolean(KEY_MONET_COLOR, false)) }
     // 自动（跟随系统）模式下，用系统当前主题决定高亮哪个色框
     val systemDark = LocalSystemDarkTheme.current ?: isSystemInDarkTheme()
     val effectiveDark = when (themeMode) {
@@ -244,6 +247,20 @@ fun PreferenceSettingsScreen(
                                     }
                                 }
                             )
+                            SwitchPreference(
+                                title = "莫奈取色",
+                                summary = if (isMonetColorAvailable()) {
+                                    "跟随系统壁纸配色，应用于背景、高亮与课程卡片"
+                                } else {
+                                    "需要 Android 12 及以上版本"
+                                },
+                                checked = monetEnabled && isMonetColorAvailable(),
+                                enabled = isMonetColorAvailable(),
+                                onCheckedChange = {
+                                    monetEnabled = it
+                                    themePrefs.edit { putBoolean(KEY_MONET_COLOR, it) }
+                                }
+                            )
                         }
                     }
                 }
@@ -364,7 +381,7 @@ fun PreferenceSettingsScreen(
                             )
                             SwitchPreference(
                                 title = "应用触感反馈",
-                                summary = "点击、滑动等操作产生的震动反馈",
+                                summary = "点击、滑动、底栏切换等操作的震动反馈",
                                 checked = hapticFeedbackEnabled,
                                 onCheckedChange = {
                                     hapticFeedbackEnabled = it

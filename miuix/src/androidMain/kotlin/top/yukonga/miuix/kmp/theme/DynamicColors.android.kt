@@ -10,9 +10,11 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import com.materialkolor.hct.Hct
 import org.json.JSONObject
 
@@ -27,6 +29,14 @@ private data class SystemPaletteInfo(
 @Composable
 actual fun platformDynamicColors(dark: Boolean): Colors {
     val context = LocalContext.current
+    // 配色变化会更新系统 Configuration；即使 Activity 不重建，也要刷新所有嵌套主题。
+    val configuration = LocalConfiguration.current
+    return remember(context, configuration, dark) {
+        readDynamicColors(context, dark)
+    }
+}
+
+private fun readDynamicColors(context: Context, dark: Boolean): Colors {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val paletteInfo = readSystemPaletteInfo(context)
         Log.d("DynamicColors", "System palette info: $paletteInfo")

@@ -66,6 +66,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.ui.theme.scheduleAccentColor
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 // 包在 remember 里，避免每次重组重跑 groupBy/分段
@@ -174,7 +175,8 @@ fun DayColumn(
         }
     }
     // 与 PendingSectionBox 灰色风格对齐
-    val dropHighlightColor = Color(0xFF9E9E9E).copy(alpha = if (isDark) 0.13f else 0.15f)
+    val dropHighlightColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
+        .copy(alpha = if (isDark) 0.13f else 0.15f)
 
     Box(
         modifier = modifier
@@ -571,6 +573,8 @@ private fun PendingSectionBox(
     hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
     onEmptyClick: (Int) -> Unit
 ) {
+    val pendingColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
+        .copy(alpha = if (isDark) 0.13f else 0.15f)
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -581,8 +585,9 @@ private fun PendingSectionBox(
                 val edgeLightShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
                 val density = LocalDensity.current
                 val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
-                val surfaceColor = remember(isDark) { if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f) }
-                // SharedBlurBackdrop 的 drawBackdrop 画已烘焙的模糊层，不用再 blur
+                val surfaceColor = if (MiuixTheme.isDynamicColor) {
+                    MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.64f else 0.5f)
+                } else if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
                 val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
                 val pendingEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(isSharedBlur, blurPx) {
                     {
@@ -646,8 +651,9 @@ private fun PendingSectionBox(
                 pressFeedbackType = PressFeedbackType.Sink,
                 showIndication = true,
                 colors = CardDefaults.defaultColors(
-                    color = Color(0xFF9E9E9E).copy(alpha = if (isDark) 0.13f else 0.15f),
-                    contentColor = Color(0xFF9E9E9E).copy(alpha = 0.5f)
+                    color = pendingColor,
+                    contentColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.onSurfaceVariantActions
+                        else Color(0xFF9E9E9E).copy(alpha = 0.5f)
                 ),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -805,7 +811,7 @@ fun SpecialBandOverlay(
     val isOngoing = rememberIsOngoing(startTime, endTime)
     val bgColor = if (isOngoing) {
         // 进行中：底色抬一档，和左侧时间列的 currentSection 高亮同一套视觉语言
-        Color(0xFF3482FF).copy(alpha = (0.16f * alphaFactor).coerceIn(0f, 1f))
+        scheduleAccentColor().copy(alpha = (0.16f * alphaFactor).coerceIn(0f, 1f))
     } else if (isDark) {
         Color.White.copy(alpha = (0.06f * alphaFactor).coerceIn(0f, 1f))
     } else {

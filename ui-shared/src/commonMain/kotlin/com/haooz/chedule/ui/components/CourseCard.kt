@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -48,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.ui.theme.rememberCourseColors
+import com.haooz.chedule.ui.theme.readableCourseTextColor
 import com.haooz.chedule.data.hsvToRgb
 import com.haooz.chedule.data.rgbToHsv
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -57,6 +60,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -187,16 +191,31 @@ fun CourseCard(
         }
     }
 
-    val effectiveAlpha = if (hasBlur) cardAlpha * 1.6f else cardAlpha
-    val cardColor = remember(course.colorRes, isCurrentWeek, isHoliday, isCourseCancelled, effectiveAlpha) {
+    val effectiveAlpha = (if (hasBlur) cardAlpha * 1.6f else cardAlpha).coerceIn(0f, 1f)
+    val courseColors = rememberCourseColors(course, isDark)
+    val useMonet = MiuixTheme.isDynamicColor
+    val inactiveColor = if (useMonet) MiuixTheme.colorScheme.onSurfaceVariantActions else Color(0xFF9E9E9E)
+    val cardColor = remember(courseColors.tint, inactiveColor, isCurrentWeek, isHoliday, isCourseCancelled, effectiveAlpha) {
         if (isCurrentWeek && !isHoliday && !isCourseCancelled) {
-            Color(course.colorRes).copy(alpha = effectiveAlpha)
+            courseColors.tint.copy(alpha = effectiveAlpha)
         } else {
-            Color(0xFF9E9E9E).copy(alpha = effectiveAlpha * 0.7f)
+            inactiveColor.copy(alpha = effectiveAlpha * 0.7f)
         }
     }
+    val themeBackground = MiuixTheme.colorScheme.background
+    val monetCardBackground = remember(cardColor, solidBackingColor, themeBackground, hasBlur, cardSurfaceAlpha, isDark) {
+        val backing = solidBackingColor?.compositeOver(themeBackground) ?: themeBackground
+        val surface = cardColor.compositeOver(backing)
+        if (hasBlur) {
+            (if (isDark) Color.Black else Color.White)
+                .copy(alpha = cardSurfaceAlpha.coerceIn(0f, 1f)).compositeOver(surface)
+        } else surface
+    }
     val textColor = remember(
-        course.colorRes,
+        courseColors,
+        useMonet,
+        inactiveColor,
+        monetCardBackground,
         isCurrentWeek,
         isHoliday,
         isCourseCancelled,
@@ -210,7 +229,8 @@ fun CourseCard(
         ) {
             if (isDark) Color.White.copy(alpha = 0.74f) else Color.Black.copy(alpha = 0.74f)
         } else if (isCurrentWeek && !isHoliday && !isCourseCancelled) {
-            if (hasBlur) Color(course.colorRes).let { c ->
+            if (useMonet) readableCourseTextColor(courseColors.onTint, monetCardBackground)
+            else if (hasBlur) courseColors.tint.let { c ->
                 val hsv = FloatArray(3)
                 // AOSP Color.RGBToHSV/HSVToColor 的跨平台移植（:core 的纯数学版，golden vectors 锁定）
                 rgbToHsv((c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt(), hsv)
@@ -225,12 +245,12 @@ fun CourseCard(
                 // 与原「HSVToColor → 取三通道 → Color(r,g,b)」逐位等价
                 Color(hsvToRgb(hsv))
             }
-            else Color(course.colorRes)
+            else courseColors.tint
         } else {
             if (hasBlur) {
                 if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.3f)
             } else {
-                Color(0xFF9E9E9E).copy(alpha = if (isDark) 0.28f else 0.45f)
+                inactiveColor.copy(alpha = if (isDark) 0.28f else 0.45f)
             }
         }
     }
@@ -360,7 +380,7 @@ fun CourseCard(
                 CardContent(course, sectionCount, textColor, hasMultipleCourses,
                     isTablet, cardContentAlignment, cardHeight.value, cardHeightPerSection,
                     isHoliday, isWorkSwap, isCurrentWeek, showClassroom, showTeacher, cardTextScale, isDark,
-                    isCourseCancelled)
+                    isCourseCancelled, courseTint = courseColors.tint)
             }
         }
     } else {
@@ -423,7 +443,7 @@ fun CourseCard(
             CardContent(course, sectionCount, textColor, hasMultipleCourses,
                 isTablet, cardContentAlignment, cardHeight.value, cardHeightPerSection,
                 isHoliday, isWorkSwap, isCurrentWeek, showClassroom, showTeacher, cardTextScale, isDark,
-                isCourseCancelled)
+                isCourseCancelled, courseTint = courseColors.tint)
         }
     }
 }
@@ -539,7 +559,8 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
                          cardHeightDp: Float = 0f, cardHeightPerSection: Float = 54f,
                          isHoliday: Boolean = false, isWorkSwap: Boolean = false, isCurrentWeek: Boolean = true,
                          showClassroom: Boolean = true, showTeacher: Boolean = true, cardTextScale: Float = 1f,
-                         isDark: Boolean = isAppDarkTheme(), isCourseCancelled: Boolean = false) {
+                         isDark: Boolean = isAppDarkTheme(), isCourseCancelled: Boolean = false,
+                         courseTint: Color = Color(course.colorRes)) {
     val infoFontSize = 11.sp * cardTextScale.coerceIn(0.5f, 2.0f)
     val infoLineHeight = 12.sp * cardTextScale.coerceIn(0.5f, 2.0f)
     val courseNameFontSize = 12.7.sp * cardTextScale.coerceIn(0.5f, 2.0f)
@@ -638,7 +659,7 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
         )
         if (badge != null) {
             val badgeBackground = if (badge.usesWorkSwapStyle) {
-                Color(course.colorRes).copy(alpha = 0.32f)
+                courseTint.copy(alpha = 0.32f)
             } else {
                 if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f)
             }
@@ -647,7 +668,8 @@ private fun CardContent(course: Course, sectionCount: Int, textColor: Color, has
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (badge.usesWorkSwapStyle) {
-                    if (isDark) Color.White.copy(alpha = 0.8f) else Color.White
+                    if (MiuixTheme.isDynamicColor) textColor
+                    else if (isDark) Color.White.copy(alpha = 0.8f) else Color.White
                 } else {
                     if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)},
                 modifier = Modifier

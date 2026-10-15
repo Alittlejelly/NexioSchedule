@@ -1290,7 +1290,12 @@ fun MainScheduleScreen(
                     val dividerLensRadiusPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
                     val dividerLensStrengthPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
                     val hasWallpaperDivider = wallpaperBitmap != null
-                    val dividerBaseColor = if (hasWallpaperDivider) Color.Transparent else if (dividerIsDark) Color(0xFF121212) else Color(0xFFF0F0F0)
+                    val dividerBaseColor = when {
+                        hasWallpaperDivider -> Color.Transparent
+                        MiuixTheme.isDynamicColor -> MiuixTheme.colorScheme.surfaceContainerHigh
+                        dividerIsDark -> Color(0xFF121212)
+                        else -> Color(0xFFF0F0F0)
+                    }
                     // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）
                     val dividerSurfaceAlphaAt15 = if (dividerIsDark) 0.64f else 0.50f
                     val dividerBlurShape = remember { ContinuousRoundedRectangle(12.dp) }
@@ -1308,7 +1313,9 @@ fun MainScheduleScreen(
                         }
                         // 无壁纸底色保持实色，不随「卡片不透明度」变化
                         val dividerFgBase = dividerBaseColor
-                        val dividerFgSurface = if (dividerIsDark) {
+                        val dividerFgSurface = if (MiuixTheme.isDynamicColor) {
+                            MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = surfaceAlpha)
+                        } else if (dividerIsDark) {
                             Color(0xFF323232).copy(alpha = surfaceAlpha)
                         } else {
                             Color.White.copy(alpha = surfaceAlpha)
@@ -1860,8 +1867,11 @@ private fun AnimatedDropTargetMask(
         }
 
         val hasWallpaperMask = hasWallpaper && wallpaperBackdrop != null
-        val solidColor = Color(0xFF9E9E9E).copy(alpha = if (isDark) 0.13f else 0.15f)
-        val glassSurface = if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
+        val solidColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
+            .copy(alpha = if (isDark) 0.13f else 0.15f)
+        val glassSurface = if (MiuixTheme.isDynamicColor) {
+            MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.64f else 0.5f)
+        } else if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
         val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
         val maskShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
         // 稳定引用：内联 lambda 会让 drawBackdrop 每次重组重建 RenderEffect

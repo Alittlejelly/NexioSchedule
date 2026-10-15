@@ -41,8 +41,9 @@ fun ShiftCell(
     if (courses.isEmpty()) return
 
     val isMulti = courses.size > 1
-    val chipColor = ShiftBlue.copy(alpha = if (isDark) 0.16f else 0.14f)
-    val textColor = ShiftBlue.copy(alpha = if (isDark) 0.9f else 0.85f)
+    val accentColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else ShiftBlue
+    val chipColor = accentColor.copy(alpha = if (isDark) 0.16f else 0.14f)
+    val textColor = accentColor.copy(alpha = if (isDark) 0.9f else 0.85f)
 
     val effectiveCornerRadius = if (isTablet) (cardCornerRadius * 1.3f) else cardCornerRadius
 
