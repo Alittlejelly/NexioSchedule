@@ -62,8 +62,8 @@ import com.haooz.chedule.uishared.resources.ic_widget_location
 
 /**
  * @param onRequestWidgetRefresh 小组件边距改完后通知宿主刷新已添加的小组件。
- *   小组件是 **Android 专有**（`AppWidgetManager` + `RemoteViews`），iOS 是 WidgetKit、
- *   桌面端根本没有 —— 所以这里只暴露「刷新」这一个动作，具体实现由宿主注入。
+ *   Android uses AppWidgetManager; iOS uses a shared WidgetKit snapshot.
+ *   Platform-specific refresh behavior is supplied by the host.
  *   与 `SchoolSelectionScreen(onAdapterSelected)` / `CourseTimeSettingsScreen(onEditRoutine)`
  *   同一套路：**平台专有能力留在宿主，页面本体保持平台中立**。
  */
@@ -72,6 +72,7 @@ fun WidgetIntroScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     onRequestWidgetRefresh: () -> Unit = {},
+    isIos: Boolean = false,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = isTabletWidth()
@@ -150,26 +151,29 @@ fun WidgetIntroScreen(
                 ) {
                     FeatureItem("今日课程一目了然", "桌面显示当天课程、时间、地点和教师信息")
                     FeatureItem("明日课程提前预览", "开启次日课程提醒后，智能显示明日课程")
-                    FeatureItem("进行中课程高亮", "正在上课的课程高亮显示剩余时间")
+                    FeatureItem("进行中课程高亮", if (isIos) "突出显示正在上课的课程和结束时间" else "正在上课的课程高亮显示剩余时间")
                     FeatureItem("智能显示状态", "智能提醒今日课程当前状态")
+                    if (isIos) {
+                        FeatureItem("跟随桌面外观", "支持浅色、深色与系统着色外观")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                val repository = remember { CourseRepository() }
-                var paddingMode by remember { mutableIntStateOf(repository.getWidgetPaddingMode()) }
-                WidgetPaddingSelector(
-                    selectedMode = paddingMode,
-                    liquidGlassBackdrop = liquidGlassBackdrop,
-                    onSelect = { mode ->
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                        paddingMode = mode
-                        repository.setWidgetPaddingMode(mode)
-                        // 写库之后让宿主刷小组件（`WidgetUpdateCache` 在 Android 专有的 widget 包里，
-                        // 本页不直接依赖它 —— 桌面端没有小组件，宿主传空实现即可）。
-                        onRequestWidgetRefresh()
-                    }
-                )
+                if (!isIos) {
+                    val repository = remember { CourseRepository() }
+                    var paddingMode by remember { mutableIntStateOf(repository.getWidgetPaddingMode()) }
+                    WidgetPaddingSelector(
+                        selectedMode = paddingMode,
+                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        onSelect = { mode ->
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                            paddingMode = mode
+                            repository.setWidgetPaddingMode(mode)
+                            onRequestWidgetRefresh()
+                        }
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(120.dp))
             }

@@ -19,6 +19,8 @@
 		6A6A6A6A0000000000000005 /* CourseWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9FE95173307E6B2400AF57D2 /* CourseWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6A6A6A6A0000000000000006 /* NativeCourseNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4A4A4A000000000000000B /* NativeCourseNotifier.swift */; };
 		A9A2325F307C72020029E790 /* nexioschedule.icon in Resources */ = {isa = PBXBuildFile; fileRef = A9A2325E307C72020029E790 /* nexioschedule.icon */; };
+		7C7C7C7C0000000000000001 /* NativeWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7C7C7C0000000000000011; };
+		7C7C7C7C0000000000000002 /* DesktopCourseWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7C7C7C0000000000000012; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,8 @@
 		6A6A6A6A0000000000000016 /* NexioCourseActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexioCourseActivityAttributes.swift; sourceTree = "<group>"; };
 		9FE95173307E6B2400AF57D2 /* CourseWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CourseWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9A2325E307C72020029E790 /* nexioschedule.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = nexioschedule.icon; sourceTree = "<group>"; };
+		7C7C7C7C0000000000000011 /* NativeWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWidgetSnapshot.swift; sourceTree = "<group>"; };
+		7C7C7C7C0000000000000012 /* DesktopCourseWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopCourseWidgets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +117,7 @@
 				4A4A4A4A0000000000000009 /* MiuixTabIcons.swift */,
 				4A4A4A4A000000000000000A /* NativeDocumentNavigation.swift */,
 				4A4A4A4A000000000000000B /* NativeCourseNotifier.swift */,
+				7C7C7C7C0000000000000011 /* NativeWidgetSnapshot.swift */,
 				4A4A4A4A0000000000000003 /* Info.plist */,
 			);
 			path = iosApp;
@@ -131,6 +136,7 @@
 			isa = PBXGroup;
 			children = (
 				6A6A6A6A0000000000000011 /* NexioCourseWidget.swift */,
+				7C7C7C7C0000000000000012 /* DesktopCourseWidgets.swift */,
 				6A6A6A6A0000000000000016 /* NexioCourseActivityAttributes.swift */,
 				6A6A6A6A0000000000000013 /* Info.plist */,
 				6A6A6A6A0000000000000014 /* CourseWidget.entitlements */,
@@ -198,9 +204,11 @@
 				LastUpgradeCheck = 2710;
 				TargetAttributes = {
 					13B07F8C1A680F5B00A75B9A = {
+						SystemCapabilities = { com.apple.ApplicationGroups.iOS = { enabled = 1; }; };
 						CreatedOnToolsVersion = 16.2;
 					};
 					6A6A6A6A0000000000000031 = {
+						SystemCapabilities = { com.apple.ApplicationGroups.iOS = { enabled = 1; }; };
 						CreatedOnToolsVersion = 16.2;
 					};
 				};
@@ -275,6 +283,7 @@
 				4B4B4B4B000000000000000A /* NativeDocumentNavigation.swift in Sources */,
 				4B4B4B4B0000000000000001 /* iOSApp.swift in Sources */,
 				6A6A6A6A0000000000000006 /* NativeCourseNotifier.swift in Sources */,
+				7C7C7C7C0000000000000001 /* NativeWidgetSnapshot.swift in Sources */,
 				6A6A6A6A0000000000000003 /* NexioCourseActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -284,6 +293,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6A6A6A6A0000000000000001 /* NexioCourseWidget.swift in Sources */,
+				7C7C7C7C0000000000000002 /* DesktopCourseWidgets.swift in Sources */,
 				6A6A6A6A0000000000000004 /* NexioCourseActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -333,6 +343,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = nexioschedule;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;
@@ -385,6 +396,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4A4A4A0000000000000005 /* Config.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				ASSETCATALOG_COMPILER_APPICON_NAME = nexioschedule;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_STYLE = Automatic;

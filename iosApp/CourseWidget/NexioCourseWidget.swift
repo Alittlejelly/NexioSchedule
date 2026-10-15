@@ -7,6 +7,7 @@ import WidgetKit
 @main
 struct NexioCourseWidgetBundle: WidgetBundle {
     var body: some Widget {
+        NexioTodayCourseWidget()
         NexioCourseLiveActivityWidget()
     }
 }

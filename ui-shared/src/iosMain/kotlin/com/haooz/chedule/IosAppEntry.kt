@@ -14,6 +14,7 @@ import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.IosBackupFileController
 import com.haooz.chedule.data.IosCourseLiveActivity
 import com.haooz.chedule.data.IosCourseNotifier
+import com.haooz.chedule.data.IosWidgetSnapshot
 import com.haooz.chedule.data.IosScheduleFileController
 import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.IosWallpaperPicker
@@ -119,15 +120,7 @@ fun bootstrapNexioIos() {
     ScheduleEffects.init(IosScheduleChangeSink)
 }
 
-/**
- * iOS [ScheduleChangeSink].
- *
- * Only [rescheduleReminders] has a counterpart: [syncWearable] has no iOS build of
- * the Xiaomi wearable SDK, and [refreshWidgets] has no WidgetKit extension yet
- * (docs/KMP_IOS_MIGRATION_PLAN.md §7). Both stay empty rather than throwing, since
- * the callers are shared-layer view models that should not crash on a missing
- * platform capability.
- */
+/** iOS schedule effects: native reminders and shared WidgetKit snapshots. */
 private object IosScheduleChangeSink : ScheduleChangeSink {
     override fun rescheduleReminders() = IosCourseNotifier.reschedule()
 
@@ -135,9 +128,7 @@ private object IosScheduleChangeSink : ScheduleChangeSink {
         NexioLog.d("IosScheduleChangeSink", "syncWearable($reason) ignored: no wearable on iOS")
     }
 
-    override fun refreshWidgets() {
-        // No WidgetKit extension yet.
-    }
+    override fun refreshWidgets() = IosWidgetSnapshot.refresh()
 }
 
 /**
@@ -167,7 +158,10 @@ private val reminderController = IosReminderController()
  * 节假日数据变更（拉取/备份恢复/云同步恢复）的平台副作用：重排提醒。
  * 不注入的话，待发通知会继续按旧节假日数据排。
  */
-private val onHolidayDataChanged: () -> Unit = { IosCourseNotifier.reschedule() }
+private val onHolidayDataChanged: () -> Unit = {
+    IosCourseNotifier.reschedule()
+    IosWidgetSnapshot.refresh()
+}
 
 /** The retained main content; UIKit applies the shared main-layer transition. */
 @Composable
@@ -330,8 +324,11 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             router = router,
             onHolidayDataChanged = onHolidayDataChanged,
         )
-        // 小部件引导：iOS 无 AppWidget，`onRequestWidgetRefresh` 不注入
-        AppRoute.WidgetIntro -> WidgetIntroRoute(router)
+        AppRoute.WidgetIntro -> WidgetIntroRoute(
+            router,
+            onRequestWidgetRefresh = { IosWidgetSnapshot.refresh() },
+            isIos = true,
+        )
         // Course reminders: local notifications for pre-class and tomorrow's summary.
         // Gaps vs Android (docs/KMP_IOS_MIGRATION_PLAN.md §7):
         //  - no setAlarmClock counterpart, so pre-class notices may fire late;

@@ -11,6 +11,15 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>用于在「今日」页显示你所在位置的天气与上下学提醒</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.haooz.iosschedule.widget</string>
+			<key>CFBundleURLSchemes</key>
+			<array><string>nexioschedule</string></array>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

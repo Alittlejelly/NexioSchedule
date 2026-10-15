@@ -5,6 +5,8 @@ import UserNotifications
 @main
 struct iOSApp: App {
 
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         // Mirrors Android's `NexioApplication.onCreate()`: injects AppInfo /
         // AppStorage / AppFiles. Must run before any Compose UI appears, otherwise
@@ -15,6 +17,7 @@ struct iOSApp: App {
         // AppStorage -- the pre-class switch and lead minutes are unreadable before it.
         NativeCourseNotifier.install()
         NativeCourseLiveActivity.install()
+        NativeWidgetSnapshot.install()
 
         // Delegate lives at the app level because routing calls into
         // IosCourseLiveActivity, a singleton inside the main process.
@@ -28,7 +31,14 @@ struct iOSApp: App {
                 // keeps them in a mutableStateOf, so the main UI recomposes and
                 // raises the import confirmation on its own.
                 .onOpenURL { url in
-                    IosSharedFileReceiver.shared.onOpenURL(url: url.absoluteString)
+                    if url.scheme == "nexioschedule", url.host == "schedule" {
+                        NativeWidgetSnapshot.refresh()
+                    } else {
+                        IosSharedFileReceiver.shared.onOpenURL(url: url.absoluteString)
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { NativeWidgetSnapshot.refresh() }
                 }
         }
     }

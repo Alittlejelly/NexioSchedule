@@ -173,6 +173,7 @@ object IosCourseNotifier {
      * orphans behind.
      */
     fun reschedule(repository: CourseRepository? = null) {
+        IosWidgetSnapshot.refresh()
         val repo = repository ?: CourseRepository()
         val preClass = repo.getPreClassReminder()
         val nextDay = repo.getNextDayReminder()
@@ -187,6 +188,7 @@ object IosCourseNotifier {
     }
 
     fun stop() {
+        IosWidgetSnapshot.refresh()
         cancelAll()
     }
 
