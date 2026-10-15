@@ -72,9 +72,14 @@ class AppRouter {
      */
     val routes: List<AppRoute> get() = stack
 
-    /** 入栈。同一个路由重复入栈是允许的。 */
+    /**
+     * 入栈
+     * 挡「已在栈顶」：A → B → A 是合法路径，非栈顶的同名路由照样能入栈，
+     * 所以 [layerKeys] 的裸 id / `#2` / `#3` 去重还得留着。
+     */
     fun navigate(route: AppRoute) {
         if (nativeRouteHandler?.invoke(route) == true) return
+        if (stack.lastOrNull() == route) return
         stack.add(route)
         lastDirection = NavDirection.Push
     }

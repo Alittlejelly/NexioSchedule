@@ -40,13 +40,9 @@ import kotlin.math.roundToInt
 /**
  * 子页叠加层：**整栈常驻渲染** + 在有子页时接管系统返回。
  *
- * 栈内每层都保持组合，pop 回去是活页而非重建；静止时按三档暂停绘制 —— 等价 stop 的 Activity。
- * 转场只有一个进度 `p`：栈顶 `(1-p)×W`、下层 `-NAV_PARALLAX×p×W`、黑幕 `NAV_BG_DIM×p`。
- * push 0→1 / pop 1→0 共用同一套公式 —— 这是打断续播与手势跟手的前提。
- *
- * ⚠ 别改回 `AnimatedContent`：两条独立动画拿不到中间进度，既不能续播也不能跟手。
- * ⚠ 起点对齐必须同帧（组合期归零 / 收尾清 `outgoing` + 拉回 1），晚一帧就闪。
- * ⚠ `SaveableStateHolder` 只保住「在栈期间」的页，出栈当帧必须 `removeState`（见 Pop 分支）。
+ * 栈内每层都保持组合，pop 回去是活页而非重建；静止时按三档暂停绘制 —— 等价 stop 的 Activity
+ * 转场只有一个进度 `p`：栈顶 `(1-p)×W`、下层 `-NAV_PARALLAX×p×W`、黑幕 `NAV_BG_DIM×p`
+ * push 0→1 / pop 1→0 共用同一套公式 —— 这是打断续播与手势跟手的前提
  *
  * 返回手势走 `:miuix` 的 `rememberNavigationBack()`（Android 包 navigationevent，skiko 空实现）。
  */
@@ -63,10 +59,24 @@ fun AppNavHost(
     val scope = rememberCoroutineScope()
 
     val progress = rememberNavTransitionState(initialValue = 1f)
-    // pop 期间仍在屏幕上的那一层：已出栈，但要跟着把退出动画播完
-    var outgoing by remember { mutableStateOf<AppRoute?>(null) }
+    // pop 期间仍在屏幕上的那一层：已出栈，但要跟着把退出动画播完。
+    // 连 [SaveableStateHolder] key 一起存 —— 销毁时栈可能又变过，重算会算到别的层上。
+    var outgoing by remember { mutableStateOf<ExitingLayer?>(null) }
 
-    /** 出场收尾：从当前进度续播到 0，**完整播完**才同帧清 [outgoing] 并把 p 拉回 1。 */
+    // ⚠ 必须在 settleExit 之前取：收尾分支要读它判断「手势是不是还在进行中」。
+    val back = rememberNavigationBack()
+
+    /** 出场彻底结束：同帧摘掉这一层 + 销毁它的 saveable 状态 + 把 p 拉回 1。 */
+    fun destroyExiting(exiting: ExitingLayer) {
+        // 同帧收尾：只清 outgoing 而 p 停在 0 的话，新栈顶会被摆到屏外
+        outgoing = null
+        progress.snapTo(1f)
+        // 趁这一层还在组合里销状态：holder 是在 onDispose 时才把 rememberSaveable 存进
+        // savedStates 的，先摘掉 registry 那一步就不会走
+        stateHolder.removeState(exiting.key)
+    }
+
+    /** 出场收尾：从当前进度续播到 0，**完整播完**才 [destroyExiting]。 */
     suspend fun settleExit() {
         val exiting = outgoing ?: return
         val (dur, easing) = settleOnGlobalCurve(
@@ -83,13 +93,14 @@ fun AppNavHost(
             if (router.depth == 0) launch { mainTransition.animateTo(0f, tween(dur, easing = easing)) }
             exit.await()
         }
-        // ⚠ 两个条件缺一不可：`finished` —— 被打断时 p 已归手势驱动，再拉回 1 会把跟手的
-        // 那层甩出屏外；`outgoing === exiting` —— 本次收尾不随导航取消，播到一半又 push 了
-        // 新页时不比对会把新页的入场动画掐掉。
-        if (finished && outgoing === exiting) {
-            // 同帧收尾：只清 outgoing 而 p 停在 0 的话，新栈顶会被摆到屏外
-            outgoing = null
-            progress.snapTo(1f)
+        // ⚠ 本次收尾不随导航取消：播到一半又 push 了新页时不比对，会把新页的入场动画掐掉。
+        if (outgoing !== exiting) return
+        if (finished) {
+            destroyExiting(exiting)
+        } else if (progress.value <= 0f && !back.isTransitioningBack()) {
+            // 被打断时 p 已归手势驱动，不能直接收尾。但手势已结束、页面也彻底滑出屏幕了，
+            // 说明这次收尾被整个吞掉 —— 不补掉的话这一层会永远挂在渲染列表上
+            destroyExiting(exiting)
         }
     }
 
@@ -100,28 +111,30 @@ fun AppNavHost(
         when (router.lastDirection) {
             NavDirection.Push -> {
                 val interrupted = outgoing
-                // ⚠ 必须**同帧**摘掉 outgoing：否则它与新栈顶同 route.id，同一帧两次
-                // SaveableStateProvider(同 key) → SaveableStateHolderImpl 抛异常崩掉（实测）。
+                // ⚠ 必须**同帧**摘掉 outgoing：出场没播完又点进别的页时，那一层会继续盖在
+                // 新页上面。顺带销掉它的状态 —— 此刻它也要离开渲染列表了。
                 outgoing = null
+                interrupted?.let { stateHolder.removeState(it.key) }
                 // 同一 route 被打断：这一层从没销毁过，从当前进度续播；换了 route 才归零推入。
-                if (interrupted?.id != router.current?.id) progress.snapTo(0f)
+                if (interrupted?.route?.id != router.current?.id) progress.snapTo(0f)
             }
             // pop 起点就是 1，不用动 p，只要留住被弹出的那层
             NavDirection.Pop -> {
-                val popped = router.lastPopped
-                outgoing = popped
-                // 出栈 = 不再是「栈内页」，重开应当是干净的初始值。此刻组合还活着（动画照常
-                // 画完），只是 holder 不再兜底。**不能等动画播完再清**：中断路径会让这一层提前
-                // 离开组合，那时 registry 已摘掉、onDispose 不再写回，就清不掉了。
-                if (popped != null) stateHolder.removeState(exitLayerKey(router.routes, popped))
+                // 出栈只是「移出栈」，**不销毁** —— 那一层还得把退出动画画完，状态由
+                // settleExit 销。⚠ 上一次还没画完就又弹一层时，旧的那层直接掉出渲染列表，
+                // 没人替它销状态，得在这里销。
+                outgoing?.let { stateHolder.removeState(it.key) }
+                // ⚠ 用「出栈前」的栈算 key：必须与它在栈里时那个 key 逐字相同（见 KDoc）。
+                outgoing = router.lastPopped?.let { popped ->
+                    ExitingLayer(popped, poppedLayerKey(router.routes + popped))
+                }
             }
         }
     }
 
     // ── 预测性返回 ────────────────────────────────────────────────────────────
-    // ⚠ handler 与 backProgress 必须来自同一个 rememberNavigationBack，拆成两处各自
-    // remember = 编译全绿但跟手动画永远不动（miuix fork 踩过）。
-    val back = rememberNavigationBack()
+    // ⚠ handler 与 backProgress 必须来自同一个 rememberNavigationBack（上面已取得），
+    // 拆成两处各自 remember = 编译全绿但跟手动画永远不动（miuix fork 踩过）。
     back.handler(
         enabled = router.hasOverlay,
         onBackCompleted = { router.popBack() },
@@ -158,6 +171,11 @@ fun AppNavHost(
         var sawGesture = false
         snapshotFlow { back.backProgress() }.collect { gestureProgress ->
             if (gestureProgress == null) {
+                // 手势结束：若这次手势把一次出场收尾打断了、而页面当时已彻底滑出屏幕，
+                // 那次收尾就没人接手 —— 这里补一次，否则那一层永远挂在渲染列表上不销毁。
+                if (sawGesture && outgoing != null && progress.value <= 0f) {
+                    scope.launch { settleExit() }
+                }
                 sawGesture = false
                 return@collect
             }
@@ -218,19 +236,17 @@ fun AppNavHost(
 private fun NavLayerStack(
     routes: List<AppRoute>,
     /** pop 期间还要画完退出动画的那一层；平时为 null。 */
-    exiting: AppRoute?,
+    exiting: ExitingLayer?,
     progress: NavTransitionState,
     stateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
     onOverlayActivityChanged: ((Boolean) -> Unit)? = null,
     content: @Composable (AppRoute) -> Unit,
 ) {
-    // ⚠ **别把 layerKeys 包进 remember**：`routes` 是 `SnapshotStateList`，没重写
-    // equals/hashCode → `Composer.changed` 判「没变」→ key 列表跟实际栈对不上。直接算即可。
     val (stackKeys, exitKey) = layerKeys(routes, exiting)
 
     // 栈内各层 +（pop 期间）已出栈、正在播退场的那层（排最后 = 画在最上面）
-    val layers: List<AppRoute> = if (exiting != null) routes + exiting else routes
+    val layers: List<AppRoute> = if (exiting != null) routes + exiting.route else routes
     val renderKeys: List<String> = if (exitKey != null) stackKeys + exitKey else stackKeys
     // 出场动画还在跑时也拦截原生输入，直到这一层彻底画完
     SideEffect { onOverlayActivityChanged?.invoke(layers.isNotEmpty()) }
@@ -280,41 +296,42 @@ private fun NavLayerStack(
 }
 
 /**
+ * 正在播退出动画的那一层：路由 + 它**在栈里时**用的 [SaveableStateHolder] key。
+ *
+ * ⚠ key 必须随路由一起存下来：销毁可能发生在栈又变过之后（出场途中又 push / 又 pop），
+ * 那时按栈重算会算到别的层上，`removeState` 销错层。
+ */
+internal class ExitingLayer(val route: AppRoute, val key: String)
+
+/**
  * 给「这一帧要渲染的每一层」算 [SaveableStateHolder] 的 key。
  *
- * ⚠ 同一帧出现两次同 key 会抛 `IllegalArgumentException`（整屏崩），来源有二：出场没播完
- * 又点进同一页、以及连点两次同一入口。所以重复路由首次保持**裸 id**、其后 `#2`/`#3`
- * （裸 id 才能让重开同一页恢复滚动位置）；出栈层**最后**算，先算会把它挤到 `#2`。
- */
-private fun layerKeys(routes: List<AppRoute>, outgoing: AppRoute?): Pair<List<String>, String?> {
-    val nextKey = keyAllocator(routes)
-    return routes.map { nextKey(it.id) } to outgoing?.let { nextKey(it.id) }
-}
-
-/**
- * 出栈那一层的 key。**必须与 [layerKeys] 给它的完全一致**，否则 `removeState` 销掉的是另一个
- * key，出栈页的滚动位置照样被恢复。
+ * 栈内重复路由首次保持**裸 id**、其后 `#2`/`#3`：裸 id 才能让重开同一页恢复滚动位置，
+ * 而同一帧出现两次同 key 会抛 `IllegalArgumentException` 整屏崩（连点两次同一入口就会）。
  *
- * ⚠ 只能复算：`AppNavHost` 的 pop 分支要先销状态，那时 `outgoing` 还没设、exitKey 还算不出来。
- * [stack] 传的是**出栈后**的 `router.routes`，与 [layerKeys] 拿到的是同一个列表。
+ * ⚠ **边分配边占坑**，别预先把整个栈的 id 塞进 used：那样裸 id 一个都发不出去、每层都变
+ * `#2`，与事后按栈复算的 key 对不上 → `removeState` 静默落空，出栈页状态永远销不掉。
+ * ⚠ **别把结果包进 remember**：`routes` 是 `SnapshotStateList`，没重写 equals/hashCode →
+ * `Composer.changed` 判「没变」→ key 列表跟实际栈对不上。直接算即可。
+ *
+ * 出栈层沿用它在栈里时的那个 key（见 [poppedLayerKey]），所以天然不与栈内 key 撞。
  */
-private fun exitLayerKey(stack: List<AppRoute>, exiting: AppRoute): String =
-    keyAllocator(stack)(exiting.id)
-
-/**
- * 按 [seed] 的顺序占掉裸 id / `#2` / `#3`…，返回一个继续往后去重的分配器。
- * [layerKeys] 与 [exitLayerKey] 共用它 ——「两处 key 必须一致」因此是结构上的保证。
- */
-private fun keyAllocator(seed: List<AppRoute>): (String) -> String {
-    val used = HashSet<String>(seed.size + 1)
-    for (route in seed) used += route.id
-    return { id ->
-        var candidate = id
+internal fun layerKeys(routes: List<AppRoute>, exiting: ExitingLayer?): Pair<List<String>, String?> {
+    val used = HashSet<String>(routes.size + 1)
+    val stackKeys = routes.map { route ->
+        var candidate = route.id
         var n = 2
-        while (!used.add(candidate)) candidate = "$id#$n++"
+        while (!used.add(candidate)) candidate = "${route.id}#${n++}"
         candidate
     }
+    return stackKeys to exiting?.key
 }
+
+/**
+ * 出栈那一层**在栈里时**用的 key（= 出栈前那一帧的栈分配给最后一个元素的 key）
+ */
+internal fun poppedLayerKey(stackBeforePop: List<AppRoute>): String =
+    layerKeys(stackBeforePop, null).first.last()
 
 /**
  * 按「占自身宽度的比例」横向摆位的一层。
