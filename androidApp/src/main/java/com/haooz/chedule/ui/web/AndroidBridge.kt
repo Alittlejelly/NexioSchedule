@@ -1,25 +1,27 @@
-/** Android 桥接层 - WebView 与原生代码通信接口 */
+/** Android 桥接层 - WebView 与原生代码通信接口（JS 侧入口 window.AndroidBridge） */
 package com.haooz.chedule.ui.web
 
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.NexioLog
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.NexioLog
 import java.util.UUID
 
 private const val TAG = "AndroidBridge"
 
 /**
- * AndroidBridge：处理 WebView 与 Native 代码的通信
- * JS 脚本通过 window.AndroidBridge 调用这些方法
+ * AndroidBridge：处理 WebView 与 Native 代码的通信。
+ * JS 脚本通过 window.AndroidBridge 调用这些方法；带 promiseId 的接口是异步的，
+ * 结果经 window._resolveAndroidPromise / _rejectAndroidPromise 回传（桥定义在
+ * ui-shared 的 JsPromiseBridge.kt，两端共用）。
  */
 class AndroidBridge(
     private val context: Context,
@@ -37,12 +39,14 @@ class AndroidBridge(
     private var colorIndex = 0
     private var currentToast: Toast? = null
 
-    /** 当前导入的目标课表ID（由执行导入前选择课表时设置，空表示导入到当前课表） */
+    /** 当前导入的目标课表ID（执行导入前选择课表时设置，空 = 导入到当前课表） */
     private var importTableId: String? = null
 
     /** 是否启用 POST 加头 + OkHttp 转发（默认 false：POST 走原生，避免 WAF 拒带 X-WebView-Post-Id 的请求） */
     @Volatile
     private var postForwardEnabled: Boolean = false
+
+    // ── JS 读取 / App 侧设置 ──────────────────────────────────────────
 
     /** JS 读取：POST 是否走转发通道 */
     @JavascriptInterface
@@ -57,6 +61,8 @@ class AndroidBridge(
     fun setImportTableId(tableId: String?) {
         this.importTableId = tableId
     }
+
+    // ── 对话框三件套（结果经 promiseId 回传 JS）──────────────────────
 
     /** JS 调用：显示短暂的 Toast 消息 */
     @JavascriptInterface
@@ -178,9 +184,9 @@ class AndroidBridge(
                     return@post
                 }
 
-                // 目标课表与课程一并登记：后续 saveCourseConfig / apply 都以它为准
-                // ⚠ 语义差异：原来依赖 SharedPreferences 的 putString(k, null) == 移除该键，
-                // 而 KeyValueEditor.putString 只收非空值，null 必须显式 remove。
+                // 目标课表与课程一并登记：后续 saveCourseConfig / apply 都以它为准。
+                // ⚠ null 必须显式 remove —— KeyValueEditor.putString 只收非空值，
+                // 不像 SharedPreferences 的 putString(k, null) 会隐式移除该键。
                 val targetId = importTableId
                 AppStorage.store("edu_import_prefs").edit {
                     if (targetId != null) putString("target_schedule_id", targetId)
@@ -254,8 +260,7 @@ class AndroidBridge(
                         remove("semester_total_weeks")
                     }
                     // 与课程同目标：作息未导入时也不能让开学日/周数落到别的课表。
-                    // ⚠ null 表示导入到当前课表 —— 原来靠 SharedPreferences putString(k, null)
-                    // 的隐式移除，这里必须显式 remove。
+                    // null = 导入到当前课表，同样走显式 remove（同上）。
                     if (targetId != null) putString("target_schedule_id", targetId)
                     else remove("target_schedule_id")
                     putInt("default_class_duration", config.defaultClassDuration)
@@ -287,7 +292,6 @@ class AndroidBridge(
                 val targetId = importTableId
                 AppStorage.store("edu_import_prefs").edit {
                     putString("preset_time_slots", json)
-                    // 同前：null 走显式 remove
                     if (targetId != null) putString("target_schedule_id", targetId)
                     else remove("target_schedule_id")
                 }
@@ -315,7 +319,6 @@ class AndroidBridge(
                 AppStorage.store("edu_import_prefs").edit {
                     // 原样存，结构校验与转换交给消费端（与 preset_time_slots 同套路）
                     putString("combo_schedule", comboJsonString)
-                    // 同前：null 走显式 remove
                     if (targetId != null) putString("target_schedule_id", targetId)
                     else remove("target_schedule_id")
                 }
@@ -339,6 +342,8 @@ class AndroidBridge(
         }
     }
 
+    // ── 私有工具 ────────────────────────────────────────────────────
+
     private fun getOrAssignColorByName(courseName: String): Long {
         val trimmedName = courseName.trim()
         val existingColor = nameColorMap[trimmedName]
@@ -358,6 +363,8 @@ class AndroidBridge(
         val escapedError = error.replace("'", "\\'")
         webView.evaluateJavascript("window._rejectAndroidPromise('$promiseId', '$escapedError');", null)
     }
+
+    // ── JS 导入负载 JSON 模型（字段名与适配脚本约定逐字对齐，勿改）────
 
     data class ImportCourseJsonModel(
         val id: String? = null,
@@ -391,9 +398,10 @@ class AndroidBridge(
     )
 
     /**
-     * 官方文档 4. comboSchedule 组合作息方案：
-     * 同一课表在不同日期区间使用不同作息（如夏季/冬季），整个对象可选。
-     * 模板负载：{ name, publicSchedules: [{ name, startDate, endDate, timeSlots: [{number, startTime, endTime}] }] }
+     * 官方文档 4. comboSchedule 组合作息方案：同一课表在不同日期区间使用不同作息
+     * （如夏季/冬季），整个对象可选。
+     * 模板负载：{ name, publicSchedules: [{ name, startDate, endDate,
+     * timeSlots: [{number, startTime, endTime}] }] }
      */
     data class ComboScheduleJsonModel(
         val name: String = "",
