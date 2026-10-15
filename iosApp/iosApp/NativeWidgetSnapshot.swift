@@ -40,6 +40,7 @@ enum NativeWidgetSnapshot {
             }
             try data.write(to: url, options: .atomic)
             WidgetCenter.shared.reloadTimelines(ofKind: "NexioTodayCourseWidget")
+            WidgetCenter.shared.reloadTimelines(ofKind: "NexioLockScreenCourseWidget")
         } catch {
             log.error("Widget snapshot write failed: \(error, privacy: .public)")
         }

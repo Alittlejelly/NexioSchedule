@@ -14,6 +14,16 @@ Simulator builds made with `CODE_SIGNING_ALLOWED=NO` do not carry App Group enti
 
 Launch the app once to create the snapshot. Long-press the Home Screen, choose Edit > Add Widget, then search for Nexio. Add Course Schedule, then resize it between small, medium and large. Instances of the former separate Course Reminder widget need to be removed and replaced with Course Schedule.
 
+## Lock Screen widget
+
+`NexioLockScreenCourseWidget` is a separate gallery entry named Next Class (下一节课), supporting only `accessoryRectangular`. It reuses the shared snapshot/provider and receives its own reload request after snapshot writes. The desktop widget's kind and supported families are unchanged.
+
+The three-line accessory shows status and the course time range, course name, then a full-width classroom line. Long classroom names truncate in the middle to preserve room numbers. Tomorrow previews use an explicit Tomorrow First Class label. Empty, holiday, not-started and stale states use the same resolved presentation as the desktop widget. Semantic foreground styles and a transparent container let WidgetKit compose the accessory with the Lock Screen wallpaper. There is no custom opaque card background in the production view.
+
+To add it, long-press the Lock Screen, choose Customize > Lock Screen, tap the widget area below the clock, select Nexio, and add Next Class. Tap the accessory to open the app and synchronize the snapshot.
+
+Preview galleries in `.pi/widget-previews/nexio-lockscreen-{dark,light}.png` render the production SwiftUI view at 160×72 points with sample data. The surrounding rounded tiles are gallery framing only. Environment-injected vibrant rendering checks layout; final Lock Screen wallpaper blending and system coloring still require an installed-device check.
+
 ## Timeline regression checks
 
 With an iOS simulator already booted, run:

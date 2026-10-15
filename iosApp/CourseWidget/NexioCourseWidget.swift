@@ -8,6 +8,7 @@ import WidgetKit
 struct NexioCourseWidgetBundle: WidgetBundle {
     var body: some Widget {
         NexioTodayCourseWidget()
+        NexioLockScreenCourseWidget()
         NexioCourseLiveActivityWidget()
     }
 }
