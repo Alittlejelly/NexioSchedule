@@ -5380,7 +5380,9 @@ fun CourseScheduleApp(
                                 switchReturnBgScrim.snapTo(0.4f)
                                 switchCapturingSnapshot = false
                                 switchOverlayActive = true
-                                switchCardBounds = cardBoundsInScreen
+                                switchCardBounds = cardBoundsInScreen.takeIf {
+                                    it.width > 0f && it.height > 0f
+                                }
                                 switchCardSnapshot = cardSnap
                                 val remainingDuration = 350
                                 val morphExitEase = CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
@@ -5524,6 +5526,11 @@ private fun SwitchMorphOverlay(
                 height = with(density) { cHeight.toDp() }
             )
             .clip(ContinuousRoundedRectangle(cRadius))
+            .graphicsLayer {
+                // With no destination bitmap, blend into the live list at the end
+                // of entry (and out of it at the start of the reverse transition).
+                alpha = if (cardImage == null) (p / 0.2f).coerceIn(0f, 1f) else 1f
+            }
             .background(MiuixTheme.colorScheme.background)
     ) {
         if (cardImage != null) {

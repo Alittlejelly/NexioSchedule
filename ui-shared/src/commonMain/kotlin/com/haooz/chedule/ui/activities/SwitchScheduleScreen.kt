@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -891,33 +892,33 @@ fun SwitchScheduleScreen(
                         }.collect { offset -> currentOnScrollYChanged(offset) }
                     }
                 }
-                // 进场形变锚点：当前课表卡片（不是列表第一项）。一页只截一次：currentCardBounds
-                // 每次变化都会重跑本 effect，而每次 capturePageBitmap() 都是一张全屏 toImageBitmap，
-                // 宿主此时 switchPendingReverse 早已 false、回调被忽略，纯浪费且与别的快照叠峰值。
+                // Entry uses the current card's geometry without capturing the destination.
+                // Keep one delivery per screen, including when later layouts move the card.
                 val switchSnapshotDelivered = remember { intArrayOf(0) }
                 LaunchedEffect(currentCardBounds) {
                     if (embedded) return@LaunchedEffect
                     if (switchSnapshotDelivered[0] != 0) return@LaunchedEffect
                     val bounds = currentCardBounds
                     if (bounds != null) {
-                        val bitmap = capturePageBitmap()
+                        // Entry only needs the destination geometry. Reveal the live card
+                        // beneath the source morph instead of reading back a second full screen.
                         switchSnapshotDelivered[0] = 1
-                        // 截图失败也要回调：否则 switchCapturingSnapshot 永远为 true，
-                        // 页面会一直停在 alpha=0 的黑屏上
+                        // Deliver the anchor even without a bitmap so entry can begin.
                         val adjustedBounds = androidx.compose.ui.geometry.Rect(
                             left = (bounds.left - contentRootX) / pageScale,
                             top = (bounds.top - contentRootY) / pageScale,
                             right = (bounds.right - contentRootX) / pageScale,
                             bottom = (bounds.bottom - contentRootY) / pageScale
                         )
-                        onScreenReady(bitmap, adjustedBounds)
+                        onScreenReady(null, adjustedBounds)
                     }
                 }
-                // 兜底：当前课表被收在文件夹里、或首屏没布局到它时也要回调一次，
-                // 否则主页 switchCapturingSnapshot 一直是 true，整个页面停在 alpha=0
+                // Once the first list layout is available, an offscreen card cannot
+                // provide an entry anchor. Continue immediately rather than waiting 700 ms.
                 LaunchedEffect(Unit) {
                     if (embedded) return@LaunchedEffect
-                    delay(700.milliseconds)
+                    snapshotFlow { listState.layoutInfo.viewportSize.height > 0 }.first { it }
+                    withFrameNanos { }
                     if (currentCardBounds == null && switchSnapshotDelivered[0] == 0) {
                         switchSnapshotDelivered[0] = 1
                         onScreenReady(null, androidx.compose.ui.geometry.Rect.Zero)
