@@ -550,7 +550,9 @@ fun TodayScreen(
                     val todayWallpaperBlurEffect = remember(wallpaperBlur) {
                         // 跨平台模糊模板：半径表达式与原实现逐字一致
                         val blurRadiusPx = 24f * density.density
-                        if (blurRadiusPx > 0f && isRenderEffectSupported()) {
+                        // ⚠ 同 MainScheduleScreen：漏判 wallpaperBlur 会让关闭开关后
+                        // 非共享路径（alpha=1f）仍强制全屏高斯模糊，半径还大一倍。
+                        if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
                             BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
                         } else null
                     }

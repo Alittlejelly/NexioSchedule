@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.LayoutModifierNode
@@ -39,20 +40,47 @@ import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.InnerShadowElement
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.backdrop.shadow.ShadowElement
+import kotlin.concurrent.Volatile
 
 private val DefaultHighlight = { Highlight.Default }
 private val DefaultShadow = { Shadow.Default }
 private val DefaultOnDrawBackdrop: DrawScope.(DrawScope.() -> Unit) -> Unit = { it() }
 
 /**
- * @deprecated 采样链路已回退到源库实现（每帧独立录制），视口裁剪不再被读取。
- *   保留类型只是为了让还在 provide / 取 current 的调用点继续编译，待一起清理。
+ * 采样视口（window 坐标，px）。
+ *
+ * 用途：**完全在视口外**的节点直接跳过 backdrop 采样 —— 那部分像素被父级裁掉、
+ * 本来就不可见，跳过是纯赚。与降采样无关：采样变换仍是 1:1 全分辨率，
+ * 只是少画几张「看不见但仍会录制 display list」的外层课卡。
+ *
+ * 写入侧是滚动容器（onGloballyPositioned），读取侧在 draw 阶段，
+ * 所以不能用 state —— 那会把每帧滚动变成整棵重组。
+ *
+ * [bounds] 用**单个 volatile 引用整体替换**，而不是 4 个 volatile 字段：
+ * 后者会让读侧看到「新 top + 旧 bottom」这种撕裂组合，从而误剔可见卡片。
+ * 为 null 表示「视口未知 → 不剔除」，回调没跑时安全退化成原行为。
  */
-@Deprecated("视口裁剪优化已随降采样一起回退，不再生效")
-class BackdropViewport
+class BackdropViewport {
+    class Bounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+    // 必须用 kotlin.concurrent.Volatile：不带限定的 @Volatile 靠 JVM 专有的默认导入
+    // `kotlin.jvm.*` 解析，Kotlin/Native / JS 上会「Unresolved reference」。
+    // 这些字段被 draw 阶段读取，需要真正的跨线程可见性。
+    @Volatile
+    var bounds: Bounds? = null
+
+    fun update(left: Float, top: Float, right: Float, bottom: Float) {
+        bounds = Bounds(left, top, right, bottom)
+    }
+
+    /** 四个边界都严格在视口外才剔除；相等视为相交（贴边卡片保留）。 */
+    fun isFullyOutside(left: Float, top: Float, right: Float, bottom: Float): Boolean {
+        val b = bounds ?: return false
+        return right < b.left || left > b.right || bottom < b.top || top > b.bottom
+    }
+}
 
 /** @see BackdropViewport */
-@Deprecated("视口裁剪优化已随降采样一起回退，不再生效")
 val LocalBackdropViewport = androidx.compose.runtime.staticCompositionLocalOf<BackdropViewport?> { null }
 
 fun Modifier.drawPlainBackdrop(
@@ -82,6 +110,7 @@ fun Modifier.drawPlainBackdrop(
                 effects = effects,
                 layerBlock = layerBlock,
                 exportedBackdrop = exportedBackdrop,
+                viewport = null,
                 onDrawBehind = onDrawBehind,
                 onDrawBackdrop = onDrawBackdrop,
                 onDrawSurface = onDrawSurface,
@@ -99,6 +128,7 @@ fun Modifier.drawBackdrop(
     innerShadow: (() -> InnerShadow?)? = null,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
     exportedBackdrop: LayerBackdrop? = null,
+    viewport: BackdropViewport? = null,
     onDrawBehind: (DrawScope.() -> Unit)? = null,
     onDrawBackdrop: DrawScope.(drawBackdrop: DrawScope.() -> Unit) -> Unit = DefaultOnDrawBackdrop,
     onDrawSurface: (DrawScope.() -> Unit)? = null,
@@ -150,6 +180,7 @@ fun Modifier.drawBackdrop(
                 effects = effects,
                 layerBlock = layerBlock,
                 exportedBackdrop = exportedBackdrop,
+                viewport = viewport,
                 onDrawBehind = onDrawBehind,
                 onDrawBackdrop = onDrawBackdrop,
                 onDrawSurface = onDrawSurface,
@@ -164,6 +195,7 @@ private class DrawBackdropElement(
     val effects: BackdropEffectScope.() -> Unit,
     val layerBlock: (GraphicsLayerScope.() -> Unit)?,
     val exportedBackdrop: LayerBackdrop?,
+    val viewport: BackdropViewport?,
     val onDrawBehind: (DrawScope.() -> Unit)?,
     val onDrawBackdrop: DrawScope.(drawBackdrop: DrawScope.() -> Unit) -> Unit,
     val onDrawSurface: (DrawScope.() -> Unit)?,
@@ -177,6 +209,7 @@ private class DrawBackdropElement(
             effects = effects,
             layerBlock = layerBlock,
             exportedBackdrop = exportedBackdrop,
+            viewport = viewport,
             onDrawBehind = onDrawBehind,
             onDrawBackdrop = onDrawBackdrop,
             onDrawSurface = onDrawSurface,
@@ -193,6 +226,7 @@ private class DrawBackdropElement(
             node.exportedBackdrop?.layerCoordinates = null
             node.exportedBackdrop = exportedBackdrop
         }
+        node.viewport = viewport
         node.onDrawBehind = onDrawBehind
         node.onDrawBackdrop = onDrawBackdrop
         node.onDrawSurface = onDrawSurface
@@ -207,6 +241,7 @@ private class DrawBackdropElement(
         properties["effects"] = effects
         properties["layerBlock"] = layerBlock
         properties["exportedBackdrop"] = exportedBackdrop
+        properties["viewport"] = viewport
         properties["onDrawBehind"] = onDrawBehind
         properties["onDrawSurface"] = onDrawSurface
         properties["onDrawFront"] = onDrawFront
@@ -217,10 +252,11 @@ private class DrawBackdropElement(
         if (other !is DrawBackdropElement) return false
 
         if (backdrop != other.backdrop) return false
-        if (shapeProvider != other.shapeProvider) return false
+        if (shapeProvider.innerShape != other.shapeProvider.innerShape) return false
         if (effects != other.effects) return false
         if (layerBlock != other.layerBlock) return false
         if (exportedBackdrop != other.exportedBackdrop) return false
+        if (viewport !== other.viewport) return false
         if (onDrawBehind != other.onDrawBehind) return false
         if (onDrawBackdrop != other.onDrawBackdrop) return false
         if (onDrawSurface != other.onDrawSurface) return false
@@ -231,10 +267,11 @@ private class DrawBackdropElement(
 
     override fun hashCode(): Int {
         var result = backdrop.hashCode()
-        result = 31 * result + shapeProvider.hashCode()
+        result = 31 * result + shapeProvider.innerShape.hashCode()
         result = 31 * result + effects.hashCode()
         result = 31 * result + (layerBlock?.hashCode() ?: 0)
         result = 31 * result + (exportedBackdrop?.hashCode() ?: 0)
+        result = 31 * result + (viewport?.hashCode() ?: 0)
         result = 31 * result + (onDrawBehind?.hashCode() ?: 0)
         result = 31 * result + onDrawBackdrop.hashCode()
         result = 31 * result + (onDrawSurface?.hashCode() ?: 0)
@@ -249,6 +286,7 @@ private class DrawBackdropNode(
     var effects: BackdropEffectScope.() -> Unit,
     var layerBlock: (GraphicsLayerScope.() -> Unit)?,
     var exportedBackdrop: LayerBackdrop?,
+    var viewport: BackdropViewport?,
     var onDrawBehind: (DrawScope.() -> Unit)?,
     var onDrawBackdrop: DrawScope.(drawBackdrop: DrawScope.() -> Unit) -> Unit,
     var onDrawSurface: (DrawScope.() -> Unit)?,
@@ -295,6 +333,29 @@ private class DrawBackdropNode(
     }
 
     private val drawBackdropLayer: DrawScope.() -> Unit = drawBackdropLayer@{
+        // 视口剔除：完全在视口外（含横滑到屏外的邻周课卡）的节点整段跳过采样 ——
+        // 那部分像素被父级裁掉、本来就不可见，跳过是纯赚。
+        // 卡片表面色/文字仍由 draw() 照常画，故视觉零差异。
+        // 这里是「少录制 display list + 少一次 localPositionOf」，不是 GPU 减负：
+        // 屏外那部分光栅化本来就会被裁掉。
+        val viewport = viewport
+        if (viewport != null) {
+            val coordinates = layoutCoordinates
+            if (coordinates != null) {
+                val pos = try {
+                    coordinates.positionInWindow()
+                } catch (_: Exception) {
+                    null
+                }
+                if (pos != null && viewport.isFullyOutside(
+                        pos.x, pos.y,
+                        pos.x + size.width, pos.y + size.height
+                    )
+                ) {
+                    return@drawBackdropLayer
+                }
+            }
+        }
         val layer = graphicsLayer
         val padding = padding
 

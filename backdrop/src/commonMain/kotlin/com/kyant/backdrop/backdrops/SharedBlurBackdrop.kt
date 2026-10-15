@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.TileMode
@@ -29,6 +30,23 @@ import kotlin.math.roundToInt
 
 /**
  * 烘焙层的分辨率比例。1f = 与源层同分辨率。
+ *
+ * 降采样是安全的，因为模糊**只烘焙一次**：[SharedBlurRecorderNode] 先把源录进
+ * 带 RenderEffect 的中间层 blurLayer，再把结果烘进 `renderEffect = null` 的
+ * bakedLayer。采样侧 `drawLayer(baked)` 是一次纯纹理 blit，不重跑高斯模糊。
+ *
+ * ⚠ 早期版本踩过的坑：那会儿 RenderEffect 直接挂在共享层上，而 RenderEffect 是
+ * **每次 draw 都重算**的 —— 几十张课卡每帧各 drawLayer 同一张层，等于全屏模糊
+ * 每帧跑几十次，降采样省下的采样成本全被吃光，看起来"降采样没用"。
+ * 现架构已拆开两层，改这个常量前请先确认那条性质还成立。
+ *
+ * 0.5f 下 1080×2400 的纹理从 10.4MB 降到 2.6MB，能进 GPU 的 L2；源图本就是
+ * 模糊过的壁纸，放大回来看不出差别。
+ *
+ * ⚠ **当前保持 1f，不要直接调小。** n≠1 的采样变换还没在真机上验证通过
+ * （见 [SharedBlurBackdrop.drawBackdrop] 里那段关于 pivot 与拼接顺序的注释），
+ * 两处默认值陷阱都是静默的：n=1 时整条分支是死代码，怎么改都看不出症状，
+ * 一旦 n≠1 就同时引爆。降采样要重新上，必须先在真机量出对齐结果。
  */
 const val BLUR_BAKE_SCALE = 1f
 
@@ -131,19 +149,15 @@ class SharedBlurBackdrop(
             if (layerBlock != null) {
                 with(obtainInverseLayerScope()) { inverseTransform(density, layerBlock) }
             }
+            if (n != 1f) {
+                scale(1f / n, 1f / n, Offset.Zero)
+            }
             val offset = try {
                 layerCoordinates.localPositionOf(coordinates)
             } catch (_: Exception) {
                 coordinates.positionInWindow() - layerCoordinates.positionInWindow()
             }
             translate(-offset.x, -offset.y)
-            // 层像素 q 对应全屏 q/n，放大回全屏坐标，再交给上面的反向补偿。
-            // 必须是这一串的最后一步（最先作用于层像素）：
-            //   q --scale(1/n)--> q/n --translate(-offset)--> q/n - offset --inverse-->
-            // 与 inverseTransform 期望的「全屏坐标 - offset」正好对上。
-            if (n != 1f) {
-                scale(1f / n, 1f / n)
-            }
         }) {
             drawLayer(baked ?: source.graphicsLayer)
         }
@@ -229,6 +243,9 @@ private class SharedBlurRecorderNode(
     private var recordedH = 0
     private var recordedBlurRadius = Float.NaN
 
+    /** 烘焙时**实际达成**的分辨率比例（可能与请求的 downsampleScale 有取整偏差） */
+    private var recordedScale = Float.NaN
+
     fun markNeedsRecord() { needsRecord = true }
 
     override fun ContentDrawScope.draw() {
@@ -242,11 +259,15 @@ private class SharedBlurRecorderNode(
         val targetW = (size.width * downsampleScale).roundToInt().coerceAtLeast(1)
         val targetH = (size.height * downsampleScale).roundToInt().coerceAtLeast(1)
 
-        // 只在半径真正变化时赋值，避免每帧 new BlurEffect 让图层反复失效
-        if (recordedBlurRadius != blurRadiusPx) {
+        val actualScale = if (size.width > 0f) targetW.toFloat() / size.width else 1f
+
+        // 只在半径/比例真正变化时赋值，避免每帧 new BlurEffect 让图层反复失效
+        if (recordedBlurRadius != blurRadiusPx || recordedScale != actualScale) {
             recordedBlurRadius = blurRadiusPx
+            recordedScale = actualScale
             blur.renderEffect = if (blurRadiusPx > 0f) {
-                val scaledBlur = blurRadiusPx * downsampleScale
+                // 模糊作用在降采样后的缓冲上，半径同步 ×比例，放大回原尺寸后扩散范围不变
+                val scaledBlur = blurRadiusPx * actualScale
                 BlurEffect(
                     null,
                     scaledBlur,
@@ -264,7 +285,7 @@ private class SharedBlurRecorderNode(
             // 1) 源 -> 中间层
             blur.record(IntSize(targetW, targetH)) {
                 drawContext.canvas.save()
-                drawContext.canvas.scale(downsampleScale, downsampleScale)
+                drawContext.canvas.scale(actualScale, actualScale)
                 drawLayer(sourceLayer)
                 drawContext.canvas.restore()
             }
@@ -280,7 +301,7 @@ private class SharedBlurRecorderNode(
             recordedH = targetH
 
             sharedBackdrop.blurredLayer = baked
-            sharedBackdrop.blurredScale = downsampleScale
+            sharedBackdrop.blurredScale = actualScale
             sharedBackdrop.contentVersion++
         }
     }
@@ -291,6 +312,7 @@ private class SharedBlurRecorderNode(
         bakedLayer = graphicsContext.createGraphicsLayer()
         needsRecord = true
         recordedBlurRadius = Float.NaN
+        recordedScale = Float.NaN
     }
 
     override fun onDetach() {
@@ -306,5 +328,6 @@ private class SharedBlurRecorderNode(
         sharedBackdrop.blurredLayer = null
         needsRecord = true
         recordedBlurRadius = Float.NaN
+        recordedScale = Float.NaN
     }
 }

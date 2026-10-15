@@ -2555,14 +2555,14 @@ fun CourseScheduleApp(
         val latestIsCustomizeExiting by rememberUpdatedState(isCustomizeExiting)
         val latestDraggingCard by rememberUpdatedState(isDraggingCard)
         val latestRailBlurEpoch by rememberUpdatedState(railBlurResampleEpoch.intValue)
-        // 无壁纸周左右滑：跳过 liquidGlass 整树逐帧重录（chrome 采样缓存随之跳过模糊）。
-        // 落页靠 recordKey 里的 currentPage 补一帧；有壁纸时玻璃要跟像素，仍每帧重录。
-        val latestHasWallpaperForGlass by rememberUpdatedState(wallpaperBitmap != null)
         // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都新建包装对象，每帧新建会让
         // Image 的位图纹理反复重建。Bitmap 生命周期管理里的 `===` 身份比较一律不动。
         val wallpaperImage = remember(wallpaperBitmap) { wallpaperBitmap }
         val originalWallpaperImage = originalWallpaperBitmap
-        // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结
+        // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结。
+        // 周左右滑**不**重录，有无壁纸一视同仁：落页靠 recordKey 里的
+        // pagerState.currentPage 补一帧，玻璃不会永久停在旧帧。
+        // 「冻结采样、滚动时玻璃滞后」的既有取舍一致，不是新引入的行为。
         val liquidGlassMustRecord = remember(scheduleScrollState, todayListScrollInProgress, pagerState, todayPagerState, mainPagerState) {
             var lastRailExpand = Float.NaN
             var lastBlurEpoch = -1
@@ -2577,7 +2577,8 @@ fun CourseScheduleApp(
                 if (forceRail) railForceRecordFrames[0] = railForceRecordFrames[0] - 1
                 scheduleScrollState.isScrollInProgress ||
                     todayListScrollInProgress.value ||
-                    (pagerState.isScrollInProgress && latestHasWallpaperForGlass) ||
+                    // ⚠ 周左右滑（pagerState）刻意不在此列 —— 与无壁纸时行为一致。
+                    // 落页由 recordKey 里的 pagerState.currentPage 补一帧。
                     todayPagerState.isScrollInProgress ||
                     mainPagerState.isScrollInProgress ||
                     expandMoving ||
