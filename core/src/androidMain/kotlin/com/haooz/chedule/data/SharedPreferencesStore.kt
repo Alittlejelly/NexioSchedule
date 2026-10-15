@@ -52,16 +52,35 @@ class SharedPreferencesStore(
         prefs.edit().clear().apply()
     }
 
-    override fun registerListener(listener: (String) -> Unit): Any? =
-        prefs.registerOnSharedPreferenceChangeListener { _, key ->
+    /**
+     * ⚠ **必须自己留强引用**：`SharedPreferencesImpl` 内部是
+     * `WeakHashMap<OnSharedPreferenceChangeListener, Object> mListeners`（AOSP
+     * `android/app/SharedPreferencesImpl.java`），只持**弱引用**。这里若不留一份，
+     * 下面那个 lambda 会被 GC 回收，回调从此**静默失效** —— 现象是「主题、开关怎么点都没反应，
+     * 重启应用又好了」，且全程无异常可查。JVM([FileKeyValueStore]) / iOS([UserDefaultsStore])
+     * 两个实现都由容器或系统强持有，只有走系统 SharedPreferences 的这条要自己兜住。
+     *
+     * token 也不能用平台返回值：`registerOnSharedPreferenceChangeListener` 返回 void，
+     * 表达式会退化成 `Unit`，`unregisterListener` 永远匹配不上（既漏卸载、又等于没有强引用）。
+     * 这里直接返回监听器自身，与 [FileKeyValueStore.registerListener] 语义一致。
+     */
+    private val strongListeners =
+        mutableSetOf<SharedPreferences.OnSharedPreferenceChangeListener>()
+
+    override fun registerListener(listener: (String) -> Unit): Any? {
+        val wrapped = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             // 平台回调的 key 声明为 String?（契约是 String）；空值不会出现，跳过即可
             if (key != null) listener(key)
         }
+        synchronized(strongListeners) { strongListeners.add(wrapped) }
+        prefs.registerOnSharedPreferenceChangeListener(wrapped)
+        return wrapped
+    }
 
     override fun unregisterListener(token: Any?) {
-        if (token is SharedPreferences.OnSharedPreferenceChangeListener) {
-            prefs.unregisterOnSharedPreferenceChangeListener(token)
-        }
+        val wrapped = token as? SharedPreferences.OnSharedPreferenceChangeListener ?: return
+        synchronized(strongListeners) { strongListeners.remove(wrapped) }
+        prefs.unregisterOnSharedPreferenceChangeListener(wrapped)
     }
 
     private class EditorAdapter(

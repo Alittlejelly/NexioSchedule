@@ -1814,7 +1814,12 @@ private fun CourseItemWithClick(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.background))
+                // ⚠ 无壁纸时这里必须用 surfaceContainer，不能用 background：外层 BlurCard 在无壁纸时
+                //   退化成 miuix `Card()`，卡片色正是 surfaceContainer（Card.kt 的 defaultColors）。
+                //   原先写 background 在内置亮/暗方案下是**恰好相等的空操作**（两者都是 #FFFFFF / #242424），
+                //   莫奈下才分家：background 取 MD3 tone 98/6、surfaceContainer 取 tone 94/12，
+                //   差 4 个明度阶 —— 课程条目会比今日助手卡 / 分区卡偏一个色。
+                .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
                 .onGloballyPositioned { coordinates ->
                     val position = coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
                     val size = coordinates.size

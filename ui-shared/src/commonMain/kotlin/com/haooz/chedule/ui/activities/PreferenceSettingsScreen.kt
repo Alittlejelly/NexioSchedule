@@ -250,7 +250,7 @@ fun PreferenceSettingsScreen(
                             SwitchPreference(
                                 title = "莫奈取色",
                                 summary = if (isMonetColorAvailable()) {
-                                    "跟随系统壁纸配色，应用于背景、高亮与课程卡片"
+                                    "跟随系统壁纸对应用进行配色"
                                 } else {
                                     "需要 Android 12 及以上版本"
                                 },

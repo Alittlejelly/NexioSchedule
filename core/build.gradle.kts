@@ -15,21 +15,18 @@ kotlin {
         namespace = "com.haooz.chedule.core"
         compileSdk = 37
         minSdk = 26
-        // 刻意**不**开 withHostTest {}：会让 commonTest 跑在 Android 宿主机测试上，
-        // 而那里的 android.jar 是桩实现（`Build.MODEL` 为 null），currentDeviceInfo()
-        // 直接崩，PlatformInfoTest 等 8 个用例失败。commonTest 的平台中立性
-        // 由 checkKmpPurity 静态检查 + iOS 编译门禁（-Pnexio.ios=true）保证。
+        // 开宿主机测试：:core 的 Android 实现（SharedPreferencesStore 等）
+        // ⚠ 代价：commonTest 里有 3 个类依赖真实设备字段或 Application 生命周期，
+        //   宿主机上是桩 android.jar，实测 16 个用例必挂 —— 在下面 testAndroidHostTest
+        //   里显式排除，断言一个字没改弱，它们仍由 jvmTest + iOS 门禁覆盖。
+        withHostTest {}
     }
     jvm()
     // ── iOS 目标：**默认关闭**，-Pnexio.ios=true 开启 ────────────────────────
-    // 默认关（实测）：声明 iOS target 后 `:core:check` 会去解析 iOS 的 klib 依赖，
-    // 而门禁是 --offline 跑的，本地没这些变体缓存，直接失败。
     // 开启后请改用联网构建：./gradlew -Pnexio.ios=true :core:compileKotlinIosArm64
     val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
     if (enableIos) {
         val iosTargets = listOf(iosArm64(), iosSimulatorArm64())
-        // sysctl/sysctlbyname 被 Apple 弃用，Kotlin/Native 的 Apple 预置库已不导出；
-        // 自定义 cinterop 重新暴露 sys/sysctl.h，PlatformInfo.ios 靠它读真机数据。
         iosTargets.forEach { target ->
             target.compilations.getByName("main") {
                 cinterops.create("applesysctl") {
@@ -42,9 +39,8 @@ kotlin {
     }
 
     sourceSets {
-        // 「Android 与 JVM 桌面共用」的实现（java.io.File 系）：FileAppFile 等。
-        // 与 :miuix/:backdrop 的 skikoMain 同一招 —— 用 srcDir 共享同一份源码，
-        // 不复制两份（commonMain 里放不了 java.*，iOS/Android 编译门禁会挂）。
+        // 「Android 与 JVM 桌面共用」的实现（java.io.File 系）：FileAppFile 等
+        // 与 :miuix/:backdrop 的 skikoMain 同一招 —— 用 srcDir 共享同一份源码
         androidMain {
             kotlin.srcDir("src/jvmShared/kotlin")
         }
@@ -89,5 +85,14 @@ tasks.withType<Test>().configureEach {
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = false
+    }
+}
+
+// ── Android 宿主机测试（withHostTest）的排除项 ────────────────────────────────
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+    filter {
+        excludeTestsMatching("com.haooz.chedule.data.PlatformInfoTest")
+        excludeTestsMatching("com.haooz.chedule.data.StatsReporterPayloadTest")
+        excludeTestsMatching("com.haooz.chedule.data.DataFetcherLogicTest")
     }
 }
