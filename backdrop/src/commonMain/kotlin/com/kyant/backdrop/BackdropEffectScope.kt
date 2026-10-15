@@ -7,10 +7,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 
-// 离屏模糊缓冲的降采样比例。模糊/折射在低分辨率缓冲上运算后放大回原尺寸，
-// 可显著降低 GPU 采样成本（成本按 1/scale² 下降）。0.42f 为固定降采样。
-internal const val DOWNSAMPLE_SCALE = 0.42f
-
 sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
 
     val size: Size
@@ -20,7 +16,13 @@ sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
      *
      * 采样链路已回退到源库实现：缓冲是 1:1 全分辨率（只外扩 padding），
      * 因此固定为 1f —— effect（尤其 lens 的 runtimeShader）的像素 uniform
-     * 不再需要缩放。保留这个字段只是为了让 lens() 不用改签名。
+     * 不再需要缩放。保留这个字段只是为了让 lens()/blur() 不用改签名。
+     *
+     * ⚠ **effect 里凡是要按像素缩放 uniform/半径的，一律读这个字段，
+     * 不要写死常量。** 这里曾经有个 `DOWNSAMPLE_SCALE = 0.42f` 的残留常量被
+     * blur() 乘上去，降采样回退后没跟着删，所有「卡片自模糊」路径的半径都被
+     * 缩到 42% —— 长按浮层因此明显比网格卡清，而 n=1 下看不出任何异常。
+     * 常量已删；要恢复降采样时改这个字段即可，effect 会自动跟随。
      */
     val downsampleScale: Float
 
