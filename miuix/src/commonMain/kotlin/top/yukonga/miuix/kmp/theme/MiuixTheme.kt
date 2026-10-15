@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.utils.MiuixIndication
 import top.yukonga.miuix.kmp.utils.MiuixOverscrollFactory
 
@@ -68,6 +70,9 @@ fun MiuixTheme(
         content()
     }
 }
+
+/** Screen radius supplied by the host; null retains the component's platform fallback. */
+val LocalScreenCornerRadius = staticCompositionLocalOf<Dp?> { null }
 
 object MiuixTheme {
     val colorScheme: Colors

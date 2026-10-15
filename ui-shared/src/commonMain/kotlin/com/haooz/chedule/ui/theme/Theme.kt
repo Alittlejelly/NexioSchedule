@@ -15,11 +15,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.currentDeviceInfo
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -131,10 +134,14 @@ fun CourseScheduleTheme(
             }
         }
     }
+    val density = LocalDensity.current
+    val screenCornerRadiusPx = rememberScreenCornerRadiusPx()
+    val screenCornerRadius = with(density) { screenCornerRadiusPx.toDp() }
     MiuixTheme(
         controller = controller,
         content = {
             CompositionLocalProvider(
+                LocalScreenCornerRadius provides screenCornerRadius,
                 LocalHapticFeedback provides gatedHaptic,
                 LocalMonetColorEnabled provides monetEnabled,
                 LocalSystemDarkTheme provides systemDarkTheme,

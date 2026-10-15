@@ -74,6 +74,7 @@ import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
+import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.utils.getRoundedCorner
 import top.yukonga.miuix.kmp.window.WindowDialog
 
@@ -146,6 +147,8 @@ internal fun DialogContentLayout(
     val imeInsets = WindowInsets.ime
     val keyboardController = LocalSoftwareKeyboardController.current
     val isLargeScreen = DialogDefaults.isLargeScreen()
+    // Capture before entering the popup host so detached overlay compositions use the caller's radius.
+    val screenCornerRadius = LocalScreenCornerRadius.current ?: getRoundedCorner()
 
     LaunchedEffect(show) {
         // Snapshot at launch so a window-resize crossing the breakpoint mid-animation does not
@@ -265,6 +268,7 @@ internal fun DialogContentLayout(
         }
 
         DialogContent(
+            screenCornerRadius = screenCornerRadius,
             title = title,
             titleColor = titleColor,
             summary = summary,
@@ -304,6 +308,7 @@ internal fun DialogContent(
     dialogHeightPx: MutableIntState,
     onDismissRequest: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    screenCornerRadius: Dp,
     topInset: Dp? = null,
     liquidGlassBackdrop: Backdrop? = null,
     isDark: Boolean = false,
@@ -316,10 +321,9 @@ internal fun DialogContent(
     val contentAlignment = remember(isLargeScreen) {
         if (isLargeScreen) Alignment.Center else Alignment.BottomCenter
     }
-    val roundedCorner = getRoundedCorner()
-    val bottomCornerRadius = remember(roundedCorner, outsideMargin.width, isLargeScreen) {
+    val bottomCornerRadius = remember(screenCornerRadius, outsideMargin.width, isLargeScreen) {
         val offset = if (isLargeScreen) 0.dp else outsideMargin.width
-        (roundedCorner - offset).coerceAtLeast(32.dp)
+        (screenCornerRadius - offset).coerceAtLeast(32.dp)
     }
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
 
