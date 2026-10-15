@@ -40,13 +40,10 @@ kotlin {
     }
 }
 
-// ⚠ 强制 kotlinx-datetime 回 0.6.2（与 gradle/libs.versions.toml 一致）。
-// Compose Desktop 的依赖树会把它提升到 0.7.1，而 0.7 起 Clock 被移出
-// kotlinx.datetime、LocalDate.monthNumber 也改名，运行时才炸（编译期能解析符号）。
-// Android 侧依赖树不同、没被提升，所以这个坑只在桌面端出现。
-configurations.all {
-    resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
-}
+// kotlinx-datetime 版本由根 build.gradle.kts 全局 force（0.6.2）兜底 ——
+// Compose Desktop 依赖树会把它提升到 0.7.1，而 0.7 起 Clock 被移出
+// kotlinx.datetime、monthNumber 改名，运行时才炸（编译期能解析符号）。
+// 那个坑只在桌面端出现，Android 侧依赖树不同、没被提升。
 
 compose.desktop {
     application {

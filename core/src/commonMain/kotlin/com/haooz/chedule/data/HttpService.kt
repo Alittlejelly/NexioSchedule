@@ -123,6 +123,6 @@ data class HttpTimeouts(
 
 /**
  * 平台侧创建默认实现：Android → OkHttp；JVM/桌面 → `HttpURLConnection`；
- * iOS → `NSURLSession`；linuxX64（仅编译门禁）→ 显式失败占位。
+ * iOS → `NSURLSession`。
  */
 expect fun createHttpService(timeouts: HttpTimeouts): HttpService

@@ -3,21 +3,18 @@
 // 除插件声明外，这里挂了三道与 KMP 迁移相关的强制配置，
 // 各自的原因写在对应位置：平台纯净度检查、kotlinx-datetime 版本钉死、
 // Node 发行版来源。
-
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.compose) apply false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// commonMain / skikoMain 平台纯净度检查
+// commonMain / skikoMain 平台纯净度检查（静态兜底）
 //
-// 这类「Android/JVM 全绿、iOS 编不过」的问题编译器在本机拦不住
-// （:core/:miuix/:backdrop 挂不了 linuxX64 —— Compose Multiplatform
-// 不支持该目标，iOS 目标又需要 macOS 宿主），只能用静态检查兜底。
-//
-// 已知盲区：正则查不出未知 API。`:core` 靠 linuxX64 目标真编译兜底，
-// 其余模块靠 iOS / wasmJs 编译门禁兜底。
+// 拦「Android/JVM 全绿、iOS 编不过」：这类问题等 iOS 编译才发现太迟，
+// 正则扫描在编译前就能定位到行号。iOS 真编译门禁是 opt-in（-Pnexio.ios=true，
+// 默认关的原因见对应模块注释），常态下静态检查就是主力。
+// 已知盲区：正则查不出未知 API。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -141,7 +138,7 @@ abstract class CheckKmpPurityTask : DefaultTask() {
             Forbidden(
                 "String.toByteArray()",
                 // 只匹配**字符串字面量**：`Collection<Byte>.toByteArray()` 是 common API，不能误伤。
-                // 变量形式（`s.toByteArray()`）静态区分不了，靠 :core 的 linuxX64 编译门禁兜底。
+                // 变量形式（`s.toByteArray()`）静态区分不了，靠 iOS 编译门禁兜底。
                 Regex("\"[^\"]*\"\\s*\\.\\s*toByteArray\\(\\)"),
                 "String.toByteArray() 是 JVM 专有；跨平台用 encodeToByteArray()",
             ),
@@ -201,51 +198,5 @@ subprojects {
 subprojects {
     configurations.configureEach {
         resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
-    }
-}
-
-// Kotlin/Wasm：用本机已装的 Node，不从 nodejs.org 下载
-//
-// Kotlin/Wasm 插件会为 `kotlinWasmNodeJsSetup` 注册 Distributions 仓库，
-// 与 settings.gradle.kts 的 FAIL_ON_PROJECT_REPOS 硬冲突：
-//   "repository 'Distributions at https://nodejs.org/dist' was added by unknown code"
-//
-// 官方做法是把 EnvSpec.download 置 false —— 但**只做这一步不够**：即使 download=false，
-// 该仓库仍在配置阶段被注册（注册发生在读取 download 之前），冲突依旧。
-// 所以 wasmJs 门禁刻意不挂 check，改由独立命令跑（见下方 checkKmpWasmJs），
-// 让 `--offline` 的 Android 零回归门禁不受影响。
-subprojects {
-    plugins.withType<org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsPlugin> {
-        extensions.getByType<org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsEnvSpec>()
-            .download = false
-    }
-}
-
-// wasmJs 编译门禁：独立任务，不挂 check（原因见上）。
-// 用法：./gradlew -Pnexio.wasm=true checkKmpWasmJs   （首次需联网，需 PATH 中有 Node）
-val wasmGateEnabled = (project.findProperty("nexio.wasm") as? String)?.toBoolean() ?: false
-if (wasmGateEnabled) {
-    tasks.register("checkKmpWasmJs") {
-        group = "verification"
-        description = "编译 wasmJs 目标，验证 commonMain/skikoMain 不含 JVM 专有 API（iOS 移植前的非 JVM 编译门禁）"
-        dependsOn(
-            project(":backdrop").tasks.named("compileKotlinWasmJs"),
-            project(":miuix").tasks.named("compileKotlinWasmJs"),
-        )
-    }
-} else {
-    // 目标不存在时注册一个占位任务，让 `./gradlew checkKmpWasmJs` 不至于
-    // 报 "Task 'checkKmpWasmJs' not found" —— 而是给出明确提示。
-    tasks.register("checkKmpWasmJs") {
-        group = "verification"
-        description = "wasmJs 编译门禁（需 -Pnexio.wasm=true 开启）"
-        doLast {
-            logger.lifecycle(
-                "checkKmpWasmJs: wasmJs 目标默认关闭。请改用：\n" +
-                    "    ./gradlew -Pnexio.wasm=true checkKmpWasmJs\n" +
-                    "（原因见 build.gradle.kts 里 wasmJs 目标处的注释：Kotlin/Wasm 插件会在配置阶段\n" +
-                    " 注册 Distributions 仓库，与 FAIL_ON_PROJECT_REPOS 冲突，导致 --offline 的 Android 门禁跑不了）",
-            )
-        }
     }
 }

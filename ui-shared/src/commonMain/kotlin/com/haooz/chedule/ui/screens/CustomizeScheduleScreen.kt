@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -90,8 +91,10 @@ import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.kyant.backdrop.edgelight.edgeLight
+import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.drawBackdrop
@@ -421,7 +424,7 @@ fun CustomizeScheduleScreen(
             launch {
                 animProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(450, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                    animationSpec = tween(450, easing = CustomizePageEasing)
                 )
                 animDone = true
                 isPageAnimating = false
@@ -429,14 +432,14 @@ fun CustomizeScheduleScreen(
             launch {
                 pagerSpacing.animateTo(
                     -10f,
-                    tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                    tween(500, easing = CustomizePageEasing)
                 )
             }
             launch {
                 delay(200.milliseconds)
                 buttonScaleAnim.animateTo(
                     1f,
-                    tween(450, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                    tween(450, easing = CustomizePageEasing)
                 )
             }
             launch {
@@ -445,19 +448,19 @@ fun CustomizeScheduleScreen(
                     launch {
                         toolAlphaAnim.animateTo(
                             1f,
-                            tween(450, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                            tween(450, easing = CustomizePageEasing)
                         )
                     }
                     launch {
                         toolOffsetYAnim.animateTo(
                             0f,
-                            tween(450, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                            tween(450, easing = CustomizePageEasing)
                         )
                     }
                     launch {
                         toolBlurAnim.animateTo(
                             0f,
-                            tween(450, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                            tween(450, easing = CustomizePageEasing)
                         )
                     }
                 }
@@ -466,7 +469,7 @@ fun CustomizeScheduleScreen(
                 delay(100.milliseconds)
                 titleFadeAnim.animateTo(
                     1f,
-                    tween(250, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                    tween(250, easing = CustomizePageEasing)
                 )
             }
         }
@@ -479,13 +482,13 @@ fun CustomizeScheduleScreen(
                 launch {
                     exitProgress.animateTo(
                         1f,
-                        tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(500, easing = CustomizePageEasing)
                     )
                 }
                 launch {
                     buttonScaleAnim.animateTo(
                         1.5f,
-                        tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(500, easing = CustomizePageEasing)
                     )
                 }
                 launch { titleFadeAnim.animateTo(0f, tween(150)) }
@@ -494,19 +497,19 @@ fun CustomizeScheduleScreen(
                         launch {
                             toolAlphaAnim.animateTo(
                                 0f,
-                                tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                                tween(500, easing = CustomizePageEasing)
                             )
                         }
                         launch {
                             toolOffsetYAnim.animateTo(
                                 toolOffsetTargetPx,
-                                tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                                tween(500, easing = CustomizePageEasing)
                             )
                         }
                         launch {
                             toolBlurAnim.animateTo(
                                 8f,
-                                tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                                tween(500, easing = CustomizePageEasing)
                             )
                         }
                     }
@@ -516,7 +519,7 @@ fun CustomizeScheduleScreen(
                     launch {
                         cardScaleAnim.animateTo(
                             1f,
-                            tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                            tween(500, easing = CustomizePageEasing)
                         )
                     }
                 }
@@ -531,7 +534,7 @@ fun CustomizeScheduleScreen(
                 launch {
                     cardScaleAnim.animateTo(
                         0.75f,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
                 launch { cutoutProgress.snapTo(1f) }
@@ -540,13 +543,13 @@ fun CustomizeScheduleScreen(
                 launch {
                     cutoutOffsetY.animateTo(
                         -cutoutOffsetTargetPx,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
                 launch {
                     cutoutEnterProgress.animateTo(
                         1f,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
             }
@@ -558,7 +561,7 @@ fun CustomizeScheduleScreen(
                 launch {
                     cardScaleAnim.animateTo(
                         0.65f,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
                 launch { cutoutProgress.snapTo(0f) }
@@ -568,13 +571,13 @@ fun CustomizeScheduleScreen(
                 launch {
                     cutoutOffsetY.animateTo(
                         0f,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
                 launch {
                     cutoutEnterProgress.animateTo(
                         0f,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
                 launch { pagerState.animateScrollToPage(currentCombinationIndex) }
@@ -589,7 +592,7 @@ fun CustomizeScheduleScreen(
                 launch {
                     cardScaleAnim.animateTo(
                         1f,
-                        tween(500, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(500, easing = CustomizePageEasing)
                     )
                 }
                 launch { buttonAlphaAnim.animateTo(0f, tween(250)) }
@@ -615,7 +618,7 @@ fun CustomizeScheduleScreen(
                 launch {
                     sheetOffsetY.animateTo(
                         -sheetOffsetTargetPx,
-                        tween(400, easing = CubicBezierEasing(0.3f, 0.5f, 0.2f, 1.0f))
+                        tween(400, easing = CustomizePageEasing)
                     )
                 }
             }
@@ -625,7 +628,7 @@ fun CustomizeScheduleScreen(
                 launch {
                     sheetOffsetY.animateTo(
                         0f,
-                        tween(350, easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f))
+                        tween(350, easing = CustomizePageEasing)
                     )
                 }
             }
@@ -1214,14 +1217,14 @@ fun CustomizeScheduleScreen(
                         initialOffsetY = { it },
                         animationSpec = tween(
                             350,
-                            easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                            easing = CustomizePageEasing
                         )
                     ),
                     exit = slideOutVertically(
                         targetOffsetY = { it },
                         animationSpec = tween(
                             250,
-                            easing = CubicBezierEasing(0.3f, 0.72f, 0.2f, 1.0f)
+                            easing = CustomizePageEasing
                         )
                     )
                 ) {

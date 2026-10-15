@@ -39,6 +39,10 @@ class HostNavigationState {
      * CustomizeScheduleScreen 回传，不是常量，故一并上报供原生 chrome 对齐。
      */
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
+    /**
+     * 开洞期间主内容整体上移的纵向位移（pt）。与主内容 graphicsLayer 的 translationY 同源同值
+     */
+    var onCutoutChromeOffsetY: ((Double) -> Unit)? = null
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
     /**

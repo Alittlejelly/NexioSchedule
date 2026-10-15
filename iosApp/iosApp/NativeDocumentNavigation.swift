@@ -13,6 +13,9 @@ final class NativeDocumentNavigationController: UINavigationController,
     private var settledRouteIds: [String] = []
     private var transitionStartDepth = 0
 
+    /// 栈底那一层在返回菜单里的名字（主界面本身没有原生标题，但菜单要有）。
+    private static let rootMenuTitle = "我的"
+
     init(host: IosAppHost, root: UIViewController) {
         self.host = host
         retainedRoot = root
@@ -80,6 +83,27 @@ final class NativeDocumentNavigationController: UINavigationController,
             navigationBar.accessibilityLabel = nil
             navigationBar.tintColor = nil
         }
+        updateBackMenuTitles()
+    }
+
+    /// 长按返回按钮弹出的菜单由 UIKit 按栈里每个控制器的标题生成，而导航栏只渲染栈顶那一个 ——
+    /// 所以只有非栈顶的条目才填标题：菜单有文字，导航栏依旧归 Compose。
+    /// 两个属性都要写：`navigationItem.title` 为 nil 时导航栏会回退到 `title`，
+    /// 反过来只写 `title` 也拿不到菜单文字（UIKit 生成菜单读的是 navigationItem 那一份）。
+    private func updateBackMenuTitles() {
+        let top = topViewController
+        for controller in viewControllers {
+            let wanted: String?
+            if controller === top {
+                wanted = nil
+            } else if let page = controller as? NativeDocumentPageController {
+                wanted = page.pageTitle
+            } else {
+                wanted = Self.rootMenuTitle
+            }
+            if controller.title != wanted { controller.title = wanted }
+            if controller.navigationItem.title != wanted { controller.navigationItem.title = wanted }
+        }
     }
 
     private func beginTransition(operation: UINavigationController.Operation, depth: Int) {
@@ -112,11 +136,14 @@ final class NativeDocumentNavigationController: UINavigationController,
             beginTransition(operation: .pop, depth: actual.count)
             let destination = commonCount == 0 ? retainedRoot : viewControllers[commonCount]
             popToViewController(destination, animated: animated)
+            // 栈顶已经换了：菜单标题要跟着换，否则退出来的那一页会在导航栏上留一个标题。
+            updateChromeState()
         } else if actual.count < wanted.count {
             let id = wanted[actual.count]
             let page = NativeDocumentPageController(routeId: id, host: host)
             beginTransition(operation: .push, depth: actual.count)
             pushViewController(page, animated: animated)
+            updateChromeState()
         }
     }
 
@@ -155,7 +182,8 @@ final class NativeDocumentNavigationController: UINavigationController,
         return NativeDocumentAnimator(
             push: operation == .push,
             interactive: interactiveBack != nil,
-            direction: view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -1 : 1
+            direction: view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -1 : 1,
+            cornerRadius: CGFloat(host.screenCornerRadiusPoints)
         )
     }
 
@@ -259,6 +287,8 @@ private final class NativeDocumentPageController: UIViewController {
         contentController = host.makeNativePageController(routeId: routeId)
         super.init(nibName: nil, bundle: nil)
         // Compose owns both expanded and collapsed titles. Native chrome owns actions only.
+        // 返回菜单需要的标题由栈所在的 navigation controller 统一填（见 updateBackMenuTitles），
+        // 不在 init 里写死 —— 这里的 route 标题此时还没被 Compose 发布。
         navigationItem.title = nil
         edgesForExtendedLayout = [.top, .bottom]
         extendedLayoutIncludesOpaqueBars = true
@@ -433,16 +463,20 @@ private extension UIColor {
 /// Only content views enter this container; UINavigationBar remains owned by UIKit above it.
 /// New navigation is gated while a transition is in flight. Interactive pop is linear while
 /// dragging; normal push/pop sample the existing Kotlin curves rather than copying them.
+/// The incoming/outgoing page is clipped to the screen corner radius only while it moves,
+/// mirroring `PageLayer.clipDuringTransition` on the Compose side.
 private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTransitioning {
     private let push: Bool
     private let interactive: Bool
     private let direction: CGFloat
+    private let cornerRadius: CGFloat
     private let reduceMotion: Bool
 
-    init(push: Bool, interactive: Bool, direction: CGFloat) {
+    init(push: Bool, interactive: Bool, direction: CGFloat, cornerRadius: CGFloat) {
         self.push = push
         self.interactive = interactive
         self.direction = direction
+        self.cornerRadius = cornerRadius
         reduceMotion = UIAccessibility.isReduceMotionEnabled
     }
 
@@ -479,6 +513,18 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
         let lower = push ? from : to
         let upperAlpha = push ? originalToAlpha : originalFromAlpha
         let lowerAlpha = push ? originalFromAlpha : originalToAlpha
+
+        // 圆角只裁上层（推入的页 / 退出中的页）：下层是被揭开的那一层，不该有轮廓。
+        // 只在转场期间开 —— 到位后交还系统按屏幕圆角裁，常裁会叠出双圆角。
+        let upperLayer = upper.layer
+        let originalCornerRadius = upperLayer.cornerRadius
+        let originalCornerCurve = upperLayer.cornerCurve
+        let originalMasksToBounds = upperLayer.masksToBounds
+        if cornerRadius > 0 {
+            upperLayer.masksToBounds = true
+            upperLayer.cornerRadius = cornerRadius
+            upperLayer.cornerCurve = .continuous
+        }
 
         func apply(_ timeline: CGFloat) {
             let p = push ? timeline : 1 - timeline
@@ -520,6 +566,9 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
                 to.transform = originalToTransform
                 from.alpha = originalFromAlpha
                 to.alpha = originalToAlpha
+                upperLayer.masksToBounds = originalMasksToBounds
+                upperLayer.cornerRadius = originalCornerRadius
+                upperLayer.cornerCurve = originalCornerCurve
                 scrim.removeFromSuperview()
                 if !completed && !toWasInContainer { to.removeFromSuperview() }
                 context.completeTransition(completed)

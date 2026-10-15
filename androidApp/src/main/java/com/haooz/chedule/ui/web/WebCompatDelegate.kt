@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.web
 
 import android.graphics.Bitmap
 import android.os.Build
-import com.haooz.chedule.data.NexioLog
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -17,19 +16,17 @@ import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.ui.utils.screenWidthDp
 
 private const val TAG = "WebCompatDelegate"
 
-/** 桌面模式下使用的页面布局宽度（CSS px），见 desktopViewportContent() 的说明 */
+/** 桌面模式布局宽度（CSS px），见 desktopViewportContent() */
 private const val DESKTOP_LAYOUT_WIDTH = 1280
 
 /**
- * 桌面模式 UA 模板。
- *
- * ⚠ 版本号从系统 WebView 实际 UA 里抠，不能写死：写死时 `Sec-Ch-Ua`（真实版本）与
- * `User-Agent`（写死版本）对不上，部分 WAF 会判 bot 并返回 HTML 挑战页 ——
- * 表现为页面渲染了但 CSS 没生效（"Refused to apply style … MIME type ('text/html')"）。
+ * 桌面模式 UA：Chrome 大版本取系统 WebView 实际 UA —— 写死会和 Sec-Ch-Ua（真实版本）
+ * 对不上，部分 WAF 判 bot 返回 HTML 挑战页，表现为「渲染了但 CSS 没生效」。
  */
 internal fun buildDesktopUserAgent(context: android.content.Context): String {
     val realUA = WebSettings.getDefaultUserAgent(context)
@@ -41,9 +38,9 @@ internal fun buildDesktopUserAgent(context: android.content.Context): String {
 /**
  * 桌面模式视口覆盖脚本（document-start 注入，先于页面自身脚本执行）。
  *
- * 为什么非得这么早：本校门户在 `$(document).ready` 里就把 `body` 宽度量下来、
- * 把像素尺寸写进登录弹窗的行内样式（qsflat 全站没有任何 resize 监听），
- * 等 onPageFinished 再改 viewport 已经无从纠正。
+ * 为什么非得这么早：本校门户在 `$(document).ready` 里就把 body 宽度量下来、
+ * 把像素尺寸写进登录弹窗的行内样式（qsflat 全站没有 resize 监听），
+ * 等 onPageFinished 再改 viewport 已无从纠正。
  */
 private fun buildDesktopViewportScript(content: String): String = """
     (function () {
@@ -97,18 +94,28 @@ class WebCompatDelegate(private val webView: WebView) {
         private set
 
     /**
-     * 桌面版视口自愈是否已重载过。
+     * 是否已执行过桌面版视口自愈（[applyDesktopZoomFix]）。
      *
-     * 首次加载 Chrome 只落实布局宽度、不重算缩放（vvScale 仍 1.0），重载一次才生效 ——
-     * 这也是「切一次手机再切回电脑就好了」的真实原因。只重载一次，避免和页面跳转打架。
+     * 首次加载 Chrome 常只落实布局宽度、不重算缩放（vvScale 仍 1.0）—— 这也是
+     * 「切一次手机再切回电脑就好了」的真实原因。每页只修一次，避免和页面跳转打架。
      */
     private var viewportRetried = false
 
     /**
-     * 启用/关闭桌面模式视口覆盖。
+     * 启用/关闭桌面模式视口覆盖。返回 document-start 注入是否成功注册；
+     * false（老 WebView 不支持）时 onPageFinished 兜底注入仍会开着。
      *
-     * 返回是否成功走 document-start 注入；返回 false 时页面脚本已经跑过，
-     * onPageFinished 兜底只能纠正页面自身布局，站点脚本里写死的像素尺寸无力回天。
+     * ⚠ 三条通道分工明确，别互相替代（每条都是被真机 bug 逼出来的）：
+     *  - **document-start meta（width=1280 + initial-scale）**：保证首帧起布局宽度
+     *    就是桌面宽 —— 站点脚本在 ready 里量到的 innerWidth 才是桌面值。1.6.4 曾
+     *    整个砍掉它，结果首帧按窄视口渲染、onPageFinished 才注入 → 「先窄后宽」
+     *    闪一下，资源只显示左半边。
+     *  - **原生 setInitialScale**：load 前设置，部分 ROM 下唯一被理睬的初始缩放通道。
+     *  - **zoomBy（onPageFinished 检测未落实时）**：前两条都靠不住 —— meta 的 width
+     *    大于屏宽时 Chromium 的 mobile viewport 计算直接丢弃 initial-scale
+     *    （inner=1283 但视觉 scale=1.0，只看得见左 28%，1.6.4 报的就是它），
+     *    setInitialScale 也会被同一计算覆盖。zoomBy 走 page scale 通道、不经 meta
+     *    解析，是唯一必然生效的手段，见 [applyDesktopZoomFix]。
      */
     fun applyDesktopViewportOverride(enabled: Boolean): Boolean {
         viewportScriptHandler?.remove()
@@ -116,24 +123,81 @@ class WebCompatDelegate(private val webView: WebView) {
         desktopViewportOverrideActive = false
         // 模式切换 = 新一轮协商，允许再自愈一次
         viewportRetried = false
-        if (!enabled) return false
-        // 桌面版不用 document-start 提前注入，只保留 onPageFinished 兜底注入。
-        // 提前注入会让 Chrome 只认width、不认initial-scale（inner=1283 但缩放 100%），
-        // 页面放大到只看得见 28%；晚注入则两者一起生效（缩放 0.28，正好一屏）。
-        // 这里 return false 同时让 onPageFinished 的兜底注入保持开启 —— 别改回去。
-        NexioLog.d(TAG, "applyDesktopViewportOverride: 桌面版仅用onPageFinished 兜底注入")
-        return false
+        if (!enabled) {
+            // 切回手机版：恢复系统默认缩放（WebView.setInitialScale 0 = 默认；
+            // 该 API 没有 getter，无需也无法保存旧值），否则窄视口页会被继续缩小
+            webView.setInitialScale(0)
+            return false
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            NexioLog.w(TAG, "WebView 不支持 document-start 脚本，回退到 onPageFinished 注入")
+            return false
+        }
+        // 初始缩放必须在 loadUrl 之前设置：renderer 每次加载读取一次。
+        // API 在 WebView 上而非 WebSettings 上（API 37 的 WebSettings 已无此方法）。
+        webView.setInitialScale(desktopInitialScalePercent())
+        return try {
+            viewportScriptHandler = WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                buildDesktopViewportScript(desktopViewportContent()),
+                setOf("*")
+            )
+            desktopViewportOverrideActive = true
+            true
+        } catch (e: Exception) {
+            // 注入失败就退回 onPageFinished 兜底，缩放仍由 zoomBy 兜底修
+            NexioLog.w(TAG, "document-start 视口注入失败，回退到 onPageFinished 注入", e)
+            false
+        }
     }
 
     /**
-     * 桌面视口 content。
+     * 原生初始缩放百分比（`WebView.setInitialScale`，API 37 起 WebSettings 上已无此方法）。
+     *
+     * 值 = 屏幕 CSS 宽 / 布局宽：布局固定 1280、屏幕 411dp → 32%，正好一屏。
+     */
+    private fun desktopInitialScalePercent(): Int {
+        val cssWidth = viewportWidthInCssPx()
+        val layoutWidth = maxOf(DESKTOP_LAYOUT_WIDTH, cssWidth)
+        return (cssWidth * 100.0 / layoutWidth).toInt().coerceIn(10, 100)
+    }
+
+    /** 探当前视觉缩放；取不到回调 -1 */
+    private fun probeVisualScale(view: WebView, onResult: (Double) -> Unit) {
+        view.evaluateJavascript(
+            "(function(){var v=window.visualViewport?window.visualViewport.scale:-1;return ''+v})()"
+        ) { r ->
+            val parsed = r?.let { raw ->
+                Regex("-?\\d+(?:\\.\\d+)?").findAll(raw).firstOrNull()?.value?.toDoubleOrNull()
+            }
+            onResult(parsed ?: -1.0)
+        }
+    }
+
+    /**
+     * 把视觉缩放掰到桌面期望值。理由见 [applyDesktopViewportOverride]：只有 page scale
+     * 通道必然生效。zoomBy 有过渡动画，落定后复检一次，仍偏差就按新 scale 再掰一次。
+     */
+    private fun applyDesktopZoomFix(view: WebView, attempt: Int = 0) {
+        val expect = desktopInitialScalePercent() / 100.0
+        probeVisualScale(view) { current ->
+            if (current <= 0) return@probeVisualScale
+            if (kotlin.math.abs(current - expect) > 0.03) {
+                NexioLog.d(TAG, "zoomFix: current=$current expect=$expect attempt=$attempt")
+                view.post { view.zoomBy((expect / current).toFloat()) }
+                if (attempt < 1) {
+                    view.postDelayed({ applyDesktopZoomFix(view, attempt + 1) }, 400)
+                }
+            }
+        }
+    }
+
+    /**
+     * onPageFinished 兜底注入的视口 content（老 WebView / document-start 注册失败时用）。
      *
      * 布局宽度取 max(1280, 屏幕宽度)：门户 `.main-content` 上限 1600、登录页 `#login`
-     * 固定 1000 宽（表单右边界约 883），1280 下两者都完整可见。
-     *
-     * initial-scale 必须取 `屏幕宽度 / 布局宽度`，两个参数互相自洽；
-     * 若写成 width=1280 + 固定 initial-scale=0.28，Chrome 会把布局宽度撑成
-     * max(1280, 屏幕宽度/0.28)≈1403，整页多出一截且缩得过小。
+     * 固定 1000 宽，1280 下两者都完整可见。initial-scale 必须自洽地取
+     * `屏幕宽 / 布局宽`：写死 0.28 时 Chrome 会把布局宽撑成 屏宽/0.28≈1403，多一截。
      */
     private fun desktopViewportContent(): String {
         val cssWidth = viewportWidthInCssPx()
@@ -143,7 +207,9 @@ class WebCompatDelegate(private val webView: WebView) {
         return "width=$layoutWidth, initial-scale=" + "%.4f".format(java.util.Locale.US, scale)
     }
 
-    /** WebView 的 CSS 像素宽度：优先实际布局宽度（分屏/自由窗口下才正确），未布局时退回屏幕宽度 */
+    /**
+     * WebView 的 CSS 像素宽度：优先实际布局宽度（分屏/自由窗口下才正确），未布局时退回屏幕宽度
+     */
     private fun viewportWidthInCssPx(): Int {
         val density = webView.resources.displayMetrics.density
         if (density > 0f && webView.width > 0) {
@@ -154,7 +220,7 @@ class WebCompatDelegate(private val webView: WebView) {
     }
 
     /**
-     * 增强 WebView 基础配置
+     * 增强 WebView 基础配置（JS / 存储 / Cookie / 缩放 / 桌面视口两选项）
      */
     fun enhanceSettings(isDesktopMode: Boolean): WebCompatDelegate {
         webView.settings.apply {
@@ -164,8 +230,8 @@ class WebCompatDelegate(private val webView: WebView) {
             allowContentAccess = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-            // 下面三项在 API 33 起被废弃且不再生效（本地文件访问已被安全策略收紧），
-            // 仅在旧版本上还有意义，所以按版本设置而不是无条件打开
+            // 三项在 API 33 起废弃且不再生效（本地文件访问被安全策略收紧），
+            // 仅旧版本还有意义，按版本设置而非无条件打开
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 @Suppress("DEPRECATION")
                 databaseEnabled = true
@@ -175,9 +241,9 @@ class WebCompatDelegate(private val webView: WebView) {
                 allowFileAccessFromFileURLs = true
             }
 
-            // 两项都保持 true（Chromium「like a browser」配置）：useWideViewPort 让注入的
-            // width=1280 生效，loadWithOverviewMode 负责「内容宽于屏幕就缩到一屏」。
-            // 别改成 false —— 实测关掉后页面按 100% 渲染 1283 宽布局，手机屏只看得到28%。
+            // 两项都保持 true（Chromium「like a browser」配置）：useWideViewPort 让 width=1280
+            // 生效，loadWithOverviewMode 负责「内容宽于屏幕就缩到一屏」。关掉后页面按 100%
+            // 渲染 1283 宽布局，手机屏只看得到 28%，别改。
             useWideViewPort = true
             loadWithOverviewMode = true
             layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
@@ -193,15 +259,13 @@ class WebCompatDelegate(private val webView: WebView) {
         return this
     }
 
-    /**
-     * 包装 WebViewClient，统一控制 JS 注入流程
-     */
+    /** 包装 WebViewClient：请求拦截 + 各回调转发给 original + 视口注入/自愈 */
     fun wrapWebViewClient(original: WebViewClient, isDesktopMode: Boolean): WebViewClient {
-        // 转发通道的响应不进 WebView 缓存，靠 OkHttp 侧的 Cache 补回来（见 installCache 的说明）
+        // 转发通道的响应不进 WebView 缓存，靠 OkHttp 侧的 Cache 补（见 installCache）
         WebViewRequestInterceptor.installCache(webView.context.applicationContext)
         val interceptor = WebViewRequestInterceptor()
-        // 在 UI 线程读取当前用户代理并缓存：shouldInterceptRequest 在后台线程执行，
-        // 后台线程访问 WebView settings 会抛异常，故不能在那里获取 UA
+        // UA 在 UI 线程读取并缓存：shouldInterceptRequest 跑在后台线程，
+        // 后台访问 WebView settings 会抛异常
         val currentUserAgent = webView.settings.userAgentString
         return object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -214,9 +278,9 @@ class WebCompatDelegate(private val webView: WebView) {
                 return super.shouldInterceptRequest(view, request)
             }
 
-            // ⚠ 两个重载都必须转发给 original：自定义 scheme 外跳（intent://、market://）写在那里。
-            // 漏了转发 = WebView 按默认行为当 URL 加载 → 失败 → 被 onReceivedError 当成"回退上一页"，
-            // 表现就是点了支付/跳转没反应。外壳迁 :ui-shared 时这一支漏了。
+            // ⚠ 两个重载都必须转发给 original：自定义 scheme 外跳写在那里。漏转发 =
+            // WebView 按默认行为当 URL 加载 → onReceivedError 误判"回退上一页"，
+            // 表现就是点了支付/跳转没反应（外壳迁 :ui-shared 时真漏过一次）。
             @Deprecated("Deprecated in Java")
             @Suppress("DEPRECATION")
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
@@ -226,8 +290,8 @@ class WebCompatDelegate(private val webView: WebView) {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean =
                 original.shouldOverrideUrlLoading(view, request)
 
-            // ⚠ 同样必须转发：4xx/5xx 只走这一个回调（onReceivedError 只报网络层失败）。
-            // 静态资源被 WAF 拦（403）、防盗链、路径变更导致 404，全靠它现形。
+            // ⚠ 同样必须转发：4xx/5xx 只走这个回调（onReceivedError 只报网络层失败）。
+            // 静态资源被 WAF 拦（403）、防盗链、路径变更 404，全靠它现形。
             override fun onReceivedHttpError(
                 view: WebView?,
                 request: WebResourceRequest,
@@ -244,33 +308,21 @@ class WebCompatDelegate(private val webView: WebView) {
                 view?.let { wv ->
                     wv.evaluateJavascript(JS_INTERCEPT_POST, null)
                     wv.evaluateJavascript(JS_PROMISE_BRIDGE, null)
-                    // 正常情况下视口已由 document-start 脚本注入；只有老 WebView 走到这里兜底
+                    // 视口已由 document-start 保证；只有老 WebView / 注册失败才兜底注入
                     if (isDesktopMode && !desktopViewportOverrideActive) {
                         injectDesktopViewport(wv)
                     }
-                    // 视口自愈：首次加载Chrome 只落实布局宽度、不重算缩放，
-                    // 重载一次才生效。inner（布局宽）与 vvScale（视觉缩放）必须都看 ——
-                    // 只看 inner 会把「排版对了但没缩放」误判成已修好。
-                    if (isDesktopMode) {
-                        wv.evaluateJavascript(
-                            "(function(){var v=window.visualViewport?window.visualViewport.scale:-1;" +
-                                "return window.innerWidth+'|'+v})()"
-                        ) { r ->
-                            // 回调收到的是 JSON 编码结果，JS 返回字符串时带引号，
-                            // 所以用正则抠数字，别直接 split+toInt（会全部解析失败）。
-                            val raw = r ?: return@evaluateJavascript
-                            val nums = Regex("-?\\d+(?:\\.\\d+)?")
-                                .findAll(raw)
-                                .map { it.value }
-                                .toList()
-                            val actual = nums.getOrNull(0)?.toIntOrNull() ?: return@evaluateJavascript
-                            val vvScale = nums.getOrNull(1)?.toDoubleOrNull() ?: -1.0
-                            NexioLog.d(TAG, "viewport: inner=$actual vvScale=$vvScale retried=$viewportRetried")
-                            val contentWider = actual > viewportWidthInCssPx() + 1
-                            val zoomOk = vvScale > 0.05 && vvScale < 0.95
-                            if (contentWider && !zoomOk && !viewportRetried) {
+                    // 缩放自愈：meta initial-scale 与 setInitialScale 都可能被
+                    // Chromium 丢弃（见 applyDesktopViewportOverride 注释），
+                    // 丢了就是 inner=1283 但 scale=1.0，只看得见左 28%。
+                    if (isDesktopMode && !viewportRetried) {
+                        probeVisualScale(wv) { vvScale ->
+                            if (vvScale <= 0) return@probeVisualScale
+                            val expect = desktopInitialScalePercent() / 100.0
+                            NexioLog.d(TAG, "viewport: vvScale=$vvScale expect=$expect")
+                            if (kotlin.math.abs(vvScale - expect) > 0.05) {
                                 viewportRetried = true
-                                wv.post { wv.reload() }
+                                applyDesktopZoomFix(wv)
                             }
                         }
                     }
@@ -286,8 +338,8 @@ class WebCompatDelegate(private val webView: WebView) {
     }
 
     /**
-     * onPageFinished 兜底注入桌面模式 viewport（仅老 WebView 用）。
-     * 此时页面脚本已执行完毕，只能保证页面自身布局正确，站点脚本里写死的像素尺寸纠正不了。
+     * onPageFinished 兜底注入桌面 viewport（仅老 WebView / document-start 注册失败）。
+     * 页面脚本已执行完，只能纠正页面自身布局，站点脚本写死的像素尺寸无力回天。
      */
     private fun injectDesktopViewport(view: WebView) {
         val content = desktopViewportContent()
@@ -317,8 +369,8 @@ class WebCompatDelegate(private val webView: WebView) {
 
             override fun onReceivedTitle(v: WebView?, t: String?) = original.onReceivedTitle(v, t)
 
-            // ⚠ 必须转发：Chromium 自己的诊断信息（"Refused to apply style ... MIME type"、
-            // "Mixed Content ... was blocked"）只走 onConsoleMessage。漏了转发 = 静态资源
+            // ⚠ 必须转发：Chromium 自己的诊断（"Refused to apply style ... MIME type"、
+            // "Mixed Content ... was blocked"）只走 onConsoleMessage。漏转发 = 静态资源
             // 为什么没生效一行日志都没有，只能看到"页面没样式"。
             override fun onConsoleMessage(m: ConsoleMessage?): Boolean = original.onConsoleMessage(m)
         }

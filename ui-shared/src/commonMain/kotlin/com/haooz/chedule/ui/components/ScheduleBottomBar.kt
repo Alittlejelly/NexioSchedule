@@ -36,7 +36,6 @@ fun ScheduleBottomBar(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     liquidGlassBackdrop: Backdrop? = null,
-    onTabletNavExpandedChange: ((Boolean) -> Unit)? = null,
 ) {
     if (navBarStyle == "rail" || liquidGlassBackdrop == null) return
 

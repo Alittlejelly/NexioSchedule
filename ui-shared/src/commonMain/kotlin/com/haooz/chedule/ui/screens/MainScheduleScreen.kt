@@ -756,10 +756,26 @@ fun MainScheduleScreen(
         wallpaperBackdropColor
     )
 
+    // 采样视口的写入方。挂在这个 fillMaxSize 根 Box 上而不是滚动容器上：
+    // 根 Box 滚动时**不移动**，所以 onGloballyPositioned 只在旋转/分屏/边距变化等
+    // 布局改动时触发，边界天然不会在滚动中过期；挂滚动容器则要靠 touchState 去
+    // 猜「Y 没变」，边界一旦算错就会误剔可见卡片（出空洞）。
     androidx.compose.runtime.CompositionLocalProvider(
         com.kyant.backdrop.LocalBackdropViewport provides scheduleViewport
     ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates ->
+                val pos = coordinates.positionInWindow()
+                scheduleViewport.update(
+                    left = pos.x,
+                    top = pos.y,
+                    right = pos.x + coordinates.size.width,
+                    bottom = pos.y + coordinates.size.height
+                )
+            }
+    ) {
         if (wallpaperBitmap != null) {
             Box(
                 modifier = Modifier
@@ -787,7 +803,10 @@ fun MainScheduleScreen(
                 }
                 val wallpaperBlurEffect = remember(wallpaperBlur) {
                     val blurRadiusPx = 12f * density.density
-                    if (blurRadiusPx > 0f && isRenderEffectSupported()) {
+                    // ⚠ 必须查 wallpaperBlur：非共享路径（排班模式）本页壁纸 alpha=1f、
+                    // 不透明可见，漏判会让「壁纸模糊」开关关着也照糊。共享层
+                    // CourseScheduleApp 那份判了，这两处（此处 + TodayScreen）当初漏了。
+                    if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
                         BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
                     } else null
                 }
@@ -1325,6 +1344,7 @@ fun MainScheduleScreen(
                                             effects = dividerEffects,
                                             highlight = null,
                                             shadow = null,
+                                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
                                             onDrawSurface = remember(dividerFgSurface) {
                                                 {
                                                     drawRect(dividerFgSurface)

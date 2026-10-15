@@ -494,23 +494,57 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.navigationBars.count, 0)
     }
 
-    func testLegacyImportToNativeAiImportAndBackWithoutImporting() throws {
+    func testNativeImportToNativeAiImportAndBackWithoutImporting() throws {
         try requireExpandedRoutes()
         showSettings()
         open("课表导入")
-        XCTAssertEqual(app.navigationBars.count, 0,
-                       "Import must retain Compose because it still reaches EducationalImport")
-        let aiEntryY = open("AI 文本导入")
+        requireNativeHeader("课表导入")
+        open("AI 文本导入")
         requireNativeHeader("AI 文本导入")
         XCTAssertTrue(item("课表数据").exists, "Original AI input section missing")
         XCTAssertEqual(app.keyboards.count, 0, "AI navigation unexpectedly opened the keyboard")
-        capture("AI import - native page reached from legacy Import")
+        capture("AI import - native page reached from native Import")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
-        XCTAssertEqual(item("AI 文本导入").frame.minY, aiEntryY, accuracy: 3,
-                       "Returning from AI changed retained Compose Import state")
+        requireNativeHeader("课表导入")
         XCTAssertTrue(item("教务系统导入").exists, "Original unsupported entry was silently changed")
-        capture("Import - returned to original Compose entries without importing")
+        capture("Import - returned to the native Import page without importing")
+        nativeBack()
+        XCTAssertEqual(app.navigationBars.count, 0, "Import did not return to Compose settings")
+    }
+
+    /// UIKit builds the long-press back menu out of each stack entry's *view controller* title.
+    /// Those were nil while Compose owned the visible header, so every row rendered blank even
+    /// though all of them popped correctly. "主界面" exists only as the retained root's
+    /// parent-facing title, so it is a precise marker for the menu being labelled at all.
+    func testLongPressBackMenuLabelsEveryDestination() throws {
+        try requireExpandedRoutes()
+        showSettings()
+        open("课表备份")
+        requireNativeHeader("课表备份")
+        open("本地备份")
+        requireNativeHeader("本地备份")
+        XCTAssertFalse(item("主界面").exists,
+                       "The root row label leaked outside the back menu: \(app.debugDescription)")
+
+        let back = app.navigationBars.firstMatch.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.exists && back.isHittable, app.debugDescription)
+        // A plain press(forDuration:) is delivered as touch-down/up, which UIKit resolves to the
+        // normal pop. Hold, then move 1 pt, so the menu is still up once the touch lifts.
+        let anchor = back.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        anchor.press(forDuration: 8.0)
+        Thread.sleep(forTimeInterval: 1.0)
+        capture("Back menu - every destination labelled")
+        print("BACK_MENU_DIAGNOSTIC tree=\(app.debugDescription)")
+
+        let rootRow = item("主界面")
+        XCTAssertTrue(rootRow.waitForExistence(timeout: 5),
+                      "Back menu rows are unlabelled: \(app.debugDescription)")
+        // Still navigates, not just displays.
+        rootRow.tap()
+        settle()
+        XCTAssertEqual(app.navigationBars.count, 0,
+                       "Selecting the root row did not pop the whole native stack")
+        capture("Back menu - root row popped both native pages")
     }
 
     func testTimeSettingsNativeHeaderDialogsAndComposeEditorReturn() throws {

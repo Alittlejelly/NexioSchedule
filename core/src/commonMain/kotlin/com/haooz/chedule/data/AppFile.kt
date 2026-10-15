@@ -34,7 +34,7 @@ interface AppFile {
  * 应用文件系统入口。
  *
  * 与 [AppStorage] 同一模式：`:core` 只声明接口，平台实现由应用启动时注入 ——
- * commonMain 才能保持平台中立（`linuxX64` 编译门禁），Android 继续用 `java.io.File`。
+ * commonMain 才能保持平台中立（iOS 编译门禁），Android 继续用 `java.io.File`。
  *
  * ⚠ 必须在任何 [root] / [readAsset] 使用之前 [init]，否则**抛异常**而不是静默失败 ——
  * 静默返回空目录会让「学校索引读不出来」这类问题极难定位。

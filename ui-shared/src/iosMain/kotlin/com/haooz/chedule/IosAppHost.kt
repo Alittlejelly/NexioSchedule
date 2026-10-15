@@ -34,6 +34,8 @@ import com.haooz.chedule.ui.utils.HostOverlayContent
 import com.haooz.chedule.ui.utils.HostOverlayState
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.LocalHostOverlays
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import androidx.compose.ui.platform.LocalDensity
 import platform.UIKit.UIViewController
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixOverlayHostProvider
@@ -57,6 +59,15 @@ class IosAppHost {
     private var requestedPopDepth by mutableStateOf<Int?>(null)
     private var nativeTransitionInFlight by mutableStateOf(false)
     private var deferredEditorPopRouteId: String? = null
+    private var screenCornerRadiusPointsState by mutableStateOf(0.0)
+
+    /**
+     * 屏幕圆角（pt）。原生文档转场由 Swift 侧裁这个圆角 —— 与 Compose 侧 `AppNavHost` 用的是
+     * 同一个 `rememberScreenCornerRadiusPx`，两条转场路径才能对得上。0 = 取不到 → 不裁。
+     *
+     * ⚠ Swift 读不到 Compose 的组合状态，只能从 host 取；写入见 [HostEnvironment]。
+     */
+    val screenCornerRadiusPoints: Double get() = screenCornerRadiusPointsState
 
     init {
         navigation.scheduleLibraryOverlays = scheduleLibraryOverlays
@@ -278,6 +289,19 @@ class IosAppHost {
     val cutoutScale: Float get() = navigation.cutoutScale
     val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
 
+    /**
+     * Per-frame push of the main content's vertical offset while the customize page's sheet is
+     * open (pt, negative = up, `-1` = none). Called from Compose's **draw phase** on the main
+     * thread, so UIKit applies it in the same frame as the content it has to follow.
+     * Assigned by Swift; must stay a plain callback — routing it through host state would put
+     * it a frame or two behind.
+     */
+    var onCutoutChromeOffset: ((Double) -> Unit)? = null
+
+    init {
+        navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
+    }
+
     val mainController: UIViewController by lazy {
         ComposeUIViewController {
             HostEnvironment {
@@ -387,6 +411,9 @@ class IosAppHost {
     @Composable
     private fun HostEnvironment(content: @Composable () -> Unit) {
         CourseScheduleTheme(systemDarkTheme = systemDarkTheme) {
+            // 屏幕圆角递进 host，供 Swift 的原生转场裁切。三个 controller 都走这里，所以加条件：
+            // 取到之前才探测 —— 探测要往 window 里临时插一个 probe view，跑三次纯属浪费。
+            if (screenCornerRadiusPoints == 0.0) ScreenCornerRadiusBridge()
             MiuixOverlayHostProvider(popupHost) {
                 CompositionLocalProvider(
                     LocalAppRouter provides router,
@@ -395,6 +422,16 @@ class IosAppHost {
                     content = content,
                 )
             }
+        }
+    }
+
+    /** 把 [rememberScreenCornerRadiusPx] 的结果换算成 pt 写进 [screenCornerRadiusPoints]。 */
+    @Composable
+    private fun ScreenCornerRadiusBridge() {
+        val density = LocalDensity.current
+        val radiusPx = rememberScreenCornerRadiusPx()
+        SideEffect {
+            screenCornerRadiusPointsState = with(density) { radiusPx.toDp().value }.toDouble()
         }
     }
 }
@@ -484,9 +521,9 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.WebDavSettings -> "WebDAV 云备份"
     AppRoute.ScheduleExport -> "课表导出"
     AppRoute.ScheduleBackup -> "课表备份"
+    AppRoute.ScheduleImport -> "课表导入"
     AppRoute.About -> "关于应用"
     AppRoute.CourseTimeSettings -> "课表节数与时间"
-    // Import still reaches EducationalImport, whose iOS WebHost is not implemented.
-    AppRoute.ScheduleImport, AppRoute.EducationalImport -> null
+    AppRoute.EducationalImport -> null
     AppRoute.CourseManage -> "课程管理"
 }

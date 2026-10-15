@@ -1,9 +1,11 @@
 // 上课勿扰状态机：
-// - 进入课堂时写入目标状态一次，写入前快照系统原状态
-// - 课堂期间只观察：用户在课中手动改过就不再强行写回，也不销毁快照
-// - 下课/离开课堂时校验：系统状态仍等于本应用写入的值才还原快照；否则视为用户已接管，保留现状
-// - 用户在应用内关开关 / 切档位属于明确指令，无条件还原快照后再按新状态处理
-// - 通知 / 超级岛按钮属于手动接管：课堂外点了立刻生效并保持，进入课堂后转交课堂生命周期
+// - 进入课堂时快照系统原状态（铃声 + 勿扰两条通道），写入一次目标档位
+// - 课堂期间只观察：用户改过就不再强行写回，也不销毁快照
+// - 下课 / 离开课堂时校验：状态仍是本应用写入的值才还原快照，否则视为用户已接管
+// - 两条通道会互相联动（N+ 起静音被判定为切换勿扰，勿扰也会把铃声压成静音），
+//   所以快照与还原都要覆盖两条，只还原一条会把另一条留在勿扰态
+// - 关开关 / 切档位属于应用内明确指令，无条件还原；切档位沿用原快照，不重新取
+// - 通知 / 超级岛按钮的手动接管：课堂外点了保持到用户再点一次，进入课堂后转交课堂生命周期
 package com.haooz.chedule.reminder
 
 import android.app.AlarmManager
@@ -13,10 +15,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.media.AudioManager
-import com.haooz.chedule.data.NexioLog
 import android.widget.Toast
 import androidx.core.content.edit
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.NexioLog
 import java.util.Calendar
 
 object ClassDndHelper {
@@ -24,19 +26,27 @@ object ClassDndHelper {
     private const val TAG = "ClassDndHelper"
     private const val PREFS_NAME = "course_reminder_prefs"
 
-    // 本应用是否正在接管系统状态
+    // —— 会话状态 ——
     private const val KEY_APPLIED = "dnd_applied_by_app"
     private const val KEY_APPLIED_MODE = "dnd_applied_mode"
-    // 接管前系统的原始值；只在接管那一刻记录一次，用户课中改动不会污染快照
+    // 接管前系统的原始值；只在接管那一刻记一次，用户课中改动不会污染快照
     private const val KEY_ORIGINAL_RINGER = "dnd_original_ringer_mode"
     private const val KEY_ORIGINAL_FILTER = "dnd_original_interruption_filter"
-    // 接管时系统实际呈现的值，用于下课判断「有没有被用户动过」
+    // 接管后两条通道各自的实际呈现值，用来判断「有没有被用户动过」。
+    // 缺这两个键说明是旧会话，按「次通道未观测」处理 —— 一律还原，否则泄漏没人收。
+    private const val KEY_SET_RINGER = "dnd_set_ringer"
+    private const val KEY_SET_FILTER = "dnd_set_filter"
+    // 旧会话只记了主通道，仅用于兼容读取，新会话不再写
     private const val KEY_SET_STATE = "dnd_set_state"
-    // 用户从通知/超级岛按钮手动开启：不在课堂也保持，只有用户再点一次才还原
     private const val KEY_MANUAL = "dnd_manual_by_user"
     private const val KEY_MANUAL_AT = "dnd_manual_at"
-    // 手动接管的最长保留时间：跨日或超时就无条件还原，避免手机被遗忘在勿扰里
+    // 还原不回去时保留会话的起始时间，超时只能放弃
+    private const val KEY_DEFER_AT = "dnd_defer_at"
+    // 同一原因的告警每天只发一条，token 形如 reason:yyyy-MM-dd
+    private const val KEY_WARN_SENT = "dnd_warn_sent"
+
     private const val MANUAL_HOLD_MAX_MS = 8 * 60 * 60 * 1000L
+    private const val DEFER_ABANDON_MS = 12 * 60 * 60 * 1000L
 
     // 与课程提醒闹钟的 10000 段错开
     private const val RC_DND_START_BASE = 30000
@@ -44,12 +54,11 @@ object ClassDndHelper {
     // 测试课（测试超级岛 / 测试实时活动）专属，不占用课程 id 段
     private const val RC_DND_TEST_START = 39901
     private const val RC_DND_TEST_END = 49901
-
-    private const val DAY_MS = 24 * 60 * 60 * 1000L
-
     // 闹钟登记表：课程删除/换课表后 id 变化，只按当前课程取消会留下孤儿闹钟
     private const val PREF_ALARM_REGISTRY = "reminder_alarm_registry"
     private const val KEY_DND_RCS = "class_dnd_rcs"
+
+    private const val DAY_MS = 24 * 60 * 60 * 1000L
 
     const val MODE_DND = 0
     const val MODE_SILENT = 1
@@ -64,10 +73,8 @@ object ClassDndHelper {
     private fun audioManager(context: Context) =
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    private fun currentMode(context: Context): Int =
-        CourseRepository().getClassDndMode()
+    private fun currentMode(context: Context): Int = CourseRepository().getClassDndMode()
 
-    // DND/PRIORITY 需要「免打扰访问权限」
     fun isDndPermissionGranted(context: Context): Boolean {
         return try {
             notificationManager(context).isNotificationPolicyAccessGranted
@@ -78,11 +85,9 @@ object ClassDndHelper {
     }
 
     /**
-     * 三个档位其实都要「免打扰访问权限」：
-     * - DND / PRIORITY 走 setInterruptionFilter，M 起受限
-     * - SILENT 走 setRingerMode(RINGER_MODE_SILENT)，N 起同样被判定为「切换勿扰」而受限，
-     *   未授权时直接抛 SecurityException（minSdk 31，无需版本分支）
-     * 以前只对前两档做检查，默认档位 SILENT 被漏掉 —— 未授权时每分钟重试、全程静默失败。
+     * 三个档位都要「免打扰访问权限」：DND/PRIORITY 走 setInterruptionFilter（M 起受限），
+     * SILENT 走 setRingerMode，N 起同样被判定为「切换勿扰」而未授权直接抛 SecurityException。
+     * minSdk 31，无需版本分支。
      */
     private fun canWriteState(context: Context): Boolean = isDndPermissionGranted(context)
 
@@ -99,16 +104,49 @@ object ClassDndHelper {
         else -> AudioManager.RINGER_MODE_SILENT
     }
 
-    /** 读取当前系统状态；读不到返回 null，调用方据此放弃干预而非误伤用户设置 */
-    private fun readCurrentState(context: Context, mode: Int): Int? = try {
-        if (mode == MODE_SILENT) {
-            audioManager(context).ringerMode
-        } else {
-            notificationManager(context).currentInterruptionFilter
-        }
+    // ————————————————————————— 读写两条系统通道 —————————————————————————
+
+    /** 读取主通道（本档位直接写入的那一条）；读不到返回 null，调用方据此放弃干预而非误伤用户设置 */
+    private fun readCurrentState(context: Context, mode: Int): Int? =
+        if (mode == MODE_SILENT) readRingerMode(context) else readFilter(context)
+
+    private fun readRingerMode(context: Context): Int? = try {
+        audioManager(context).ringerMode
     } catch (e: Exception) {
-        NexioLog.w(TAG, "Failed to read current system state for mode=$mode", e)
+        NexioLog.w(TAG, "Failed to read ringer mode", e)
         null
+    }
+
+    private fun readFilter(context: Context): Int? = try {
+        notificationManager(context).currentInterruptionFilter
+    } catch (e: Exception) {
+        NexioLog.w(TAG, "Failed to read interruption filter", e)
+        null
+    }
+
+    /** 接管后某条通道的实际呈现值；没观测过返回 null，该通道就不参与「用户有没有动过」的判定 */
+    private fun appliedRinger(context: Context): Int? =
+        prefs(context).takeIf { it.contains(KEY_SET_RINGER) }?.getInt(KEY_SET_RINGER, 0)
+
+    private fun appliedFilter(context: Context): Int? =
+        prefs(context).takeIf { it.contains(KEY_SET_FILTER) }?.getInt(KEY_SET_FILTER, 0)
+
+    /** 主通道的期望值：优先用接管时的实测值，旧会话退回 KEY_SET_STATE，都没有则退回理论值 */
+    private fun appliedState(context: Context, mode: Int): Int {
+        val observed = if (mode == MODE_SILENT) appliedRinger(context) else appliedFilter(context)
+        if (observed != null) return observed
+        val p = prefs(context)
+        return if (p.contains(KEY_SET_STATE)) p.getInt(KEY_SET_STATE, targetState(mode)) else targetState(mode)
+    }
+
+    /**
+     * 次通道（被联动带起来的那一条）是否被用户动过。
+     * SILENT 档写的是铃声、勿扰是次通道；DND/PRIORITY 反之。没观测过就不算动过。
+     */
+    private fun secondaryChannelTouched(context: Context, mode: Int): Boolean {
+        val set = if (mode == MODE_SILENT) appliedFilter(context) else appliedRinger(context)
+        val current = if (mode == MODE_SILENT) readFilter(context) else readRingerMode(context)
+        return set != null && current != null && current != set
     }
 
     private fun writeState(context: Context, mode: Int): Boolean {
@@ -133,7 +171,9 @@ object ClassDndHelper {
         }
     }
 
-    /** 接管前快照：铃声模式与勿扰过滤值都记，切档位后也能还原到最原始的值 */
+    // ————————————————————————— 快照与还原 —————————————————————————
+
+    /** 接管前快照：两条通道都记，切档位后也能还原到最原始的值 */
     private fun snapshotOriginal(context: Context) {
         prefs(context).edit {
             try {
@@ -151,51 +191,50 @@ object ClassDndHelper {
         }
     }
 
-    /**
-     * 把系统状态还原到接管前的快照值。
-     * 缺少对应快照时不动系统；DND/PRIORITY 没有权限时无法写回，同样跳过。
-     */
-    /** 还原到接管前的快照值；返回是否真的写回成功（缺快照或无权限时 false） */
-    private fun applyOriginalSnapshot(context: Context, mode: Int): Boolean {
+    /** 还原铃声模式到快照值；没有快照视为无需还原。从静音切回正常同样属于「切换勿扰」 */
+    private fun restoreRinger(context: Context): Boolean {
         val p = prefs(context)
-        when (mode) {
-            MODE_SILENT -> {
-                if (!p.contains(KEY_ORIGINAL_RINGER)) return false
-                // 从静音切回正常同样属于「切换勿扰」，未授权会抛 SecurityException
-                if (!canWriteState(context)) {
-                    NexioLog.w(TAG, "Skip restoring ringer: policy access revoked")
-                    return false
-                }
-                val original = p.getInt(KEY_ORIGINAL_RINGER, AudioManager.RINGER_MODE_NORMAL)
-                return try {
-                    audioManager(context).ringerMode = original
-                    true
-                } catch (e: Exception) {
-                    NexioLog.e(TAG, "Failed to restore ringerMode to $original", e)
-                    false
-                }
-            }
-            MODE_DND, MODE_PRIORITY -> {
-                if (!p.contains(KEY_ORIGINAL_FILTER)) return false
-                if (!canWriteState(context)) {
-                    NexioLog.w(TAG, "Skip restoring filter: policy access revoked")
-                    return false
-                }
-                // 还原快照而非粗暴 ALL，用户可能原本就开着 PRIORITY/ALARMS
-                val original = p.getInt(
-                    KEY_ORIGINAL_FILTER,
-                    NotificationManager.INTERRUPTION_FILTER_ALL
-                )
-                return try {
-                    notificationManager(context).setInterruptionFilter(original)
-                    true
-                } catch (e: Exception) {
-                    NexioLog.e(TAG, "Failed to restore filter to $original", e)
-                    false
-                }
-            }
+        if (!p.contains(KEY_ORIGINAL_RINGER)) return true
+        if (!canWriteState(context)) {
+            warnOnce(context, "restore_ringer", "Cannot restore ringer: notification policy access revoked")
+            return false
         }
-        return false
+        val original = p.getInt(KEY_ORIGINAL_RINGER, AudioManager.RINGER_MODE_NORMAL)
+        return try {
+            audioManager(context).ringerMode = original
+            true
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "Failed to restore ringerMode to $original", e)
+            false
+        }
+    }
+
+    /** 还原勿扰过滤值到快照值；没有快照视为无需还原。还原快照而非粗暴 ALL，用户可能原本就开着 PRIORITY/ALARMS */
+    private fun restoreFilter(context: Context): Boolean {
+        val p = prefs(context)
+        if (!p.contains(KEY_ORIGINAL_FILTER)) return true
+        if (!canWriteState(context)) {
+            warnOnce(context, "restore_filter", "Cannot restore filter: notification policy access revoked")
+            return false
+        }
+        val original = p.getInt(KEY_ORIGINAL_FILTER, NotificationManager.INTERRUPTION_FILTER_ALL)
+        return try {
+            notificationManager(context).setInterruptionFilter(original)
+            true
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "Failed to restore filter to $original", e)
+            false
+        }
+    }
+
+    /** 记下接管后两条通道的实际呈现值，供下课校验使用 */
+    private fun recordAppliedState(context: Context, mode: Int, accepted: Int) {
+        prefs(context).edit {
+            putBoolean(KEY_APPLIED, true)
+            putInt(KEY_APPLIED_MODE, mode)
+            readRingerMode(context)?.let { putInt(KEY_SET_RINGER, it) }
+            readFilter(context)?.let { putInt(KEY_SET_FILTER, it) }
+        }
     }
 
     private fun clearSession(context: Context) {
@@ -205,12 +244,126 @@ object ClassDndHelper {
             remove(KEY_ORIGINAL_RINGER)
             remove(KEY_ORIGINAL_FILTER)
             remove(KEY_SET_STATE)
+            remove(KEY_SET_RINGER)
+            remove(KEY_SET_FILTER)
             remove(KEY_MANUAL)
             remove(KEY_MANUAL_AT)
+            remove(KEY_DEFER_AT)
         }
     }
 
-    /** 用户手动接管中：不在课堂也不自动还原；跨日或超时则视为遗留状态，无条件还原 */
+    private fun hasSessionData(p: SharedPreferences): Boolean =
+        p.contains(KEY_APPLIED_MODE) || p.contains(KEY_ORIGINAL_RINGER) ||
+            p.contains(KEY_ORIGINAL_FILTER) || p.contains(KEY_SET_STATE) ||
+            p.contains(KEY_SET_RINGER) || p.contains(KEY_SET_FILTER) ||
+            p.contains(KEY_MANUAL) || p.contains(KEY_MANUAL_AT) ||
+            p.contains(KEY_DEFER_AT)
+
+    // ————————————————————————— 接管与交还 —————————————————————————
+
+    /** 进入课堂：快照原状态后写入一次目标状态，返回是否接管成功 */
+    private fun takeOver(context: Context): Boolean {
+        val mode = currentMode(context)
+        if (!canWriteState(context)) {
+            // 未授予策略权限是永久性条件而非异常：绝大多数用户从未开启，
+            // 每节课都刷一条 w 会把真正的异常淹没。
+            NexioLog.d(TAG, "takeOver skipped: mode=$mode requires notification policy access")
+            return false
+        }
+        val before = readCurrentState(context, mode)
+        snapshotOriginal(context)
+        if (!writeState(context, mode)) return false
+
+        val accepted = readCurrentState(context, mode) ?: targetState(mode)
+        // 写入前后毫无变化、又不等于目标值 → 系统拒绝了这次写入（权限被回收 / ROM 拦截）。
+        // 不判失败的话后面会当它已生效，还拿这个错值当下课校验基准，表现就是全程没反应。
+        if (before != null && accepted == before && accepted != targetState(mode)) {
+            NexioLog.d(TAG, "takeOver rejected by system: mode=$mode state=$accepted target=${targetState(mode)}")
+            return false
+        }
+
+        recordAppliedState(context, mode, accepted)
+        NexioLog.d(TAG, "takeOver mode=$mode state=$accepted")
+        return true
+    }
+
+    /**
+     * 交还系统状态。
+     * @param requireConsistency true 用于「下课自动恢复」：系统状态仍等于本应用写入的值才还原快照，
+     *                           用户在课中改过说明已自行接管，保持现状。
+     *                           false 用于用户在应用内的明确指令（关开关 / 切档位），无条件还原。
+     */
+    private fun handBack(context: Context, requireConsistency: Boolean) {
+        val p = prefs(context)
+        if (!p.getBoolean(KEY_APPLIED, false)) {
+            // 没有会话就别每分钟提交一遍 SP
+            if (hasSessionData(p)) clearSession(context)
+            return
+        }
+        val mode = p.getInt(KEY_APPLIED_MODE, MODE_DND)
+
+        // 两条通道都要还原：只还原本档位写的那一条，会把被联动带起来的另一条留在勿扰态。
+        // 次通道若被用户在课中动过则不碰它，主通道是本应用的目标状态，必须还原。
+        var restoreRinger = true
+        var restoreFilter = true
+
+        if (requireConsistency) {
+            val current = readCurrentState(context, mode)
+            if (current == null) {
+                // 读不到就不还原，避免覆盖用户手动设置。
+                // 未授予策略权限时每节课都会命中，降为 d。
+                NexioLog.d(TAG, "handBack skipped: cannot read system state")
+                clearSession(context)
+                return
+            }
+            // 基准放宽：读回值可能因 ROM 同步延迟失真，目标值同样算「没被用户动过」
+            val expected = appliedState(context, mode)
+            if (current != expected && current != targetState(mode)) {
+                NexioLog.d(TAG, "handBack skipped: user owns state now ($current != $expected)")
+                clearSession(context)
+                return
+            }
+            if (secondaryChannelTouched(context, mode)) {
+                NexioLog.d(TAG, "handBack: secondary channel changed by user, leave it alone")
+                if (mode == MODE_SILENT) restoreFilter = false else restoreRinger = false
+            }
+        }
+
+        val hasSnapshot = p.contains(KEY_ORIGINAL_RINGER) || p.contains(KEY_ORIGINAL_FILTER)
+        // 顺序固定「先勿扰后铃声」：关掉勿扰时系统会自己把铃声恢复成它记的值，
+        // 先写铃声的话这一次会被随后到来的系统联动覆盖掉。
+        val filterOk = !restoreFilter || restoreFilter(context)
+        val ringerOk = !restoreRinger || restoreRinger(context)
+
+        // 有快照却写不回去（多半是权限被回收）：保留会话等权限恢复，别把快照丢掉，
+        // 否则手机就再也没有自动退出勿扰的机会了。没有快照则没什么可还原，正常收尾。
+        if (hasSnapshot && !(filterOk && ringerOk)) {
+            if (shouldAbandonDeferred(context)) {
+                NexioLog.w(TAG, "handBack abandoned: giving up on restoring state after ${DEFER_ABANDON_MS / 3600_000L}h")
+                clearSession(context)
+                return
+            }
+            // 同上：权限被回收时每节课都命中，会把真正的异常刷没。
+            warnOnce(context, "handback_deferred", "handBack deferred: keep session until state can be restored")
+            return
+        }
+        NexioLog.d(TAG, "handBack restored original state mode=$mode")
+        clearSession(context)
+    }
+
+    /** 还原推迟是否已超过上限；首次推迟时顺带记下起始时间 */
+    private fun shouldAbandonDeferred(context: Context): Boolean {
+        val p = prefs(context)
+        val now = System.currentTimeMillis()
+        val first = p.getLong(KEY_DEFER_AT, 0L)
+        if (first <= 0L) {
+            p.edit { putLong(KEY_DEFER_AT, now) }
+            return false
+        }
+        return now - first > DEFER_ABANDON_MS || !isSameDay(first, now)
+    }
+
+    /** 手动接管中：不在课堂也不自动还原；跨日或超时视为遗留状态，顺带还原并清除标记 */
     private fun isManualHeld(context: Context): Boolean {
         val p = prefs(context)
         if (!p.getBoolean(KEY_MANUAL, false)) return false
@@ -238,101 +391,28 @@ object ClassDndHelper {
         }
     }
 
-    /** 接管时系统实际呈现的值；没记录则退回目标档位的理论值 */
-    private fun appliedState(context: Context, mode: Int): Int {
-        val p = prefs(context)
-        return if (p.contains(KEY_SET_STATE)) {
-            p.getInt(KEY_SET_STATE, targetState(mode))
-        } else {
-            targetState(mode)
-        }
-    }
-
-    /** 进入课堂：快照原状态后写入一次目标状态，返回是否接管成功 */
-    private fun takeOver(context: Context): Boolean {
-        val mode = currentMode(context)
-        if (!canWriteState(context)) {
-            // 未授予通知策略权限是**永久性条件**，不是异常：绝大多数用户从未开启，
-            // 原先每节课都会刷一条 w。降为 d，避免淹没真正的异常日志。
-            NexioLog.d(TAG, "takeOver skipped: mode=$mode requires notification policy access")
-            return false
-        }
-        val before = readCurrentState(context, mode)
-        snapshotOriginal(context)
-        if (!writeState(context, mode)) return false
-
-        val accepted = readCurrentState(context, mode) ?: targetState(mode)
-        // 写入前后毫无变化、又不等于目标值 → 系统拒绝了这次写入（权限被回收 / ROM 拦截）。
-        // 不判失败的话后面会当它已生效，还拿这个错值当下课校验基准，表现就是全程没反应。
-        if (before != null && accepted == before && accepted != targetState(mode)) {
-            // 权限被回收时每节课都会命中同一分支，属永久性条件而非瞬时异常，降为 d。
-            NexioLog.d(TAG, "takeOver rejected by system: mode=$mode state=$accepted target=${targetState(mode)}")
-            return false
-        }
-
-        // 记录写入后系统实际呈现的值，用来在下课判断用户有没有动过
-        prefs(context).edit {
-            putBoolean(KEY_APPLIED, true)
-            putInt(KEY_APPLIED_MODE, mode)
-            putInt(KEY_SET_STATE, accepted)
-        }
-        NexioLog.d(TAG, "takeOver mode=$mode state=$accepted")
-        return true
-    }
-
     /**
-     * 交还系统状态。
-     * @param requireConsistency true 用于「下课自动恢复」：只有当系统状态仍等于本应用写入的值
-     *                           时才还原快照；用户在课中改过说明已自行接管，保持现状。
-     *                           false 用于用户在应用内的明确指令（关开关 / 切档位），无条件还原。
+     * 同一原因的告警每天只发一条。
+     * 权限被回收这类永久性条件每节课都会命中，全提到 w 会把真正的异常刷没；但整条链路全是 d 的话，
+     * 报「勿扰关不掉」时日志里什么都查不到。每天一条 w 保证可自查，当天其余命中降回 d。
      */
-    private fun handBack(context: Context, requireConsistency: Boolean) {
+    private fun warnOnce(context: Context, reason: String, message: String) {
         val p = prefs(context)
-        if (!p.getBoolean(KEY_APPLIED, false)) {
-            // 没有会话就别每分钟提交一遍 SP
-            if (hasSessionData(p)) clearSession(context)
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(java.util.Date())
+        val token = "$reason:$today"
+        val sent = (p.getStringSet(KEY_WARN_SENT, emptySet()) ?: emptySet()).toMutableSet()
+        if (token in sent) {
+            NexioLog.d(TAG, message)
             return
         }
-        val mode = p.getInt(KEY_APPLIED_MODE, MODE_DND)
-
-        if (requireConsistency) {
-            val current = readCurrentState(context, mode)
-            if (current == null) {
-                // 读不到就不还原，避免覆盖用户手动设置。
-                // 未授予策略权限时每节课都会命中，降为 d。
-                NexioLog.d(TAG, "handBack skipped: cannot read system state")
-                clearSession(context)
-                return
-            }
-            // 基准放宽：读回值可能因 ROM 同步延迟失真，目标值同样算「没被用户动过」
-            val expected = appliedState(context, mode)
-            if (current != expected && current != targetState(mode)) {
-                NexioLog.d(TAG, "handBack skipped: user owns state now ($current != $expected)")
-                clearSession(context)
-                return
-            }
-        }
-
-        val hasSnapshot = if (mode == MODE_SILENT) {
-            p.contains(KEY_ORIGINAL_RINGER)
-        } else {
-            p.contains(KEY_ORIGINAL_FILTER)
-        }
-        // 有快照却写不回去（多半是权限被回收）：保留会话等权限恢复，别把快照丢掉，
-        // 否则手机就再也没有自动退出勿扰的机会了。没有快照则没什么可还原，正常收尾。
-        if (hasSnapshot && !applyOriginalSnapshot(context, mode)) {
-            // 同上：权限被回收时每节课都命中，会把真正的异常刷没。
-            NexioLog.d(TAG, "handBack deferred: keep session until state can be restored")
-            return
-        }
-        NexioLog.d(TAG, "handBack restored original state mode=$mode")
-        clearSession(context)
+        sent.removeAll { !it.endsWith(":$today") }
+        sent.add(token)
+        p.edit { putStringSet(KEY_WARN_SENT, sent) }
+        NexioLog.w(TAG, message)
     }
 
-    private fun hasSessionData(p: SharedPreferences): Boolean =
-        p.contains(KEY_APPLIED_MODE) || p.contains(KEY_ORIGINAL_RINGER) ||
-            p.contains(KEY_ORIGINAL_FILTER) || p.contains(KEY_SET_STATE) ||
-            p.contains(KEY_MANUAL) || p.contains(KEY_MANUAL_AT)
+    // ————————————————————————— 对账入口 —————————————————————————
 
     // 受课程提醒总开关约束
     private fun isFeatureAvailable(context: Context): Boolean {
@@ -343,8 +423,7 @@ object ClassDndHelper {
 
     /**
      * 测试课（「测试小米超级岛」/「测试实时活动」）的课堂时间窗。
-     * 测试课不在真实课表，以前 isInClass 恒 false，勿扰链路在测试里根本跑不到；
-     * 现在把它并进来，测试也能验证「上课自动开启、下课自动关闭」。
+     * 测试课不在真实课表里，并进来才能让勿扰链路在测试中跑通。
      * 两条通道二选一：实时活动写 countdown_state，超级岛写 IslandState。
      */
     private fun testClassWindow(context: Context): Pair<Long, Long>? {
@@ -369,8 +448,9 @@ object ClassDndHelper {
             if (now >= start && now < end) return true
         }
         val repository = CourseRepository()
-        val now = Calendar.getInstance()
-        val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        val currentMinutes = Calendar.getInstance().let {
+            it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
+        }
         for (course in CourseReminderHelper.getTodayCourses(context)) {
             val start = CourseReminderHelper.getCourseStartTime(course, repository)?.toMinutes() ?: continue
             val end = CourseReminderHelper.getCourseEndTime(course, repository)?.toMinutes() ?: continue
@@ -415,10 +495,14 @@ object ClassDndHelper {
 
         val appliedMode = p.getInt(KEY_APPLIED_MODE, MODE_DND)
         if (appliedMode != mode) {
-            // 用户在应用内换了档位：先还原旧档位，再按新档位重新接管
-            applyOriginalSnapshot(context, appliedMode)
-            clearSession(context)
-            takeOver(context)
+            // 换档位：先把旧档位写入的那条通道还原回课前快照，再按新档位写入。
+            // 快照沿用不重取 —— 系统把勿扰与铃声的联动落下去是异步的，紧接着重新快照会把
+            // 还没落地的中间态当成「课前原始值」，下课就还原错。
+            if (appliedMode == MODE_SILENT) restoreRinger(context) else restoreFilter(context)
+            if (writeState(context, mode)) {
+                recordAppliedState(context, mode, readCurrentState(context, mode) ?: targetState(mode))
+                NexioLog.d(TAG, "mode switched $appliedMode -> $mode")
+            }
             return
         }
 
@@ -433,8 +517,6 @@ object ClassDndHelper {
 
     /**
      * 通知 / 超级岛「上课勿扰」按钮：点一下立刻生效，再点一下立刻还原。
-     * 旧实现只翻转「上课自动开启勿扰」开关，不在课堂时点了系统状态纹丝不动，
-     * 表现就是「Toast 说已开启，实际没开启」——而按钮文案承诺的是立即勿扰。
      * 非课堂时段开启记为用户手动接管，applyCurrentState 不会自动把它还原掉。
      */
     fun toggleFromNotification(context: Context) {
@@ -484,6 +566,8 @@ object ClassDndHelper {
         Toast.makeText(context, "已开启$what$tail", Toast.LENGTH_SHORT).show()
     }
 
+    // ————————————————————————— 闹钟排期 —————————————————————————
+
     // 与课前提醒闹钟独立：只要总开关开着就按课表生效
     fun scheduleClassDndAlarms(context: Context, alarmManager: AlarmManager) {
         cancelClassDndAlarms(context, alarmManager)
@@ -515,8 +599,7 @@ object ClassDndHelper {
             rcs += endRc
         }
 
-        // 测试课同样注册上课/下课闹钟：课前 70 秒、课中 120 秒的窗口
-        // 靠每分钟对账粒度太粗，必须走精确闹钟才能准时开、准时关
+        // 测试课同样注册上课/下课闹钟：分钟级对账太粗，走精确闹钟才能准时开、准时关
         testClassWindow(context)?.let { (start, end) ->
             scheduleOne(context, alarmManager, RC_DND_TEST_START, ClassDndReceiver.ACTION_CLASS_START, start)
             scheduleOne(context, alarmManager, RC_DND_TEST_END, ClassDndReceiver.ACTION_CLASS_END, end)
@@ -556,35 +639,19 @@ object ClassDndHelper {
     ) {
         if (triggerAt <= System.currentTimeMillis()) return
 
-        val intent = Intent(context, ClassDndReceiver::class.java).apply { setAction(action) }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         // 上课/下课属于课表边界，走 setAlarmClock 保证 Doze 下也准点
-        CourseReminderHelper.setCourseBoundaryAlarm(alarmManager, triggerAt, pendingIntent)
+        CourseReminderHelper.setCourseBoundaryAlarm(
+            alarmManager, triggerAt, dndPendingIntent(context, requestCode, action)
+        )
         NexioLog.d(TAG, "scheduleOne OK action=$action at=" +
             java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(triggerAt)) +
             " rc=$requestCode")
     }
 
-    private fun readRcSet(context: Context): Set<Int> =
-        (context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE)
-            .getStringSet(KEY_DND_RCS, emptySet()) ?: emptySet())
-            .mapNotNull { it.toIntOrNull() }.toSet()
-
-    private fun writeRcSet(context: Context, rcs: Set<Int>) {
-        context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE).edit {
-            putStringSet(KEY_DND_RCS, rcs.map { it.toString() }.toSet())
-        }
-    }
-
     /**
      * 取消全部上课勿扰闹钟。
-     * 先按登记表取消（覆盖已删除 / 已换 id 的课程），再按当前课程兜底，
-     * 最后清登记表；只按当前课程取消会留下孤儿闹钟。
+     * 先按登记表取消（覆盖已删除 / 已换 id 的课程），再按当前课程兜底，最后清登记表；
+     * 只按当前课程取消会留下孤儿闹钟。
      */
     fun cancelClassDndAlarms(context: Context, alarmManager: AlarmManager) {
         for (rc in readRcSet(context)) {
@@ -608,14 +675,26 @@ object ClassDndHelper {
         requestCode: Int,
         action: String
     ) {
-        val intent = Intent(context, ClassDndReceiver::class.java).apply { setAction(action) }
-        val pendingIntent = PendingIntent.getBroadcast(
+        alarmManager.cancel(dndPendingIntent(context, requestCode, action))
+    }
+
+    private fun dndPendingIntent(context: Context, requestCode: Int, action: String): PendingIntent =
+        PendingIntent.getBroadcast(
             context,
             requestCode,
-            intent,
+            Intent(context, ClassDndReceiver::class.java).apply { setAction(action) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        alarmManager.cancel(pendingIntent)
+
+    private fun readRcSet(context: Context): Set<Int> =
+        (context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE)
+            .getStringSet(KEY_DND_RCS, emptySet()) ?: emptySet())
+            .mapNotNull { it.toIntOrNull() }.toSet()
+
+    private fun writeRcSet(context: Context, rcs: Set<Int>) {
+        context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE).edit {
+            putStringSet(KEY_DND_RCS, rcs.map { it.toString() }.toSet())
+        }
     }
 
     private fun String.toMinutes(): Int? {

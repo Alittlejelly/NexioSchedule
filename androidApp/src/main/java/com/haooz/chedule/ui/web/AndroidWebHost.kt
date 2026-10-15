@@ -53,16 +53,12 @@ private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
 // ════════════════════════════════════════════════════════════════════════
 //  网页内容宿主 —— Android 实现（android.webkit.WebView）
 //
-//  那一页的**外壳**已迁 `:ui-shared`，这里留下的是**网页本体**：
-//  创建与配置 / UA 与视口策略 / JS 桥 / PixelCopy 逐帧采色 / 销毁。
+//  页面外壳已迁 :ui-shared（见 ui/web/WebHost.kt 契约），这里只剩网页本体：
+//  创建配置 / UA 与视口策略（委派 WebCompatDelegate）/ JS 桥 / PixelCopy 逐帧采色 / 销毁。
+//  iOS 侧对应 IosWebHost（WKWebView），本文件逻辑一行都复用不了。
 //
-//  契约见 `:ui-shared` 的 `ui/web/WebHost.kt`。iOS 侧要写一份 `IosWebHost`
-//  （WKWebView），**页面与三个对话框不用动**。
-//
-//  ⚠ 搬动时**只改「写页面 state」为「发事件」**（`loadingProgress = x` →
-//    `currentEvents.onProgress(x)` 之类），其余逻辑逐字保留 —— 教务导入这条链路
-//    （UA 重取页、SSL 放行、自定义 scheme 外跳、Cookie 跨页保存）都是踩过坑的，
-//    没有真机验证前不要顺手重构。
+//  ⚠ 搬改时只把「写页面 state」换成「发事件」，其余逐字保留：UA 重取页、
+//  SSL 放行、自定义 scheme 外跳、Cookie 跨页保存都是踩过坑的，未真机验证别重构。
 // ════════════════════════════════════════════════════════════════════════
 
 
@@ -179,10 +175,8 @@ private fun lerpArgb(from: Int, to: Int, t: Float): Int {
 /**
  * 造一个 Android 网页宿主。
  *
- * @param config 会随页面状态变（桌面模式 / 顶栏让位高度），内部用 [rememberUpdatedState] 跟；
- *   `config.isDesktopMode` 与 `config.importUrl` 分别驱动两个 `LaunchedEffect`。
- * @param events 页面的事件回调，同样用 [rememberUpdatedState] 持有 —— WebView 的
- *   client 是长生命周期对象，持旧闭包会写到过期的 state 上。
+ * `config` / `events` 都随页面状态变，内部用 [rememberUpdatedState] 跟：
+ * WebView 的 client 是长生命周期对象，持旧闭包会写到过期的 state 上。
  */
 @Composable
 fun rememberAndroidWebHost(
@@ -232,7 +226,7 @@ fun rememberAndroidWebHost(
             }
         )
     }
-    // 顶栏空白区：采样页面顶部一小段，取全图众数色做成 1×1，FillBounds 铺满 contentTopPadding。
+    // 顶栏空白区：采样页面顶部一小段取众数色做成 1×1，FillBounds 铺满 contentTopPadding。
     // 大面积底色压倒文字笔画；整条纯色填充，没有拉伸字形问题。
     var webTopMirrorBitmap by remember { mutableStateOf<Bitmap?>(null) }
     // 上一帧主导色（滞回用）与当前已上屏颜色（插值用）
@@ -342,12 +336,22 @@ fun rememberAndroidWebHost(
     }
     // 本轮是否已试过切到转发通道；每轮模式切换重置，避免反复重载打转。
     val forwardSwitched = remember { AtomicBoolean(false) }
-    /** 对该 host 开转发后重载一次自救；已开过则不动 —— 那就不是 `X-Requested-With` 的问题。 */
+    /**
+     * 转发通道重载延迟：触发场景（脚本 4xx / `$ is not defined`）天然紧跟一次
+     * "可疑请求"，立刻 reload 会被不少 WAF 的"短时间同源重复请求"规则打
+     * （挑战页 / 429）。约 1 秒的间隔够把重载拆进下一个统计窗口，又不显得卡。
+     */
+    val forwardReloadDelayMs = 1200L
+    /** 对该 host 开转发后延迟重载一次自救；已开过则不动 —— 那就不是 `X-Requested-With` 的问题。 */
     val tryForwardAndReload: () -> Unit = remember(webView) {
         {
             if (WebForwardHosts.enable(webView.url?.toUri()?.host)) {
                 showToast("正在换一种方式重新加载该站点…", longDuration = true)
-                webView.post { webView.reload() }
+                webView.postDelayed({
+                    // 延迟期间用户可能已退出导入页（WebView 被 destroy）：detach 后不重载
+                    if (!webView.isAttachedToWindow) return@postDelayed
+                    runCatching { webView.reload() }
+                }, forwardReloadDelayMs)
             }
         }
     }
@@ -367,7 +371,7 @@ fun rememberAndroidWebHost(
                     if (url.isNullOrBlank()) return false
                     val scheme = url.toUri().scheme?.lowercase() ?: return false
                     if (scheme == "http" || scheme == "https") return false
-                    // 自定义 scheme（intent://, market://, tel:// 等）交给外部处理
+                    // 自定义 scheme（intent://、market://、tel:// 等）交给外部处理
                     try {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
                             url.toUri())
@@ -381,7 +385,7 @@ fun rememberAndroidWebHost(
                     val url = request.url.toString()
                     val scheme = request.url.scheme?.lowercase() ?: return false
                     if (scheme == "http" || scheme == "https") return false
-                    // 自定义 scheme（intent://, market://, tel:// 等）交给外部处理
+                    // 同上：自定义 scheme 外跳
                     try {
                         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, request.url)
                         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -392,8 +396,8 @@ fun rememberAndroidWebHost(
 
                 @SuppressLint("WebViewClientOnReceivedSslError")
                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                    // ⚠ 子资源的证书错误 Chromium 不回调这里（只回调主框架）、直接静默丢弃，
-                    // 所以子资源失败只能靠 onReceivedHttpError 与 onConsoleMessage 兜。
+                    // ⚠ 子资源证书错误 Chromium 不回调这里（只回调主框架）、直接静默丢弃，
+                    // 只能靠 onReceivedHttpError 与 onConsoleMessage 兜。
                     NexioLog.w("EduImport", "SSL 错误已放行: ${error.url} primaryError=${error.primaryError}")
                     handler.proceed()
                 }
@@ -413,8 +417,8 @@ fun rememberAndroidWebHost(
                             }
                         }
                     } else {
-                        // ⚠ 此前完全静默：主框架照样 onPageFinished，页面表现为
-                        // "没样式 / 图片空白 / 按钮点了没反应"，日志里一个字都没有。
+                        // ⚠ 子资源失败必须留痕：此前完全静默，页面"没样式/图白/按钮无反应"
+                        // 而日志一个字都没有。
                         NexioLog.w(
                             "EduImport",
                             "子资源加载失败[${error.errorCode}]: ${request.url} —— ${error.description}"
@@ -459,8 +463,8 @@ fun rememberAndroidWebHost(
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                     consoleMessage?.let {
                         NexioLog.d("EduImport", "JS [${it.messageLevel()}]: ${it.message()} (${it.sourceId()}:${it.lineNumber()})")
-                        // 站点脚本库没加载全（典型是 WebView 的 X-Requested-With 被当成
-                        // 非浏览器而降级）：对该 host 开启 OkHttp 转发并重载一次自救。
+                        // 站点脚本库没加载全（典型是 X-Requested-With 被当成非浏览器而降级）：
+                        // 对该 host 开启 OkHttp 转发并重载一次自救。
                         if (it.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
                             JS_LIB_MISSING.containsMatchIn(it.message().orEmpty()) &&
                             forwardSwitched.compareAndSet(false, true)
@@ -474,9 +478,8 @@ fun rememberAndroidWebHost(
         ) { }
 
         // 切换 UA 后必须带新 UA 重新取页才生效（document-start 脚本只对新的文档起作用）。
-        // 且不能只 reload 当前地址：部分站点识别出手机端后会把页面重定向到手机专属地址
-        //（如 m.xxx.com），此时 reload 仍是手机版页面；需带新 UA 重新访问导入入口，
-        // 让站点按新 UA 重新解析。同域（未被重定向到其它主机）则 reload 保持当前流程位置。
+        // 不能只 reload 当前地址：部分站点识别出手机端后会重定向到手机专属域名（m.xxx.com），
+        // 此时 reload 仍是手机版；同域未被重定向才 reload 保持当前流程位置。
         if (webView.url != null) {
             val currentHost = webView.url?.toUri()?.host?.lowercase()?.removePrefix("www.")
             val importHost = currentConfig.importUrl?.toUri()?.host?.lowercase()?.removePrefix("www.")
@@ -501,8 +504,8 @@ fun rememberAndroidWebHost(
             webView.clearHistory()
             webView.removeAllViews()
             webView.destroy()
-            // 不清除 Cookie 与 localStorage：教务系统登录态跨页面保存，下次进入免登录。
-            // 两者都按域名隔离，不同学校互不影响；如需换账号，请在教务页面内退出登录。
+            // 不清 Cookie / localStorage：教务登录态跨页面保存，下次进入免登录；
+            // 两者按域名隔离，不同学校互不影响。换账号请在教务页面内退出登录。
         }
     }
 
@@ -544,9 +547,8 @@ fun rememberAndroidWebHost(
 /**
  * 从任意 Context 向外层找到宿主 Activity（`PixelCopy.request(window, …)` 需要 window）。
  *
- * ⚠ `ContextWrapper` 那一支**不能省**：`LocalContext.current` 在 Dialog / ComposeView
- * 之类的宿主里拿到的是包装过的 Context，少了这一支会一路返回 null → 顶栏采样静默失效
- * （不崩、无日志，只是色带永远不出现）。搬动时我一度写丢，代码复核时发现。
+ * ⚠ `ContextWrapper` 一支不能省：`LocalContext.current` 在 Dialog / ComposeView 里
+ * 拿到的是包装 Context，少这支会一路返回 null → 顶栏采样静默失效（不崩、无日志）。
  */
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

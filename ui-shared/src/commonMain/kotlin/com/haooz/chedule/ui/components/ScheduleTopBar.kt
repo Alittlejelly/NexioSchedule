@@ -1,9 +1,5 @@
 package com.haooz.chedule.ui.components
 
-import com.haooz.chedule.data.formatMonthDay
-
-import com.haooz.chedule.data.todayLocalDate
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -23,32 +19,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import com.haooz.chedule.ui.utils.LocalHostNavigation
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
+import com.haooz.chedule.data.formatMonthDay
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import com.haooz.chedule.ui.utils.LocalHostNavigation
+import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
-import top.yukonga.miuix.kmp.icon.extended.Reset
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
+import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlinx.datetime.LocalDate
 import kotlin.math.roundToInt
 
 private val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -71,13 +67,11 @@ fun ScheduleTopBar(
     pagerCurrentPage: Int,
     currentWeek: Int,
     isHoliday: Boolean,
-    isViewingCurrentWeek: Boolean,
     dayRange: List<Int>,
     currentDayOfWeek: Int,
     isCurrentWeek: Boolean,
     weekDates: List<LocalDate>,
     isReorganized: Boolean,
-    onBackToCurrentWeek: () -> Unit,
     onOpenSwitchSchedule: () -> Unit,
     onJumpWeek: () -> Unit = {},
     onEnterCustomize: () -> Unit = {},
@@ -92,12 +86,6 @@ fun ScheduleTopBar(
     // 上报顶栏滚动材质透明度，供「更多」控件收起态同步渐显渐隐
     onMoreMaterial: (Float) -> Unit = {},
     onMoreExpand: () -> Unit = {},
-    /**
-     * 渐变遮罩色。共享顶栏槽里三根顶栏叠在一起平移淡入淡出，外层主题跟的是
-     * **当前 tab**（见 MainActivity 的 `forcedDark`），切页瞬间会变 —— 不显式锁色
-     * 就会在「课程表深色 → 设置页浅色」时遮罩整体跳浅。由调用方传入本页锁定的 surface。
-     */
-    gradientColorOverride: Color? = null,
 ) {
     if (!visible || liquidGlassBackdrop == null) return
     // iOS 主界面右上角那一排（「更多」UIMenu + 课表切换）已由原生 chrome 接管
@@ -133,12 +121,9 @@ fun ScheduleTopBar(
                 CollapsibleTopAppBar(
                     title = titleText,
                     showLargeTitle = false,
-                    showGradientOverlay = true,
-                    gradientOverlayScrollTriggered = true,
+                    showGradientOverlay = false,
                     titleStartAligned = isTablet,
                     titleModifier = titleRailPadding,
-                    gradientMaskHeight = CollapsedHeight + 110.dp,
-                    gradientColorOverride = gradientColorOverride,
                     scrollBehavior = scrollBehavior,
                     // 平板左上角不放返回按钮
                     startAction = null,

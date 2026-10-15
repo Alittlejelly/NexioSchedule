@@ -20,12 +20,12 @@ The trial ellipsis menu is removed. The three trial Screens have their original 
 
 ## Enabled routes and rollout status
 
-Seventeen route kinds are enabled; About and CourseTimeSettings were added after the original fifteen-route rollout:
+Eighteen route kinds are enabled; About, CourseTimeSettings and ScheduleImport were added after the original fifteen-route rollout:
 
 - Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor
 - PreferenceSettings, UpdateSettings, LocalBackup, AiImport
 - WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings
-- ScheduleExport, ScheduleBackup
+- ScheduleExport, ScheduleBackup, ScheduleImport
 - About, CourseTimeSettings
 
 The full shared Screens and route callbacks are reused; only chrome is native. Expanded UI acceptance is run separately from the initial three-page gate. The first cancelled-pop anchor failure and the initial About footer tap failure were test synchronization issues: Compose fling motion is not included in XCTest's UIKit-idle detection. Tests now wait for stable geometry before sampling or tapping; no production safe-area workaround or relaxed assertion tolerance was applied.
@@ -42,9 +42,9 @@ Chrome follows destination intent, not animation completion: opening immediately
 
 The leading back/cancel configurations are separate native UIBarButtonItems with the same iOS 26 identifier; setLeftBarButtonItems(animated:) lets UIKit own the complete native item transition. No hand-written symbol replacement, glass animation, navigation-bar alpha mutation, or extra controller push is used. Leading icons use semantic label color (black/white), while the native save uses the primary accent and iOS 26 prominent style. Older OS versions retain ordinary UIKit item animations. Android/desktop and embedded settings retain Compose controls.
 
-The Import variant of BackupAndMigration has a live EducationalImport entry, but iOS has no WebHost and currently renders that route as empty Compose content. Migrating ScheduleImport would push this legacy page behind the native Import page. Therefore **ScheduleImport must remain Compose** until that boundary is explicitly resolved. The entry is not hidden and no new blank native page is introduced.
+The Import variant of BackupAndMigration has a live EducationalImport entry, but iOS has no WebHost and currently renders that route as empty Compose content. ScheduleImport is enabled anyway: Export and Backup already ship native chrome for the same shared screen, so leaving Import behind was the only one of the three still drawing its own Compose top bar and back button. The entry stays visible and still opens an empty page — that dead end predates this change and is unchanged by it. Hiding it is a separate product decision.
 
-Export has no such outgoing route. Backup's LocalBackup and WebDAV children must be native before Backup is enabled. Eligibility is intentionally explicit; review outgoing route edges before adding a new native kind.
+Export has no outgoing route. Backup's LocalBackup and WebDAV children must be native before Backup is enabled. Import's EducationalImport child cannot be made native until iOS has a WebHost, which is why that single edge is tolerated rather than blocking the whole page. Eligibility is intentionally explicit; review outgoing route edges before adding a new native kind.
 
 ## Motion
 

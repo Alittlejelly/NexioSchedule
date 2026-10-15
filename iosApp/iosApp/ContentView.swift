@@ -187,6 +187,11 @@ private final class AppHostController: UIViewController {
     init(host: IosAppHost) {
         self.host = host
         super.init(nibName: nil, bundle: nil)
+        // The last row of the long-press back menu is this retained root. Same reason as
+        // NativeDocumentPageController: Compose draws the visible header, UIKit only needs a
+        // parent-facing label, and the bar must not render one.
+        title = "主界面"
+        navigationItem.title = nil
     }
 
     required init?(coder: NSCoder) {
@@ -215,6 +220,10 @@ private final class AppHostController: UIViewController {
         }
         chromeController.onLayout = { [weak self] in
             self?.reportBottomInset()
+        }
+        // Compose 绘制阶段直推的位移：同步落到 UIKit，与内容同帧（详见 applyPushedChromeOffset）
+        host.onCutoutChromeOffset = { [weak self] offsetY in
+            self?.applyPushedChromeOffset(offsetY)
         }
         // 原生截屏桥：把含底栏与导航栏的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
@@ -455,12 +464,17 @@ private final class AppHostController: UIViewController {
         return UIMenu(children: actions)
     }
 
-    /// 以 `pivot`（整屏坐标）为原点把 `target` 缩放 `scale`
-    private func applyCutoutScale(_ scale: CGFloat, to target: UIView, pivot: CGPoint) {
+    /// 以 `pivot`（整屏坐标）为原点把 `target` 缩放 `scale`，再叠加 `extraTranslationY`
+    private func applyCutoutScale(
+        _ scale: CGFloat,
+        extraTranslationY: CGFloat = 0,
+        to target: UIView,
+        pivot: CGPoint
+    ) {
         let center = target.center
         var transform = CGAffineTransform(scaleX: scale, y: scale)
         transform.tx = (1 - scale) * (pivot.x - center.x)
-        transform.ty = (1 - scale) * (pivot.y - center.y)
+        transform.ty = (1 - scale) * (pivot.y - center.y) + extraTranslationY
         if target.transform != transform { target.transform = transform }
     }
 
@@ -473,10 +487,24 @@ private final class AppHostController: UIViewController {
         let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
         let scale = raw < 0.999 ? raw : 1
         let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
-        applyCutoutScale(scale, to: chromeContainer, pivot: pivot)
+        // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
+        let sheetOffsetY = cachedChromeOffsetY
+        applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: chromeContainer, pivot: pivot)
         if let bar = navigationController?.navigationBar {
-            applyCutoutScale(scale, to: bar, pivot: pivot)
+            applyCutoutScale(
+                scale,
+                extraTranslationY: sheetOffsetY,
+                to: bar,
+                pivot: pivot
+            )
         }
+    }
+
+    /// 外观页弹窗让位时主内容的纵向位移（pt，负值=上移；0 = 当前无位移）
+    private var cachedChromeOffsetY: CGFloat = 0
+    private func applyPushedChromeOffset(_ offsetY: KotlinDouble) {
+        cachedChromeOffsetY = CGFloat(offsetY.doubleValue)
+        updateCutoutTransform()
     }
 
     private func updateMainTransform() {
@@ -536,9 +564,7 @@ private final class AppHostController: UIViewController {
 
     /// 全屏截图（含底栏与导航栏右上角菜单），PNG 字节。供 Compose 侧补进快照。
     ///
-    /// ⚠ 必须从 **window** 渲染：只画 `self.view` 漏导航栏（它是 self.view 的兄弟）；
-    /// 只画 `navigationController.view` 也漏右上角菜单 —— iOS 26 的导航栏按钮由
-    /// SwiftUI hosting + portal 渲染，从菜单点过一次后被 reparent 到 nav bar 子树之外。
+    /// ⚠ 必须从 **window** 渲染：只画 `self.view` 漏导航栏（它是 self.view 的兄弟）
     private func captureScreenPNG() -> Data? {
         guard let container = viewIfLoaded?.window ?? navigationController?.view ?? viewIfLoaded else { return nil }
         let format = UIGraphicsImageRendererFormat.default()
@@ -624,17 +650,7 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
     }
 }
 
-/// 原生提示条（对应 Android 的 `Toast`）—— **液态玻璃**渲染。
-///
-/// ⚠ 渲染刻意放 Swift 侧（Kotlin 侧只留一个注入点 `IosToast.nativeShow`）：
-///  1. iOS 26 的 `UIGlassEffect` 在 Kotlin/Native 的 UIKit 绑定里虽然编译得过，
-///     但运行期行为不可控；
-///  2. 取 window 必须走 `connectedScenes` —— `UIApplication.windows` 在 iOS 13+ 已废弃，
-///     **启动早期会返回空**（Kotlin 侧原来的写法就踩了这个，表现为「启动时的提示条不见」）。
-///
-/// 出现/消失带缩放动画：0.85 → 1 弹簧弹入（轻微过冲）配淡入，1 → 0.9 缩回配淡出。
-/// 时长对齐 `LENGTH_SHORT`(2s) / `LENGTH_LONG`(3.5s)；**不合并**，连续调用弹两条、上下错开堆叠；
-/// 不拦截触摸（`isUserInteractionEnabled = false`）。
+/// 原生提示条（对应 Android 的 `Toast`）—— **液态玻璃**渲染
 enum NativeToast {
 
     private static let shortSeconds: TimeInterval = 2.0
@@ -668,7 +684,6 @@ enum NativeToast {
             active.append(toast)
 
             // 出现：从 0.85 弹回 1（弹簧带轻微过冲）+ 淡入。
-            // ⚠ transform 要在设完 frame 之后再改 —— 反过来 frame 会被缩放影响。
             toast.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
             toast.alpha = 0
             UIView.animate(
@@ -746,8 +761,7 @@ enum NativeToast {
         return container
     }
 
-    /// ⚠ 必须用 `connectedScenes`：`UIApplication.shared.windows` 在 iOS 13+ 已废弃，
-    /// 多场景下**启动早期可能为空**（那时弹的提示条会直接不见）。
+    /// ⚠ 必须用 `connectedScenes`
     private static func keyWindow() -> UIWindow? {
         let windows = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }

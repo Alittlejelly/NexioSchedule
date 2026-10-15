@@ -114,11 +114,14 @@ object HolidayEntries {
         // ⚠ 千万不要在这里补 start/end 之类的排序键：同年同 custom 且区间重叠时
         // （中秋 10/05-10/06 套在国庆 10/01-10/07 里）entriesForDate 靠稳定排序保留
         // 存储顺序，一旦按 start 重排就会选到不同的条目，两端直接换错课。
+        // 年份优先级只能拿 today 当锚点（一份包要服务窗口内所有日期），所以**跨年日期上的
+        // 首条可能仍与手机端不同**。因此剔除冗余时必须保守：只删「无论哪天都不可能赢」的条目。
         val ranked = entriesByYear.entries
             .sortedBy { yearRank[it.key] ?: yearRank.size }
-            .flatMap { (_, entries) -> entries }
+            .flatMap { (year, entries) -> entries.map { year to it } }
             .withIndex()
-            .mapNotNull { (naturalIndex, entry) ->
+            .mapNotNull { (naturalIndex, yearAndEntry) ->
+                val (year, entry) = yearAndEntry
                 val start = runCatching { LocalDate.parse(entry.date) }.getOrNull()
                     ?: return@mapNotNull null
                 // 与 HolidayEntry.matches 同款语义：endDate 空 = 单日；
@@ -130,28 +133,58 @@ object HolidayEntries {
                         ?: return@mapNotNull null
                 }
                 if (end < windowFirst || start > windowLast) return@mapNotNull null
-                Ranked(entry, naturalIndex, start, end)
+                Ranked(entry, naturalIndex, year, start, end)
             }
             .sortedWith(
                 compareByDescending<Ranked> { it.entry.custom }.thenBy { it.naturalIndex }
             )
 
         val kept = mutableListOf<HolidayEntry>()
-        val keptRanges = mutableListOf<Pair<LocalDate, LocalDate>>()
+        val keptRanges = mutableListOf<Ranked>()
         for (item in ranked) {
-            val shadowed = keptRanges.any { (from, to) -> from <= item.start && item.end <= to }
-            if (shadowed) continue
+            if (keptRanges.any { it.shadows(item) }) continue
             kept += item.entry
-            keptRanges += item.start to item.end
+            keptRanges += item
         }
         return kept
+    }
+
+    /**
+     * `kept` 能不能把 `item` 当作冗余剔掉。
+     *
+     * 判据来自**手环端实际的两条独立扫描**（`schedule.js`）：
+     * - `findHolidayEntry(date, 0)`：只扫 type=0，命中即算假期；`resolveDisplayDayKey` 里
+     *   假期**无条件压倒**调休。手机端同款：`HolidayCourseExclusion` 用
+     *   `entriesForDate(date).any { type == TYPE_HOLIDAY }`。
+     * - `findWorkSwap(date)`：只扫 type=1，且**优先返回配了 follow 映射的那条**。
+     *
+     * 由此得到两条硬约束：
+     * 1. **调休不能遮蔽假期**：区间被调休整段盖住的假期一旦删掉，手环就不再认为那天是假期，
+     *    会在假期照常显示课程 —— 而手机端仍判为假期空课表，两端直接打架。
+     * 2. **跨年条目不能互相遮蔽**：一条包要服务窗口内所有日期，而手机端的年份优先级是
+     *   「查询日所在年」优先。今天在 2026 时 2026 的寒假排前面，但查 2027-01-01 时手机端
+     *   优先 2027 的元旦；此时若按 today 的排序把元旦删掉，手环就会显示成「寒假」。
+     */
+    private fun Ranked.shadows(item: Ranked): Boolean {
+        val typeAllowed = when {
+            // 假期压倒调休：只要区间被某条假期完整盖住，调休永远用不上，可删（与年份无关）
+            type == HolidayEntry.TYPE_HOLIDAY && item.type == HolidayEntry.TYPE_WORKSWAP -> true
+            // 同类型之间才谈遮蔽，且必须同年 —— 不同年的优先级随查询日变化，删了会选错
+            type == item.type -> year == item.year
+            else -> false
+        }
+        return typeAllowed && start <= item.start && item.end <= end
     }
 
     private data class Ranked(
         val entry: HolidayEntry,
         /** 摊平后的自然下标，用来在 custom 打平时复刻稳定排序的存储顺序 */
         val naturalIndex: Int,
+        /** 所属年份桶（跨年剔除判据用） */
+        val year: Int,
         val start: LocalDate,
         val end: LocalDate,
-    )
+    ) {
+        val type: Int get() = entry.type
+    }
 }

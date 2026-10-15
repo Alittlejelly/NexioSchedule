@@ -74,6 +74,11 @@ val OobeQuartOutSoftStartEasing = Easing { fraction ->
 /** 二级页「出场」缓动：起步更缓、后段正常滑出。 */
 val SecondaryPageExitEasing = CubicBezierEasing(0.36f, 0.18f, 0.3f, 0.85f)
 
+/**
+ * 课表外观页（开洞）全套动效共用的缓动：入场/退场、缩放、盖层、弹窗让位上移全用它。
+ */
+val CustomizePageEasing = CubicBezierEasing(0.3f, 0.5f, 0.2f, 1.0f)
+
 val OobeFifthpowerOutEasing = Easing { fraction ->
     val inverse = 1f - fraction
     1f - inverse * inverse * inverse * inverse * inverse
