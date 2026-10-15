@@ -123,8 +123,8 @@ class HttpServiceContractTest {
     /** 门面**不能吞**网络异常 —— 迁移前的调用点自带 try/catch，吞掉会让兜底失效。 */
     @Test
     fun `网络异常照常抛出`() = runTest {
-        // 必须用**平台中立**的异常类型：commonTest 也会参与 Kotlin/Native 编译，
-        // 用 java.io.IOException 会让 linuxX64/ios 的测试编译直接失败。
+        // 必须用**平台中立**的异常类型：commonTest 也会参与 Kotlin/Native（iOS）编译，
+        // 用 java.io.IOException 会让 iOS 的测试编译直接失败。
         val fake = FakeHttpService { throw IllegalStateException("connection reset") }
         assertFailsWith<IllegalStateException> {
             fake.get("http://example.com/api/x")

@@ -1,10 +1,10 @@
 package com.haooz.chedule.data
 
 /**
- * Kotlin/Native 实现（linuxX64 门禁目标；将来 iosArm64 / iosSimulatorArm64 共用）。
+ * Kotlin/Native 实现（iOS：iosArm64 / iosSimulatorArm64）。
  *
  * 与 JVM 实现一致：`i`/`w` 走 stdout、`e` 走 stderr、`d` 丢弃。
- * 将来接 iOS 时可换成 `NSLog`（`platform.Foundation.NSLog`），本文件的结构不用变。
+ * 需要时可在本文件内换成 `NSLog`（`platform.Foundation.NSLog`），结构不用变。
  */
 actual fun platformLog(level: Int, tag: String, message: String, throwable: Throwable?) {
     if (level < LOG_LEVEL_INFO) return // v / d：调试流水

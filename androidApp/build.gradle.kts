@@ -17,8 +17,8 @@ android {
         applicationId = "com.haooz.chedule"
         minSdk = 26
         targetSdk = 37
-        versionCode = 164
-        versionName = "1.6.4-1008"
+        versionCode = 165
+        versionName = "1.6.5-1015"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -70,19 +70,15 @@ configurations.all {
 
 dependencies {
     // ===== 跨平台共享模块（KMP）=====
-    // 领域模型：Course / ScheduleFolder / TimeConfig。包名与迁移前一致
     implementation(project(":core"))
 
-    // ===== 共享 UI（迁入的页面 / 主题）=====
-    // 包名与迁移前一致，调用方 import 一行不用改
+    // ===== 共享 UI（页面 / 主题，包名与调用方 import 保持不变）=====
     implementation(project(":ui-shared"))
 
-    // ===== 液态玻璃效果库（fork 自 io.github.kyant0:backdrop 2.0.1，KMP）=====
-    // 取代原先放在 :app 里的 Android-only fork
+    // ===== 液态玻璃效果库（fork 自 kyant0:backdrop 2.0.1，KMP）=====
     implementation(project(":backdrop"))
 
-    // ===== 小米风格 UI 组件库（fork 自 top.yukonga.miuix.kmp:miuix-ui 0.9.3，KMP）=====
-    // 取代原先放在 :app 里的 Android-only fork；包名不变，定制全部保留在模块内
+    // ===== 小米风格 UI 组件库（fork 自 miuix-ui 0.9.3，KMP；定制全在模块内）=====
     implementation(project(":miuix"))
 
     // ===== 小米穿戴（手表 interconnect）=====
@@ -110,12 +106,9 @@ dependencies {
     implementation(libs.androidx.webkit)
 
     // ===== Miuix UI =====
-    // miuix-ui 已 fork 到 :miuix 模块（KMP），不再使用 jar 依赖。
-    //
-    // ⚠ 下面每个官方子库**都必须 exclude 官方 miuix-ui**：它们各自会传递依赖
-    // miuix-ui，与 fork 同包同名。Android 上类路径按名去重、不报错，但版本错配会
-    // 在运行某条路径时炸（NoSuchMethodError）；Kotlin/Native 上是链接期硬错误
-    // （IrPropertySymbolImpl is already bound）。
+    // ⚠ 下面每个官方子库都必须 exclude 官方 miuix-ui：它们各自传递依赖 miuix-ui，
+    // 与本模块的 fork 同包同名。Android 上类路径按名去重、不报错，但版本错配会在
+    // 运行时炸（NoSuchMethodError）；Kotlin/Native 上是链接期硬错误。
     val excludeOfficialMiuixUi: ModuleDependency.() -> Unit = {
         exclude(group = "top.yukonga.miuix.kmp", module = "miuix-ui")
     }
@@ -129,9 +122,9 @@ dependencies {
     // :miuix 的 androidMain（SearchBar / BottomSheet 返回键处理）需要
     implementation(libs.navigationevent.compose)
 
-    // 其编译的 AGSL 运行时需要 org.jetbrains 注解
+    // miuix blur 编译的 AGSL 运行时需要 org.jetbrains 注解；
+    // Material Color（miuix theme 的 Monet 取色依赖）
     implementation("org.jetbrains:annotations:26.1.0")
-    // Material Color（miuix theme 依赖）
     implementation(libs.materialKolor.utilities)
 
     // ===== 序列化 =====
@@ -154,7 +147,7 @@ dependencies {
 }
 
 // ===== 教务索引内置 =====
-// Release 构建时从云端拉取最新 school_index.pb 打包进 assets
+// Release 构建时从云端拉取最新 school_index.pb 打包进 assets（每次拉取，不缓存）
 tasks.register<DefaultTask>("downloadEduIndex") {
     group = "eduimport"
     description = "每次 Release 构建拉取最新 school_index.pb 到 assets/eduloader"
@@ -174,6 +167,7 @@ tasks.register<DefaultTask>("downloadEduIndex") {
             }
             val contentType = connection.contentType?.lowercase() ?: ""
             if (contentType.contains("text/html")) {
+                // gitee 被反爬拦截时返回 HTML 挑战页，不能让它进 assets
                 throw RuntimeException("gitee 返回了 HTML 页面（可能被反爬拦截）")
             }
             connection.inputStream.use { inbound ->

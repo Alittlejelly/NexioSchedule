@@ -12,7 +12,7 @@ import kotlinx.coroutines.CoroutineDispatcher
  * - Kotlin/Native（含 iOS）：**`internal`** —— 直接引用报
  *   `Cannot access 'val IO: CoroutineDispatcher': it is internal in 'kotlinx.coroutines.Dispatchers'`
  *
- * 这是 `:core` 加 `linuxX64` 编译门禁后立刻暴露的：此前只有 android + jvm 两个 JVM 目标，
+ * 这是 `:core` 引入 iOS 编译门禁后立刻暴露的：此前只有 android + jvm 两个 JVM 目标，
  * commonMain 从没被平台中立的 stdlib 检查过，所以 3 个文件里的 5 处 `Dispatchers.IO`
  * 一路绿灯 —— 一旦真正编 iOS 就会全部失败。
  *
