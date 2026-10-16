@@ -184,15 +184,36 @@ fun SwitchScheduleScreen(
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val screenGraphicsLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
-    // Retain drawing commands only when a return morph requests a card.
-    val lastRecordedSnapshotToken = remember { intArrayOf(0) }
-    var snapshotToken by remember { mutableIntStateOf(0) }
+    // 录制层是否已过期（页面又画过但没重录）。列表**停稳**后补录一次（见下面的
+    // drawWithContent）：退出形变要裁这一层，提前录好 → captureCardLayer() 一帧都不用等。
+    // ⚠ 不能用「非滚动就录」：滚动停下后顶栏材质的 Animatable 还要跑 0.4~0.6s，
+    //    那段时间每帧都画 → 会变成每帧一次整屏离屏渲染。必须等真正停稳。
+    val layerStale = remember { booleanArrayOf(true) }
+    // 上提到这里：预热要读 isScrollInProgress，draw 修饰符也要读，都在 Box 之前。
+    val listState = rememberLazyListState()
+    var listSettled by remember { mutableStateOf(false) }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            listSettled = false
+        } else {
+            // 与主界面预热同一个防抖口径；写 state 保证一定来一帧 draw 去补录
+            delay(200.milliseconds)
+            listSettled = true
+        }
+    }
+    // 强制录制请求：必须是 state —— 页面静止不重画时，只有写 state 才能保证一定来一帧 draw。
+    var recordRequest by remember { mutableIntStateOf(0) }
+    val lastRecordedRequest = remember { intArrayOf(-1) }
     var contentRootX by remember { mutableFloatStateOf(0f) }
     var contentRootY by remember { mutableFloatStateOf(0f) }
     suspend fun captureCardLayer(bounds: androidx.compose.ui.geometry.Rect?): TransitionLayerSnapshot? {
         if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) return null
-        val token = ++snapshotToken
-        while (lastRecordedSnapshotToken[0] < token) withFrameNanos { }
+        // 图层新鲜就直接用（静止常录的正常路径，零等待）；
+        // 过期（滚动中/还没录过）才发一次强制请求并等它落定。
+        if (layerStale[0]) {
+            recordRequest++
+            while (lastRecordedRequest[0] != recordRequest) withFrameNanos { }
+        }
         val localBounds = androidx.compose.ui.geometry.Rect(
             (bounds.left - contentRootX) / pageScale,
             (bounds.top - contentRootY) / pageScale,
@@ -841,13 +862,20 @@ fun SwitchScheduleScreen(
                         onContentOffset(pos.x, pos.y)
                     }
                     .drawWithContent {
-                        if (lastRecordedSnapshotToken[0] != snapshotToken) {
+                        // 静止时常录（退出形变要用这一层，提前录好 = 退出零等待）；
+                        // 滚动中只处理显式强制请求，其余帧标脏不录。
+                        val forced = lastRecordedRequest[0] != recordRequest
+                        // ⚠ embedded（平板左栏）没有卡片形变、不会调 captureCardLayer，别白白常录。
+                        // 只用「停稳」信号（防抖过），不用 isScrollInProgress —— 见上面的说明。
+                        if (forced || (!embedded && listSettled)) {
                             screenGraphicsLayer.record {
                                 this@drawWithContent.drawContent()
                             }
-                            lastRecordedSnapshotToken[0] = snapshotToken
+                            lastRecordedRequest[0] = recordRequest
+                            layerStale[0] = false
                             drawLayer(screenGraphicsLayer)
                         } else {
+                            layerStale[0] = true
                             drawContent()
                         }
                     }
@@ -855,7 +883,6 @@ fun SwitchScheduleScreen(
             ) {
                 // 注意：这里不要再 collect firstVisibleItemScrollOffset 写 state ——
                 // 那会让整页在滚动时每像素重组一次（listScrollY 之前根本没被读取，纯属白烧）。
-                val listState = rememberLazyListState()
                 if (embedded) {
                     val currentOnScrollYChanged by rememberUpdatedState(onScrollYChanged)
                     LaunchedEffect(listState) {
