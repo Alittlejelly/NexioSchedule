@@ -1540,7 +1540,7 @@ private fun ScheduleCardRow(
         } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                showIndication = true,
+                showIndication = false,
                 insideMargin = PaddingValues(
                     horizontal = 16.dp,
                     vertical = 16.dp
