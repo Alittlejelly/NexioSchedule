@@ -14,6 +14,7 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.todayIn
 import platform.Foundation.NSThread
 import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_global_queue
 import platform.darwin.dispatch_get_main_queue
 import kotlin.concurrent.Volatile
 
@@ -192,7 +193,21 @@ object IosCourseNotifier {
         ensureAuthorization { granted ->
             // Read current switches after the asynchronous permission response: the
             // user may have disabled reminders while the prompt was open.
-            if (granted) writeAll(repo, repo.getPreClassReminder(), repo.getNextDayReminder())
+            if (granted) {
+                // ⚠ writeAll 是「逐日 DayScheduleResolver + 排序」的纯计算，实测在 iOS 上
+                // 占主线程 ~250ms（sample 抓到的最大单项）。它恰好挂在切课表的
+                // reloadCourses() 上，压在主线程就会把那一帧直接卡死 —— 形变要等它。
+                // 它不需要主线程：只有最后一步 nativeWrite 碰 UNUserNotificationCenter，
+                // 而那套 API 的增删是线程安全的。
+                val work = {
+                    writeAll(repo, repo.getPreClassReminder(), repo.getNextDayReminder())
+                }
+                if (NSThread.currentThread.isMainThread) {
+                    dispatch_async(dispatch_get_global_queue(0L, 0u)) { work() }
+                } else {
+                    work()
+                }
+            }
         }
     }
 

@@ -19,6 +19,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import platform.Foundation.NSThread
 import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_global_queue
 import platform.darwin.dispatch_get_main_queue
 
 /**
@@ -62,14 +63,18 @@ object IosWidgetSnapshot {
         // Always enqueue the export, including main-thread callers. Imports can
         // commit several settings together; exporting inline sees partial state
         // and may recursively re-enter through the Swift callback.
-        dispatch_async(dispatch_get_main_queue()) {
-            refreshQueued = false
+        // ⚠ buildSnapshot 里也是「逐日 DayScheduleResolver + 排序 + 拼 JSON」的重活，
+        // 实测占主线程 ~190ms，而 reschedule() 第一行就会调到这里 —— 切课表时它和
+        // 提醒重排一起把那一帧卡死。计算与写盘都挪到后台队列；Swift 侧的
+        // NativeCourseNotifier 自己用信号量串行化写入，跨线程调用是安全的。
+        dispatch_async(dispatch_get_global_queue(0L, 0u)) {
             try {
                 nativeWrite(buildSnapshot(CourseRepository.getInstance()))
             } catch (error: Exception) {
                 // Preserve the last valid on-disk snapshot when resolution fails.
                 NexioLog.e(TAG, "Failed to export widget schedule snapshot", error)
             }
+            onMain { refreshQueued = false }
         }
     }
 
