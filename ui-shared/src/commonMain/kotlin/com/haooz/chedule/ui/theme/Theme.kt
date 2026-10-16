@@ -1,6 +1,8 @@
 /** 应用主题 - 定义 Material3 主题配色方案 */
 package com.haooz.chedule.ui.theme
 
+import androidx.compose.foundation.Indication
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -140,6 +142,12 @@ fun CourseScheduleTheme(
     MiuixTheme(
         controller = controller,
         content = {
+            // ⚠ M3 的 MaterialTheme 自己会提供 `LocalIndication = ripple()`，它套在 MiuixTheme
+            //   **里层** → 把 miuix 的自定义按压反馈（MiuixIndication）顶掉。必须在进入
+            //   MaterialTheme 之前先把当前值抓出来，再在里层写回去。
+            //   主界面靠 CourseScheduleApp 内层的 MiuixTheme 自愈；二级页面走 AppNavHost、
+            //   全程没有内层主题，只能靠这里兜住，否则整页按压反馈变 Material 涟漪。
+            val miuixIndication: Indication = LocalIndication.current
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
                 LocalHapticFeedback provides gatedHaptic,
@@ -155,7 +163,9 @@ fun CourseScheduleTheme(
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
             ) {
                 MaterialTheme(colorScheme = materialColors) {
-                    content()
+                    CompositionLocalProvider(LocalIndication provides miuixIndication) {
+                        content()
+                    }
                 }
             }
         }
