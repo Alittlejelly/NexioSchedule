@@ -460,6 +460,12 @@ class IosAppHost {
         }
     }
 
+    fun updateHorizontalSafeArea(left: Double, right: Double) {
+        if (!left.isFinite() || !right.isFinite()) return
+        navigation.leftSafeAreaInset = left.coerceAtLeast(0.0)
+        navigation.rightSafeAreaInset = right.coerceAtLeast(0.0)
+    }
+
     fun updateBottomBarInset(points: Double) {
         val inset = points.coerceAtLeast(0.0)
         if (kotlin.math.abs(navigation.bottomBarInset - inset) > 0.5) {

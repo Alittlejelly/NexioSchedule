@@ -266,7 +266,7 @@ private final class AppHostController: UIViewController {
         embed(host.mainController, in: mainContainer)
         pin(chromeContainer, to: mainContainer)
         embed(chromeController, in: chromeContainer)
-        chromeContainer.tabBar = chromeController.tabBar
+        chromeContainer.chromeController = chromeController
         embed(host.overlayController, in: view)
 
         chromeController.onUserSelection = { [weak self] index in
@@ -596,6 +596,11 @@ private final class AppHostController: UIViewController {
     private func reportBottomInset() {
         guard isViewLoaded, view.window != nil else { return }
         let bar = chromeController.tabBar
+        let contentInsets = chromeController.selectedViewController?.view.safeAreaInsets ?? .zero
+        host.updateHorizontalSafeArea(
+            left: Double(max(view.safeAreaInsets.left, contentInsets.left)),
+            right: Double(max(view.safeAreaInsets.right, contentInsets.right))
+        )
         let inset: CGFloat
         if chromeContainer.isHidden || bar.isHidden || bar.bounds.isEmpty {
             inset = 0
@@ -666,15 +671,20 @@ private final class AppHostController: UIViewController {
 
 /// Empty native tab content must not intercept the Compose content below it.
 private final class TabBarPassthroughView: UIView {
-    weak var tabBar: UITabBar?
+    weak var chromeController: UITabBarController?
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard !isHidden, alpha > 0.01, isUserInteractionEnabled,
-              let bar = tabBar, !bar.isHidden, bar.alpha > 0.01,
-              bar.isUserInteractionEnabled else { return nil }
-        let barPoint = convert(point, to: bar)
-        guard bar.point(inside: barPoint, with: event) else { return nil }
-        return bar.hitTest(barPoint, with: event)
+              let controller = chromeController,
+              let hit = super.hitTest(point, with: event),
+              hit !== self, hit !== controller.view else { return nil }
+        // UIKit may host vertical tab controls outside the public UITabBar view.
+        // Hit-test the actual hierarchy, but let the empty tab content pass through.
+        if let content = controller.selectedViewController?.view,
+           hit === content || hit.isDescendant(of: content) {
+            return nil
+        }
+        return hit
     }
 }
 

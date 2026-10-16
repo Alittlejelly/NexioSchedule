@@ -1,5 +1,10 @@
 package com.haooz.chedule.ui.components
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,7 +92,11 @@ fun DocumentPageScaffold(
 
     CompositionLocalProvider(LocalOverScrollState provides pageOverScrollState) {
         Scaffold(
-            modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
+            modifier = Modifier
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                )
+                .consumeWindowInsets(PaddingValues(top = nativeBarInset)),
             topBar = {
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,

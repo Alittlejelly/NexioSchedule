@@ -27,6 +27,8 @@ class HostNavigationState {
     var showsNativeTabBar by mutableStateOf(true)
     var isDark by mutableStateOf(false)
     var bottomBarInset by mutableStateOf(0.0)
+    var leftSafeAreaInset by mutableStateOf(0.0)
+    var rightSafeAreaInset by mutableStateOf(0.0)
     var topBarInset by mutableStateOf(0.0)
     var onTabSelected: ((Int) -> Unit)? = null
     /**

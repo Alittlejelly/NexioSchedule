@@ -21,6 +21,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -2724,7 +2729,14 @@ fun CourseScheduleApp(
             val nativeBarInset = (hostNav?.topBarInset ?: 0.0).dp
             val scaffoldContent = @Composable {
                 Scaffold(
-                    modifier = Modifier.consumeWindowInsets(PaddingValues(top = nativeBarInset)),
+                    modifier = Modifier
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal).union(WindowInsets(
+                                left = (hostNav?.leftSafeAreaInset ?: 0.0).toFloat().dp,
+                                right = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp,
+                            ))
+                        )
+                        .consumeWindowInsets(PaddingValues(top = nativeBarInset)),
                     bottomBar = {
                         // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动
                         if (navBarStyle != "rail" && !nativeBottomBar) {
