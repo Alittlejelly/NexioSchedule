@@ -1,6 +1,8 @@
 /** 应用主题 - 定义 Material3 主题配色方案 */
 package com.haooz.chedule.ui.theme
 
+import androidx.compose.foundation.Indication
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +17,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalDensity
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
@@ -140,6 +144,13 @@ fun CourseScheduleTheme(
     MiuixTheme(
         controller = controller,
         content = {
+            //   MaterialTheme 会自己提供两样东西，都套在 MiuixTheme **里层**，
+            //   把 miuix 侧的默认值顶掉 —— 必须在进入 MaterialTheme 之前捕获、再在里层写回：
+            //   1. `LocalIndication = ripple()` —— 顶掉 miuix 的自定义按压反馈（MiuixIndication）。
+            //   2. `ProvideTextStyle(bodyLarge)`（16sp / 24sp 行高 / 0.5sp 字距）—— 只写
+            //      `fontSize` 不写 `lineHeight` 的 Text
+            val miuixIndication: Indication = LocalIndication.current
+            val outerTextStyle: TextStyle = LocalTextStyle.current
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
                 LocalHapticFeedback provides gatedHaptic,
@@ -155,7 +166,12 @@ fun CourseScheduleTheme(
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
             ) {
                 MaterialTheme(colorScheme = materialColors) {
-                    content()
+                    CompositionLocalProvider(
+                        LocalIndication provides miuixIndication,
+                        LocalTextStyle provides outerTextStyle,
+                    ) {
+                        content()
+                    }
                 }
             }
         }
