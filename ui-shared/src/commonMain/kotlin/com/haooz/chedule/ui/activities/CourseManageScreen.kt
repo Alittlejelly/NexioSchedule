@@ -11,6 +11,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -43,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,6 +78,8 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Contacts
+import top.yukonga.miuix.kmp.icon.extended.Location
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -285,15 +291,16 @@ fun CourseManageScreen(
                             }
 
                             val representative = courseList.first()
-                            // 卡片摘要里的时段：courseList 已排好序，去重后直接拼即可。
+                            // 卡片摘要里的时段：courseList 已排好序，去重后逐条交给卡片自己排成小标签，
+                            // 不再拼成一长串顿号连接（原来挤在两行里既读不出条数也读不出边界）。
                             //判定「已排时间」用 hasScheduledTime 而不是 startSection > 0，
                             // 否则自定义时间的课（节次号为 0）会被整条滤掉、摘要变空
-                            val daySectionInfo = courseList
+                            val daySections = courseList
                                 .filter { CourseSorting.hasScheduledTime(it) }
                                 .distinctBy { "${it.dayOfWeek}_${it.startSection}_${it.endSection}_${it.customStartTime}_${it.customEndTime}" }
-                                .joinToString("、") {
+                                .map {
                                     val day = dayNames.getOrElse(it.dayOfWeek) { "?" }
-                                    "${day}${it.getTimeDisplayText()}"
+                                    "$day ${it.getTimeDisplayText()}"
                                 }
 
                             val teachers = courseList
@@ -322,7 +329,8 @@ fun CourseManageScreen(
                                     teacher = teachers,
                                     classroom = classrooms,
                                     color = Color(representative.colorRes),
-                                    daySectionInfo = daySectionInfo,
+                                    daySections = daySections,
+                                    sectionCount = courseList.size,
                                     isHidden = courseList.any { it.id in hiddenCourseIds },
                                     isSelected = courseName == selectedCourseName,
                                     onClick = { left, top, width, height, snapshot ->
@@ -653,6 +661,82 @@ fun CourseManageScreen(
     }
 }
 
+/**
+ * 卡片排版参数：原来正文 11~12sp 太细、且没有显式 lineHeight（中文字体默认 leading 偏大），
+ * 再叠上散落的 8/4/2/4dp Spacer，观感就是「字小、行松、全是纯文本」。
+ * 现在统一：标题 16/22sp，正文 13/18sp，标签 11.5/15sp，组间距 10/4/8dp 三档。
+ */
+private val MANAGE_CARD_TITLE_SIZE = 16.sp
+private val MANAGE_CARD_TITLE_LINE = 22.sp
+private val MANAGE_CARD_BODY_SIZE = 13.sp
+private val MANAGE_CARD_BODY_LINE = 18.sp
+private val MANAGE_CARD_CHIP_SIZE = 11.5.sp
+private val MANAGE_CARD_CHIP_LINE = 15.sp
+/** 时段标签最多铺 4 枚，再多折叠成「+N」 */
+private const val MANAGE_CARD_MAX_CHIPS = 4
+/**
+ * 卡片内所有「课程色淡底」标记（时段标签、标题行「N 节」徽标）共用的一份 alpha。
+ * 两处原来是各自写的常量，暗色下标签 0.24 / 徽标 0.28，看起来不是一个体系 —— 统一成一份。
+ */
+private val MANAGE_CARD_TINT_LIGHT = 0.15f
+private val MANAGE_CARD_TINT_DARK = 0.18f
+
+/** 课程色淡底：亮/暗各一份 alpha，卡上标记统一取这里 */
+@Composable
+private fun courseTintBase(color: Color): Color =
+    color.copy(alpha = if (isAppDarkTheme()) MANAGE_CARD_TINT_DARK else MANAGE_CARD_TINT_LIGHT)
+
+/** 教师 / 教室这类元信息行：小图标给出语义锚点，避免三行纯文本读起来是一片。 */
+@Composable
+private fun CourseMetaRow(
+    icon: ImageVector,
+    text: String,
+    iconTint: Color,
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.padding(top = 2.dp).size(13.dp),
+            tint = iconTint
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = text,
+            fontSize = MANAGE_CARD_BODY_SIZE,
+            lineHeight = MANAGE_CARD_BODY_LINE,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.72f)
+        )
+    }
+}
+
+/** 单个时段标签：原来一长串顿号连接改成可数的小块，一眼能看出有几段。 */
+@Composable
+private fun SectionChip(
+    text: String,
+    color: Color,
+) {
+    Box(
+        modifier = Modifier
+            .squircleClip(6.dp)
+            .background(courseTintBase(color))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                fontSize = MANAGE_CARD_CHIP_SIZE,
+            lineHeight = MANAGE_CARD_CHIP_LINE,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.85f)
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CourseManageCard(
     courseName: String,
@@ -660,7 +744,9 @@ private fun CourseManageCard(
     classroom: String,
     color: Color,
     cardAlpha: Float = 0.15f,
-    daySectionInfo: String,
+    daySections: List<String>,
+    /** 同名课程聚合出的记录条数，>1 时在标题行末尾给一枚「N 节」标记 */
+    sectionCount: Int = 1,
     isHidden: Boolean = false,
     isSelected: Boolean = false,
     onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: ImageBitmap?) -> Unit,
@@ -697,55 +783,91 @@ private fun CourseManageCard(
         Card(
             cornerRadius = 16.dp,
             showIndication = true,
-            insideMargin = PaddingValues(16.dp),
+            // 14dp：手机两列时卡内可用宽度只有 ~126dp，16dp 会把正文挤得更窄
+            insideMargin = PaddingValues(14.dp),
             colors = CardDefaults.defaultColors(
                 color = if (isHidden) ComposeColor.Transparent else color.copy(alpha = cardAlpha)
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
         Column(modifier = Modifier.graphicsLayer { alpha = if (isHidden) 0f else 1f }) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(ContinuousRoundedRectangle(4.dp))
-                    .background(color)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = courseName,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = MiuixTheme.colorScheme.onBackground
-            )
-            Spacer(modifier = Modifier.height(4.dp))
+            // 标题行：课程色竖条 + 课程名（原来 8dp 色块独占一行，白占 16dp 高度）
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 3.dp, height = 16.dp)
+                        .clip(ContinuousRoundedRectangle(1.5.dp))
+                        .background(color)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = courseName,
+                    fontSize = MANAGE_CARD_TITLE_SIZE,
+                    lineHeight = MANAGE_CARD_TITLE_LINE,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MiuixTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (sectionCount > 1) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .squircleClip(5.dp)
+                            .background(courseTintBase(color))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "$sectionCount 节",
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.75f)
+                        )
+                    }
+                }
+            }
+
+            val hasMeta = teacher.isNotBlank() || classroom.isNotBlank()
+            if (hasMeta) Spacer(modifier = Modifier.height(10.dp))
             if (teacher.isNotBlank()) {
-                Text(
+                CourseMetaRow(
+                    icon = MiuixIcons.Contacts,
                     text = teacher,
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                    iconTint = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.45f)
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            if (teacher.isNotBlank() && classroom.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+            }
             if (classroom.isNotBlank()) {
-                Text(
+                CourseMetaRow(
+                    icon = MiuixIcons.Location,
                     text = classroom,
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                    iconTint = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.45f)
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            if (daySectionInfo.isNotBlank()) {
-                Text(
-                    text = daySectionInfo,
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                )
+            if (hasMeta) Spacer(modifier = Modifier.height(8.dp))
+
+            if (daySections.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // 最多 4 枚，超出的折叠成 +N，避免一个课占满整屏高度
+                    val visible = daySections.take(MANAGE_CARD_MAX_CHIPS)
+                    visible.forEach { SectionChip(text = it, color = color) }
+                    if (daySections.size > visible.size) {
+                        SectionChip(text = "+${daySections.size - visible.size}", color = color)
+                    }
+                }
             } else {
                 Text(
                     text = "点击设置时间",
-                    fontSize = 12.sp,
+                    fontSize = MANAGE_CARD_BODY_SIZE,
+                    lineHeight = MANAGE_CARD_BODY_LINE,
                     color = MiuixTheme.colorScheme.primary
                 )
             }
@@ -773,7 +895,7 @@ private fun NewCourseCard(
         colors = CardDefaults.defaultColors(
             color = if (isAppDarkTheme()) ComposeColor(0xFF121212) else ComposeColor(0xFFEEEEEE)
         ),
-        modifier = Modifier.fillMaxWidth().height(120.dp),
+        modifier = Modifier.fillMaxWidth().height(132.dp),
         onClick = onClick
     ) {
         Column(
