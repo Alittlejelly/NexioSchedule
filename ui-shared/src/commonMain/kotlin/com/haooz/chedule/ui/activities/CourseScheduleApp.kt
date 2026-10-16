@@ -113,6 +113,7 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.Notice
 import com.haooz.chedule.data.NoticeFetcher
@@ -1471,6 +1472,23 @@ fun CourseScheduleApp(
     }
     val switchReturnBgScrim = remember { Animatable(0f) }
     val screenGraphicsLayer = rememberGraphicsLayer()
+    // 切换课表：进入方向要复用「上次退出录到的卡片」，但**图层跨不过组合销毁** ——
+    // `GraphicsLayer.record{}` 里 `drawLayer(x)` 存的是对 x 的引用，切换页一销毁那层就废。
+    // 所以只能在退出那一帧把卡片区域**固化成位图**（位图不依赖任何组合），
+    // 下次进入直接画它。进入方向因此零录制。
+    var retainedSwitchCardBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    // 转位图用的临时小图层：只承载卡片那一块，避免整屏 toImageBitmap（12MB + 整屏回读）。
+    val retainedSwitchCardScratchLayer = rememberGraphicsLayer()
+    val switchLayerLayoutDirection = LocalLayoutDirection.current
+    // 本次形变要画的卡片位图（只有进入方向用；退出方向仍用实时卡片图层）。
+    var switchCardBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    // 读回上次会话退出时固化的卡片快照：位图活不过进程，只有文件能留到下次启动。
+    // 桌面上 Store 未初始化/无实现，返回 null，退化成会话内复用。
+    LaunchedEffect(Unit) {
+        if (retainedSwitchCardBitmap == null) {
+            retainedSwitchCardBitmap = SwitchCardSnapshotStore.load()
+        }
+    }
     // Retain drawing commands on demand for snapshots and schedule-library morphs.
     class MainSnapshotRequester {
         var lastRecordedToken: Int = 0
@@ -2439,10 +2457,14 @@ fun CourseScheduleApp(
             switchPendingReverse = false
             switchPreparingLayer = false
             switchAnimRunning = true
+            // 这也是「进入」方向（p→0），卡片来源同样是上次退出固化的位图
+            switchCardSnapshot = null
+            switchCardBitmap = retainedSwitchCardBitmap
             switchAnimJob = coroutineScope.launch {
                 switchAnimProgress.animateTo(0f, tween(350, easing = OobeCubicOutEasing))
                 switchOverlayActive = false
                 switchCardSnapshot = null
+                switchCardBitmap = null
                 switchCardBounds = null
                 switchAnimRunning = false
             }
@@ -5077,6 +5099,43 @@ fun CourseScheduleApp(
                                 cardLayer != null && it.width > 0f && it.height > 0f
                             }
                             switchCardSnapshot = cardLayer
+                            switchCardBitmap = null
+                            // 固化给**下次进入**复用（进入方向不录制任何东西）
+                            if (cardLayer != null) {
+                                launch {
+                                    val layerSize = cardLayer.layer.size
+                                    val src = cardLayer.bounds ?: Rect(
+                                        0f,
+                                        0f,
+                                        layerSize.width.toFloat(),
+                                        layerSize.height.toFloat(),
+                                    )
+                                    val cardW = src.width.toInt()
+                                    val cardH = src.height.toInt()
+                                    val bmp = if (cardW <= 0 || cardH <= 0) {
+                                        null
+                                    } else {
+                                        runCatching {
+                                            // 只把**卡片那一块**录进一张卡片大小的小图层，再转位图
+                                            retainedSwitchCardScratchLayer.record(
+                                                density,
+                                                switchLayerLayoutDirection,
+                                                IntSize(cardW, cardH),
+                                            ) {
+                                                translate(-src.left, -src.top) {
+                                                    drawLayer(cardLayer.layer)
+                                                }
+                                            }
+                                            retainedSwitchCardScratchLayer.toImageBitmap()
+                                        }.getOrNull()
+                                    }
+                                    if (bmp != null) {
+                                        retainedSwitchCardBitmap = bmp
+                                        // 落盘：保持到下次切换课表退出为止
+                                        SwitchCardSnapshotStore.save(bmp)
+                                    }
+                                }
+                            }
                             val remainingDuration =
                                 ((1f - switchAnimProgress.value) * 560).toInt().coerceAtLeast(1)
                             switchAnimProgress.animateTo(
@@ -5087,6 +5146,7 @@ fun CourseScheduleApp(
                             FeatureLog.t("切换课表", "close", "forward=$wasForward")
                             switchOverlayActive = false
                             switchCardSnapshot = null
+                            switchCardBitmap = null
                             switchCardBounds = null
                             switchAnimRunning = false
                         }
@@ -5126,6 +5186,8 @@ fun CourseScheduleApp(
                                     it.width > 0f && it.height > 0f
                                 }
                                 switchCardSnapshot = null
+                                // 复用上次退出固化的卡片位图 —— 进入零录制
+                                switchCardBitmap = retainedSwitchCardBitmap
                                 val remainingDuration = 350
                                 val morphExitEase = CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
                                 launch {
@@ -5141,6 +5203,7 @@ fun CourseScheduleApp(
                                 FeatureLog.t("切换课表", "anim_enter_end", "p=${switchAnimProgress.value}")
                                 switchOverlayActive = false
                                 switchCardSnapshot = null
+                                switchCardBitmap = null
                                 switchCardBounds = null
                                 switchAnimRunning = false
                             }
@@ -5167,8 +5230,10 @@ fun CourseScheduleApp(
             SwitchMorphOverlay(
                 active = switchOverlayActive,
                 progress = switchAnimProgress,
+                entering = switchAnimForward,
                 cardBounds = switchCardBounds,
                 cardSnapshot = switchCardSnapshot,
+                cardBitmap = switchCardBitmap,
                 mainLayer = screenGraphicsLayer,
                 screenCornerRadius = screenCornerRadius,
                 isDark = isDark,
@@ -5203,8 +5268,15 @@ fun CourseScheduleApp(
 private fun SwitchMorphOverlay(
     active: Boolean,
     progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    /** true = 进入切换课表页（p: 1→0）；false = 退出回主界面（p: 0→1）。 */
+    entering: Boolean,
     cardBounds: Rect?,
     cardSnapshot: TransitionLayerSnapshot?,
+    /**
+     * 进入方向复用的卡片位图（退出那一帧从卡片图层固化而来）。
+     * 图层跨不过切换页的组合销毁，所以跨次复用的载体只能是位图。
+     */
+    cardBitmap: ImageBitmap?,
     mainLayer: GraphicsLayer,
     screenCornerRadius: Float,
     isDark: Boolean,
@@ -5220,6 +5292,8 @@ private fun SwitchMorphOverlay(
 
     // The source layer stays owned by the main composition throughout the morph.
     val cardImage = remember(cardSnapshot) { cardSnapshot }
+    // 本次形变有没有可用的卡片内容：进入看位图，退出看实时图层。
+    val hasCard = if (entering) cardBitmap != null else cardImage != null
 
     val sBounds = cardBounds
     val cLeft: Float
@@ -5258,26 +5332,60 @@ private fun SwitchMorphOverlay(
             )
             .clip(ContinuousRoundedRectangle(cRadius))
             .graphicsLayer {
-                // With no destination bitmap, blend into the live list at the end
-                // of entry (and out of it at the start of the reverse transition).
-                alpha = if (cardImage == null) (p / 0.2f).coerceIn(0f, 1f) else 1f
+                // 进入方向：有可交叉的卡片时容器整段全实
+                alpha = if (entering) {
+                    if (!hasCard) (p / 0.2f).coerceIn(0f, 1f) else 1f
+                } else {
+                    1f
+                }
             }
             .background(MiuixTheme.colorScheme.background)
     ) {
+        if (cardBitmap != null) {
+            // 进入方向：画退出那一帧固化下来的卡片位图。
+            // 它是容器的子节点（.align(TopStart)）→ 固定在快照顶部、跟着容器一起缩。
+            Image(
+                bitmap = cardBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .clip(ContinuousRoundedRectangle(20.dp))
+                    .graphicsLayer {
+                        // 关键：必须在主界面快照开始化之前（p=0.8）就铺满
+                        alpha = ((1f - p) / 0.2f).coerceIn(0f, 1f)
+                    },
+                contentScale = ContentScale.None,
+            )
+        }
         if (cardImage != null) {
             TransitionLayerImage(
                 snapshot = cardImage,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .clip(ContinuousRoundedRectangle(20.dp))
-                    .graphicsLayer { alpha = (1f - p * 2f).coerceIn(0f, 1f) },
+                    .graphicsLayer {
+                        alpha = if (entering) {
+                            ((1f - p) / 0.2f).coerceIn(0f, 1f)
+                        } else {
+                            (1f - p * 2f).coerceIn(0f, 1f)
+                        }
+                    },
                 contentScale = ContentScale.None
             )
         }
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = ((p - 0.2f) / 0.7f).coerceIn(0f, 1f) }
+                .graphicsLayer {
+                    alpha = when {
+                        !entering -> ((p - 0.2f) / 0.7f).coerceIn(0f, 1f)
+                        // 没有可交叉的卡片（本次会话第一次进入、还没退出过）：
+                        // 保持不透明、由容器 alpha 收尾，否则中段只剩容器纯色底。
+                        !hasCard -> 1f
+                        // 淡出：起点沿用你改的 0.8，终点 0.2（跨 0.6 个进度）
+                        else -> ((p - 0.2f) / 0.6f).coerceIn(0f, 1f)
+                    }
+                }
                 .drawWithContent {
                     val layerSize = mainLayer.size
                     if (layerSize.width > 0 && layerSize.height > 0) {

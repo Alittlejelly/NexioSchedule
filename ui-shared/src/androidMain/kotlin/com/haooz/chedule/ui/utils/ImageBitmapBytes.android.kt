@@ -1,0 +1,27 @@
+package com.haooz.chedule.ui.utils
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import java.io.ByteArrayOutputStream
+
+internal actual fun encodeImageBitmapPng(image: ImageBitmap): ByteArray? = runCatching {
+    val src = image.asAndroidBitmap()
+    // `GraphicsLayer.toImageBitmap()`（以及原生裁剪出来的）在 Android 上是 **HARDWARE** 位图，
+    // `compress()` 读不到它的像素；先 copy 成 ARGB_8888 软件位图（copy 对硬件源走 native 读回）。
+    val software = if (src.config == Bitmap.Config.HARDWARE) {
+        src.copy(Bitmap.Config.ARGB_8888, false)
+    } else {
+        src
+    }
+    ByteArrayOutputStream().use { out ->
+        if (software.compress(Bitmap.CompressFormat.PNG, 100, out)) out.toByteArray() else null
+    }
+}.getOrNull()
+
+internal actual fun decodeImageBitmapPng(bytes: ByteArray): ImageBitmap? = runCatching {
+    if (bytes.isEmpty()) return null
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+}.getOrNull()
