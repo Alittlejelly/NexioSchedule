@@ -92,6 +92,7 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
+import com.haooz.chedule.ui.theme.rememberCourseColors
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -302,6 +303,10 @@ fun CourseManageScreen(
                             }
 
                             val representative = courseList.first()
+                            // 卡片色与主课表页 CourseCard 同一套算法（rememberCourseColors）：
+                            // 莫奈取色下同名课稳定映射到主/次/第三色系，非莫奈时就是课程自定义色。
+                            // 不接的话同一门课在课表页和管理页会两个颜色。
+                            val courseColors = rememberCourseColors(representative, isDark)
                             // 卡片摘要里的时段：courseList 已排好序，去重后逐条交给卡片自己排成小标签，
                             // 不再拼成一长串顿号连接（原来挤在两行里既读不出条数也读不出边界）。
                             //判定「已排时间」用 hasScheduledTime 而不是 startSection > 0，
@@ -340,13 +345,13 @@ fun CourseManageScreen(
                                     courseName = courseName,
                                     teacher = teachers,
                                     classroom = classrooms,
-                                    color = Color(representative.colorRes),
+                                    color = courseColors.tint,
                                     daySections = daySections,
                                     sectionCount = courseList.size,
                                     isHidden = courseList.any { it.id in hiddenCourseIds },
                                     isSelected = courseName == selectedCourseName,
                                     onClick = { left, top, width, height, snapshot ->
-                                        onCourseClick(courseList, left, top, width, height, snapshot, Color(representative.colorRes), 0.15f)
+                                        onCourseClick(courseList, left, top, width, height, snapshot, courseColors.tint, 0.15f)
                                     },
                                     onLongPress = { left, top, width, height, snapshot ->
                                         onCourseLongPressLayer?.invoke(courseList, left, top, width, height, snapshot)
@@ -919,7 +924,10 @@ private fun NewCourseCard(
         showIndication = true,
         insideMargin = PaddingValues(16.dp),
         colors = CardDefaults.defaultColors(
-            color = if (isAppDarkTheme()) ComposeColor(0xFF121212) else ComposeColor(0xFFEEEEEE)
+            // 新建卡底色：莫奈取色下跟随 surfaceContainer（与课表页待放格、教务导入胶囊同一套）；
+            // 非莫奈保持原硬编码（亮 #EEEEEE / 暗 #121212）
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
+            else if (isAppDarkTheme()) ComposeColor(0xFF121212) else ComposeColor(0xFFEEEEEE)
         ),
         modifier = Modifier.fillMaxWidth().height(132.dp),
         onClick = onClick

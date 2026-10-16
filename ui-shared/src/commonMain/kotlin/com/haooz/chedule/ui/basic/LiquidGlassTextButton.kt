@@ -78,7 +78,8 @@ fun LiquidGlassTextButton(
     } else if (isLightTheme) {
         Color.White.copy(alpha = 0.76f)
     } else {
-        Color(0xFF242424).copy(alpha = 0.84f)
+        if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+        else Color(0xFF242424).copy(alpha = 0.84f)
     }
     val textColor = if (primary) {
         Color.White

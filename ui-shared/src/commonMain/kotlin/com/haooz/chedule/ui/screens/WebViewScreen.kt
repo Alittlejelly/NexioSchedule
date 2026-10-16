@@ -186,7 +186,11 @@ fun WebViewScreen(
         }
     }
     val isLightTheme = !isAppDarkTheme()
-    val webDockSurfaceColor = if (isLightTheme) {
+    // 底部胶囊底色：莫奈取色下跟随 surfaceContainer（与首页底栏、切换课表底栏同一套）；
+    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）
+    val webDockSurfaceColor = if (MiuixTheme.isDynamicColor) {
+        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = if (isLightTheme) 0.6f else 0.54f)
+    } else if (isLightTheme) {
         Color(0xFFFFFFFF).copy(alpha = 0.6f)
     } else {
         Color(0xFF121212).copy(alpha = 0.54f)

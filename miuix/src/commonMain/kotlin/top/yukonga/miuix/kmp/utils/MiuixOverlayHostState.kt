@@ -23,6 +23,7 @@ import top.yukonga.miuix.kmp.theme.LocalColors
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.LocalForcedDarkTheme
+import top.yukonga.miuix.kmp.theme.LocalMonetColorEnabled
 import top.yukonga.miuix.kmp.theme.LocalTextStyles
 import top.yukonga.miuix.kmp.theme.TextStyles
 
@@ -87,6 +88,12 @@ internal data class MiuixOverlayTheme(
     val overscrollFactory: OverscrollFactory?,
     val appDark: Boolean?,
     val forcedDark: Boolean?,
+    /**
+     * 宿主是否在用系统壁纸取色。必须随主题一起快照：弹窗内容（BlurBottomSheet 等）
+     * 是在 root host 位置渲染的，那里读不到声明页面的 CompositionLocal，
+     * 漏传就会退回默认 false → 弹窗里的莫奈分支重新变成死代码。
+     */
+    val monetColorEnabled: Boolean,
     val dismiss: (() -> Unit)?,
     val chromeLensEnabled: Boolean,
     val useFakeProgressiveBlur: Boolean,
@@ -103,6 +110,7 @@ internal data class MiuixOverlayTheme(
             LocalOverscrollFactory provides overscrollFactory,
             LocalAppSettingDark provides appDark,
             LocalForcedDarkTheme provides forcedDark,
+            LocalMonetColorEnabled provides monetColorEnabled,
             LocalDismissState provides dismiss,
             LocalChromeLensEnabled provides chromeLensEnabled,
             LocalUseFakeProgressiveBlur provides useFakeProgressiveBlur,
@@ -122,6 +130,7 @@ internal fun currentMiuixOverlayTheme(): MiuixOverlayTheme = MiuixOverlayTheme(
     overscrollFactory = LocalOverscrollFactory.current,
     appDark = LocalAppSettingDark.current,
     forcedDark = LocalForcedDarkTheme.current,
+    monetColorEnabled = LocalMonetColorEnabled.current,
     dismiss = LocalDismissState.current,
     chromeLensEnabled = LocalChromeLensEnabled.current,
     useFakeProgressiveBlur = LocalUseFakeProgressiveBlur.current,

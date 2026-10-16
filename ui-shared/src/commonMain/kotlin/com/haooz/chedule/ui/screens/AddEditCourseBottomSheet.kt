@@ -313,7 +313,10 @@ fun AddEditCourseBottomSheet(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
-                    color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
+                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface
                 ),
             ) {
@@ -376,7 +379,10 @@ fun AddEditCourseBottomSheet(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
-                    color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
+                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface
                 ),
             ) {
@@ -419,8 +425,12 @@ fun AddEditCourseBottomSheet(
                         for (day in 1..7) {
                             val isSelected = day == dayOfWeek
                             val bgColor = if (isSelected) MiuixTheme.colorScheme.primary
+                                // 未选中格子底：莫奈下 surfaceContainerHighest（比分组卡再亮一档）
+                                else if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHighest
                                 else if (isDark) Color(0xFF363636) else Color(0xFFF2F2F2)
-                            val textColor = if (isSelected) Color.White
+                            // 选中格文字：primary 底上的对色取 onPrimary（莫奈下 primary 亮度不定，
+                            // 死白对比可能不足）；非莫奈时 onPrimary 即白，行为不变
+                            val textColor = if (isSelected) MiuixTheme.colorScheme.onPrimary
                                 else MiuixTheme.colorScheme.onSurfaceVariantSummary
                             Box(
                                 modifier = Modifier
@@ -453,7 +463,10 @@ fun AddEditCourseBottomSheet(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
-                    color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
+                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface
                 ),
             ) {
@@ -505,7 +518,10 @@ fun AddEditCourseBottomSheet(
                     .fillMaxWidth()
                     .alpha(if (noDaySelected) 0.5f else 1f),
                 colors = CardDefaults.defaultColors(
-                    color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
+                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface
                 ),
             ) {

@@ -32,6 +32,7 @@ import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.LocalAppSettingDark
+import top.yukonga.miuix.kmp.theme.LocalMonetColorEnabled
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
 
@@ -40,7 +41,9 @@ const val APP_PREFS_NAME = "app_preferences"
 const val KEY_HAPTIC_FEEDBACK = "haptic_feedback_enabled"
 const val KEY_MONET_COLOR = "monet_color_enabled"
 
-private val LocalMonetColorEnabled = staticCompositionLocalOf { false }
+// 系统壁纸取色（Monet）的「是否生效」标志定义在 `:miuix`（`LocalMonetColorEnabled`）：
+// 弹窗组件要在 `:miuix` 内部读它来决定自建 controller 用不用 Monet 模式，
+// 而 `:miuix` 不能反向依赖本模块。本模块 provide 的是**有效值**（偏好 && 平台支持）。
 
 /** 系统壁纸取色目前仅由 Android 12 及以上提供，其他宿主保留原有主题。 */
 internal fun isMonetColorAvailable(): Boolean = currentDeviceInfo().sdkLevel >= 31
@@ -53,6 +56,7 @@ internal expect fun platformMonetMaterialColors(dark: Boolean): ColorScheme
 fun rememberAppThemeController(
     isDark: Boolean? = null,
     themeMode: String = "system",
+    // 传原始偏好值时本函数自行叠加平台判断；不传则吃到当前作用域已生效的取值。
     monetEnabled: Boolean = LocalMonetColorEnabled.current,
 ): ThemeController {
     val useMonet = monetEnabled && isMonetColorAvailable()
@@ -154,7 +158,9 @@ fun CourseScheduleTheme(
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
                 LocalHapticFeedback provides gatedHaptic,
-                LocalMonetColorEnabled provides monetEnabled,
+                // 弹窗（BlurBottomSheet）会读它来决定自建 controller 用不用 Monet 模式，
+                // 所以这里下发的是**有效值**：偏好开启 && 平台支持。
+                LocalMonetColorEnabled provides (monetEnabled && isMonetColorAvailable()),
                 LocalSystemDarkTheme provides systemDarkTheme,
                 // A null system source retains the platform fallback on other hosts.
                 // iOS resolves automatic mode using the externally supplied system appearance.

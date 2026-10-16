@@ -25,7 +25,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -55,12 +55,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberCollapsibleTopAppBarState
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import top.yukonga.miuix.kmp.theme.LocalForcedDarkTheme
+import top.yukonga.miuix.kmp.theme.LocalMonetColorEnabled
 import top.yukonga.miuix.kmp.utils.LocalOverScrollState
 import top.yukonga.miuix.kmp.utils.OverScrollState
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
@@ -69,9 +69,6 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -81,6 +78,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.DialogLayout
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.foundation.layout.fillMaxHeight as fillMaxHeightModifier
 
 /**
@@ -103,7 +101,6 @@ import androidx.compose.foundation.layout.fillMaxHeight as fillMaxHeightModifier
 fun BlurBottomSheetTablet(
     show: Boolean,
     title: String,
-    fillMaxHeight: Boolean = false,
     blurRadius: Float = 18f,
     dimBackground: Boolean = false,
     sheetMaxWidth: Dp = 560.dp,
@@ -142,17 +139,14 @@ fun BlurBottomSheetTablet(
             visibleState = visibleState,
             title = title,
             enableContentHeightSnap = enableContentHeightSnap,
-            blurRadius = blurRadius,
             dimBackground = dimBackground,
             sheetMaxWidth = sheetMaxWidth,
             sheetMaxHeight = sheetMaxHeight,
             sheetBackgroundColor = sheetBackgroundColor,
-            sheetBackgroundAlpha = sheetBackgroundAlpha,
             isBottomAligned = isBottomAligned,
             onDismissRequest = onDismissRequest,
             startAction = startAction,
             endAction = endAction,
-            liquidGlassBackdrop = liquidGlassBackdrop,
             onSheetContentBackdropCreated = onSheetContentBackdropCreated,
             content = content,
         )
@@ -165,25 +159,32 @@ private fun BlurBottomSheetTabletContent(
     visibleState: MutableState<Boolean>,
     fillMaxHeight: Boolean = false,
     title: String,
-    blurRadius: Float = 18f,
     dimBackground: Boolean = false,
     sheetMaxWidth: Dp = 560.dp,
     sheetMaxHeight: Dp = Dp.Unspecified,
     sheetBackgroundColor: Color? = null,
-    sheetBackgroundAlpha: Float? = null,
     isBottomAligned: Boolean = false,
     onDismissRequest: () -> Unit,
     startAction: @Composable (() -> Unit)? = null,
     endAction: @Composable (() -> Unit)? = null,
-    liquidGlassBackdrop: Backdrop? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // 弹窗始终跟随应用主题，不受壁纸强制主题影响
+    // 弹窗始终跟随应用主题，不受壁纸强制主题影响。
+    // ⚠ 取色开关必须一起带上（与手机版 BlurBottomSheet 同一套）：只给 Light/Dark 会让
+    // 弹窗内 isDynamicColor 恒为 false，莫奈取色分支全部失效。
     val sheetAppDark = rememberAppSettingDark()
-    val sheetAppController = remember(sheetAppDark) {
-        ThemeController(if (sheetAppDark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
+    val sheetMonetColor = LocalMonetColorEnabled.current
+    val sheetAppController = remember(sheetAppDark, sheetMonetColor) {
+        ThemeController(
+            when {
+                sheetMonetColor && sheetAppDark -> ColorSchemeMode.MonetDark
+                sheetMonetColor -> ColorSchemeMode.MonetLight
+                sheetAppDark -> ColorSchemeMode.Dark
+                else -> ColorSchemeMode.Light
+            }
+        )
     }
     CompositionLocalProvider(LocalForcedDarkTheme provides null) {
         MiuixTheme(controller = sheetAppController) {
@@ -204,7 +205,11 @@ private fun BlurBottomSheetTabletContent(
     }
 
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    val sheetBgColor = sheetBackgroundColor ?: if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
+    // sheet 底色：莫奈取色下跟随 surfaceContainer（与手机版 BlurBottomSheet 同一套）；
+    // 非莫奈保持原硬编码（暗 #1E1E1E / 亮 #F2F2F2）
+    val sheetBgColor = sheetBackgroundColor ?: if (MiuixTheme.isDynamicColor) {
+        MiuixTheme.colorScheme.surfaceContainer
+    } else if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
 
     // 显示/隐藏动画（同时驱动弹窗位移与遮罩透明度，确保二者完全同步）
     LaunchedEffect(show) {
@@ -224,12 +229,7 @@ private fun BlurBottomSheetTabletContent(
         }
     }
 
-    // 本组件存在性完全由 DialogEntry（visibleState）控制，禁止在此提前 return，
-    // 否则退出动画结束瞬间遮罩被移除而 DialogEntry content 仍空挂在屏上，造成触摸穿透。
-
-    // 平板弹窗主体 - 居中悬浮矩形，从底部滑入
-    // 遮罩透明度在「绘制期」读取（drawBehind），不在组合期读（Modifier.background）。
-    // 组合期读会让进入动画的 500ms 内整个弹窗作用域逐帧重组，牵连 backdrop 录制与模糊节点。
+    // 本组件存在性完全由 DialogEntry（visibleState）控制，禁止在此提前 return
     val dimModifier = if (dimBackground) {
         Modifier.drawBehind {
             drawRect(Color.Black.copy(alpha = 0.2f * animationProgress.value * (1f - backProgress.value)))
@@ -270,14 +270,10 @@ private fun BlurBottomSheetTabletContent(
             }
     }
 
-    // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用：
-    // drawBackdrop 的 ModifierNodeElement 用「引用」比较 shape 与 effects，ShapeProvider 没有实现 equals，
-    // 组合期每次 `ContinuousRoundedRectangle(38.dp)` 都是新对象、每次 `{ ... }` 都是新 lambda，
-    // 于是节点判不等 → invalidateDraw → 重新录制壁纸层 + 重跑一次 GPU 模糊（进入动画期间就是逐帧重跑）。
+    // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用
     val sheetShape = remember { ContinuousRoundedRectangle(38.dp) }
-    val sheetShapeBlock: () -> androidx.compose.ui.graphics.Shape = remember(sheetShape) { { sheetShape } }
 
-    Box(
+            Box(
         modifier = Modifier
             .fillMaxSize()
             .then(dimModifier)
@@ -394,7 +390,7 @@ private fun BlurBottomSheetTabletContent(
                 var sheetBackdropMounted by remember { mutableStateOf(false) }
                 LaunchedEffect(show) {
                     if (show) {
-                        delay(80)
+                        delay(80.milliseconds)
                         sheetBackdropMounted = true
                     }
                 }
@@ -455,24 +451,24 @@ private fun BlurBottomSheetTabletContent(
                         content()
                     }
 
-                    // 顶部渐进模糊：只盖标题下方一条，常显
-                    if (sheetBackdropMounted) {
-                        ProgressiveBlurTopBar(
-                            backdrop = sheetContentBackdrop,
-                            height = 82.dp,
-                            tintColor = sheetBgColor,
-                            tintIntensity = 0f,
-                            blurAlpha = 1f,
-                            edgeFadeStart = 0.55f,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(82.dp)
-                                .zIndex(1f)
-                                .sheetTopOpacityMask(82.dp) { shadowAlpha.value }
-                        ) {
-                            Box(modifier = Modifier.fillMaxWidth().height(60.dp))
-                        }
-                    }
+                    // 顶部渐变遮罩：顶部铺满弹窗底色、向下淡出到透明（与手机版同一套）
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(74.dp)
+                            .zIndex(1f)
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.0f to sheetBgColor,
+                                        0.2f to sheetBgColor.copy(alpha = 0.95f),
+                                        0.5f to sheetBgColor.copy(alpha = 0.8f),
+                                        0.8f to sheetBgColor.copy(alpha = 0.45f),
+                                        1.0f to sheetBgColor.copy(alpha = 0f),
+                                    ),
+                                )
+                            )
+                    )
 
                     // 标题栏固定高度，保证有无操作按钮时标题都垂直居中于同一位置
                     Box(

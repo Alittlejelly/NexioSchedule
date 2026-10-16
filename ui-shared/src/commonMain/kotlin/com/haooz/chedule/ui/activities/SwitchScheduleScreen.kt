@@ -602,9 +602,13 @@ fun SwitchScheduleScreen(
                             )
                         )
                     }
-                    val containerColor =
-                        if (!isAppDarkTheme()) Color(0xFFFFFFFF).copy(0.6f)
-                        else Color(0xFF121212).copy(0.54f)
+                    // 胶囊底色：莫奈取色下跟随 surfaceContainer（与首页底栏、教务导入胶囊同一套）；
+                    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）
+                    val containerColor = if (MiuixTheme.isDynamicColor) {
+                        MiuixTheme.colorScheme.surfaceContainer
+                            .copy(alpha = if (isAppDarkTheme()) 0.54f else 0.6f)
+                    } else if (!isAppDarkTheme()) Color(0xFFFFFFFF).copy(0.6f)
+                    else Color(0xFF121212).copy(0.54f)
 
                     // 按压高光：整条胶囊按哪亮哪。触发挂整条胶囊；下面的总手势会消费事件，
                     // 但 gestureModifier 是 observeConsumed=true 的纯视觉观察者，照常跟手。

@@ -84,7 +84,9 @@ fun ShortcutMenu(
     val containerWidthPx = windowInfo.containerSize.width
 
     val containerColor =
-        if (isLightTheme) Color(0xFFFFFFFF).copy(0.6f)
+        if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
+            .copy(alpha = if (isLightTheme) 0.6f else 0.54f)
+        else if (isLightTheme) Color(0xFFFFFFFF).copy(0.6f)
         else Color(0xFF121212).copy(0.54f)
 
     val scale = remember { Animatable(0f) }

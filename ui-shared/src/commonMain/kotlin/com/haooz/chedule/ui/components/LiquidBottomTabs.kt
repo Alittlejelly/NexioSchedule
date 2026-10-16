@@ -57,6 +57,7 @@ import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.DampedDragAnimation
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
@@ -127,9 +128,12 @@ fun LiquidBottomTabs(
     val accentColor =
         if (isLightTheme) Color.Black
         else Color.White
-    val containerColor =
-        if (isLightTheme) Color(0xFFFAFAFA).copy(0.6f)
-        else Color(0xFF242424).copy(0.6f)
+    // 胶囊底色：莫奈取色下跟随 surfaceContainer（与 DayColumn 待放格、教务导入胶囊同一套）；
+    // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）
+    val containerColor = if (MiuixTheme.isDynamicColor) {
+        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f)
+    } else if (isLightTheme) Color(0xFFFAFAFA).copy(0.6f)
+    else Color(0xFF242424).copy(0.6f)
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()

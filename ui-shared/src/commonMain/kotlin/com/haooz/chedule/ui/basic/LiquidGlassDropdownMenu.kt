@@ -77,6 +77,7 @@ import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.interactive.computeDragTransform
 import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 外层为阴影预留的内缩；外部按"占位槽真实位置"摆放本控件时需要减掉它 */
 // 宿主层要读它换算占位槽位置，跨模块须 public
@@ -126,7 +127,9 @@ fun LiquidGlassDropdownMenu(
 ) {
     val isLightTheme = !isAppDarkTheme()
     // 与顶栏液态玻璃按钮同色：收起态即那颗按钮，形变过程中玻璃不突变
-    val containerColor = if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
+    val containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
+        .copy(alpha = if (isLightTheme) 0.76f else 0.84f)
+    else if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
         else Color(0xFF242424).copy(0.84f)
     val chromeLens = AppMaterialSettings.chromeLensEnabled()
     val triggerIconTint = if (isLightTheme) Color.Black.copy(0.85f) else Color.White.copy(0.85f)

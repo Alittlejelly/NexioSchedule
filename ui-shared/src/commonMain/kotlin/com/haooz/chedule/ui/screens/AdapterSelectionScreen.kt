@@ -279,7 +279,7 @@ private fun AdapterRow(
     onClick: () -> Unit
 ) {
     Surface(
-        color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+        color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
         modifier = Modifier
             .fillMaxWidth()
             .clip(ContinuousRoundedRectangle(20.dp))

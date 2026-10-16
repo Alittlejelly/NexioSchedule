@@ -44,6 +44,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tanh
 import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 顶栏液态玻璃圆形按钮。
@@ -75,6 +76,8 @@ fun LiquidTopBarButton(
     val hapticFeedback = LocalHapticFeedback.current
     val isLightTheme = !isAppDarkTheme()
     val resolvedContainerColor = if (containerColor != Color.Unspecified) containerColor
+        else if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
+            .copy(alpha = if (isLightTheme) 0.76f else 0.84f)
         else if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
         else Color(0xFF242424).copy(0.84f)
 

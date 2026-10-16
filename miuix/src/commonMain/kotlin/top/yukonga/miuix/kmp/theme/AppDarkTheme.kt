@@ -41,3 +41,12 @@ val LocalAppSettingDark = staticCompositionLocalOf<Boolean?> { null }
  */
 @Composable
 expect fun rememberAppSettingDark(): Boolean
+
+/**
+ * 宿主是否**真的**在用系统壁纸取色（Monet）—— 即「偏好已开启」且「当前平台支持」
+ * （Android 要求 SDK >= 31，其它平台恒为 false）。
+ *
+ * 默认 `false` 而非 null：不取色 = 原有的内置亮暗主题，
+ * 没接入本 Local 的宿主行为与从前逐字一致。
+ */
+val LocalMonetColorEnabled = staticCompositionLocalOf { false }

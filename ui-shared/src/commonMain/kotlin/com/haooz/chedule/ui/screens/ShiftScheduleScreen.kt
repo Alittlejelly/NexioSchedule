@@ -249,7 +249,7 @@ fun ShiftScheduleScreen(
                     pressFeedbackType = PressFeedbackType.None,
                     showIndication = true,
                     colors = CardDefaults.defaultColors(
-                        color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+                        color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
                         contentColor = MiuixTheme.colorScheme.onSurface
                     )
                 ) {

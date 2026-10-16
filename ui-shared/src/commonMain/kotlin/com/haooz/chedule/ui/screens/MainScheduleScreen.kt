@@ -1450,7 +1450,9 @@ fun MainScheduleScreen(
                 contentDescription = "添加课程",
                 modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
                 iconSize = 24.dp,
-                containerColor = if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
+                containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    .copy(alpha = if (isAppDarkTheme()) 0.4f else 0.6f)
+                else if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
                 else Color(0xFFFFFFFF).copy(0.6f),
                 backdropAlpha = material.backdropAlpha,
                 shadowAlpha = material.shadowAlpha,
@@ -1558,7 +1560,7 @@ fun MainScheduleScreen(
                         pressFeedbackType = PressFeedbackType.None,
                         showIndication = true,
                         colors = CardDefaults.defaultColors(
-                            color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+                            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
                             contentColor = MiuixTheme.colorScheme.onSurface
                         ),
                         onClick = {

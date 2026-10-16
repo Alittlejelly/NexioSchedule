@@ -1363,7 +1363,9 @@ fun CustomizeScheduleScreen(
                         contentDescription = "关闭",
                         modifier = Modifier.padding(start = startPad),
                         iconSize = 24.dp,
-                        containerColor = if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
+                        containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                            .copy(alpha = if (isAppDarkTheme()) 0.4f else 0.6f)
+                        else if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
                         else Color(0xFFFFFFFF).copy(0.6f),
                         backdropAlpha = material.backdropAlpha,
                         shadowAlpha = material.shadowAlpha,
@@ -1742,7 +1744,8 @@ private fun SheetCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         colors = CardDefaults.defaultColors(
-            color = if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+            else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         ),
     ) { content() }

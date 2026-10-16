@@ -316,7 +316,6 @@ fun AddCourseDialog(
             show = show,
             title = if (isEdit) "编辑课程" else "添加课程",
             dimBackground = true,
-            fillMaxHeight = true,
             onDismissRequest = onDismiss,
             liquidGlassBackdrop = null,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
@@ -870,7 +869,7 @@ private fun BasicInfoCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         )
     ) {
@@ -968,7 +967,7 @@ private fun WeekdayCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         )
     ) {
@@ -1012,7 +1011,7 @@ private fun WeekdayCard(
                 for (day in 1..7) {
                     val isSelected = day == currentDay
                     val bgColor = if (isSelected) MiuixTheme.colorScheme.primary
-                    else if (isDark) Color(0xFF363636) else Color(0xFFF2F2F2)
+                    else if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHighest else if (isDark) Color(0xFF363636) else Color(0xFFF2F2F2)
                     val textColor = if (isSelected) Color.White
                     else MiuixTheme.colorScheme.onSurfaceVariantSummary
                     Box(
@@ -1052,7 +1051,7 @@ private fun SectionTimeCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         )
     ) {
@@ -1104,7 +1103,7 @@ private fun WeekSettingCard(
             .fillMaxWidth()
             .alpha(if (noDaySelected) 0.5f else 1f),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         )
     ) {
@@ -1266,7 +1265,7 @@ private fun ColorCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface
         )
     ) {

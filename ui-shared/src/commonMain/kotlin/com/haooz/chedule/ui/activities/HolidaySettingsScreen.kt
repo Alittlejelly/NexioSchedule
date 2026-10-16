@@ -1005,7 +1005,6 @@ private fun TeachingWeekRuleEditDialog(
     val isTablet = isTabletWidth()
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    val sheetBackgroundColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
     val startAction: @Composable () -> Unit = {
         val material = LocalSheetTopBarMaterial.current
         LiquidTopBarButton(
@@ -1047,7 +1046,10 @@ private fun TeachingWeekRuleEditDialog(
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
                 colors = CardDefaults.defaultColors(
-                    color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档，
+                    // 与 AddEditCourseBottomSheet / AddCourseDialog 同一套）；非莫奈保持原硬编码
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface,
                 ),
             ) {
@@ -1070,7 +1072,9 @@ private fun TeachingWeekRuleEditDialog(
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
                 colors = CardDefaults.defaultColors(
-                    color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+                    // 同上：莫奈取色下跟随 surfaceContainerHigh
+                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                    else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
                     contentColor = MiuixTheme.colorScheme.onSurface,
                 ),
             ) {
@@ -1134,7 +1138,6 @@ private fun TeachingWeekRuleEditDialog(
             title = if (isEditing) "编辑教学周重组规则" else "添加教学周重组规则",
             dimBackground = true,
             enableContentHeightSnap = true,
-            sheetBackgroundColor = sheetBackgroundColor,
             sheetBackgroundAlpha = 1f,
             liquidGlassBackdrop = null,
             onDismissRequest = onDismiss,
@@ -1164,7 +1167,6 @@ private fun TeachingWeekRuleEditDialog(
             title = if (isEditing) "编辑教学周重组规则" else "添加教学周重组规则",
             dimBackground = true,
             enableContentHeightSnap = true,
-            sheetBackgroundColor = sheetBackgroundColor,
             sheetBackgroundAlpha = 1f,
             liquidGlassBackdrop = null,
             sheetOffsetDp = statusBarsPadding + 5.dp,
@@ -1212,7 +1214,9 @@ private fun TeachingWeekRulePreviewCard(
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(0.dp),
         colors = CardDefaults.defaultColors(
-            color = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
+            // 卡底色：莫奈取色下跟随 surfaceContainerHigh（本组件只在 sheet 内使用）
+            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+            else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF),
             contentColor = MiuixTheme.colorScheme.onSurface,
         ),
     ) {
@@ -1409,9 +1413,13 @@ private fun TeachingWeekdayRangeSelector(
                 val enabled = day in selectableDays
                 val selected = day in selectedStart..selectedEnd
                 val backgroundColor = if (selected) MiuixTheme.colorScheme.primary
+                    // 未选中格子底：莫奈下 surfaceContainerHighest（比分组卡再亮一档）
+                    else if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHighest
                     else if (isDark) Color(0xFF363636) else Color(0xFFF2F2F2)
                 val textColor = when {
-                    selected -> Color.White
+                    // 选中格文字取 onPrimary（非莫奈时即白，行为不变；莫奈 primary 亮度不定，
+                    // 死白对比可能不足）
+                    selected -> MiuixTheme.colorScheme.onPrimary
                     enabled -> MiuixTheme.colorScheme.onSurfaceVariantSummary
                     else -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.4f)
                 }
@@ -1962,8 +1970,8 @@ private fun EntryEditDialog(
     val isTablet = isTabletWidth()
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    val sheetBackgroundColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
-    val cardColor = if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF)
+    val cardColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+    else if (isDark) Color(0xFF303030) else Color(0xFFFFFFFF)
     val canSave = name.isNotBlank()
 
     // 顶栏按钮：左 × 取消，右 ✓ 保存。⚠ backdrop 必须取 LocalSheetContentBackdrop ——
@@ -2192,7 +2200,6 @@ private fun EntryEditDialog(
             title = dialogTitle,
             dimBackground = true,
             enableContentHeightSnap = true,
-            sheetBackgroundColor = sheetBackgroundColor,
             sheetBackgroundAlpha = 1f,
             liquidGlassBackdrop = null,
             onDismissRequest = onDismiss,
@@ -2221,7 +2228,6 @@ private fun EntryEditDialog(
             title = dialogTitle,
             dimBackground = true,
             enableContentHeightSnap = true,
-            sheetBackgroundColor = sheetBackgroundColor,
             sheetBackgroundAlpha = 1f,
             liquidGlassBackdrop = null,
             sheetOffsetDp = statusBarsPadding + 5.dp,
