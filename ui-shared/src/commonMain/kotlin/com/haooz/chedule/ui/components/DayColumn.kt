@@ -438,6 +438,8 @@ private fun CourseCardsLayer(
 
             CourseRenderData(course, isCurrentWeekCourse, hasHiddenCourses, segments)
         }
+        // ⚠ 本周课必须排在渲染序列**末尾**
+        .sortedBy { if (it.isCurrentWeekCourse) 1 else 0 }
     }
 
     courseRenderDataList.forEach { renderData ->
