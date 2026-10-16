@@ -17,6 +17,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.platform.LocalDensity
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
@@ -142,12 +144,13 @@ fun CourseScheduleTheme(
     MiuixTheme(
         controller = controller,
         content = {
-            // ⚠ M3 的 MaterialTheme 自己会提供 `LocalIndication = ripple()`，它套在 MiuixTheme
-            //   **里层** → 把 miuix 的自定义按压反馈（MiuixIndication）顶掉。必须在进入
-            //   MaterialTheme 之前先把当前值抓出来，再在里层写回去。
-            //   主界面靠 CourseScheduleApp 内层的 MiuixTheme 自愈；二级页面走 AppNavHost、
-            //   全程没有内层主题，只能靠这里兜住，否则整页按压反馈变 Material 涟漪。
+            //   MaterialTheme 会自己提供两样东西，都套在 MiuixTheme **里层**，
+            //   把 miuix 侧的默认值顶掉 —— 必须在进入 MaterialTheme 之前捕获、再在里层写回：
+            //   1. `LocalIndication = ripple()` —— 顶掉 miuix 的自定义按压反馈（MiuixIndication）。
+            //   2. `ProvideTextStyle(bodyLarge)`（16sp / 24sp 行高 / 0.5sp 字距）—— 只写
+            //      `fontSize` 不写 `lineHeight` 的 Text
             val miuixIndication: Indication = LocalIndication.current
+            val outerTextStyle: TextStyle = LocalTextStyle.current
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
                 LocalHapticFeedback provides gatedHaptic,
@@ -163,7 +166,10 @@ fun CourseScheduleTheme(
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
             ) {
                 MaterialTheme(colorScheme = materialColors) {
-                    CompositionLocalProvider(LocalIndication provides miuixIndication) {
+                    CompositionLocalProvider(
+                        LocalIndication provides miuixIndication,
+                        LocalTextStyle provides outerTextStyle,
+                    ) {
                         content()
                     }
                 }
