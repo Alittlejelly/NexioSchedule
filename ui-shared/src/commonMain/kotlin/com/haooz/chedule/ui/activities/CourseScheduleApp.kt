@@ -2296,10 +2296,9 @@ fun CourseScheduleApp(
         showDetail = true
         // 详情 morph 只做下层模糊，不做缩放（整屏离屏层是掉帧第一来源）
         coroutineScope.launch {
-            delay(12.milliseconds)
             managePageBlurRadius.animateTo(
                 16f,
-                animationSpec = tween(560, easing = OobeQuartOutEasing)
+                animationSpec = tween(540, easing = OobeQuartOutEasing)
             )
         }
     }
@@ -2461,7 +2460,7 @@ fun CourseScheduleApp(
             switchCardSnapshot = null
             switchCardBitmap = retainedSwitchCardBitmap
             switchAnimJob = coroutineScope.launch {
-                switchAnimProgress.animateTo(0f, tween(350, easing = OobeCubicOutEasing))
+                switchAnimProgress.animateTo(0f, tween(320, easing = OobeCubicOutEasing))
                 switchOverlayActive = false
                 switchCardSnapshot = null
                 switchCardBitmap = null
@@ -5025,7 +5024,7 @@ fun CourseScheduleApp(
                         coroutineScope.launch {
                             managePageBlurRadius.animateTo(
                                 0f,
-                                animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                animationSpec = tween(320, easing = OobeCubicOutEasing)
                             )
                         }
                     },
@@ -5137,7 +5136,7 @@ fun CourseScheduleApp(
                                 }
                             }
                             val remainingDuration =
-                                ((1f - switchAnimProgress.value) * 560).toInt().coerceAtLeast(1)
+                                ((1f - switchAnimProgress.value) * 540).toInt().coerceAtLeast(1)
                             switchAnimProgress.animateTo(
                                 targetValue = 1f,
                                 animationSpec = tween(remainingDuration, easing = OobeQuartOutEasing)
@@ -5188,7 +5187,7 @@ fun CourseScheduleApp(
                                 switchCardSnapshot = null
                                 // 复用上次退出固化的卡片位图 —— 进入零录制
                                 switchCardBitmap = retainedSwitchCardBitmap
-                                val remainingDuration = 350
+                                val remainingDuration = 320
                                 val morphExitEase = CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
                                 launch {
                                     switchReturnBgScrim.animateTo(

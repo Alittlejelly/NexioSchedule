@@ -286,13 +286,13 @@ fun CourseEditScreen(
                 onBackStart()
                 scope.launch {
                     coroutineScope {
-                        // 缩放中心从屏幕中心平滑过渡回左上角锚点（150ms），morph 位移随之接管
-                        launch { gestureBackProgress.animateTo(0f, animationSpec = tween(150)) }
+                        // 缩放中心从屏幕中心平滑过渡回左上角锚点（140ms），morph 位移随之接管
+                        launch { gestureBackProgress.animateTo(0f, animationSpec = tween(140)) }
                         launch {
                             scaleProgress.animateTo(
                                 targetValue = 0f,
                                 animationSpec = tween(
-                                    durationMillis = 350,
+                                    durationMillis = 320,
                                     easing = morphExitEase
                                 )
                             )
@@ -301,7 +301,7 @@ fun CourseEditScreen(
                             animProgress.animateTo(
                                 targetValue = 0f,
                                 animationSpec = tween(
-                                    durationMillis = 350,
+                                    durationMillis = 320,
                                     easing = morphExitEase
                                 )
                             )
@@ -348,12 +348,11 @@ fun CourseEditScreen(
             animTransY.snapTo(1f)
             return@LaunchedEffect
         }
-        delay(12.milliseconds)
         launch {
             scaleProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 560,
+                    durationMillis = 540,
                     easing = morphOpenEase
                 )
             )
@@ -362,7 +361,7 @@ fun CourseEditScreen(
             animProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 560,
+                    durationMillis = 540,
                     easing = morphOpenEase
                 )
             )
@@ -448,8 +447,8 @@ fun CourseEditScreen(
         onBackStart()
         scope.launch {
             coroutineScope {
-                launch { scaleProgress.animateTo(0f, tween(350, easing = morphExitEase)) }
-                launch { animProgress.animateTo(0f, tween(350, easing = morphExitEase)) }
+                launch { scaleProgress.animateTo(0f, tween(320, easing = morphExitEase)) }
+                launch { animProgress.animateTo(0f, tween(320, easing = morphExitEase)) }
                 launch { animTransY.animateTo(0f, tween(transExitMillis, easing = transExitEase)) }
             }
             onBack()
@@ -494,13 +493,13 @@ fun CourseEditScreen(
                 launch {
                     scaleProgress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(350, easing = morphExitEase)
+                        animationSpec = tween(320, easing = morphExitEase)
                     )
                 }
                 launch {
                     animProgress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(350, easing = morphExitEase)
+                        animationSpec = tween(320, easing = morphExitEase)
                     )
                 }
                 launch {
@@ -617,7 +616,7 @@ fun CourseEditScreen(
                                                         scaleProgress.animateTo(
                                                             targetValue = 0f,
                                                             animationSpec = tween(
-                                                                durationMillis = 350,
+                                                                durationMillis = 320,
                                                                 easing = morphExitEase
                                                             )
                                                         )
@@ -626,7 +625,7 @@ fun CourseEditScreen(
                                                         animProgress.animateTo(
                                                             targetValue = 0f,
                                                             animationSpec = tween(
-                                                                durationMillis = 350,
+                                                                durationMillis = 320,
                                                                 easing = morphExitEase
                                                             )
                                                         )

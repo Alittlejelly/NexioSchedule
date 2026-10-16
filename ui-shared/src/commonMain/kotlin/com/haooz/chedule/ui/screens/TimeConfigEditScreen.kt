@@ -89,7 +89,6 @@ import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.toShape
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.Button
@@ -419,18 +418,18 @@ fun TimeConfigEditScreen(
                     onBackStart()
                     scope.launch {
                         coroutineScope {
-                            // 缩放中心从屏幕中心平滑过渡回左上角锚点（150ms），morph 位移随之接管
-                            launch { gestureBackProgress.animateTo(0f, animationSpec = tween(150)) }
+                            // 缩放中心从屏幕中心平滑过渡回左上角锚点（140ms），morph 位移随之接管
+                            launch { gestureBackProgress.animateTo(0f, animationSpec = tween(140)) }
                             launch {
                                 scaleProgress.animateTo(
                                     targetValue = 0f,
-                                    animationSpec = tween(durationMillis = 350, easing = morphExitEase)
+                                    animationSpec = tween(durationMillis = 320, easing = morphExitEase)
                                 )
                             }
                             launch {
                                 animProgress.animateTo(
                                     targetValue = 0f,
-                                    animationSpec = tween(durationMillis = 350, easing = morphExitEase)
+                                    animationSpec = tween(durationMillis = 320, easing = morphExitEase)
                                 )
                             }
                             launch {
@@ -473,19 +472,18 @@ fun TimeConfigEditScreen(
 
     LaunchedEffect(Unit) {
         if (hasCardBounds) {
-            delay(12.milliseconds)
-            // A native cancel/save can arrive before the delayed opening starts.
+            // A native cancel/save can arrive before the opening starts.
             if (animating) return@LaunchedEffect
             launch {
                 scaleProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(durationMillis = 560, easing = morphOpenEase)
+                    animationSpec = tween(durationMillis = 540, easing = morphOpenEase)
                 )
             }
             launch {
                 animProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(durationMillis = 560, easing = morphOpenEase)
+                    animationSpec = tween(durationMillis = 540, easing = morphOpenEase)
                 )
             }
             launch {
@@ -552,13 +550,13 @@ fun TimeConfigEditScreen(
                 launch {
                     scaleProgress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(durationMillis = 350, easing = morphExitEase)
+                        animationSpec = tween(durationMillis = 320, easing = morphExitEase)
                     )
                 }
                 launch {
                     animProgress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(durationMillis = 350, easing = morphExitEase)
+                        animationSpec = tween(durationMillis = 320, easing = morphExitEase)
                     )
                 }
                 launch {

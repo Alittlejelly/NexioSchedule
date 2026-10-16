@@ -236,13 +236,13 @@ fun CourseDetailScreen(
             onBackStart()
             scope.launch {
                 coroutineScope {
-                    // 缩放中心从屏幕中心平滑过渡回左上角锚点（150ms），morph 位移随之接管
-                    launch { gestureBackProgress.animateTo(0f, animationSpec = tween(150)) }
+                    // 缩放中心从屏幕中心平滑过渡回左上角锚点（140ms），morph 位移随之接管
+                    launch { gestureBackProgress.animateTo(0f, animationSpec = tween(140)) }
                     launch {
                         scaleProgress.animateTo(
                             targetValue = 0f,
                             animationSpec = tween(
-                                durationMillis = 350,
+                                durationMillis = 320,
                                 easing = morphExitEase
                             )
                         )
@@ -251,7 +251,7 @@ fun CourseDetailScreen(
                         animProgress.animateTo(
                             targetValue = 0f,
                             animationSpec = tween(
-                                durationMillis = 350,
+                                durationMillis = 320,
                                 easing = morphExitEase
                             )
                         )
@@ -291,12 +291,11 @@ fun CourseDetailScreen(
     }
 
     LaunchedEffect(Unit) {
-        delay(12.milliseconds)
         launch {
             scaleProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 560,
+                    durationMillis = 540,
                     easing = morphOpenEase
                 )
             )
@@ -305,7 +304,7 @@ fun CourseDetailScreen(
             animProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 560,
+                    durationMillis = 540,
                     easing = morphOpenEase
                 )
             )
@@ -425,7 +424,7 @@ fun CourseDetailScreen(
                                                         scaleProgress.animateTo(
                                                             targetValue = 0f,
                                                             animationSpec = tween(
-                                                                durationMillis = 350,
+                                                                durationMillis = 320,
                                                                 easing = morphExitEase
                                                             )
                                                         )
@@ -434,7 +433,7 @@ fun CourseDetailScreen(
                                                         animProgress.animateTo(
                                                             targetValue = 0f,
                                                             animationSpec = tween(
-                                                                durationMillis = 350,
+                                                                durationMillis = 320,
                                                                 easing = morphExitEase
                                                             )
                                                         )

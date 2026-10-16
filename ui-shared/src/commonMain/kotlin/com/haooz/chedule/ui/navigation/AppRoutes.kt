@@ -796,13 +796,11 @@ fun CourseTimeSettingsRoute(
                             editingRoutineId = routine.id
                             editingCardBounds = bounds
                             cardSnapshot = bounds.snapshot
-                            // 等待一帧后启动背景动画
                             coroutineScope.launch {
-                                delay(12.milliseconds)
                                 if (editingExitStarted || currentPage != "edit") return@launch
                                 managePageBlurRadius.animateTo(
                                     targetValue = 16f,
-                                    animationSpec = tween(560, easing = OobeQuartOutEasing)
+                                    animationSpec = tween(540, easing = OobeQuartOutEasing)
                                 )
                             }
                             // 最后触发组合（背景已在动画中）
@@ -831,7 +829,7 @@ fun CourseTimeSettingsRoute(
                             coroutineScope.launch {
                                 managePageBlurRadius.animateTo(
                                     targetValue = 0f,
-                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                    animationSpec = tween(320, easing = OobeCubicOutEasing)
                                 )
                             }
                         },
@@ -1052,10 +1050,9 @@ fun CourseManageRoute(
 
                                 showEditScreen = true
                                 launch {
-                                    delay(12.milliseconds)
                                     managePageBlurRadius.animateTo(
                                         targetValue = 16f,
-                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
+                                        animationSpec = tween(540, easing = OobeQuartOutEasing)
                                     )
                                 }
                             }
@@ -1084,7 +1081,7 @@ fun CourseManageRoute(
                     coroutineScope.launch {
                         managePageBlurRadius.animateTo(
                             targetValue = 0f,
-                            animationSpec = tween(350, easing = OobeCubicOutEasing)
+                            animationSpec = tween(320, easing = OobeCubicOutEasing)
                         )
                     }
                 },
