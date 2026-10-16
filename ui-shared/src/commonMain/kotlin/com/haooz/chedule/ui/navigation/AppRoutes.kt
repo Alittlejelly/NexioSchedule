@@ -33,7 +33,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -765,8 +764,7 @@ fun CourseTimeSettingsRoute(
     // Retained source-card drawing; the list page owns the underlying layer.
     var cardSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
 
-    // 背景缩放与模糊动画
-    val backgroundScale = remember { Animatable(1f) }
+    // 页面级模糊动画（连贯动画只保留下层模糊，缩放已去掉）
     val managePageBlurRadius = remember { Animatable(0f) }
     // 二级编辑页的玻璃层是独立的（与一级页不共享采样源）
     val editLiquidGlassBackdrop = rememberLayerBackdrop()
@@ -785,32 +783,7 @@ fun CourseTimeSettingsRoute(
                 }
                 .background(MiuixTheme.colorScheme.surface)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val scale = backgroundScale.value
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .drawWithContent {
-                        val scale = backgroundScale.value
-                        if (scale < 0.999f) {
-                            val path = Path().apply {
-                                addScreenCornerRect(
-                                    width = size.width,
-                                    height = size.height,
-                                    corners = screenCornerRadius
-                                )
-                            }
-                            clipPath(path) {
-                                this@drawWithContent.drawContent()
-                            }
-                        } else {
-                            drawContent()
-                        }
-                    }
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 DocumentPageScaffold(
                     title = "课表节数与时间",
                     onBack = { router.popBack() },
@@ -827,18 +800,10 @@ fun CourseTimeSettingsRoute(
                             coroutineScope.launch {
                                 delay(12.milliseconds)
                                 if (editingExitStarted || currentPage != "edit") return@launch
-                                launch {
-                                    backgroundScale.animateTo(
-                                        targetValue = 0.92f,
-                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                    )
-                                }
-                                launch {
-                                    managePageBlurRadius.animateTo(
-                                        targetValue = 5f,
-                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                    )
-                                }
+                                managePageBlurRadius.animateTo(
+                                    targetValue = 16f,
+                                    animationSpec = tween(560, easing = OobeQuartOutEasing)
+                                )
                             }
                             // 最后触发组合（背景已在动画中）
                             currentPage = "edit"
@@ -864,18 +829,10 @@ fun CourseTimeSettingsRoute(
                         onBackStart = {
                             editingExitStarted = true
                             coroutineScope.launch {
-                                launch {
-                                    backgroundScale.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                    )
-                                }
-                                launch {
-                                    managePageBlurRadius.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                    )
-                                }
+                                managePageBlurRadius.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
+                                )
                             }
                         },
                         onBack = {
@@ -1011,7 +968,6 @@ fun CourseManageRoute(
         onBackCancelled = {},
     )
 
-    val backgroundScale = remember { Animatable(1f) }
     val managePageBlurRadius = remember { Animatable(0f) }
 
     // 圆角：Android 读系统真实圆角（自由小窗固定 20dp）；iOS/桌面返回 0 = 不裁切
@@ -1022,47 +978,25 @@ fun CourseManageRoute(
     val shortcutMenuBackdrop = rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 主内容（模糊 + 缩放动画）
+        // 主内容（模糊 + 快捷菜单页面缩放）
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(
-                    if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value.dp
-                    else managePageBlurRadius.value.dp
-                )
                 .graphicsLayer {
+                    // renderEffect 在绘制阶段赋半径，避免动画每帧重组整页（同 CourseScheduleApp）
+                    val blurAnim =
+                        if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value
+                        else managePageBlurRadius.value
+                    renderEffect = if (blurAnim > 0.01f && isRenderEffectSupported()) {
+                        val blurPx = blurAnim.dp.toPx()
+                        BlurEffect(null, blurPx, blurPx, TileMode.Clamp)
+                    } else null
                     scaleX = shortcutMenuPageScale.value
                     scaleY = shortcutMenuPageScale.value
                 }
                 .background(MiuixTheme.colorScheme.surface)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val scale = backgroundScale.value
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .drawWithContent {
-                        // 缩放时保持屏幕圆角不变
-                        val scale = backgroundScale.value
-                        if (scale < 0.999f) {
-                            val path = Path().apply {
-                                addScreenCornerRect(
-                                    width = size.width,
-                                    height = size.height,
-                                    corners = screenCornerRadius
-                                )
-                            }
-                            clipPath(path) {
-                                this@drawWithContent.drawContent()
-                            }
-                        } else {
-                            drawContent()
-                        }
-                    }
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 DocumentPageScaffold(
                     title = "课程管理",
                     onBack = { router.popBack() },
@@ -1119,18 +1053,10 @@ fun CourseManageRoute(
                                 showEditScreen = true
                                 launch {
                                     delay(12.milliseconds)
-                                    launch {
-                                        backgroundScale.animateTo(
-                                            targetValue = 0.92f,
-                                            animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                        )
-                                    }
-                                    launch {
-                                        managePageBlurRadius.animateTo(
-                                            targetValue = 5f,
-                                            animationSpec = tween(560, easing = OobeQuartOutEasing)
-                                        )
-                                    }
+                                    managePageBlurRadius.animateTo(
+                                        targetValue = 16f,
+                                        animationSpec = tween(560, easing = OobeQuartOutEasing)
+                                    )
                                 }
                             }
                         },
@@ -1156,18 +1082,10 @@ fun CourseManageRoute(
                 cardAlpha = cardAlpha,
                 onBackStart = {
                     coroutineScope.launch {
-                        launch {
-                            backgroundScale.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(350, easing = OobeCubicOutEasing)
-                            )
-                        }
-                        launch {
-                            managePageBlurRadius.animateTo(
-                                targetValue = 0f,
-                                animationSpec = tween(350, easing = OobeCubicOutEasing)
-                            )
-                        }
+                        managePageBlurRadius.animateTo(
+                            targetValue = 0f,
+                            animationSpec = tween(350, easing = OobeCubicOutEasing)
+                        )
                     }
                 },
                 onBack = {

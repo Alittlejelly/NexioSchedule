@@ -67,7 +67,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -1467,13 +1466,12 @@ fun CourseScheduleApp(
     // Await a schedule reload before recording the return layer.
     var switchReloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val switchAnimProgress = remember { Animatable(0f) }
-    val backgroundScale = remember { Animatable(1f) }
     val managePageBlurRadius = remember { Animatable(0f) }
     // 仅课程长按菜单模糊；空白格菜单不模糊
     val shortcutMenuBlurRadius = remember { Animatable(0f) }
     LaunchedEffect(shortcutMenuVisible, shortcutMenuCourse) {
         if (shortcutMenuVisible && shortcutMenuCourse != null) {
-            launch { shortcutMenuBlurRadius.animateTo(10f, tween(280)) }
+            launch { shortcutMenuBlurRadius.animateTo(16f, tween(280)) }
         } else {
             launch { shortcutMenuBlurRadius.animateTo(0f, tween(250)) }
         }
@@ -2291,20 +2289,13 @@ fun CourseScheduleApp(
         }
         hiddenCourseIds = setOf(courseIdToHide)
         showDetail = true
+        // 详情 morph 只做下层模糊，不做缩放（整屏离屏层是掉帧第一来源）
         coroutineScope.launch {
             delay(12.milliseconds)
-            launch {
-                backgroundScale.animateTo(
-                    0.92f,
-                    animationSpec = tween(560, easing = OobeQuartOutEasing)
-                )
-            }
-            launch {
-                managePageBlurRadius.animateTo(
-                    5f,
-                    animationSpec = tween(560, easing = OobeQuartOutEasing)
-                )
-            }
+            managePageBlurRadius.animateTo(
+                16f,
+                animationSpec = tween(560, easing = OobeQuartOutEasing)
+            )
         }
     }
 
@@ -2493,7 +2484,7 @@ fun CourseScheduleApp(
                 host.onEnterCustomize = null
                 host.onJumpToDate = null
                 host.keepsNativeHeaderDuringCutout = false
-                host.updateDetailBackgroundScale(1f)
+                host.updateDetailBackgroundBlur(0f)
             }
         }
     }
@@ -2540,11 +2531,6 @@ fun CourseScheduleApp(
         val isEntryAnimating = showSwitchSchedule && switchAnimForward && switchAnimRunning
         // The source remains rendered underneath the morph, including across controller frames.
         val mainContentAlpha = 1f
-        val mainContentBlurDp =
-            if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value.dp
-            else managePageBlurRadius.value.dp
-        val mainContentBlurModifier =
-            if (mainContentBlurDp.value > 0f) Modifier.blur(mainContentBlurDp) else Modifier
 
         // liquidGlass 录制跳帧指纹：结构量变了才 update→markNeedsRecord。
         // 必须 remember 出稳定 List，否则 equals 失败会强制录制。
@@ -2572,7 +2558,6 @@ fun CourseScheduleApp(
         }
         // 局部 val 不能直接捕获进 remember lambda，一律经 rememberUpdatedState
         val latestCutoutScale by rememberUpdatedState(cutoutMainScale.value)
-        val latestBackgroundScale by rememberUpdatedState(backgroundScale.value)
         val latestSheetOffset by rememberUpdatedState(sheetOffsetY.value)
         val latestShortcutBlur by rememberUpdatedState(shortcutMenuBlurRadius.value)
         val latestManageBlur by rememberUpdatedState(managePageBlurRadius.value)
@@ -2621,7 +2606,6 @@ fun CourseScheduleApp(
                     latestManageBlur > 0.01f ||
                     // 非静止端点视为动画进行中
                     (latestCutoutScale != 1f && latestCutoutScale != 0.75f) ||
-                    latestBackgroundScale != 1f ||
                     latestSheetOffset != 0f ||
                     latestCustomizeExitScale != 1f ||
                     latestCustomizeCoverScale != 1f ||
@@ -2630,9 +2614,16 @@ fun CourseScheduleApp(
                     latestDraggingCard
             }
         }
-        // 主内容（带缩放和裁切）
+        // 连贯动画期间下层的实时模糊半径（dp）：长按菜单优先，其次详情 morph；与宿主侧口径一致
+        fun currentDetailBlurDp(): Float =
+            if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value
+            else managePageBlurRadius.value
+
+        // 主内容（带模糊和裁切）
         // 空闲态不挂 graphicsLayer：全屏离屏合成是周滑 P50 主头之一。
-        // 仅缩放/透明度/位移真正非单位时才开层；derivedStateOf 避免 Animatable 每帧重组。
+        // 仅模糊/透明度/位移/裁切真正非单位时才开层；derivedStateOf 避免 Animatable 每帧重组。
+        // 模糊与缩放共用同一个 graphicsLayer：renderEffect 在绘制阶段读半径，组合期不依赖它
+        //（`Modifier.blur` 会在组合期读 dp 值，半径每帧变 = 每帧失效整个主内容 scope）。
         val mainLayerNeeded by remember {
             derivedStateOf {
                 isCustomizeExiting ||
@@ -2640,7 +2631,8 @@ fun CourseScheduleApp(
                     showSwitchSchedule ||
                     showCustomizePage ||
                     mainContentAlpha != 1f ||
-                    backgroundScale.value != 1f ||
+                    shortcutMenuBlurRadius.value > 0.01f ||
+                    managePageBlurRadius.value > 0.01f ||
                     cutoutMainScale.value != 1f ||
                     customizeExitScale.value != 1f ||
                     sheetOffsetY.value != 0f
@@ -2649,16 +2641,17 @@ fun CourseScheduleApp(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 半径为 0 时不必挂 blur：Modifier.blur 会为整棵主内容树额外建一个
-                // RenderEffect 图层，0 半径也照常走一遍离屏合成。
-                .then(mainContentBlurModifier)
                 .then(
                     if (mainLayerNeeded) {
                         Modifier.graphicsLayer {
-                            val baseScale =
-                                if (!showSwitchSchedule) backgroundScale.value
-                                else if (isEntryAnimating) 1f
-                                else 1f
+                            val blurAnim = currentDetailBlurDp()
+                            // renderEffect 需要 Android 12+，低版本退化为无模糊
+                            renderEffect = if (blurAnim > 0.01f && isRenderEffectSupported()) {
+                                // 不能用 `blurAnim * density`：外层同名 Density 局部量会遮蔽隐式 receiver
+                                val blurPx = blurAnim.dp.toPx()
+                                // 同 Modifier.blur 的 Clamp 边界处理
+                                BlurEffect(null, blurPx, blurPx, TileMode.Clamp)
+                            } else null
                             val exitScale = if (isCustomizeExiting) customizeExitScale.value else 1f
                             val cutoutScale = cutoutMainScale.value
                             // 开洞时由 cutoutScale 控制；进出场统一由快照覆盖层处理，避免叠加闪烁
@@ -2667,8 +2660,8 @@ fun CourseScheduleApp(
                             } else {
                                 exitScale * cutoutScale
                             }
-                            scaleX = baseScale * effectiveScale
-                            scaleY = baseScale * effectiveScale
+                            scaleX = effectiveScale
+                            scaleY = effectiveScale
                             alpha = mainContentAlpha
                             // 与 CustomizeScheduleScreen 共享同一 Animatable，像素级同帧
                             val sheetScale = cutoutMainScale.value
@@ -2690,12 +2683,11 @@ fun CourseScheduleApp(
                     }
                 )
                 .then(
-                    // 每帧按当前缩放重裁；搭配页退出时锁定 screenCornerRadius
+                    // 下层不再缩放，无需按缩放重裁圆角；仅搭配页退出时裁成屏幕圆角
                     Modifier.drawWithContent {
-                        val scale = backgroundScale.value
-                        val shouldClip = !isCustomizeExiting && scale < 0.999f
-                        val animClipPx = screenCornerRadius
-                        if (animClipPx.maxRadius > 0f && (shouldClip || isCustomizeExiting)) {
+                        val animClipPx =
+                            if (isCustomizeExiting) screenCornerRadius else ScreenCornerRadiiPx.Zero
+                        if (animClipPx.maxRadius > 0f) {
                             val path = Path().apply {
                                 addScreenCornerRect(
                                     width = size.width,
@@ -2713,7 +2705,8 @@ fun CourseScheduleApp(
                 )
                 .then(
                     Modifier.drawWithContent {
-                        hostNavigation?.updateDetailBackgroundScale(backgroundScale.value)
+                        // 逐帧把页面级模糊半径推给宿主（iOS 原生 chrome 与弹窗层不在主内容模糊层内）
+                        hostNavigation?.updateDetailBackgroundBlur(managePageBlurRadius.value)
                         // 仅在被请求时录制一帧，避免每帧重绘整棵主内容树
                         if (mainSnapshotRequester.lastRecordedToken != mainSnapshotToken) {
                             screenGraphicsLayer.record {
@@ -5018,18 +5011,10 @@ fun CourseScheduleApp(
                     onBackStart = {
                         detailExiting = true
                         coroutineScope.launch {
-                            launch {
-                                backgroundScale.animateTo(
-                                    1f,
-                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                )
-                            }
-                            launch {
-                                managePageBlurRadius.animateTo(
-                                    0f,
-                                    animationSpec = tween(350, easing = OobeCubicOutEasing)
-                                )
-                            }
+                            managePageBlurRadius.animateTo(
+                                0f,
+                                animationSpec = tween(350, easing = OobeCubicOutEasing)
+                            )
                         }
                     },
                     onBack = {

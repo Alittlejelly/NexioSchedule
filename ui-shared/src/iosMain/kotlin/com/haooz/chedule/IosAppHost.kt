@@ -91,7 +91,9 @@ class IosAppHost {
     /** Instance IDs, not route kinds: pushing the same document twice keeps independent state. */
     val nativeRouteIds: List<String>
         get() = nativePages.take(requestedPopDepth ?: nativePages.size).map { it.id }
-    val floatingOverlayActive: Boolean get() = overlays.isActive || popupHost.isActive
+    val floatingOverlayActive: Boolean get() = overlays.isBelowPopupsActive || popupHost.isActive
+    /** 弹窗层之上的 overlay（课程详情页）是否在显示；iOS 上它与弹窗容器分开承载 */
+    val detailOverlayActive: Boolean get() = overlays.isAbovePopupsActive
     val nativePageActive: Boolean get() = nativePages.isNotEmpty()
     val nativePopPending: Boolean get() = requestedPopDepth != null
     val nativeContentOverlayActive: Boolean
@@ -359,11 +361,12 @@ class IosAppHost {
      * it a frame or two behind.
      */
     var onCutoutChromeOffset: ((Double) -> Unit)? = null
-    var onDetailChromeScale: ((Double) -> Unit)? = null
+    /** 连贯动画期间下层的模糊半径（dp）；宿主据此在「详情页之下、其余一切之上」压一层背景模糊 */
+    var onDetailChromeBlur: ((Double) -> Unit)? = null
 
     init {
         navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
-        navigation.onDetailChromeScale = { scale -> onDetailChromeScale?.invoke(scale) }
+        navigation.onDetailChromeBlur = { blurDp -> onDetailChromeBlur?.invoke(blurDp) }
     }
 
     val mainController: UIViewController by lazy {
@@ -394,16 +397,13 @@ class IosAppHost {
                         nativePages.isEmpty() && !router.hasOverlay && !navigationOverlayActive
                     }
                     Box(Modifier.fillMaxSize().graphicsLayer {
-                        val scale = navigation.detailBackgroundScale
-                        scaleX = scale
-                        scaleY = scale
-                        val blur = ((1f - scale) / 0.08f).coerceIn(0f, 1f) * 5.dp.toPx()
-                        renderEffect = if (blur > 0f) BlurEffect(null, blur, blur, TileMode.Clamp) else null
+                        // 弹窗层同样不在 Compose 主内容的模糊层里，半径与主内容同源
+                        val blurDp = navigation.detailBackgroundBlur
+                        val blurPx = if (blurDp > 0.01f) blurDp.dp.toPx() else 0f
+                        renderEffect = if (blurPx > 0f) BlurEffect(null, blurPx, blurPx, TileMode.Clamp) else null
                     }) {
                         MiuixPopupHost()
                     }
-                    // 顺序即层级：课程详情页（overlay）必须盖在弹窗层之上
-                    HostOverlayContent(overlays, abovePopups = true)
                 }
                 val appDark = isAppDarkTheme()
                 val hasNativePages = nativePages.isNotEmpty()
@@ -417,7 +417,7 @@ class IosAppHost {
                         NativeHostSnapshot(
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
-                            nativeRouteIds, floatingOverlayActive,
+                            nativeRouteIds, floatingOverlayActive, detailOverlayActive,
                             // 逐字段快照（含底栏与系统标题开关）—— 见 NativeDocumentChrome.snapshot
                             nativePages.map { it.chrome.snapshot() },
                             nativeTransitionInFlight,
@@ -431,6 +431,15 @@ class IosAppHost {
                         onStateChanged?.invoke()
                     }
                 }
+            }
+        }
+    }
+
+    /** 弹窗层之上的 overlay（课程详情页）；单独一个容器，才能整体盖在宿主背景模糊层之上 */
+    val abovePopupsController: UIViewController by lazy {
+        ComposeUIViewController(configure = { opaque = false }) {
+            HostEnvironment {
+                HostOverlayContent(overlays, abovePopups = true)
             }
         }
     }
@@ -522,6 +531,7 @@ private data class NativeHostSnapshot(
     val cutoutCenterYRatio: Float,
     val nativeRouteIds: List<String>,
     val floatingOverlayActive: Boolean,
+    val detailOverlayActive: Boolean,
     val nativeChrome: List<NativeDocumentChromeSnapshot>,
     val nativeTransitionInFlight: Boolean,
     val showsNativeHeader: Boolean,

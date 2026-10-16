@@ -51,6 +51,18 @@ private final class NativeSessionController: UIViewController {
     private let rootController: AppHostController
     private let documentNavigation: NativeDocumentNavigationController
     private let floatingContainer = FloatingOverlayPassthroughView()
+    /// 全屏背景模糊层：详情页之下、其余一切之上
+    private let detailBackdropBlur: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        view.isUserInteractionEnabled = false
+        view.isHidden = true
+        view.alpha = 0
+        return view
+    }()
+    /// 详情页容器：唯一盖在 `detailBackdropBlur` 之上的 Compose 容器
+    private let detailContainer = FloatingOverlayPassthroughView()
+    private var detailBlurDp: CGFloat = 0
+    private var detailBlurProgress: CGFloat = 0
 
     init(host: IosAppHost) {
         self.host = host
@@ -70,6 +82,18 @@ private final class NativeSessionController: UIViewController {
         floatingContainer.backgroundColor = .clear
         pin(floatingContainer, to: view)
         embed(host.floatingController, in: floatingContainer)
+        // 层级（自下而上）：原生导航栈 → 弹窗层 → 本层全屏背景模糊 → 详情页。
+        // 底栏/顶栏是 UIKit 原生视图、弹窗层在另一个 Compose 根里，都不在主内容的 Compose
+        // 模糊层内，与其按各自形状凑效果层（底栏是浮动胶囊、顶栏由 SwiftUI 渲染、量不到几何），
+        // 不如在这里压一整块，一次盖住「除详情页外的一切」。
+        pin(detailBackdropBlur, to: view)
+        detailContainer.backgroundColor = .clear
+        pin(detailContainer, to: view)
+        embed(host.abovePopupsController, in: detailContainer)
+        // Compose 绘制阶段直推模糊半径，与主内容同帧
+        host.onDetailChromeBlur = { [weak self] blurDp in
+            self?.applyDetailBlur(blurDp)
+        }
         host.onStateChanged = { [weak self] in
             if Thread.isMainThread {
                 self?.applyState()
@@ -99,6 +123,36 @@ private final class NativeSessionController: UIViewController {
         host.floatingController.view.isUserInteractionEnabled = active
         host.floatingController.view.accessibilityViewIsModal = active
         host.floatingController.view.accessibilityElementsHidden = !active
+        // 详情页容器单独一层：只有显示时才接触摸，否则整层穿透
+        let detailActive = host.detailOverlayActive
+        detailContainer.overlayActive = detailActive
+        detailContainer.accessibilityElementsHidden = !detailActive
+        host.abovePopupsController.view.isUserInteractionEnabled = detailActive
+        host.abovePopupsController.view.accessibilityElementsHidden = !detailActive
+        host.abovePopupsController.view.accessibilityViewIsModal = detailActive
+        refreshDetailBlur()
+    }
+
+    /// Compose 侧 morph 的目标半径（`managePageBlurRadius` = 16f），用于把半径换算成 0…1 强度
+    private let detailBlurReferenceDp: CGFloat = 16
+
+    /// Compose 侧每帧推来的模糊半径（dp）；0 = 动画结束，隐藏模糊层。
+    /// `UIVisualEffectView` 只糊它身后的内容，所以这层压在「除详情页外的一切」之上。
+    /// 只由页面级模糊驱动；课程长按菜单在弹窗层内，不进来。
+    private func applyDetailBlur(_ blurDp: KotlinDouble) {
+        detailBlurDp = CGFloat(blurDp.doubleValue)
+        refreshDetailBlur()
+    }
+
+    /// 压着上层原生文档页时整块不能糊：那一页不属于背景
+    private func refreshDetailBlur() {
+        let target = host.nativePageActive
+            ? 0
+            : max(0, min(1, detailBlurDp / detailBlurReferenceDp))
+        guard abs(target - detailBlurProgress) > 0.001 else { return }
+        detailBlurProgress = target
+        detailBackdropBlur.alpha = target
+        detailBackdropBlur.isHidden = target <= 0.001
     }
 
     private func embed(_ controller: UIViewController, in container: UIView) {
@@ -224,9 +278,6 @@ private final class AppHostController: UIViewController {
         // Compose 绘制阶段直推的位移：同步落到 UIKit，与内容同帧（详见 applyPushedChromeOffset）
         host.onCutoutChromeOffset = { [weak self] offsetY in
             self?.applyPushedChromeOffset(offsetY)
-        }
-        host.onDetailChromeScale = { [weak self] scale in
-            self?.applyPushedDetailChromeScale(scale)
         }
         // 原生截屏桥：把含底栏与导航栏的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
@@ -496,9 +547,8 @@ private final class AppHostController: UIViewController {
         let screenH = view.bounds.height
         guard screenW > 0, screenH > 0 else { return }
         let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
-        let scale = (raw < 0.999 ? raw : 1) * cachedDetailChromeScale
-        let pivotY = cachedDetailChromeScale < 0.999 ? 0.5 : CGFloat(host.cutoutCenterYRatio)
-        let pivot = CGPoint(x: screenW * 0.5, y: screenH * pivotY)
+        let scale = raw < 0.999 ? raw : 1
+        let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
         applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: chromeContainer, pivot: pivot)
@@ -514,12 +564,6 @@ private final class AppHostController: UIViewController {
 
     /// 外观页弹窗让位时主内容的纵向位移（pt，负值=上移；0 = 当前无位移）
     private var cachedChromeOffsetY: CGFloat = 0
-    private var cachedDetailChromeScale: CGFloat = 1
-
-    private func applyPushedDetailChromeScale(_ scale: KotlinDouble) {
-        cachedDetailChromeScale = CGFloat(min(1, max(0.92, scale.doubleValue)))
-        updateCutoutTransform()
-    }
 
     private func applyPushedChromeOffset(_ offsetY: KotlinDouble) {
         cachedChromeOffsetY = CGFloat(offsetY.doubleValue)

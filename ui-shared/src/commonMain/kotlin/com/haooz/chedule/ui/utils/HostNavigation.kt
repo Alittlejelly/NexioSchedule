@@ -43,15 +43,21 @@ class HostNavigationState {
      * 开洞期间主内容整体上移的纵向位移（pt）。与主内容 graphicsLayer 的 translationY 同源同值
      */
     var onCutoutChromeOffsetY: ((Double) -> Unit)? = null
-    /** Live source scale while a course card expands above native chrome and popups. */
-    var detailBackgroundScale by mutableFloatStateOf(1f)
+    /**
+     * 连贯动画期间下层的实时模糊半径（dp），0 = 无模糊。
+     *
+     * iOS 上原生 chrome（底栏、顶栏按钮）与整个弹窗层都在 Compose 主内容之外，宿主据此在
+     * 「详情页之下、其余一切之上」压一层同强度背景模糊；Android 不读这个值。
+     * 只报页面级模糊，不含课程长按菜单 —— 它自己就在弹窗层内，糊了会连菜单一起糊。
+     */
+    var detailBackgroundBlur by mutableFloatStateOf(0f)
         private set
-    var onDetailChromeScale: ((Double) -> Unit)? = null
+    var onDetailChromeBlur: ((Double) -> Unit)? = null
 
-    fun updateDetailBackgroundScale(scale: Float) {
-        if (detailBackgroundScale == scale) return
-        detailBackgroundScale = scale
-        onDetailChromeScale?.invoke(scale.toDouble())
+    fun updateDetailBackgroundBlur(blurDp: Float) {
+        if (detailBackgroundBlur == blurDp) return
+        detailBackgroundBlur = blurDp
+        onDetailChromeBlur?.invoke(blurDp.toDouble())
     }
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
@@ -82,6 +88,12 @@ val LocalHostNavigation = staticCompositionLocalOf<HostNavigationState?> { null 
 class HostOverlayState {
     internal val entries = mutableStateListOf<HostOverlayEntry>()
     val isActive: Boolean get() = entries.any { it.active }
+
+    /** 弹窗层之下的 overlay 是否在显示（iOS 上与弹窗层分开渲染） */
+    val isBelowPopupsActive: Boolean get() = entries.any { it.active && !it.abovePopups }
+
+    /** 弹窗层之上的 overlay（课程详情页）是否在显示；iOS 上它盖在宿主背景模糊层之上 */
+    val isAbovePopupsActive: Boolean get() = entries.any { it.active && it.abovePopups }
 }
 
 internal class HostOverlayEntry {
