@@ -22,10 +22,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun bottomFloatingPadding(): Dp {
     val navBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    return if (navBarBottomInset > 0.dp) {
-        // 贴安全区再 +2dp：inset 本身就是留白，+2 只是给胶囊一点呼吸，不会悬空
-        navBarBottomInset + 2.dp
-    } else {
-        22.dp
-    }
+    // 硬下限 22dp：无论有无系统导航条都不得低于此值 —— 部分 ROM 隐藏手势条后 inset
+    // 只剩几 dp，inset + 2 会几乎贴底
+    return maxOf(navBarBottomInset + 2.dp, 22.dp)
 }
