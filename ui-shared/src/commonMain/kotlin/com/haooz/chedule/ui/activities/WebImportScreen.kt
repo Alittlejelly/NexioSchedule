@@ -197,6 +197,7 @@ fun WebImportScreen(
                 height = blurHeight,
                 // 教务页多为白底：默认 surface 暗色 tint 会在顶上压一层黑罩
                 tintIntensity = 0f,
+                blurAlpha = 0f,
             ) {
                 CollapsibleTopAppBar(
                     title = webPageTitle,
