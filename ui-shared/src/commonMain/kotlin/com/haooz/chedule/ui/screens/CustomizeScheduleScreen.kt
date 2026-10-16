@@ -217,7 +217,8 @@ fun CustomizeScheduleScreen(
     onThemeModePersist: (ThemeMode) -> Unit = {},
 ) {
     val densityObj = LocalDensity.current
-    val cutoutOffsetTargetPx = with(densityObj) { 10.dp.toPx() }
+    // 开洞到位后，洞心相对屏幕中心的竖向微调
+    val cutoutOffsetTargetPx = with(densityObj) { 0.dp.toPx() }
     val sheetOffsetTargetPx = with(densityObj) { 90.dp.toPx() }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isTablet = isTabletWidth()
@@ -385,7 +386,6 @@ fun CustomizeScheduleScreen(
     val animProgress = remember { Animatable(0f) }
     var animDone by remember { mutableStateOf(false) }
     var isPageAnimating by remember { mutableStateOf(true) }
-    val titleFadeAnim = remember { Animatable(0f) }
     val buttonScaleAnim = remember { Animatable(1.5f) }
     val pagerSpacing = remember { Animatable(-140f) }
     val exitProgress = remember { Animatable(0f) }
@@ -396,7 +396,6 @@ fun CustomizeScheduleScreen(
     val cutoutProgress = remember { Animatable(0f) }
     val cardScaleAnim = remember { Animatable(0.65f) }
     val buttonAlphaAnim = remember { Animatable(1f) }
-    val titleAlphaAnim = remember { Animatable(1f) }
     val cutoutOffsetY = remember { Animatable(0f) }
     // 与 MainActivity 共享同一 Animatable，弹窗开合时两边同帧同步位移
     val sheetOffsetY = sheetOffsetShared
@@ -438,13 +437,6 @@ fun CustomizeScheduleScreen(
                 pagerSpacing.animateTo(
                     -10f,
                     tween(ENTER_PAGER_SPACING_MILLIS, easing = CustomizePageEasing)
-                )
-            }
-            launch {
-                delay(ENTER_TITLE_DELAY_MILLIS.toLong())
-                titleFadeAnim.animateTo(
-                    1f,
-                    tween(ENTER_TITLE_MILLIS, easing = CustomizePageEasing)
                 )
             }
             launch {
@@ -496,7 +488,6 @@ fun CustomizeScheduleScreen(
                         tween(500, easing = CustomizePageEasing)
                     )
                 }
-                launch { titleFadeAnim.animateTo(0f, tween(150)) }
                 launch {
                     coroutineScope {
                         launch {
@@ -544,10 +535,9 @@ fun CustomizeScheduleScreen(
                 }
                 launch { cutoutProgress.snapTo(1f) }
                 launch { customizeButtonAlpha.animateTo(0f, tween(250)) }
-                launch { titleAlphaAnim.animateTo(0f, tween(120)) }
                 launch {
                     cutoutOffsetY.animateTo(
-                        -cutoutOffsetTargetPx,
+                        cutoutOffsetTargetPx,
                         tween(400, easing = CustomizePageEasing)
                     )
                 }
@@ -572,7 +562,6 @@ fun CustomizeScheduleScreen(
                 launch { cutoutProgress.snapTo(0f) }
                 launch { customizeButtonAlpha.animateTo(1f, tween(250)) }
                 launch { buttonAlphaAnim.animateTo(1f, tween(250)) }
-                launch { titleAlphaAnim.animateTo(1f, tween(250)) }
                 launch {
                     cutoutOffsetY.animateTo(
                         0f,
@@ -601,7 +590,6 @@ fun CustomizeScheduleScreen(
                     )
                 }
                 launch { buttonAlphaAnim.animateTo(0f, tween(250)) }
-                launch { titleAlphaAnim.animateTo(0f, tween(250)) }
             }
         }
     }
@@ -659,7 +647,6 @@ fun CustomizeScheduleScreen(
     // 动画完成后恒为 1f，避免无谓重组
     val enterValue = if (animDone) 1f else animProgress.value
     val buttonScale = buttonScaleAnim.value
-    val titleAlpha = titleFadeAnim.value
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -722,8 +709,13 @@ fun CustomizeScheduleScreen(
             val cutoutToBottomGap = (screenH - cutoutBottom).coerceAtLeast(0f)
             val toolNudgeDp = 8.dp
             val toolBottomPadding = with(densityObj) {
+                // ⚠ 末尾那个 2/3 是**还原静止位置**用的，不是随手取的系数。
+                // 旧式（onSizeChanged 挂在 padding 外，量到的是含 padding 的高度）是自指方程
+                // P = (G - H - P)/2 + 8dp，它收敛到的唯一解正好 = 本式的 2/3；修掉振荡后若
+                // 不补这个系数，工具栏会停在公式原值（约 116px 而非原来的 77px），位置就变了。
                 val raw = (cutoutToBottomGap / 2f - toolRowHeightPx / 2f).toDp() + toolNudgeDp
-                if (raw < 0.dp) 0.dp else raw
+                val restored = raw * (2f / 3f)
+                if (restored < 0.dp) 0.dp else restored
             }
 
             val targetScaleX = cardWidthPx / screenW
@@ -731,7 +723,13 @@ fun CustomizeScheduleScreen(
             val targetScale = minOf(targetScaleX, targetScaleY)
 
             val currentScale = 1f + (targetScale - 1f) * enterValue
-            val currentTranslationY = 0f
+            // ⚠ 必须与卡片 cardOffsetY 里的位移项逐项一致：`0.028H` 那一项已由下面
+            // TransformOrigin(0.5f, 0.58f) 的缩放原点承担（0.028/0.35 == 0.08），但
+            // `cutoutOffsetY` / `sheetOffsetY` 这两项原点管不着。留 0f 的话，`animDone`
+            // 交接那一刻卡片会比覆盖层高 |o|*(1-prog)（落位时 o=-10dp → 约 7dp），
+            // 观感就是开洞区域底部往上跳一下。
+            val currentTranslationY =
+                (cutoutOffsetY.value + sheetOffsetY.value) * (1f - cutoutScaleProg)
 
             Box(
                 modifier = Modifier
@@ -935,27 +933,6 @@ fun CustomizeScheduleScreen(
                                     bounceBackTrigger++
                                 }
                             }
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            alpha = titleAlphaAnim.value * titleAlpha
-                            scaleX = buttonScale
-                            scaleY = buttonScale
-                            transformOrigin = TransformOrigin(0.5f, 0.5f)
-                        },
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    Text(
-                        text = "课表外观",
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 24.sp,
-                        modifier = Modifier
-                            .padding(top = statusBarPadding + 70.dp)
                     )
                 }
 
@@ -1236,8 +1213,12 @@ fun CustomizeScheduleScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .onSizeChanged { toolRowHeightPx = it.height.toFloat() }
+                            // ⚠ onSizeChanged 必须在 padding **之内**：挂在外面量到的是
+                            // 「内容高 + 底部 padding」，而 padding 又由这个高度算出来 →
+                            // 自指方程，收敛因子 -1/2，工具栏会交替上下跳（198→17→107→62…px）。
+                            // 放进来只观测内容高，padding 不再反噬自己。
                             .padding(bottom = toolBottomPadding)
+                            .onSizeChanged { toolRowHeightPx = it.height.toFloat() }
                             .graphicsLayer {
                                 alpha = toolAlphaAnim.value
                                 translationY = toolOffsetYAnim.value
@@ -1981,7 +1962,7 @@ data class CombinationThumbnail(
 // 观感就是「脱节」。
 //
 // 各元素落地时刻（delay + duration，窗口 552ms）：
-//   卡片错落 380 / 翻页间距 400 / 标题 220 / 顶栏按钮 420 / 底部工具栏 420
+//   卡片错落 380 / 翻页间距 400 / 顶栏按钮 420 / 底部工具栏 420
 // 实测（iPhone 18 Pro Max / iOS 27.0）实际落地还要再晚 40~60ms（组合 + 帧对齐），
 // 故比理论窗口留出 ~100ms 余量。
 // ──────────────────────────────────────────────────────────────────────────
@@ -1991,10 +1972,6 @@ private const val ENTER_CARD_MILLIS = 380
 
 /** 翻页间距（-140f → -10f）收起时长 */
 private const val ENTER_PAGER_SPACING_MILLIS = 400
-
-/** 标题「课表外观」淡入：延迟 + 时长 = 220ms */
-private const val ENTER_TITLE_DELAY_MILLIS = 40
-private const val ENTER_TITLE_MILLIS = 180
 
 /** 顶栏「取消 / 应用」按钮缩放（1.5f → 1f）收拢：延迟 + 时长 = 420ms */
 private const val ENTER_BUTTON_DELAY_MILLIS = 80
