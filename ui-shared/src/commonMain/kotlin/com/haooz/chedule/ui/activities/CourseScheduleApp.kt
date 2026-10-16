@@ -84,7 +84,11 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -1453,7 +1457,7 @@ fun CourseScheduleApp(
     var switchAnimJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var switchAnimForward by remember { mutableStateOf(false) }
     var switchAnimRunning by remember { mutableStateOf(false) }
-    // 截图前需 join 等新课表数据就绪
+    // Await a schedule reload before recording the return layer.
     var switchReloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val switchAnimProgress = remember { Animatable(0f) }
     val backgroundScale = remember { Animatable(1f) }
@@ -1469,12 +1473,19 @@ fun CourseScheduleApp(
     }
     val switchReturnBgScrim = remember { Animatable(0f) }
     val screenGraphicsLayer = rememberGraphicsLayer()
-    // record() 会把整棵主内容树再画一遍，只在截图前录一帧，避免常驻翻倍绘制开销
+    // Retain drawing commands on demand for snapshots and schedule-library morphs.
     class MainSnapshotRequester {
         var lastRecordedToken: Int = 0
     }
     val mainSnapshotRequester = remember { MainSnapshotRequester() }
     var mainSnapshotToken by remember { mutableIntStateOf(0) }
+    suspend fun prepareMainContentLayer() {
+        val token = ++mainSnapshotToken
+        // Recording retains drawing commands; no bitmap allocation or CPU rasterization.
+        while (mainSnapshotRequester.lastRecordedToken < token) {
+            withFrameNanos { }
+        }
+    }
     suspend fun captureMainContentBitmap(includeNativeChrome: Boolean = true): ImageBitmap? {
         mainSnapshotToken++
         // 等两帧：draw 录制完成 + 帧已提交
@@ -2411,10 +2422,10 @@ fun CourseScheduleApp(
     var showSwitchSchedule by remember { mutableStateOf(false) }
     var switchPendingReverse by remember { mutableStateOf(false) }
     var switchExiting by remember { mutableStateOf(false) }
-    var switchMainSnapshotJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    // 截图期间先隐藏切换页
-    var switchCapturingSnapshot by remember { mutableStateOf(false) }
-    // 改过课表则退出前重截主内容
+    var switchMainLayerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // Keep the destination hidden until its anchor and the source layer are ready.
+    var switchPreparingLayer by remember { mutableStateOf(false) }
+    // Re-record the source layer before returning to a different schedule.
     var scheduleChanged by remember { mutableStateOf(false) }
     var showMorePopup by remember { mutableStateOf(false) }
     var showTodayMorePopup by remember { mutableStateOf(false) }
@@ -2442,7 +2453,7 @@ fun CourseScheduleApp(
             // Interrupt the exit at its current progress; keep the live page and snapshots.
             switchAnimJob?.cancel()
             switchPendingReverse = false
-            switchCapturingSnapshot = false
+            switchPreparingLayer = false
             switchAnimRunning = true
             switchAnimJob = coroutineScope.launch {
                 switchAnimProgress.animateTo(0f, tween(350, easing = OobeCubicOutEasing))
@@ -2453,11 +2464,10 @@ fun CourseScheduleApp(
             }
         } else {
             switchPendingReverse = true
-            switchCapturingSnapshot = true
+            switchPreparingLayer = true
             showSwitchSchedule = true
-            switchMainSnapshotJob = coroutineScope.launch {
-                // Snapshot the existing Compose layer, not UIKit's live Skia hierarchy.
-                mainContentSnapshot = captureMainContentBitmap(includeNativeChrome = false)
+            switchMainLayerJob = coroutineScope.launch {
+                prepareMainContentLayer()
             }
         }
     }
@@ -2479,7 +2489,7 @@ fun CourseScheduleApp(
     SideEffect {
         hostNavigation?.let { host ->
             host.scheduleLibraryActive = nativeBottomBar && !isTablet && showSwitchSchedule && !switchExiting
-            host.scheduleLibraryTransitionActive = switchCapturingSnapshot || switchAnimRunning || switchPendingReverse ||
+            host.scheduleLibraryTransitionActive = switchPreparingLayer || switchAnimRunning || switchPendingReverse ||
                 (showSwitchSchedule && switchExiting)
             // ⚠ 不含 `!showDetail`：详情页盖满全屏，原生顶栏本就被挡住。
             host.showsNativeHeader = nativeBottomBar && !isTablet && !isWindowCutoutActive &&
@@ -2555,7 +2565,6 @@ fun CourseScheduleApp(
         val latestSheetOffset by rememberUpdatedState(sheetOffsetY.value)
         val latestShortcutBlur by rememberUpdatedState(shortcutMenuBlurRadius.value)
         val latestManageBlur by rememberUpdatedState(managePageBlurRadius.value)
-        val latestSwitchProgress by rememberUpdatedState(switchAnimProgress.value)
         val latestCustomizeExitScale by rememberUpdatedState(customizeExitScale.value)
         val latestCustomizeCoverScale by rememberUpdatedState(customizeCoverScale.value)
         val latestCustomizeCoverAlpha by rememberUpdatedState(customizeCoverAlpha.value)
@@ -2596,14 +2605,13 @@ fun CourseScheduleApp(
                     // 开洞编辑时主内容持续缩放，绝不能停录
                     latestIsWindowCutout ||
                     (latestShowCustomize && latestIsCustomizeExiting) ||
-                    // 切换课表进/退场动画期间刻意「不」录：这一段里主内容 alpha=0
+                    // Morph progress does not change the source backdrop.
                     latestShortcutBlur > 0.01f ||
                     latestManageBlur > 0.01f ||
                     // 非静止端点视为动画进行中
                     (latestCutoutScale != 1f && latestCutoutScale != 0.75f) ||
                     latestBackgroundScale != 1f ||
                     latestSheetOffset != 0f ||
-                    (latestSwitchProgress != 0f && latestSwitchProgress != 1f) ||
                     latestCustomizeExitScale != 1f ||
                     latestCustomizeCoverScale != 1f ||
                     latestCustomizeCoverAlpha != 1f ||
@@ -2697,12 +2705,14 @@ fun CourseScheduleApp(
                     Modifier.drawWithContent {
                         // 仅在被请求时录制一帧，避免每帧重绘整棵主内容树
                         if (mainSnapshotRequester.lastRecordedToken != mainSnapshotToken) {
-                            mainSnapshotRequester.lastRecordedToken = mainSnapshotToken
                             screenGraphicsLayer.record {
                                 this@drawWithContent.drawContent()
                             }
+                            mainSnapshotRequester.lastRecordedToken = mainSnapshotToken
+                            drawLayer(screenGraphicsLayer)
+                        } else {
+                            drawContent()
                         }
-                        drawContent()
                     }
                 )
         ) {
@@ -5126,7 +5136,7 @@ fun CourseScheduleApp(
                     .fillMaxSize()
                     .graphicsLayer {
                         // A zero-alpha layer may skip recording its target snapshot on iOS.
-                        alpha = if (switchCapturingSnapshot) 0.001f else 1f
+                        alpha = if (switchPreparingLayer) 0.001f else 1f
                     }
             ) {
                 val switchShareRepository = remember { CourseRepository() }
@@ -5138,7 +5148,7 @@ fun CourseScheduleApp(
                     onBackStart = {
                         switchExiting = true
                         switchPendingReverse = false
-                        switchCapturingSnapshot = false
+                        switchPreparingLayer = false
                     },
                     onBack = { switchPageBitmap ->
                         if (!switchExiting) return@SwitchScheduleScreen
@@ -5158,27 +5168,23 @@ fun CourseScheduleApp(
                         switchAnimRunning = true
                         switchAnimJob?.cancel()
                         switchAnimJob = coroutineScope.launch {
-                            if (scheduleChanged && !wasForward) {
+                            switchMainLayerJob?.join()
+                            if (scheduleChanged) {
                                 scheduleChanged = false
                                 switchReloadJob?.join()
                                 switchReloadJob = null
-                                mainContentSnapshot = null
-                                // withFrameNanos 返回的是上一帧，需多等一帧；只等 1 帧仍有录到旧课表的隐患
+                                // Allow the selected schedule to reach layout before recording it.
                                 withFrameNanos { }
-                                mainContentSnapshot = try {
-                                    captureMainContentBitmap(includeNativeChrome = false)
-                                } catch (_: Exception) {
-                                    mainContentSnapshot
-                                }
+                                prepareMainContentLayer()
                             } else {
                                 scheduleChanged = false
                             }
                             val currentBounds = switchCurrentCardBounds
-                            val screenBitmap = switchPageBitmapBmp ?: mainContentSnapshot
-                            if (currentBounds != null && screenBitmap != null) {
-                                switchOverlayActive = true
-                                switchCardBounds = currentBounds
-                                switchCardSnapshot = try {
+                            val screenBitmap = switchPageBitmapBmp
+                            switchOverlayActive = true
+                            switchCardBounds = currentBounds
+                            switchCardSnapshot = if (currentBounds != null && screenBitmap != null) {
+                                try {
                                     val x = currentBounds.left.toInt()
                                         .coerceIn(0, screenBitmap.width - 1)
                                     val y = currentBounds.top.toInt()
@@ -5193,17 +5199,17 @@ fun CourseScheduleApp(
                                 } catch (_: OutOfMemoryError) {
                                     null
                                 }
-                                val currentProgress = switchAnimProgress.value
-                                val remainingDuration =
-                                    ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
-                                switchAnimProgress.animateTo(
-                                    targetValue = 1f,
-                                    animationSpec = tween(
-                                        durationMillis = remainingDuration,
-                                        easing = OobeQuartOutEasing
-                                    )
+                            } else null
+                            val currentProgress = switchAnimProgress.value
+                            val remainingDuration =
+                                ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
+                            switchAnimProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    durationMillis = remainingDuration,
+                                    easing = OobeQuartOutEasing
                                 )
-                            }
+                            )
                             showSwitchSchedule = false
                             FeatureLog.t(
                                 "切换课表", "close", "forward=$wasForward"
@@ -5273,18 +5279,13 @@ fun CourseScheduleApp(
                         switchAnimRunning = true
                         switchAnimJob?.cancel()
                         switchAnimJob = coroutineScope.launch {
+                            switchMainLayerJob?.join()
                             if (scheduleChanged) {
                                 scheduleChanged = false
                                 switchReloadJob?.join()
                                 switchReloadJob = null
-                                mainContentSnapshot = null
-                                // withFrameNanos 返回的是上一帧，需多等一帧
                                 withFrameNanos { }
-                                mainContentSnapshot = try {
-                                    captureMainContentBitmap(includeNativeChrome = false)
-                                } catch (_: Exception) {
-                                    mainContentSnapshot
-                                }
+                                prepareMainContentLayer()
                             }
                             switchOverlayActive = true
                             switchCardSnapshot = cardBitmapBmp
@@ -5375,10 +5376,10 @@ fun CourseScheduleApp(
                                 recycleSnapshot(screenBitmapBmp, cardSnap, switchCardSnapshot)
                             }
                             switchAnimJob = coroutineScope.launch {
-                                switchMainSnapshotJob?.join()
+                                switchMainLayerJob?.join()
                                 switchAnimProgress.snapTo(1f)
                                 switchReturnBgScrim.snapTo(0.4f)
-                                switchCapturingSnapshot = false
+                                switchPreparingLayer = false
                                 switchOverlayActive = true
                                 switchCardBounds = cardBoundsInScreen.takeIf {
                                     it.width > 0f && it.height > 0f
@@ -5430,13 +5431,13 @@ fun CourseScheduleApp(
                 )
                 }
             }
-            // p 在卡片矩形↔全屏插值，卡片/主内容快照交叉淡入淡出
+            // Morph between the retained main layer and the destination card.
             SwitchMorphOverlay(
                 active = switchOverlayActive,
                 progress = switchAnimProgress,
                 cardBounds = switchCardBounds,
                 cardSnapshot = switchCardSnapshot,
-                mainSnapshot = mainContentSnapshot,
+                mainLayer = screenGraphicsLayer,
                 screenCornerRadius = screenCornerRadius,
                 isDark = isDark,
             )
@@ -5472,7 +5473,7 @@ private fun SwitchMorphOverlay(
     progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     cardBounds: Rect?,
     cardSnapshot: ImageBitmap?,
-    mainSnapshot: ImageBitmap?,
+    mainLayer: GraphicsLayer,
     screenCornerRadius: Float,
     isDark: Boolean,
 ) {
@@ -5485,10 +5486,8 @@ private fun SwitchMorphOverlay(
     val density = LocalDensity.current
     val p = progress.value
 
-    // asImageBitmap() 每次调用都 new 一个包装对象，Image 的位图纹理缓存按对象身份命中：
-    // 写在组合里 = 每帧换身份 = 缓存全失效，全屏 mainSnapshot 每帧重传纹理。故按位图身份记住。
+    // The source layer stays owned by the main composition throughout the morph.
     val cardImage = remember(cardSnapshot) { cardSnapshot }
-    val mainImage = remember(mainSnapshot) { mainSnapshot }
 
     val sBounds = cardBounds
     val cLeft: Float
@@ -5544,17 +5543,26 @@ private fun SwitchMorphOverlay(
                 contentScale = ContentScale.None
             )
         }
-        if (mainImage != null) {
-            Image(
-                bitmap = mainImage,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = ((p - 0.2f) / 0.7f).coerceIn(0f, 1f) },
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter
-            )
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = ((p - 0.2f) / 0.7f).coerceIn(0f, 1f) }
+                .drawWithContent {
+                    val layerSize = mainLayer.size
+                    if (layerSize.width > 0 && layerSize.height > 0) {
+                        // Match the previous snapshot's Crop / TopCenter alignment.
+                        val scale = maxOf(
+                            size.width / layerSize.width,
+                            size.height / layerSize.height,
+                        )
+                        translate(left = (size.width - layerSize.width * scale) / 2f) {
+                            scale(scale, scale, pivot = Offset.Zero) {
+                                drawLayer(mainLayer)
+                            }
+                        }
+                    }
+                }
+        )
     }
 }
 

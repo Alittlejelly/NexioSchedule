@@ -708,6 +708,71 @@ final class NativeHeaderSmokeTests: XCTestCase {
         nativeBack()
     }
 
+    func testScheduleLibraryLayerReturnAfterScheduleChange() throws {
+        let scheduleTab = app.tabBars.buttons["课程表"]
+        XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
+        scheduleTab.tap()
+        let switchButton = app.navigationBars.buttons["课表切换"]
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        switchButton.tap()
+        requireNativeHeader("全部课表")
+        // This regression uses the simulator's default schedule fixture.
+        let original = item("默认课表")
+        try XCTSkipUnless(original.exists || item("默认文件夹").exists,
+                          "Requires the default schedule fixture")
+        if !original.exists { item("默认文件夹").tap() }
+        XCTAssertTrue(original.waitForExistence(timeout: 5), app.debugDescription)
+        // Restore the fixture selection if an interrupted previous run left a temporary schedule.
+        original.tap()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        settle()
+        switchButton.tap()
+        requireNativeHeader("全部课表")
+        XCTAssertLessThan(abs(original.frame.midY - item("当前课表").frame.midY), 40)
+        let staleFixtures = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "LayerReturn-"))
+            .allElementsBoundByIndex.map(\.label)
+        let fixtureName = "LayerReturn-" + String(UUID().uuidString.prefix(8))
+        app.navigationBars.buttons["添加课表"].tap()
+        let field = app.textViews.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        field.tap()
+        field.typeText(fixtureName)
+        app.buttons["确定"].tap()
+        XCTAssertTrue(item(fixtureName).waitForExistence(timeout: 5), app.debugDescription)
+        nativeBack()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(switchButton.isEnabled)
+        capture("Schedule library - new schedule returned through source layer")
+
+        switchButton.tap()
+        requireNativeHeader("全部课表")
+        XCTAssertTrue(item(fixtureName).exists, app.debugDescription)
+        XCTAssertLessThan(abs(item(fixtureName).frame.midY - item("当前课表").frame.midY), 40)
+        if !original.exists { item("默认文件夹").tap() }
+        XCTAssertTrue(original.waitForExistence(timeout: 5), app.debugDescription)
+        original.tap()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+        settle()
+        capture("Schedule library - selected original schedule returned through source layer")
+
+        switchButton.tap()
+        requireNativeHeader("全部课表")
+        XCTAssertLessThan(abs(original.frame.midY - item("当前课表").frame.midY), 40)
+        for name in staleFixtures + [fixtureName] {
+            item(name).press(forDuration: 1.2)
+            let delete = app.images["删除"]
+            XCTAssertTrue(delete.waitForExistence(timeout: 5), app.debugDescription)
+            delete.tap()
+            XCTAssertTrue(item("确定要删除选中的课表吗？").waitForExistence(timeout: 5), app.debugDescription)
+            app.buttons.matching(NSPredicate(format: "label == %@", "删除")).firstMatch.tap()
+            let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                    object: item(name))
+            XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 5), .completed)
+        }
+        nativeBack()
+        XCTAssertTrue(switchButton.waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     func testScheduleLibraryTransitionControlsAllowRapidReopen() throws {
         let scheduleTab = app.tabBars.buttons["课程表"]
         XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
