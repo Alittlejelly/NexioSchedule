@@ -29,8 +29,8 @@ import com.haooz.chedule.ui.effects.motion.OobeQuartOutSoftStartEasing
 import com.haooz.chedule.ui.effects.motion.SecondaryPageExitEasing
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.clipDuringTransition
-import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
-import com.kyant.capsule.ContinuousRoundedRectangle
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.toShape
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -252,10 +252,10 @@ private fun NavLayerStack(
     SideEffect { onOverlayActivityChanged?.invoke(layers.isNotEmpty()) }
 
     // 屏幕圆角：转场中间态把栈顶裁成圆角，像一张卡片从右边推进来。下层是被揭开的，不该有轮廓。
-    val cornerRadiusPx = rememberScreenCornerRadiusPx()
+    val cornerRadiusPx = rememberScreenCornerRadiiPx()
     val density = LocalDensity.current
     val clipShape = remember(cornerRadiusPx, density) {
-        if (cornerRadiusPx > 0f) with(density) { ContinuousRoundedRectangle(cornerRadiusPx.toDp()) } else null
+        if (cornerRadiusPx.maxRadius > 0f) cornerRadiusPx.toShape(density) else null
     }
     val inFlight: () -> Boolean = { progress.value > 0f && progress.value < 1f }
     // 黑幕只压暗被盖住的内容，栈顶自己不被压暗；p 到位就不画，省一次全屏 alpha 混合。

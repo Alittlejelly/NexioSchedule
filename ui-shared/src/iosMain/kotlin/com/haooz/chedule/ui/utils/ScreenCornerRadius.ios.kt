@@ -20,7 +20,10 @@ import platform.UIKit.UIView
 import platform.UIKit.UIWindow
 import platform.UIKit.setCornerConfiguration
 import platform.UIKit.UIUserInterfaceIdiomPad
-import platform.UIKit.UIRectCornerAllCorners
+import platform.UIKit.UIRectCornerTopLeft
+import platform.UIKit.UIRectCornerTopRight
+import platform.UIKit.UIRectCornerBottomRight
+import platform.UIKit.UIRectCornerBottomLeft
 import platform.UIKit.effectiveRadiusForCorner
 
 /**
@@ -32,10 +35,10 @@ import platform.UIKit.effectiveRadiusForCorner
  * or reconfigured. Older systems use a best-effort device-size estimate.
  */
 @Composable
-actual fun rememberScreenCornerRadiusPx(): Float {
+actual fun rememberScreenCornerRadiiPx(): ScreenCornerRadiiPx {
     val container = LocalWindowInfo.current.containerSize
     val controller = LocalUIViewController.current
-    var radiusPx by remember(controller, container) { mutableStateOf(0f) }
+    var radiiPx by remember(controller, container) { mutableStateOf(ScreenCornerRadiiPx.Zero) }
 
     LaunchedEffect(controller, container) {
         // Composition may run before UIKit attaches the Compose controller to a window.
@@ -43,7 +46,9 @@ actual fun rememberScreenCornerRadiusPx(): Float {
         val window = controller.view.window ?: return@LaunchedEffect
         val selector = NSSelectorFromString("effectiveRadiusForCorner:")
         if (selector == null || !window.respondsToSelector(selector)) {
-            radiusPx = (fallbackCornerRadiusPoints(window) * window.screen.scale).toFloat()
+            radiiPx = ScreenCornerRadiiPx.uniform(
+                (fallbackCornerRadiusPoints(window) * window.screen.scale).toFloat()
+            )
             return@LaunchedEffect
         }
 
@@ -61,14 +66,18 @@ actual fun rememberScreenCornerRadiusPx(): Float {
             withFrameNanos { }
             probe.setFrame(window.bounds)
             window.layoutIfNeeded()
-            val points = probe.effectiveRadiusForCorner(UIRectCornerAllCorners)
-            radiusPx = (points * window.screen.scale).toFloat()
+            radiiPx = ScreenCornerRadiiPx(
+                topLeft = (probe.effectiveRadiusForCorner(UIRectCornerTopLeft) * window.screen.scale).toFloat(),
+                topRight = (probe.effectiveRadiusForCorner(UIRectCornerTopRight) * window.screen.scale).toFloat(),
+                bottomRight = (probe.effectiveRadiusForCorner(UIRectCornerBottomRight) * window.screen.scale).toFloat(),
+                bottomLeft = (probe.effectiveRadiusForCorner(UIRectCornerBottomLeft) * window.screen.scale).toFloat(),
+            )
         } finally {
             // Also runs on cancellation when the host is removed or resized.
             probe.removeFromSuperview()
         }
     }
-    return radiusPx
+    return radiiPx
 }
 
 /**

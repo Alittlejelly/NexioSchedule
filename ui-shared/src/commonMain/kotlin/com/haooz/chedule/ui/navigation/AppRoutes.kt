@@ -112,7 +112,8 @@ import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.addScreenCornerRect
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
@@ -749,7 +750,7 @@ fun CourseTimeSettingsRoute(
     val screenWidth = windowInfo.containerSize.width.toFloat()
     val screenHeight = windowInfo.containerSize.height.toFloat()
     // 圆角：Android 读系统真实圆角（自由小窗固定 20dp）；iOS/桌面返回 0 = 不裁切
-    val screenCornerRadius = rememberScreenCornerRadiusPx()
+    val screenCornerRadius = rememberScreenCornerRadiiPx()
 
     // 页面状态管理
     var currentPage by remember { mutableStateOf("select") }
@@ -796,10 +797,10 @@ fun CourseTimeSettingsRoute(
                         val scale = backgroundScale.value
                         if (scale < 0.999f) {
                             val path = Path().apply {
-                                addSquircleRect(
+                                addScreenCornerRect(
                                     width = size.width,
                                     height = size.height,
-                                    cornerRadius = screenCornerRadius
+                                    corners = screenCornerRadius
                                 )
                             }
                             clipPath(path) {
@@ -1014,7 +1015,7 @@ fun CourseManageRoute(
     val managePageBlurRadius = remember { Animatable(0f) }
 
     // 圆角：Android 读系统真实圆角（自由小窗固定 20dp）；iOS/桌面返回 0 = 不裁切
-    val screenCornerRadius = rememberScreenCornerRadiusPx()
+    val screenCornerRadius = rememberScreenCornerRadiiPx()
 
     // 二级编辑页 / 快捷菜单各自独立的玻璃采样源
     val editLiquidGlassBackdrop = rememberLayerBackdrop()
@@ -1048,10 +1049,10 @@ fun CourseManageRoute(
                         val scale = backgroundScale.value
                         if (scale < 0.999f) {
                             val path = Path().apply {
-                                addSquircleRect(
+                                addScreenCornerRect(
                                     width = size.width,
                                     height = size.height,
-                                    cornerRadius = screenCornerRadius
+                                    corners = screenCornerRadius
                                 )
                             }
                             clipPath(path) {

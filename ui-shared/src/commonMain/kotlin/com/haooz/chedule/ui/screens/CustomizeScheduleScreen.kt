@@ -91,6 +91,9 @@ import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.kyant.backdrop.edgelight.edgeLight
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.addScreenCornerRect
+import com.haooz.chedule.ui.utils.toShape
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
@@ -102,7 +105,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.capsule.ContinuousCapsule
-import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -131,7 +133,6 @@ import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
-import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.absoluteValue
@@ -149,27 +150,27 @@ private class CutoutPathCache {
     private var screenH = -1f
     private var holeW = -1f
     private var holeH = -1f
-    private var radius = -1f
+    private var corners: ScreenCornerRadiiPx? = null
 
     fun obtain(
         screenW: Float,
         screenH: Float,
         holeW: Float,
         holeH: Float,
-        radius: Float
+        corners: ScreenCornerRadiiPx
     ): Path {
         if (this.screenW != screenW || this.screenH != screenH ||
-            this.holeW != holeW || this.holeH != holeH || this.radius != radius
+            this.holeW != holeW || this.holeH != holeH || this.corners != corners
         ) {
             this.screenW = screenW
             this.screenH = screenH
             this.holeW = holeW
             this.holeH = holeH
-            this.radius = radius
+            this.corners = corners
             path.rewind()
             path.fillType = PathFillType.EvenOdd
             path.addRect(Rect(-screenW * 2f, -screenH * 2f, screenW * 3f, screenH * 3f))
-            path.addSquircleRect(width = holeW, height = holeH, cornerRadius = radius)
+            path.addScreenCornerRect(width = holeW, height = holeH, corners = corners)
         }
         return path
     }
@@ -178,7 +179,7 @@ private class CutoutPathCache {
 @Composable
 fun CustomizeScheduleScreen(
     snapshot: ImageBitmap?,
-    screenCornerRadius: Float,
+    screenCornerRadius: ScreenCornerRadiiPx,
     onDismiss: () -> Unit,
     onApply: () -> Unit,
     /** 默认主题实时预览：只改内存中的临时档位，点「应用」后才写入 SharedPreferences */
@@ -216,8 +217,6 @@ fun CustomizeScheduleScreen(
     onThemeModePersist: (ThemeMode) -> Unit = {},
 ) {
     val densityObj = LocalDensity.current
-    val density = densityObj.density
-    val screenRadiusDp = (screenCornerRadius / density).dp
     val cutoutOffsetTargetPx = with(densityObj) { 10.dp.toPx() }
     val sheetOffsetTargetPx = with(densityObj) { 90.dp.toPx() }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -682,7 +681,7 @@ fun CustomizeScheduleScreen(
                     val animW = size.width * cardScaleAnim.value
                     val animH = animW * aspect
                     val p = cutoutProgress.value
-                    val cutoutRadiusPx = screenRadiusDp.toPx() * cardScaleAnim.value * p
+                    val cutoutCorners = screenCornerRadius.scaled(cardScaleAnim.value * p)
 
                     val left = cardCenterX + ((cardCenterX - animW / 2f) - cardCenterX) * p
                     val top = cardCenterY + ((cardCenterY - animH / 2f) - cardCenterY) * p
@@ -696,7 +695,7 @@ fun CustomizeScheduleScreen(
                             screenH = size.height,
                             holeW = animW,
                             holeH = animH,
-                            radius = cutoutRadiusPx
+                            corners = cutoutCorners
                         )
                         translate(left, top) {
                             drawPath(cached, color = Color(0xFF1A1A1A))
@@ -810,7 +809,7 @@ fun CustomizeScheduleScreen(
                                     transformOrigin = TransformOrigin(pivotOriginX, pivotOriginY)
                                     alpha = baseCardAlpha
                                 }
-                                .clip(ContinuousRoundedRectangle(screenRadiusDp * cardScaleAnim.value))
+                                .clip(screenCornerRadius.scaled(cardScaleAnim.value).toShape(densityObj))
                         ) {
                             val combIdx = page
                             Box(
@@ -1350,7 +1349,7 @@ fun CustomizeScheduleScreen(
                                     transformOrigin = TransformOrigin(0.5f, 0.58f)
                                     translationY = currentTranslationY
                                     clip = true
-                                    shape = ContinuousRoundedRectangle(screenRadiusDp)
+                                    shape = screenCornerRadius.toShape(densityObj)
                                 },
                             contentScale = ContentScale.Crop
                         )

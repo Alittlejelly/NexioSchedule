@@ -25,7 +25,7 @@ import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.currentDeviceInfo
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
-import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
@@ -143,7 +143,8 @@ fun CourseScheduleTheme(
         }
     }
     val density = LocalDensity.current
-    val screenCornerRadiusPx = rememberScreenCornerRadiusPx()
+    // 弹窗保持统一圆角，取物理四角的最大值。
+    val screenCornerRadiusPx = rememberScreenCornerRadiiPx().maxRadius
     val screenCornerRadius = with(density) { screenCornerRadiusPx.toDp() }
     MiuixTheme(
         controller = controller,

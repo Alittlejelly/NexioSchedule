@@ -38,7 +38,7 @@ import com.haooz.chedule.ui.utils.HostOverlayContent
 import com.haooz.chedule.ui.utils.HostOverlayState
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.LocalHostOverlays
-import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import androidx.compose.ui.platform.LocalDensity
 import platform.UIKit.UIViewController
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -63,15 +63,17 @@ class IosAppHost {
     private var requestedPopDepth by mutableStateOf<Int?>(null)
     private var nativeTransitionInFlight by mutableStateOf(false)
     private var deferredEditorPopRouteId: String? = null
-    private var screenCornerRadiusPointsState by mutableStateOf(0.0)
+    private var screenCornerRadiiPointsState by mutableStateOf(ScreenCornerRadiiPoints())
 
-    /**
-     * 屏幕圆角（pt）。原生文档转场由 Swift 侧裁这个圆角 —— 与 Compose 侧 `AppNavHost` 用的是
-     * 同一个 `rememberScreenCornerRadiusPx`，两条转场路径才能对得上。0 = 取不到 → 不裁。
-     *
-     * ⚠ Swift 读不到 Compose 的组合状态，只能从 host 取；写入见 [HostEnvironment]。
-     */
-    val screenCornerRadiusPoints: Double get() = screenCornerRadiusPointsState
+    /** Physical corners in points, mirrored from Compose for native page transitions. */
+    val screenTopLeftCornerRadiusPoints: Double get() = screenCornerRadiiPointsState.topLeft
+    val screenTopRightCornerRadiusPoints: Double get() = screenCornerRadiiPointsState.topRight
+    val screenBottomRightCornerRadiusPoints: Double get() = screenCornerRadiiPointsState.bottomRight
+    val screenBottomLeftCornerRadiusPoints: Double get() = screenCornerRadiiPointsState.bottomLeft
+    val screenCornerRadiusPoints: Double get() = maxOf(
+        screenTopLeftCornerRadiusPoints, screenTopRightCornerRadiusPoints,
+        screenBottomRightCornerRadiusPoints, screenBottomLeftCornerRadiusPoints,
+    )
 
     init {
         navigation.scheduleLibraryOverlays = scheduleLibraryOverlays
@@ -470,9 +472,8 @@ class IosAppHost {
     @Composable
     private fun HostEnvironment(content: @Composable () -> Unit) {
         CourseScheduleTheme(systemDarkTheme = systemDarkTheme) {
-            // 屏幕圆角递进 host，供 Swift 的原生转场裁切。三个 controller 都走这里，所以加条件：
-            // 取到之前才探测 —— 探测要往 window 里临时插一个 probe view，跑三次纯属浪费。
-            if (screenCornerRadiusPoints == 0.0) ScreenCornerRadiusBridge()
+            // Keep observing window geometry: rotation/resizing can change each physical corner.
+            ScreenCornerRadiusBridge()
             MiuixOverlayHostProvider(popupHost) {
                 CompositionLocalProvider(
                     LocalAppRouter provides router,
@@ -484,16 +485,30 @@ class IosAppHost {
         }
     }
 
-    /** 把 [rememberScreenCornerRadiusPx] 的结果换算成 pt 写进 [screenCornerRadiusPoints]。 */
+    /** Mirror all four [rememberScreenCornerRadiiPx] values in points for Swift. */
     @Composable
     private fun ScreenCornerRadiusBridge() {
         val density = LocalDensity.current
-        val radiusPx = rememberScreenCornerRadiusPx()
+        val radiiPx = rememberScreenCornerRadiiPx()
         SideEffect {
-            screenCornerRadiusPointsState = with(density) { radiusPx.toDp().value }.toDouble()
+            screenCornerRadiiPointsState = with(density) {
+                ScreenCornerRadiiPoints(
+                    topLeft = radiiPx.topLeft.toDp().value.toDouble(),
+                    topRight = radiiPx.topRight.toDp().value.toDouble(),
+                    bottomRight = radiiPx.bottomRight.toDp().value.toDouble(),
+                    bottomLeft = radiiPx.bottomLeft.toDp().value.toDouble(),
+                )
+            }
         }
     }
 }
+
+private data class ScreenCornerRadiiPoints(
+    val topLeft: Double = 0.0,
+    val topRight: Double = 0.0,
+    val bottomRight: Double = 0.0,
+    val bottomLeft: Double = 0.0,
+)
 
 private data class NativeHostSnapshot(
     val selectedTab: Int,

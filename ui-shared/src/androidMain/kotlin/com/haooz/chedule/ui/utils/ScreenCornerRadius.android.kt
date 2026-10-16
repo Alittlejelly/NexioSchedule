@@ -12,21 +12,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 
 /**
- * Android：自由窗口固定 20dp；Android 12+ 读系统真实圆角；更老的系统返回 0（不裁切）。
+ * Android：自由窗口固定 20dp；Android 12+ 分别读系统四个真实圆角；更老的系统返回 0（不裁切）。
  *
  * ⚠ remember key 必须含窗口尺寸（containerSize）：只挂 context/density 的话，全屏时缓存了
  *   屏幕物理圆角，进出小窗不会重算 —— 表现为页面间转场不裁 20dp，而「进小窗之后才 push」
  *   的二级页首次组合恰好缓存到 20dp，出现「有的页有、有的页没有」。
  */
 @Composable
-actual fun rememberScreenCornerRadiusPx(): Float {
+actual fun rememberScreenCornerRadiiPx(): ScreenCornerRadiiPx {
     val context = LocalContext.current
     val density = LocalDensity.current
     val containerSize = LocalWindowInfo.current.containerSize
     return remember(context, density, containerSize) {
         try {
             if ((context as? Activity)?.isInMultiWindowMode == true) {
-                20f * density.density
+                ScreenCornerRadiiPx.uniform(20f * density.density)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
                 val bounds = wm?.currentWindowMetrics?.bounds
@@ -36,17 +36,23 @@ actual fun rememberScreenCornerRadiusPx(): Float {
                     (bounds.width() < maxBounds.width() * SMALL_WINDOW_RATIO ||
                         bounds.height() < maxBounds.height() * SMALL_WINDOW_RATIO)
                 if (isSmallWindow) {
-                    20f * density.density
+                    ScreenCornerRadiiPx.uniform(20f * density.density)
                 } else {
-                    wm?.currentWindowMetrics?.windowInsets
-                        ?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat()
-                        ?: 0f
+                    val insets = wm?.currentWindowMetrics?.windowInsets
+                    fun radius(position: Int): Float =
+                        insets?.getRoundedCorner(position)?.radius?.toFloat() ?: 0f
+                    ScreenCornerRadiiPx(
+                        topLeft = radius(RoundedCorner.POSITION_TOP_LEFT),
+                        topRight = radius(RoundedCorner.POSITION_TOP_RIGHT),
+                        bottomRight = radius(RoundedCorner.POSITION_BOTTOM_RIGHT),
+                        bottomLeft = radius(RoundedCorner.POSITION_BOTTOM_LEFT),
+                    )
                 }
             } else {
-                0f
+                ScreenCornerRadiiPx.Zero
             }
         } catch (_: Exception) {
-            0f
+            ScreenCornerRadiiPx.Zero
         }
     }
 }

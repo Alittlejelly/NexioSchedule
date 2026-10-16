@@ -51,6 +51,7 @@ import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.io.File
@@ -203,7 +204,7 @@ private fun DesktopShell() {
                             cardHeight = 120f,
                             screenWidth = 1200f,
                             screenHeight = 800f,
-                            screenCornerRadius = 20f,
+                            screenCornerRadius = ScreenCornerRadiiPx.uniform(20f),
                             cardSnapshot = null,
                             sectionTimes = emptyMap(),
                             classStartTime = "2026/3/2",
@@ -221,7 +222,7 @@ private fun DesktopShell() {
                             cardHeight = 120f,
                             screenWidth = 1200f,
                             screenHeight = 800f,
-                            screenCornerRadius = 20f,
+                            screenCornerRadius = ScreenCornerRadiiPx.uniform(20f),
                             cardSnapshot = null,
                             onBackStart = { },
                             onBack = { page = DesktopPage.Home },

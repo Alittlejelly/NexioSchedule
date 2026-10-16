@@ -186,7 +186,12 @@ final class NativeDocumentNavigationController: UINavigationController,
             push: operation == .push,
             interactive: interactiveBack != nil,
             direction: view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -1 : 1,
-            cornerRadius: CGFloat(host.screenCornerRadiusPoints)
+            corners: NativeScreenCornerRadii(
+                topLeft: CGFloat(host.screenTopLeftCornerRadiusPoints),
+                topRight: CGFloat(host.screenTopRightCornerRadiusPoints),
+                bottomRight: CGFloat(host.screenBottomRightCornerRadiusPoints),
+                bottomLeft: CGFloat(host.screenBottomLeftCornerRadiusPoints)
+            )
         )
     }
 
@@ -629,6 +634,102 @@ private extension UIColor {
     }
 }
 
+/// Physical corners stay in screen coordinates, including when navigation runs right to left.
+private struct NativeScreenCornerRadii {
+    let topLeft: CGFloat
+    let topRight: CGFloat
+    let bottomRight: CGFloat
+    let bottomLeft: CGFloat
+
+    var maxRadius: CGFloat { max(topLeft, topRight, bottomRight, bottomLeft) }
+    var isUniform: Bool {
+        topLeft == topRight && topLeft == bottomRight && topLeft == bottomLeft
+    }
+
+    func path(in bounds: CGRect) -> CGPath {
+        // Match ContinuousRoundedRectangle: clamp each radius independently to half
+        // the shortest edge. One oversized corner must not shrink the other corners.
+        let limit = max(0, min(bounds.width, bounds.height) / 2)
+        let tl = min(max(0, topLeft), limit), tr = min(max(0, topRight), limit)
+        let br = min(max(0, bottomRight), limit), bl = min(max(0, bottomLeft), limit)
+        let left = bounds.minX, right = bounds.maxX, top = bounds.minY, bottom = bounds.maxY
+        let path = UIBezierPath()
+
+        // The same rounded-rectangle/capsule profiles as capsule's G2ContinuityProfile.
+        // Each corner has a zero-curvature cubic entry, a central arc, and a cubic exit.
+        func appendCorner(_ radius: CGFloat, incomingHalfEdge: CGFloat, outgoingHalfEdge: CGFloat,
+                          transform: CGAffineTransform, rotation: CGFloat) {
+            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+                CGPoint(x: x, y: y).applying(transform)
+            }
+            guard radius > 0 else {
+                let corner = point(0, 0)
+                if path.isEmpty { path.move(to: corner) } else { path.addLine(to: corner) }
+                return
+            }
+            let extensionFraction: CGFloat = 0.5286651
+            let curvatureIncrement: CGFloat = 0.0732051
+            let incomingRatio = min(1, max(0, (incomingHalfEdge / radius - 1) / extensionFraction))
+            let outgoingRatio = min(1, max(0, (outgoingHalfEdge / radius - 1) / extensionFraction))
+            let ratio = min(incomingRatio, outgoingRatio)
+            let extended = extensionFraction * (0.75 + 0.25 * ratio)
+            let arcFraction = (5.0 / 9.0) * ratio
+            let arcScale = 1 / (1 + curvatureIncrement * ratio)
+            let theta = (.pi / 2 - .pi / 2 * arcFraction) / 2
+            let sine = sin(theta), cosine = cos(theta)
+            let centerOffset = (1 - arcScale) / sqrt(2)
+            let arcStart = CGPoint(x: centerOffset + sine * arcScale,
+                                   y: 1 - centerOffset - cosine * arcScale)
+
+            // G2ContinuityProfile.createBaseBezier: controls join the straight edge with
+            // zero curvature and meet the central arc with the profile's curvature.
+            func bezier(_ edgeRatio: CGFloat) -> [CGPoint] {
+                let ext = extended * edgeRatio
+                let curvature = 1 + curvatureIncrement * edgeRatio
+                let p0 = CGPoint(x: -ext, y: 0)
+                if curvature == 1 && arcScale == 1 {
+                    let halfTan = sine / (1 + cosine)
+                    return [p0, CGPoint(x: (1 - 1.5 / (1 + cosine)) * halfTan, y: 0),
+                            CGPoint(x: halfTan, y: 0), CGPoint(x: sine, y: 1 - cosine)]
+                }
+                let dx = arcStart.x + ext, dy = arcStart.y
+                let lambda0 = -(dy * cosine - dx * sine) / sine
+                    - 1.5 * curvature * dy * dy / (sine * sine * sine)
+                let lambda3 = dy / sine
+                return [p0, CGPoint(x: -ext + max(0, lambda0), y: 0),
+                        CGPoint(x: arcStart.x - max(0, lambda3 * cosine),
+                                y: arcStart.y - max(0, lambda3 * sine)), arcStart]
+            }
+            let incoming = bezier(incomingRatio), outgoing = bezier(outgoingRatio)
+            let start = point(incoming[0].x, incoming[0].y)
+            if path.isEmpty { path.move(to: start) } else { path.addLine(to: start) }
+            path.addCurve(to: point(incoming[3].x, incoming[3].y),
+                          controlPoint1: point(incoming[1].x, incoming[1].y),
+                          controlPoint2: point(incoming[2].x, incoming[2].y))
+            if arcFraction > 0 {
+                path.addArc(withCenter: point(centerOffset, 1 - centerOffset), radius: radius * arcScale,
+                            startAngle: -.pi / 2 + theta + rotation,
+                            endAngle: -theta + rotation, clockwise: true)
+            }
+            // Reflect and reverse the exit half of the canonical top-right corner.
+            path.addCurve(to: point(1 - outgoing[0].y, 1 - outgoing[0].x),
+                          controlPoint1: point(1 - outgoing[2].y, 1 - outgoing[2].x),
+                          controlPoint2: point(1 - outgoing[1].y, 1 - outgoing[1].x))
+        }
+        let halfWidth = bounds.width / 2, halfHeight = bounds.height / 2
+        appendCorner(tr, incomingHalfEdge: halfWidth, outgoingHalfEdge: halfHeight,
+                     transform: CGAffineTransform(a: tr, b: 0, c: 0, d: tr, tx: right - tr, ty: top), rotation: 0)
+        appendCorner(br, incomingHalfEdge: halfHeight, outgoingHalfEdge: halfWidth,
+                     transform: CGAffineTransform(a: 0, b: br, c: -br, d: 0, tx: right, ty: bottom - br), rotation: .pi / 2)
+        appendCorner(bl, incomingHalfEdge: halfWidth, outgoingHalfEdge: halfHeight,
+                     transform: CGAffineTransform(a: -bl, b: 0, c: 0, d: -bl, tx: left + bl, ty: bottom), rotation: .pi)
+        appendCorner(tl, incomingHalfEdge: halfHeight, outgoingHalfEdge: halfWidth,
+                     transform: CGAffineTransform(a: 0, b: -tl, c: tl, d: 0, tx: left, ty: top + tl), rotation: .pi * 1.5)
+        path.close()
+        return path.cgPath
+    }
+}
+
 /// Only content views enter this container; UINavigationBar remains owned by UIKit above it.
 /// New navigation is gated while a transition is in flight. Interactive pop is linear while
 /// dragging; normal push/pop sample the existing Kotlin curves rather than copying them.
@@ -638,14 +739,14 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
     private let push: Bool
     private let interactive: Bool
     private let direction: CGFloat
-    private let cornerRadius: CGFloat
+    private let corners: NativeScreenCornerRadii
     private let reduceMotion: Bool
 
-    init(push: Bool, interactive: Bool, direction: CGFloat, cornerRadius: CGFloat) {
+    init(push: Bool, interactive: Bool, direction: CGFloat, corners: NativeScreenCornerRadii) {
         self.push = push
         self.interactive = interactive
         self.direction = direction
-        self.cornerRadius = cornerRadius
+        self.corners = corners
         reduceMotion = UIAccessibility.isReduceMotionEnabled
     }
 
@@ -689,10 +790,19 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
         let originalCornerRadius = upperLayer.cornerRadius
         let originalCornerCurve = upperLayer.cornerCurve
         let originalMasksToBounds = upperLayer.masksToBounds
-        if cornerRadius > 0 {
+        let originalMask = upperLayer.mask
+        if corners.maxRadius > 0 {
             upperLayer.masksToBounds = true
-            upperLayer.cornerRadius = cornerRadius
-            upperLayer.cornerCurve = .continuous
+            if corners.isUniform {
+                upperLayer.cornerRadius = corners.topLeft
+                upperLayer.cornerCurve = .continuous
+            } else {
+                let mask = CAShapeLayer()
+                mask.frame = upper.bounds
+                mask.path = corners.path(in: CGRect(origin: .zero, size: upper.bounds.size))
+                upperLayer.cornerRadius = 0
+                upperLayer.mask = mask
+            }
         }
 
         func apply(_ timeline: CGFloat) {
@@ -738,6 +848,7 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
                 upperLayer.masksToBounds = originalMasksToBounds
                 upperLayer.cornerRadius = originalCornerRadius
                 upperLayer.cornerCurve = originalCornerCurve
+                upperLayer.mask = originalMask
                 scrim.removeFromSuperview()
                 if !completed && !toWasInContainer { to.removeFromSuperview() }
                 context.completeTransition(completed)

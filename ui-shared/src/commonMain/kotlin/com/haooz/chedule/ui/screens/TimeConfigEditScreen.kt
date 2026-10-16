@@ -85,6 +85,8 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.toShape
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -137,7 +139,7 @@ private data class ConfigAnimState(
  * 折叠屏展开 / 分屏 / 横竖切换时宽度会变，捕获旧宽度会让裁切停在旧值（平板右侧被裁掉）。
  */
 private class ConfigAnimClipShape(
-    private val screenCornerRadiusPx: Float,
+    private val screenCornerRadiusPx: ScreenCornerRadiiPx,
     private val startCornerRadiusPx: Float,
     private val animState: State<ConfigAnimState>
 ) : Shape {
@@ -151,15 +153,14 @@ private class ConfigAnimClipShape(
         // 其余按 morph 进度插值
         val radiusPx = when {
             s.gesture > 0f -> screenCornerRadiusPx
-            s.progress >= 1f -> 0f
-            s.progress <= 0.7f -> startCornerRadiusPx + (screenCornerRadiusPx - startCornerRadiusPx) * (s.progress / 0.7f)
+            s.progress >= 1f -> ScreenCornerRadiiPx.Zero
+            s.progress <= 0.7f -> screenCornerRadiusPx.interpolateFrom(startCornerRadiusPx, s.progress / 0.7f)
             else -> screenCornerRadiusPx
         }
         // 补偿在"预测返回不补偿（×1）"与"正常 morph 除以 scale"之间按 gesture 平滑插值，
         // 避免松手瞬间圆角跳变大
         val compensate = (1f - s.gesture) / s.scale + s.gesture
-        val radiusDp = (radiusPx * compensate / density.density).dp
-        return ContinuousRoundedRectangle(radiusDp).createOutline(
+        return radiusPx.scaled(compensate).toShape(density).createOutline(
             Size(size.width, s.clipBottom),
             layoutDirection,
             density
@@ -263,7 +264,7 @@ fun TimeConfigEditScreen(
     cardHeight: Float = 0f,
     screenWidth: Float = 0f,
     screenHeight: Float = 0f,
-    screenCornerRadius: Float = 0f,
+    screenCornerRadius: ScreenCornerRadiiPx = ScreenCornerRadiiPx.Zero,
     cardStartCornerRadius: Float = 0f,
     /** Retained source row drawing, owned by the underlying time-settings page. */
     cardSnapshot: TransitionLayerSnapshot? = null,

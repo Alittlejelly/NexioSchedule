@@ -182,7 +182,10 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.loadScheduleThemeMode
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
-import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
+import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.toShape
+import com.haooz.chedule.ui.utils.addScreenCornerRect
 import com.haooz.chedule.ui.utils.saveScheduleThemeMode
 import com.haooz.chedule.ui.utils.screenHeightDp
 import com.haooz.chedule.ui.utils.screenWidthDp
@@ -228,7 +231,6 @@ import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
 import kotlin.concurrent.Volatile
@@ -1648,21 +1650,17 @@ fun CourseScheduleApp(
 
 
 
-    val screenCornerRadius = rememberScreenCornerRadiusPx()
+    val screenCornerRadius = rememberScreenCornerRadiiPx()
 
     // 设置页的「卡片」圆角 = 屏幕圆角（与 [AppNavHost] 的转场裁切同一把尺）
     val settingsPageIndex = if (isShiftMode) 1 else 2
-    val settingsClipRadiusDp = with(density) { screenCornerRadius.toDp() }
-    val settingsPageClipShape = remember(settingsClipRadiusDp) {
-        if (screenCornerRadius > 0f) ContinuousRoundedRectangle(settingsClipRadiusDp) else null
+    val settingsPageClipShape = remember(screenCornerRadius, density) {
+        if (screenCornerRadius.maxRadius > 0f) screenCornerRadius.toShape(density) else null
     }
     // 顶栏糊带：只圆**顶部两角**（四角全圆会把 120dp 高的糊带变成药丸）
-    val settingsTopBarClipShape = remember(settingsClipRadiusDp) {
-        if (screenCornerRadius > 0f) {
-            ContinuousRoundedRectangle(
-                topStart = settingsClipRadiusDp,
-                topEnd = settingsClipRadiusDp,
-            )
+    val settingsTopBarClipShape = remember(screenCornerRadius, density) {
+        if (screenCornerRadius.maxRadius > 0f) {
+            screenCornerRadius.copy(bottomRight = 0f, bottomLeft = 0f).toShape(density)
         } else {
             null
         }
@@ -2696,14 +2694,13 @@ fun CourseScheduleApp(
                     Modifier.drawWithContent {
                         val scale = backgroundScale.value
                         val shouldClip = !isCustomizeExiting && scale < 0.999f
-                        val animClipPx =
-                            if (isCustomizeExiting) screenCornerRadius else screenCornerRadius
-                        if (animClipPx > 0f && (shouldClip || isCustomizeExiting)) {
+                        val animClipPx = screenCornerRadius
+                        if (animClipPx.maxRadius > 0f && (shouldClip || isCustomizeExiting)) {
                             val path = Path().apply {
-                                addSquircleRect(
+                                addScreenCornerRect(
                                     width = size.width,
                                     height = size.height,
-                                    cornerRadius = animClipPx
+                                    corners = animClipPx
                                 )
                             }
                             clipPath(path) {
@@ -4236,7 +4233,7 @@ fun CourseScheduleApp(
                             backdrop = chromeBackdrop,
                             isShiftMode = isShiftMode,
                             // 侧栏遮罩圆角由宿主注入（同一份 px）
-                            screenCornerRadiusPx = screenCornerRadius,
+                            screenCornerRadiusPx = screenCornerRadius.maxRadius,
                             onSidebarExpandedChange = {
                                 TabletNavSideState.expanded = it
                             },
@@ -4873,10 +4870,10 @@ fun CourseScheduleApp(
                     }
                     .drawWithContent {
                         val path = Path().apply {
-                            addSquircleRect(
+                            addScreenCornerRect(
                                 width = size.width,
                                 height = size.height,
-                                cornerRadius = screenCornerRadius
+                                corners = screenCornerRadius
                             )
                         }
                         clipPath(path) {
@@ -5284,7 +5281,7 @@ private fun SwitchMorphOverlay(
      */
     cardBitmap: ImageBitmap?,
     mainLayer: GraphicsLayer,
-    screenCornerRadius: Float,
+    screenCornerRadius: ScreenCornerRadiiPx,
     isDark: Boolean,
 ) {
     // 门控必须留在本 composable 内：退出的兜底分支会出现
@@ -5315,8 +5312,7 @@ private fun SwitchMorphOverlay(
         cLeft = 0f; cTop = 0f; cWidth = screenWidth; cHeight = screenHeight
     }
     val startRadius = with(density) { 20.dp.toPx() }
-    val cRadius =
-        with(density) { (startRadius + (screenCornerRadius - startRadius) * p).toDp() }
+    val cShape = screenCornerRadius.interpolateFrom(startRadius, p).toShape(density)
 
     Box(
         modifier = Modifier
@@ -5336,7 +5332,7 @@ private fun SwitchMorphOverlay(
                 width = with(density) { cWidth.toDp() },
                 height = with(density) { cHeight.toDp() }
             )
-            .clip(ContinuousRoundedRectangle(cRadius))
+            .clip(cShape)
             .graphicsLayer {
                 // 进入方向：有可交叉的卡片时容器整段全实
                 alpha = if (entering) {

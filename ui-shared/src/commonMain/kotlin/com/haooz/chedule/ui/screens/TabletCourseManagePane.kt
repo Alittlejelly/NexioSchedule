@@ -45,6 +45,7 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -219,7 +220,7 @@ fun TabletCourseManagePane(
                             cardHeight = paneHeightPx,
                             screenWidth = paneWidthPx,
                             screenHeight = paneHeightPx,
-                            screenCornerRadius = 0f,
+                            screenCornerRadius = ScreenCornerRadiiPx.Zero,
                             cardSnapshot = null,
                             cardColor = Color(selectedCourses.first().colorRes),
                             onBackStart = {},
