@@ -148,8 +148,8 @@ fun WebViewScreen(
     val isTablet = isTabletWidth()
     // iOS 原生文档页把底部悬浮条交给系统控件，本页不再画 Compose 胶囊；Android / 桌面没有 chrome。
     val nativeChrome = LocalNativeDocumentChrome.current
-    // 88dp = Swift 侧底栏高度（44 按钮 + 上下 10 内边距 + 12 安全区边距），给网页留出底部让位
-    val bottomBarHeight = 88.dp
+    // 76dp = Swift 侧底栏高度（44 按钮 + 上下 10 内边距 + 12 让位），给网页留出底部让位
+    val bottomBarHeight = 76.dp
     val tabletHorizontalPadding = if (isTablet) {
         val widthDp = screenWidthDp()
         ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
@@ -313,7 +313,7 @@ fun WebViewScreen(
         if (nativeChrome != null) {
             NativeDocumentBottomBar(
                 title = school.name,
-                subtitle = "登录教务系统 → 进入课表 → 执行导入",
+                subtitle = "登入教务系统 → 按照提示进行导入",
                 badge = if (isDesktopMode) "桌面版" else "手机版",
                 toggleSymbol = "rectangle.on.rectangle",
                 toggleLabel = "切换手机版/桌面版",
@@ -536,7 +536,7 @@ private fun WebImportDockContent(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "登录教务系统 → 进入课表 → 执行导入",
+                text = "登入教务系统 → 按照提示进行导入",
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
             )

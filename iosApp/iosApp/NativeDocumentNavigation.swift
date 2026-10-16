@@ -247,6 +247,8 @@ private final class NativeDocumentPageController: UIViewController {
     private let contentController: UIViewController
     private var appliedActionState: NativeActionState?
     private var appliedBottomBarState: BottomBarState?
+    /// 底栏最大宽度：宽屏（iPad / 横向大屏）下居中并限制到此宽度，避免横跨整屏。
+    private static let bottomBarMaxWidth: CGFloat = 600
     private lazy var backItem = makeLeadingItem(symbol: "chevron.backward")
     private lazy var cancelItem = makeLeadingItem(symbol: "xmark")
 
@@ -284,14 +286,30 @@ private final class NativeDocumentPageController: UIViewController {
         label.adjustsFontForContentSizeCategory = true
         label.numberOfLines = 1
         label.lineBreakMode = .byTruncatingTail
+        // 「桌面版 / 手机版」胶囊要紧跟在名字右侧：名字只占自身宽度，过长时优先截断。
+        label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
+    }()
+
+    /// 「桌面版 / 手机版」胶囊容器：圆角小底，颜色与 Compose 底栏一致。
+    private lazy var bottomBadgeContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.layer.cornerRadius = 4
+        view.layer.cornerCurve = .circular
+        view.clipsToBounds = true
+        return view
     }()
 
     private lazy var bottomBadgeLabel: UILabel = {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .caption1)
         label.adjustsFontForContentSizeCategory = true
-        label.textColor = .secondaryLabel
+        label.numberOfLines = 1
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
         return label
     }()
 
@@ -487,6 +505,14 @@ private final class NativeDocumentPageController: UIViewController {
         bottomGlass.isHidden = !state.visible
         bottomTitleLabel.text = state.title
         bottomBadgeLabel.text = state.badge
+        // 颜色与 Compose 底栏一致：桌面版=主色，手机版=绿色；底色取同色低透明度。
+        let isDesktopBadge = state.badge == "桌面版"
+        let badgeColor: UIColor = isDesktopBadge
+            ? chromeTint
+            : UIColor(red: 0x66 / 255.0, green: 0xBB / 255.0, blue: 0x6A / 255.0, alpha: 1)
+        bottomBadgeLabel.textColor = badgeColor
+        bottomBadgeContainer.backgroundColor = badgeColor.withAlphaComponent(isDesktopBadge ? 0.12 : 0.15)
+        bottomBadgeContainer.isHidden = state.badge.isEmpty
         bottomSubtitleLabel.text = state.subtitle
         bottomToggleButton.configuration?.image = UIImage(systemName: state.toggleSymbol)
         bottomToggleButton.accessibilityLabel = state.toggleLabel
@@ -532,10 +558,16 @@ private final class NativeDocumentPageController: UIViewController {
 
     /// 底部悬浮条：挂在 safeArea 底部之上，内容用系统 Stack / Button 排。
     private func installBottomBar() {
-        let titleRow = UIStackView(arrangedSubviews: [bottomTitleLabel, bottomBadgeLabel])
+        bottomBadgeContainer.addSubview(bottomBadgeLabel)
+        // 末尾加一个可伸缩占位：让胶囊紧跟名字右侧，多余宽度都塞给占位，
+        // 而不是像以前那样把名字拉长、把胶囊顶到最右边。
+        let titleSpacer = UIView()
+        titleSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let titleRow = UIStackView(arrangedSubviews: [bottomTitleLabel, bottomBadgeContainer, titleSpacer])
         titleRow.axis = .horizontal
-        titleRow.alignment = .firstBaseline
-        titleRow.spacing = 8
+        titleRow.alignment = .center
+        titleRow.spacing = 6
 
         let infoStack = UIStackView(arrangedSubviews: [titleRow, bottomSubtitleLabel])
         infoStack.axis = .vertical
@@ -553,12 +585,27 @@ private final class NativeDocumentPageController: UIViewController {
 
         bottomGlass.contentView.addSubview(rootStack)
         view.addSubview(bottomGlass)
+        // 宽度：手机铺满（左右各 16）；宽屏（iPad / 横向大屏）限制最大宽度并居中，
+        // 否则底栏横跨整屏显得过分宽。fullWidth 是「铺满」偏好，宽屏时被 maxWidth 压到上限。
+        let fullWidth = bottomGlass.widthAnchor.constraint(
+            equalTo: view.widthAnchor, constant: -16 * 2
+        )
+        fullWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            bottomGlass.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            bottomGlass.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            bottomGlass.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            bottomGlass.leadingAnchor.constraint(
+                greaterThanOrEqualTo: view.leadingAnchor, constant: 16
+            ),
+            bottomGlass.trailingAnchor.constraint(
+                lessThanOrEqualTo: view.trailingAnchor, constant: -16
+            ),
+            bottomGlass.widthAnchor.constraint(
+                lessThanOrEqualToConstant: Self.bottomBarMaxWidth
+            ),
+            fullWidth,
             // home indicator 的让位由系统安全区给，不写死常数
             bottomGlass.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor
             ),
             rootStack.leadingAnchor.constraint(
                 equalTo: bottomGlass.contentView.leadingAnchor, constant: 16
@@ -571,6 +618,19 @@ private final class NativeDocumentPageController: UIViewController {
             ),
             rootStack.bottomAnchor.constraint(
                 equalTo: bottomGlass.contentView.bottomAnchor, constant: -10
+            ),
+            // 胶囊内边距：水平 4、垂直 2（与 Compose 底栏一致）
+            bottomBadgeLabel.leadingAnchor.constraint(
+                equalTo: bottomBadgeContainer.leadingAnchor, constant: 4
+            ),
+            bottomBadgeLabel.trailingAnchor.constraint(
+                equalTo: bottomBadgeContainer.trailingAnchor, constant: -4
+            ),
+            bottomBadgeLabel.topAnchor.constraint(
+                equalTo: bottomBadgeContainer.topAnchor, constant: 2
+            ),
+            bottomBadgeLabel.bottomAnchor.constraint(
+                equalTo: bottomBadgeContainer.bottomAnchor, constant: -2
             ),
         ])
     }
