@@ -38,7 +38,7 @@ import kotlin.concurrent.Volatile
  */
 object IosCourseNotifier {
 
-    /** Rolling window: 14 days × at most one pre-class notice per day. */
+    /** Rolling window for individual course notices and daily summaries. */
     const val WINDOW_DAYS = 14
 
     /**
@@ -166,6 +166,14 @@ object IosCourseNotifier {
 
     // MARK: Rescheduling
 
+    /** Recheck system permission and refill the rolling window on launch/resume. */
+    fun reconcile() {
+        onMain {
+            authorized = false
+            reschedule()
+        }
+    }
+
     /**
      * Reconcile every notice against current settings; equivalent to Android's
      * `startReminderService`. Cancel-then-write, same order as Android's
@@ -182,8 +190,9 @@ object IosCourseNotifier {
             return
         }
         ensureAuthorization { granted ->
-            // Wait for the grant: `add` fails silently while unauthorized.
-            if (granted) writeAll(repo, preClass, nextDay)
+            // Read current switches after the asynchronous permission response: the
+            // user may have disabled reminders while the prompt was open.
+            if (granted) writeAll(repo, repo.getPreClassReminder(), repo.getNextDayReminder())
         }
     }
 
@@ -212,7 +221,10 @@ object IosCourseNotifier {
         }
 
         if (nextDay) {
-            nextDayNotice(today, repo, entriesByYear)?.let { pending += it }
+            for (offset in 0 until WINDOW_DAYS) {
+                val reminderDate = today.plus(DatePeriod(days = offset))
+                nextDayNotice(reminderDate, repo, entriesByYear)?.let { pending += it }
+            }
         }
 
         // Keep the nearest ones when over the cap: day 14 can wait for the next pass,
@@ -311,7 +323,7 @@ object IosCourseNotifier {
         )
         if (resolution.courses.isEmpty()) return null
 
-        val fireAt = tomorrow
+        val fireAt = today
             .atTime(LocalTime(repo.getNextDayReminderHour(), repo.getNextDayReminderMinute()))
             .toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds()
         if (fireAt <= Clock.System.now().toEpochMilliseconds()) return null

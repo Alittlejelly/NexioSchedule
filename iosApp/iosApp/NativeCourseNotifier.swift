@@ -93,17 +93,28 @@ enum NativeCourseNotifier {
                 if !ids.isEmpty {
                     center.removePendingNotificationRequests(withIdentifiers: ids)
                 }
+                let additions = DispatchGroup()
                 for request in requests {
+                    additions.enter()
                     center.add(request) { error in
                         if let error {
                             reminderLog.error(
                                 "add \(request.identifier) failed: \(error, privacy: .public)"
                             )
                         }
+                        additions.leave()
                     }
                 }
-                reminderLog.info("scheduled \(requests.count) notices")
-                finish()
+                // Do not use writeQueue here: serialized() is waiting on it.
+                additions.notify(queue: .global()) {
+                    center.getPendingNotificationRequests { registered in
+                        let count = registered.filter {
+                            Self.hasCourseReminderPrefix($0.identifier)
+                        }.count
+                        reminderLog.info("registered \(count) course notices (submitted \(requests.count))")
+                        finish()
+                    }
+                }
             }
         }
     }

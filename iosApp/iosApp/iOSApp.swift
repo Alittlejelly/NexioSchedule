@@ -22,6 +22,7 @@ struct iOSApp: App {
         // Delegate lives at the app level because routing calls into
         // IosCourseLiveActivity, a singleton inside the main process.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        IosCourseNotifier.shared.reconcile()
     }
 
     var body: some Scene {
@@ -38,7 +39,9 @@ struct iOSApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { NativeWidgetSnapshot.refresh() }
+                    if phase == .active {
+                        IosCourseNotifier.shared.reconcile()
+                    }
                 }
         }
     }
@@ -64,6 +67,6 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         NativeCourseNotifier.handlePresented(
             userInfo: notification.request.content.userInfo
         )
-        return [.banner, .list]
+        return [.banner, .list, .sound]
     }
 }
