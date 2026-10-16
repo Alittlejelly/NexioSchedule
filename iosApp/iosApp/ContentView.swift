@@ -230,7 +230,15 @@ private final class AppHostController: UIViewController {
         }
         // 原生截屏桥：把含底栏与导航栏的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
-            IosNativeCapture.shared.store(data: self?.captureScreenPNG())
+            guard let cap = self?.captureScreenPixels() else {
+                IosNativeCapture.shared.storePixels(data: nil, width: 0, height: 0)
+                return
+            }
+            IosNativeCapture.shared.storePixels(
+                data: cap.data,
+                width: Int32(cap.width),
+                height: Int32(cap.height)
+            )
         }
         applyState()
     }
@@ -573,10 +581,16 @@ private final class AppHostController: UIViewController {
         ])
     }
 
-    /// 全屏截图（含底栏与导航栏右上角菜单），PNG 字节。供 Compose 侧补进快照。
+    /// 全屏截图（含底栏与导航栏右上角菜单）的原始像素。供 Compose 侧补进快照。
     ///
     /// ⚠ 必须从 **window** 渲染：只画 `self.view` 漏导航栏（它是 self.view 的兄弟）
-    private func captureScreenPNG() -> Data? {
+    /// 全屏原始像素（BGRA8888，紧凑排布：rowBytes = width × 4，alpha 预乘）。
+    ///
+    /// 刻意不做 `pngData()`：像素在**同进程内存里**递给 Compose，不需要压缩格式。
+    /// 实测 `pngData()` 要 215ms、Kotlin 侧再 PNG 解码 55ms，换成裸像素后这两段
+    /// 全消失，只剩一次 CGContext 转储（~30ms）。字节序与 `IosNativeCapture.storePixels`
+    /// 的约定（BGRA8888 / 预乘）严格对应，改这里必须同步改 Kotlin 侧。
+    private func captureScreenPixels() -> (data: Data, width: Int, height: Int)? {
         guard let container = viewIfLoaded?.window ?? navigationController?.view ?? viewIfLoaded else { return nil }
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = container.window?.screen.scale ?? UIScreen.main.scale
@@ -585,7 +599,24 @@ private final class AppHostController: UIViewController {
         let image = renderer.image { _ in
             container.drawHierarchy(in: container.bounds, afterScreenUpdates: true)
         }
-        return image.pngData()
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+        let bytesPerRow = width * 4
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let base = ctx.data else { return nil }
+        return (Data(bytes: base, count: bytesPerRow * height), width, height)
     }
 }
 

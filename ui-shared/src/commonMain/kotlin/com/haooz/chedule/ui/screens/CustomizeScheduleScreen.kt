@@ -94,6 +94,7 @@ import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_WINDOW_MILLIS
 import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -419,12 +420,17 @@ fun CustomizeScheduleScreen(
         }
     }
 
+    // ── 入场时间轴 ───────────────────────────────────────────────────────
+    // 这一段动画跑的时候，封面快照（alpha=1）正盖满全屏，用户基本看不见；真正的
+    // 要求是**全部元素都在 CUSTOMIZE_COVER_WINDOW_MILLIS 之内落地**。只要有一个
+    // 元素晚于封面撤除才收尾，观感就是「封面都没了，按钮/工具栏还在飞」——即脱节。
+    // 下面每个 ENTER_* 的 (delay + duration) 都必须 ≤ 该窗口，改动前先核对。
     LaunchedEffect(Unit) {
         coroutineScope {
             launch {
                 animProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = tween(450, easing = CustomizePageEasing)
+                    animationSpec = tween(ENTER_CARD_MILLIS, easing = CustomizePageEasing)
                 )
                 animDone = true
                 isPageAnimating = false
@@ -432,45 +438,45 @@ fun CustomizeScheduleScreen(
             launch {
                 pagerSpacing.animateTo(
                     -10f,
-                    tween(500, easing = CustomizePageEasing)
+                    tween(ENTER_PAGER_SPACING_MILLIS, easing = CustomizePageEasing)
                 )
             }
             launch {
-                delay(200.milliseconds)
+                delay(ENTER_TITLE_DELAY_MILLIS.toLong())
+                titleFadeAnim.animateTo(
+                    1f,
+                    tween(ENTER_TITLE_MILLIS, easing = CustomizePageEasing)
+                )
+            }
+            launch {
+                delay(ENTER_BUTTON_DELAY_MILLIS.toLong())
                 buttonScaleAnim.animateTo(
                     1f,
-                    tween(450, easing = CustomizePageEasing)
+                    tween(ENTER_BUTTON_MILLIS, easing = CustomizePageEasing)
                 )
             }
             launch {
-                delay(200.milliseconds)
+                delay(ENTER_TOOL_DELAY_MILLIS.toLong())
                 coroutineScope {
                     launch {
                         toolAlphaAnim.animateTo(
                             1f,
-                            tween(450, easing = CustomizePageEasing)
+                            tween(ENTER_TOOL_MILLIS, easing = CustomizePageEasing)
                         )
                     }
                     launch {
                         toolOffsetYAnim.animateTo(
                             0f,
-                            tween(450, easing = CustomizePageEasing)
+                            tween(ENTER_TOOL_MILLIS, easing = CustomizePageEasing)
                         )
                     }
                     launch {
                         toolBlurAnim.animateTo(
                             0f,
-                            tween(450, easing = CustomizePageEasing)
+                            tween(ENTER_TOOL_MILLIS, easing = CustomizePageEasing)
                         )
                     }
                 }
-            }
-            launch {
-                delay(100.milliseconds)
-                titleFadeAnim.animateTo(
-                    1f,
-                    tween(250, easing = CustomizePageEasing)
-                )
             }
         }
     }
@@ -1966,3 +1972,35 @@ data class CombinationThumbnail(
     /** 该搭配的壁纸 */
     val wallpaper: ImageBitmap?,
 )
+
+// ──────────────────────────────────────────────────────────────────────────
+// 外观页入场时间轴
+//
+// 这几个动画在「封面快照还盖着整屏」的时候就开始跑了，所以用户真正看到的只有
+// 它们的收尾。硬约束是：每个元素的 (delay + duration) 都要 ≤
+// [CUSTOMIZE_COVER_WINDOW_MILLIS]（封面撤除时刻），否则封面消失后元素还在动，
+// 观感就是「脱节」。
+//
+// 各元素落地时刻（delay + duration，窗口 552ms）：
+//   卡片错落 380 / 翻页间距 400 / 标题 220 / 顶栏按钮 420 / 底部工具栏 420
+// 实测（iPhone 18 Pro Max / iOS 27.0）实际落地还要再晚 40~60ms（组合 + 帧对齐），
+// 故比理论窗口留出 ~100ms 余量。
+// ──────────────────────────────────────────────────────────────────────────
+
+/** 卡片错落入场时长 */
+private const val ENTER_CARD_MILLIS = 380
+
+/** 翻页间距（-140f → -10f）收起时长 */
+private const val ENTER_PAGER_SPACING_MILLIS = 400
+
+/** 标题「课表外观」淡入：延迟 + 时长 = 220ms */
+private const val ENTER_TITLE_DELAY_MILLIS = 40
+private const val ENTER_TITLE_MILLIS = 180
+
+/** 顶栏「取消 / 应用」按钮缩放（1.5f → 1f）收拢：延迟 + 时长 = 420ms */
+private const val ENTER_BUTTON_DELAY_MILLIS = 80
+private const val ENTER_BUTTON_MILLIS = 340
+
+/** 底部工具栏（透明度 / 上移 / 模糊）归位：延迟 + 时长 = 420ms，与按钮同步落地 */
+private const val ENTER_TOOL_DELAY_MILLIS = 80
+private const val ENTER_TOOL_MILLIS = 340

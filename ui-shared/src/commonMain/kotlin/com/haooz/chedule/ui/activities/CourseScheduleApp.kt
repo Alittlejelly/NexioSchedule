@@ -145,6 +145,9 @@ import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.ui.components.TabletNavSideState
 import com.haooz.chedule.ui.components.UpdateDialog
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_FADE_MILLIS
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_HOLD_MILLIS
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_SCALE_MILLIS
 import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
@@ -924,6 +927,9 @@ private fun MorePopupMenus(
  * 点「课表外观」到开始截屏的等待，所有入口共用。
  */
 private const val CUSTOMIZE_ENTRY_DELAY_MS = 320L
+
+// 课表外观页「封面快照」的时序常量（CUSTOMIZE_COVER_*）在
+// ui/effects/motion/OobeMotion.kt —— 外观页也要按同一个窗口对齐自己的入场时间轴。
 
 @Composable
 fun CourseScheduleApp(
@@ -2355,18 +2361,18 @@ fun CourseScheduleApp(
             customizeCoverAlpha.snapTo(1f)
             // 丢弃未落盘的主题预览
             pendingScheduleThemeMode = null
-            delay(280.milliseconds)
+            delay(CUSTOMIZE_COVER_HOLD_MILLIS.toLong())
             launch {
                 customizeCoverScale.animateTo(
                     0.75f,
-                    tween(400, easing = CustomizePageEasing)
+                    tween(CUSTOMIZE_COVER_SCALE_MILLIS, easing = CustomizePageEasing)
                 )
             }
             launch {
-                delay(400.milliseconds)
+                delay(CUSTOMIZE_COVER_SCALE_MILLIS.toLong())
                 customizeCoverAlpha.animateTo(
                     0f,
-                    tween(120, easing = FastOutSlowInEasing)
+                    tween(CUSTOMIZE_COVER_FADE_MILLIS, easing = FastOutSlowInEasing)
                 )
                 customizeCoverActive = false
             }
