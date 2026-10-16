@@ -1,6 +1,7 @@
 package com.haooz.chedule.ui.screens
 
 import com.haooz.chedule.ui.utils.LocalHostNavigation
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 
 import com.haooz.chedule.data.formatChineseDate
 import com.haooz.chedule.data.millisBetween
@@ -37,22 +38,30 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -148,6 +157,7 @@ fun BlurCard(
     surfaceOpacity: Float,
     showEdgeLight: Boolean = false,
     modifier: Modifier = Modifier,
+    transitionRecording: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val hasBackdrop = wallpaperBackdrop != null
@@ -181,6 +191,8 @@ fun BlurCard(
         Box(
             modifier = modifier
                 .clip(shape)
+                // Record inside the source clip so its live subtree cannot replace retained rows.
+                .then(transitionRecording)
                 .drawBackdrop(
                     backdrop = wallpaperBackdrop,
                     shape = { shape },
@@ -355,7 +367,7 @@ fun TodayScreen(
     viewModel: CourseViewModel,
     settingsViewModel: SettingsViewModel,
     hiddenCourseIds: Set<String> = emptySet(),
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     pagerState: androidx.compose.foundation.pager.PagerState,
     navBarStyle: String = "standard",
     onScrollYChanged: (Int) -> Unit = {},
@@ -1687,6 +1699,85 @@ private fun CourseSectionTitle(
     )
 }
 
+private typealias CourseDetailClick = (
+    courses: List<Course>,
+    cardLeft: Float,
+    cardTop: Float,
+    cardWidth: Float,
+    cardHeight: Float,
+    snapshot: TransitionLayerSnapshot?,
+    courseIdToHide: String,
+    targetWeek: Int,
+) -> Unit
+
+/** Retain the shared glass and crop a row only when opening its details. */
+@Composable
+private fun CourseDetailSectionCard(
+    wallpaperBackdrop: Backdrop?,
+    blurRadius: Float,
+    surfaceOpacity: Float,
+    onCourseClick: CourseDetailClick,
+    content: @Composable (CourseDetailClick) -> Unit,
+) {
+    if (wallpaperBackdrop == null) {
+        // Opaque rows already record their matching surface background locally.
+        BlurCard(surfaceOpacity = surfaceOpacity, modifier = Modifier.fillMaxWidth()) {
+            content(onCourseClick)
+        }
+        return
+    }
+
+    val sectionLayer = rememberGraphicsLayer()
+    val scope = rememberCoroutineScope()
+    val latestOnCourseClick by rememberUpdatedState(onCourseClick)
+    val sectionOrigin = remember { arrayOf(Offset.Zero) }
+    val lastRecordedToken = remember { intArrayOf(0) }
+    val capturePending = remember { booleanArrayOf(false) }
+    var recordToken by remember { mutableIntStateOf(0) }
+    val recording = Modifier.drawWithContent {
+        val token = recordToken
+        if (lastRecordedToken[0] != token) {
+            sectionLayer.record { this@drawWithContent.drawContent() }
+            lastRecordedToken[0] = token
+            drawLayer(sectionLayer)
+        } else {
+            drawContent()
+        }
+    }
+    BlurCard(
+        wallpaperBackdrop = wallpaperBackdrop,
+        blurRadius = blurRadius,
+        surfaceOpacity = surfaceOpacity,
+        modifier = Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { sectionOrigin[0] = it.localToRoot(Offset.Zero) },
+        transitionRecording = recording,
+    ) {
+        content { courses, left, top, width, height, _, courseId, targetWeek ->
+            if (!capturePending[0]) {
+                capturePending[0] = true
+                val origin = sectionOrigin[0]
+                val crop = Rect(left - origin.x, top - origin.y, left + width - origin.x, top + height - origin.y)
+                scope.launch {
+                    try {
+                        val token = ++recordToken
+                        // Publish only after the shared background and visible row are recorded.
+                        while (lastRecordedToken[0] < token) {
+                            withFrameNanos { }
+                        }
+                        latestOnCourseClick(
+                            courses, left, top, width, height,
+                            TransitionLayerSnapshot(sectionLayer, crop), courseId, targetWeek,
+                        )
+                    } finally {
+                        capturePending[0] = false
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
     morningCourses: List<Course>,
     afternoonCourses: List<Course>,
@@ -1698,7 +1789,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
     courses: List<Course>,
     hiddenCourseIds: Set<String>,
     sectionTimes: Map<Int, String>,
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit,
     wallpaperBackdrop: Backdrop? = null,
     blurRadius: Float = 0f,
     surfaceOpacity: Float,
@@ -1707,7 +1798,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
     isHolidayDate: Boolean = false,
 ) {
     if (morningCourses.isNotEmpty()) {
-        item {
+        item(key = "today-course-section-morning") {
             Column {
                 CourseSectionTitle(
                     text = "上午课程",
@@ -1715,10 +1806,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
                 )
-                BlurCard(wallpaperBackdrop = wallpaperBackdrop, blurRadius = blurRadius, surfaceOpacity = surfaceOpacity, modifier = Modifier.fillMaxWidth()) {
+                CourseDetailSectionCard(wallpaperBackdrop, blurRadius, surfaceOpacity, onCourseClick) { onCardClick ->
                     Column {
                         morningCourses.forEach { course ->
-                            CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCourseClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            key(course.id) {
+                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            }
                         }
                     }
                 }
@@ -1726,7 +1819,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
         }
     }
     if (afternoonCourses.isNotEmpty()) {
-        item {
+        item(key = "today-course-section-afternoon") {
             Column {
                 CourseSectionTitle(
                     text = "下午课程",
@@ -1734,10 +1827,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
                 )
-                BlurCard(wallpaperBackdrop = wallpaperBackdrop, blurRadius = blurRadius, surfaceOpacity = surfaceOpacity, modifier = Modifier.fillMaxWidth()) {
+                CourseDetailSectionCard(wallpaperBackdrop, blurRadius, surfaceOpacity, onCourseClick) { onCardClick ->
                     Column {
                         afternoonCourses.forEach { course ->
-                            CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCourseClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            key(course.id) {
+                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            }
                         }
                     }
                 }
@@ -1745,7 +1840,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
         }
     }
     if (eveningCourses.isNotEmpty()) {
-        item {
+        item(key = "today-course-section-evening") {
             Column {
                 CourseSectionTitle(
                     text = "晚上课程",
@@ -1753,10 +1848,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
                 )
-                BlurCard(wallpaperBackdrop = wallpaperBackdrop, blurRadius = blurRadius, surfaceOpacity = surfaceOpacity, modifier = Modifier.fillMaxWidth()) {
+                CourseDetailSectionCard(wallpaperBackdrop, blurRadius, surfaceOpacity, onCourseClick) { onCardClick ->
                     Column {
                         eveningCourses.forEach { course ->
-                            CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCourseClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            key(course.id) {
+                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                            }
                         }
                     }
                 }
@@ -1799,21 +1896,30 @@ private fun CourseItemWithClick(
     sectionTimes: Map<Int, String>,
     pageDate: LocalDate,
     pageWeek: Int,
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit,
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit,
     hasWallpaper: Boolean = false,
     showClassroom: Boolean = true,
     showTeacher: Boolean = true
 ) {
     var itemBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val isHidden = course.id in hiddenCourseIds
+    val cardLayer = rememberGraphicsLayer()
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = if (isHidden) 0f else 1f }
+            // A retained section records the row's drawing, never a mutable hidden-alpha layer.
+            .drawWithContent { if (!isHidden) drawContent() }
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .drawWithContent {
+                    // Keep the card recording independent of its hidden source ancestor.
+                    if (!isHidden) {
+                        cardLayer.record { this@drawWithContent.drawContent() }
+                    }
+                    drawLayer(cardLayer)
+                }
                 // ⚠ 无壁纸时这里必须用 surfaceContainer，不能用 background：外层 BlurCard 在无壁纸时
                 //   退化成 miuix `Card()`，卡片色正是 surfaceContainer（Card.kt 的 defaultColors）。
                 //   原先写 background 在内置亮/暗方案下是**恰好相等的空操作**（两者都是 #FFFFFF / #242424），
@@ -1832,7 +1938,7 @@ private fun CourseItemWithClick(
                     val bounds = itemBounds
                     if (bounds != null) {
                         val sameNameCourses = allCourses.filter { it.name == course.name }
-                        onCourseClick(sameNameCourses, bounds.left, bounds.top, bounds.width, bounds.height, null, course.id, pageWeek)
+                        onCourseClick(sameNameCourses, bounds.left, bounds.top, bounds.width, bounds.height, TransitionLayerSnapshot(cardLayer), course.id, pageWeek)
                     }
                 }
         ) {

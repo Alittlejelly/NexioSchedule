@@ -225,6 +225,9 @@ private final class AppHostController: UIViewController {
         host.onCutoutChromeOffset = { [weak self] offsetY in
             self?.applyPushedChromeOffset(offsetY)
         }
+        host.onDetailChromeScale = { [weak self] scale in
+            self?.applyPushedDetailChromeScale(scale)
+        }
         // 原生截屏桥：把含底栏与导航栏的全屏图交给 Compose 补快照
         IosNativeCapture.shared.captureScreen = { [weak self] in
             IosNativeCapture.shared.store(data: self?.captureScreenPNG())
@@ -485,8 +488,9 @@ private final class AppHostController: UIViewController {
         let screenH = view.bounds.height
         guard screenW > 0, screenH > 0 else { return }
         let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
-        let scale = raw < 0.999 ? raw : 1
-        let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
+        let scale = (raw < 0.999 ? raw : 1) * cachedDetailChromeScale
+        let pivotY = cachedDetailChromeScale < 0.999 ? 0.5 : CGFloat(host.cutoutCenterYRatio)
+        let pivot = CGPoint(x: screenW * 0.5, y: screenH * pivotY)
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
         applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: chromeContainer, pivot: pivot)
@@ -502,6 +506,13 @@ private final class AppHostController: UIViewController {
 
     /// 外观页弹窗让位时主内容的纵向位移（pt，负值=上移；0 = 当前无位移）
     private var cachedChromeOffsetY: CGFloat = 0
+    private var cachedDetailChromeScale: CGFloat = 1
+
+    private func applyPushedDetailChromeScale(_ scale: KotlinDouble) {
+        cachedDetailChromeScale = CGFloat(min(1, max(0.92, scale.doubleValue)))
+        updateCutoutTransform()
+    }
+
     private func applyPushedChromeOffset(_ offsetY: KotlinDouble) {
         cachedChromeOffsetY = CGFloat(offsetY.doubleValue)
         updateCutoutTransform()

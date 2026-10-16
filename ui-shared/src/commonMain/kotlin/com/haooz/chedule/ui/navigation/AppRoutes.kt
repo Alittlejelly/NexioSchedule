@@ -2,7 +2,6 @@ package com.haooz.chedule.ui.navigation
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,7 +41,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -51,8 +49,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.isRenderEffectSupported
@@ -113,7 +109,8 @@ import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
-import com.haooz.chedule.ui.utils.cropImageBitmapClamped
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
+import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiusPx
 import com.haooz.chedule.ui.web.WebHost
@@ -764,9 +761,8 @@ fun CourseTimeSettingsRoute(
     var editingCardBounds by remember { mutableStateOf<TimeConfigCardBounds?>(null) }
     var listRefreshTrigger by remember { mutableIntStateOf(0) }
 
-    // 快照截取
-    val screenGraphicsLayer = rememberGraphicsLayer()
-    var cardSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Retained source-card drawing; the list page owns the underlying layer.
+    var cardSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
 
     // 背景缩放与模糊动画
     val backgroundScale = remember { Animatable(1f) }
@@ -797,9 +793,6 @@ fun CourseTimeSettingsRoute(
                         scaleY = scale
                     }
                     .drawWithContent {
-                        screenGraphicsLayer.record {
-                            this@drawWithContent.drawContent()
-                        }
                         val scale = backgroundScale.value
                         if (scale < 0.999f) {
                             val path = Path().apply {
@@ -828,17 +821,7 @@ fun CourseTimeSettingsRoute(
                             editingConfig = baseConfig.effectiveFor(routine.id)
                             editingRoutineId = routine.id
                             editingCardBounds = bounds
-                            // 先捕获快照（原始状态）
-                            coroutineScope.launch {
-                                val full = screenGraphicsLayer.toImageBitmap()
-                                cardSnapshot = cropImageBitmapClamped(
-                                    source = full,
-                                    left = bounds.left,
-                                    top = bounds.top,
-                                    width = bounds.width,
-                                    height = bounds.height,
-                                )
-                            }
+                            cardSnapshot = bounds.snapshot
                             // 等待一帧后启动背景动画
                             coroutineScope.launch {
                                 delay(12.milliseconds)
@@ -964,7 +947,7 @@ fun CourseManageRoute(
     var cardTop by remember { mutableFloatStateOf(0f) }
     var cardWidth by remember { mutableFloatStateOf(0f) }
     var cardHeight by remember { mutableFloatStateOf(0f) }
-    var cardSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+    var cardSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
     var cardColor by remember { mutableStateOf(Color(0xFF4CAF50)) }
     var cardAlpha by remember { mutableFloatStateOf(0.15f) }
     var hiddenCourseIds by remember { mutableStateOf(setOf<String>()) }
@@ -981,7 +964,7 @@ fun CourseManageRoute(
     val shortcutMenuBlurRadius = remember { Animatable(0f) }
     val shortcutMenuCardScale = remember { Animatable(1f) }
     val shortcutMenuPageScale = remember { Animatable(1f) }
-    var shortcutMenuSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+    var shortcutMenuSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
     var editingCourse by remember { mutableStateOf<Course?>(null) }
 
     // 删除确认弹窗状态
@@ -1005,9 +988,6 @@ fun CourseManageRoute(
             }
         }
     }
-
-    // 截屏用的 graphics layer
-    val screenGraphicsLayer = rememberGraphicsLayer()
 
     LaunchedEffect(showShortcutMenu) {
         if (showShortcutMenu) {
@@ -1064,9 +1044,6 @@ fun CourseManageRoute(
                         scaleY = scale
                     }
                     .drawWithContent {
-                        screenGraphicsLayer.record {
-                            this@drawWithContent.drawContent()
-                        }
                         // 缩放时保持屏幕圆角不变
                         val scale = backgroundScale.value
                         if (scale < 0.999f) {
@@ -1106,15 +1083,13 @@ fun CourseManageRoute(
                             editingCourse = null
                         },
                         pendingEditCourse = editingCourse,
-                        onCourseLongPress = { courses, left, top, width, height ->
+                        onCourseLongPressLayer = { courses, left, top, width, height, snapshot ->
                             shortcutMenuCourses = courses
                             shortcutMenuPosition = Offset(left, top)
                             shortcutMenuCardWidth = width
                             shortcutMenuCardHeight = height
-                            coroutineScope.launch {
-                                shortcutMenuSnapshot = screenGraphicsLayer.toImageBitmap()
-                                showShortcutMenu = true
-                            }
+                            shortcutMenuSnapshot = snapshot
+                            showShortcutMenu = true
                         },
                         onDeleteCourses = { courses ->
                             coroutineScope.launch {
@@ -1126,7 +1101,7 @@ fun CourseManageRoute(
                         deleteConfirmShow = showDeleteConfirmDialog,
                         deleteConfirmCourses = pendingDeleteCourses,
                         onDeleteConfirmDismiss = { showDeleteConfirmDialog = false },
-                        onCourseClick = { courses, left, top, width, height, _, color, alpha ->
+                        onCourseClick = { courses, left, top, width, height, snapshot, color, alpha ->
                             coroutineScope.launch {
                                 selectedCourses = courses
                                 cardLeft = left
@@ -1135,16 +1110,10 @@ fun CourseManageRoute(
                                 cardHeight = height
                                 cardColor = color
                                 cardAlpha = alpha
+                                cardSnapshot = snapshot
                                 hiddenCourseIds = courses.map { it.id }.toSet()
                                 // 打开即视为编辑过
                                 editedCourseIds = editedCourseIds + courses.map { it.id }
-
-                                // 裁出卡片区域的快照（跨平台重绘，见 cropImageBitmapClamped）
-                                cardSnapshot = runCatching {
-                                    screenGraphicsLayer.toImageBitmap()
-                                }.getOrNull()?.let { full ->
-                                    cropImageBitmapClamped(full, left, top, width, height)
-                                }
 
                                 showEditScreen = true
                                 launch {
@@ -1274,7 +1243,9 @@ fun CourseManageRoute(
 
             // 卡片快照（清晰，在最顶层）
             if (snapshot != null && cardW > 0f && cardH > 0f) {
-                Canvas(
+                TransitionLayerImage(
+                    snapshot = snapshot,
+                    contentScale = androidx.compose.ui.layout.ContentScale.FillBounds,
                     modifier = Modifier
                         .offset(
                             x = with(density) { cardLeftPx.toDp() },
@@ -1288,24 +1259,18 @@ fun CourseManageRoute(
                             scaleX = shortcutMenuCardScale.value
                             scaleY = shortcutMenuCardScale.value
                         }
-                ) {
-                    val cornerRadius = 16.dp.toPx()
-                    val squirclePath = Path().apply {
-                        addSquircleRect(
-                            width = size.width,
-                            height = size.height,
-                            cornerRadius = cornerRadius
-                        )
-                    }
-                    clipPath(squirclePath) {
-                        drawImage(
-                            image = snapshot,
-                            srcOffset = IntOffset(cardLeftPx.toInt(), cardTopPx.toInt()),
-                            srcSize = IntSize(cardW.toInt(), cardH.toInt()),
-                            dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                        )
-                    }
-                }
+                        .drawWithContent {
+                            val cornerRadius = 16.dp.toPx()
+                            val squirclePath = Path().apply {
+                                addSquircleRect(
+                                    width = size.width,
+                                    height = size.height,
+                                    cornerRadius = cornerRadius
+                                )
+                            }
+                            clipPath(squirclePath) { this@drawWithContent.drawContent() }
+                        }
+                )
             }
         }
 

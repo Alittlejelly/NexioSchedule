@@ -1,6 +1,7 @@
 package com.haooz.chedule.ui.screens
 
 import com.haooz.chedule.ui.utils.LocalHostNavigation
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 
 import com.haooz.chedule.data.HolidayEntry
 
@@ -64,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -75,6 +77,8 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -186,7 +190,7 @@ fun MainScheduleScreen(
     pagerState: PagerState,
     hiddenCourseIds: Set<String> = emptySet(),
     draggingCourseIds: Set<String> = emptySet(),
-    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: androidx.compose.ui.graphics.ImageBitmap?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
+    onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onPopupStateChange: (Boolean) -> Unit = {},
     // 空白格长按：返回 Root 绝对坐标供上层定位快捷菜单
     onEmptyLongPress: (
@@ -1488,6 +1492,7 @@ fun MainScheduleScreen(
             ) {
                 Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
                 coursesToShow.forEachIndexed { index, course ->
+                    key(course.id) {
                     val summaryText = buildString {
                         append(course.getWeekText())
                         append(" ｜ ")
@@ -1503,6 +1508,7 @@ fun MainScheduleScreen(
                     }
                     val isCurrentWeekCourse = course.isActiveInWeek(viewingWeek)
                     val isHidden = course.id in hiddenCourseIds
+                    val cardLayer = rememberGraphicsLayer()
                     // 普通 holder 零重组；key 用 course.id 防列表重排错位
                     val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
                     // 动画结束后去掉离屏层
@@ -1540,6 +1546,13 @@ fun MainScheduleScreen(
                                     right = position.x + size.width,
                                     bottom = position.y + size.height
                                 )
+                            }
+                            .drawWithContent {
+                                // The outer visibility/reveal transform is deliberately not recorded.
+                                if (!isHidden) {
+                                    cardLayer.record { this@drawWithContent.drawContent() }
+                                }
+                                drawLayer(cardLayer)
                             },
                         insideMargin = PaddingValues(0.dp),
                         pressFeedbackType = PressFeedbackType.None,
@@ -1562,7 +1575,7 @@ fun MainScheduleScreen(
                                     bounds.top,
                                     bounds.width,
                                     bounds.height,
-                                    null,
+                                    TransitionLayerSnapshot(cardLayer),
                                     course.id,
                                     targetWeek
                                 )
@@ -1614,6 +1627,7 @@ fun MainScheduleScreen(
                         }
                     }
                     } // Column (isHidden)
+                    } // key(course.id)
                 }
                 Spacer(modifier = Modifier.height(if (isTablet) 0.dp else 260.dp))
             }

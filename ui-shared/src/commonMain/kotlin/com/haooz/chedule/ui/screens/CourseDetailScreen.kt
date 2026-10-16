@@ -8,7 +8,6 @@ import kotlinx.datetime.LocalDate
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +37,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -58,6 +56,8 @@ import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeFifthpowerOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuadraticOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
+import com.haooz.chedule.ui.utils.TransitionLayerImage
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.blockTouchPassThrough
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
@@ -139,8 +139,8 @@ fun CourseDetailScreen(
     screenWidth: Float,
     screenHeight: Float,
     screenCornerRadius: Float,
-    /** 课程卡快照：跨平台用 Compose 的 ImageBitmap（裁剪在 Android 宿主侧完成） */
-    cardSnapshot: ImageBitmap?,
+    /** Retained card-local drawing, independent of the hidden source card. */
+    cardSnapshot: TransitionLayerSnapshot?,
     sectionTimes: Map<Int, String>,
     classStartTime: String,
     teachingWeekReorganizations: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
@@ -386,15 +386,15 @@ fun CourseDetailScreen(
                 .background(MiuixTheme.colorScheme.background)
         ) {
             if (cardSnapshot != null && s.snapshotAlpha > 0f) {
-                Image(
-                    bitmap = cardSnapshot,
-                    contentDescription = null,
+                TransitionLayerImage(
+                    snapshot = cardSnapshot,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .clip(ContinuousRoundedRectangle(20.dp))
                         .graphicsLayer { alpha = s.snapshotAlpha },
-                    contentScale = ContentScale.FillWidth
+                    contentScale = ContentScale.FillWidth,
+                    alignment = Alignment.TopStart,
                 )
             }
 

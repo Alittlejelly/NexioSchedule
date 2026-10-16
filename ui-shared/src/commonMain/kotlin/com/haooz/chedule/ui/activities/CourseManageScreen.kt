@@ -41,7 +41,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.platform.LocalGraphicsContext
+import androidx.compose.ui.graphics.layer.drawLayer
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -99,7 +104,7 @@ fun CourseManageScreen(
         top: Float,
         width: Float,
         height: Float,
-        snapshot: ImageBitmap?,
+        snapshot: TransitionLayerSnapshot?,
         cardColor: Color,
         cardAlpha: Float
     ) -> Unit = { _, _, _, _, _, _, _, _ -> },
@@ -108,6 +113,7 @@ fun CourseManageScreen(
     onEditDismiss: () -> Unit = {},
     pendingEditCourse: Course? = null,
     onCourseLongPress: (courses: List<Course>, left: Float, top: Float, width: Float, height: Float) -> Unit = { _, _, _, _, _ -> },
+    onCourseLongPressLayer: ((List<Course>, Float, Float, Float, Float, TransitionLayerSnapshot) -> Unit)? = null,
     onDeleteCourses: (List<Course>) -> Unit = {},
     deleteConfirmShow: Boolean = false,
     deleteConfirmCourses: List<Course> = emptyList(),
@@ -127,6 +133,11 @@ fun CourseManageScreen(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val courses by viewModel.courses.collectAsState()
+    val graphicsContext = LocalGraphicsContext.current
+    val cardLayers = remember(graphicsContext) { mutableMapOf<String, GraphicsLayer>() }
+    DisposableEffect(graphicsContext) {
+        onDispose { cardLayers.values.forEach(graphicsContext::releaseGraphicsLayer) }
+    }
     var listScrollY by remember { mutableIntStateOf(0) }
 
     val backgroundColor = MiuixTheme.colorScheme.surface
@@ -318,6 +329,7 @@ fun CourseManageScreen(
                                     }
                             ) {
                                 CourseManageCard(
+                                    cardLayer = cardLayers.getOrPut(courseName) { graphicsContext.createGraphicsLayer() },
                                     courseName = courseName,
                                     teacher = teachers,
                                     classroom = classrooms,
@@ -328,8 +340,9 @@ fun CourseManageScreen(
                                     onClick = { left, top, width, height, snapshot ->
                                         onCourseClick(courseList, left, top, width, height, snapshot, Color(representative.colorRes), 0.15f)
                                     },
-                                    onLongPress = { left, top, width, height ->
-                                        onCourseLongPress(courseList, left, top, width, height)
+                                    onLongPress = { left, top, width, height, snapshot ->
+                                        onCourseLongPressLayer?.invoke(courseList, left, top, width, height, snapshot)
+                                            ?: onCourseLongPress(courseList, left, top, width, height)
                                     }
                                 )
                             }
@@ -655,6 +668,7 @@ fun CourseManageScreen(
 
 @Composable
 private fun CourseManageCard(
+    cardLayer: GraphicsLayer,
     courseName: String,
     teacher: String,
     classroom: String,
@@ -663,14 +677,15 @@ private fun CourseManageCard(
     daySectionInfo: String,
     isHidden: Boolean = false,
     isSelected: Boolean = false,
-    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: ImageBitmap?) -> Unit,
-    onLongPress: (left: Float, top: Float, width: Float, height: Float) -> Unit = { _, _, _, _ -> }
+    onClick: (left: Float, top: Float, width: Float, height: Float, snapshot: TransitionLayerSnapshot?) -> Unit,
+    onLongPress: (left: Float, top: Float, width: Float, height: Float, snapshot: TransitionLayerSnapshot) -> Unit = { _, _, _, _, _ -> }
 ) {
     var cardLeft by remember { mutableFloatStateOf(0f) }
     var cardTop by remember { mutableFloatStateOf(0f) }
     var cardWidth by remember { mutableFloatStateOf(0f) }
     var cardHeight by remember { mutableFloatStateOf(0f) }
     val interactionSource = remember { MutableInteractionSource() }
+    val cardBackground = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = Modifier
@@ -687,23 +702,34 @@ private fun CourseManageCard(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
-                    onClick(cardLeft, cardTop, cardWidth, cardHeight, null)
+                    onClick(cardLeft, cardTop, cardWidth, cardHeight, TransitionLayerSnapshot(cardLayer))
                 },
                 onLongClick = {
-                    onLongPress(cardLeft, cardTop, cardWidth, cardHeight)
+                    onLongPress(cardLeft, cardTop, cardWidth, cardHeight, TransitionLayerSnapshot(cardLayer))
                 }
             )
+            // Keep hiding outside the recorded content so the editor can still replay it.
+            .graphicsLayer { alpha = if (isHidden) 0f else 1f }
+            .drawWithContent {
+                if (!isHidden) {
+                    cardLayer.record {
+                        drawRect(cardBackground)
+                        this@drawWithContent.drawContent()
+                    }
+                }
+                drawLayer(cardLayer)
+            }
     ) {
         Card(
             cornerRadius = 16.dp,
             showIndication = true,
             insideMargin = PaddingValues(16.dp),
             colors = CardDefaults.defaultColors(
-                color = if (isHidden) ComposeColor.Transparent else color.copy(alpha = cardAlpha)
+                color = color.copy(alpha = cardAlpha)
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
-        Column(modifier = Modifier.graphicsLayer { alpha = if (isHidden) 0f else 1f }) {
+        Column {
             Box(
                 modifier = Modifier
                     .size(8.dp)

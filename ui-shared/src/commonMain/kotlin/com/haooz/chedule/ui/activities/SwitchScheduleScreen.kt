@@ -100,7 +100,6 @@ import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.cropImageBitmap
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.isRenderEffectSupported
@@ -144,17 +143,16 @@ import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
+import androidx.compose.ui.graphics.layer.drawLayer
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 @Composable
 fun SwitchScheduleScreen(
-    onBack: (androidx.compose.ui.graphics.ImageBitmap?) -> Unit = { _ -> },
+    onBack: (TransitionLayerSnapshot?, androidx.compose.ui.geometry.Rect?) -> Unit = { _, _ -> },
     onBackStart: () -> Unit = {},
     onScheduleChanged: () -> Unit = {},
-    onCardClick: (androidx.compose.ui.geometry.Rect) -> Unit = { _ -> onBack(null) },
-    onCardSnapshot: (screenBitmap: androidx.compose.ui.graphics.ImageBitmap, cardBitmap: androidx.compose.ui.graphics.ImageBitmap, bounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _, _ -> },
-    onCurrentCardBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
-    onScreenReady: (screenBitmap: androidx.compose.ui.graphics.ImageBitmap?, cardBounds: androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
+    onScreenReady: (cardBounds: androidx.compose.ui.geometry.Rect) -> Unit = {},
     onContentOffset: (x: Float, y: Float) -> Unit = { _, _ -> },
     pageScale: Float = 1f,
     initialScheduleNames: List<String>? = null,
@@ -185,27 +183,27 @@ fun SwitchScheduleScreen(
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val screenGraphicsLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
-    // 页面快照「按需录制」：record() 会把整页再离屏完整画一遍，常驻每帧录制等于把每帧
-    // 绘制成本翻倍，进/退动画期间必掉帧；只在真正 toImageBitmap() 前录一帧。
+    // Retain drawing commands only when a return morph requests a card.
     val lastRecordedSnapshotToken = remember { intArrayOf(0) }
     var snapshotToken by remember { mutableIntStateOf(0) }
-    val capturePageBitmap: suspend () -> androidx.compose.ui.graphics.ImageBitmap? = {
-        snapshotToken++
-        // 等一帧让 draw 阶段完成录制，再等一帧确保该帧已提交
-        withFrameNanos { }
-        withFrameNanos { }
-        try {
-            screenGraphicsLayer.toImageBitmap()
-        } catch (_: OutOfMemoryError) {
-            // OOM 是 Error 不是 Exception：全屏读回在低端机上最容易触发
-            com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("page_snapshot_oom")
-            null
-        } catch (_: Exception) {
-            null
-        }
-    }
     var contentRootX by remember { mutableFloatStateOf(0f) }
     var contentRootY by remember { mutableFloatStateOf(0f) }
+    suspend fun captureCardLayer(bounds: androidx.compose.ui.geometry.Rect?): TransitionLayerSnapshot? {
+        if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) return null
+        val token = ++snapshotToken
+        while (lastRecordedSnapshotToken[0] < token) withFrameNanos { }
+        val localBounds = androidx.compose.ui.geometry.Rect(
+            (bounds.left - contentRootX) / pageScale,
+            (bounds.top - contentRootY) / pageScale,
+            (bounds.right - contentRootX) / pageScale,
+            (bounds.bottom - contentRootY) / pageScale,
+        )
+        val viewport = androidx.compose.ui.geometry.Rect(
+            0f, 0f, screenGraphicsLayer.size.width.toFloat(), screenGraphicsLayer.size.height.toFloat(),
+        )
+        if (!localBounds.overlaps(viewport)) return null
+        return TransitionLayerSnapshot(screenGraphicsLayer, localBounds)
+    }
 
     var scheduleNames by remember {
         mutableStateOf(
@@ -288,7 +286,8 @@ fun SwitchScheduleScreen(
         if (!embedded) {
             onBackStart()
             scope.launch {
-                onBack(capturePageBitmap())
+                val bounds = currentCardBounds
+                onBack(captureCardLayer(bounds), bounds)
             }
         }
     }
@@ -307,39 +306,8 @@ fun SwitchScheduleScreen(
         // 内嵌分栏：切换后留在当前页，不做卡片形变
         if (embedded) return
         onBackStart()
-        if (bounds != null) {
-            scope.launch {
-                val fullBitmap = capturePageBitmap()
-                if (fullBitmap != null) {
-                    // 裁剪也要兜 OOM：这里原来完全没有 try，一张全屏位图裁失败就是闪退
-                    val cardBitmap = try {
-                        val x = (bounds.left - contentRootX).toInt()
-                            .coerceIn(0, fullBitmap.width - 1)
-                        val y = (bounds.top - contentRootY).toInt()
-                            .coerceIn(0, fullBitmap.height - 1)
-                        val w = bounds.width.toInt().coerceIn(1, fullBitmap.width - x)
-                        val h = bounds.height.toInt().coerceIn(1, fullBitmap.height - y)
-                        // ⚠ 走 cropImageBitmap，不要「record 进小 layer 再 toImageBitmap」：Android 上
-                        // toImageBitmap() 读回的是硬件位图（Config.HARDWARE），再录进 layer / 画进软件
-                        // canvas 会抛 "Software rendering doesn't support hardware bitmaps"，
-                        // 表现就是退出形变的卡片快照永远为 null。详见 cropImageBitmap 的 KDoc。
-                        cropImageBitmap(fullBitmap, x, y, w, h)
-                    } catch (_: Exception) {
-                        null
-                    } catch (_: OutOfMemoryError) {
-                        com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("card_crop_oom")
-                        null
-                    }
-                    if (cardBitmap != null) {
-                        onCardSnapshot(fullBitmap, cardBitmap, bounds)
-                    } else {
-                        // ImageBitmap 无 recycle：丢引用交给 GC（原 Bitmap.recycle() 已无意义）
-                    }
-                }
-                onCardClick(bounds)
-            }
-        } else {
-            onBack(null)
+        scope.launch {
+            onBack(captureCardLayer(bounds), bounds)
         }
     }
 
@@ -372,7 +340,6 @@ fun SwitchScheduleScreen(
                 cardBounds = rect
                 if (isCurrent) {
                     currentCardBounds = rect
-                    onCurrentCardBounds(rect)
                 }
             },
             onClick = { selectSchedule(scheduleName, cardBounds) },
@@ -868,14 +835,15 @@ fun SwitchScheduleScreen(
                         onContentOffset(pos.x, pos.y)
                     }
                     .drawWithContent {
-                        // 只在被请求时录制一帧（见 capturePageBitmap），避免每帧重复渲染整页
                         if (lastRecordedSnapshotToken[0] != snapshotToken) {
-                            lastRecordedSnapshotToken[0] = snapshotToken
                             screenGraphicsLayer.record {
                                 this@drawWithContent.drawContent()
                             }
+                            lastRecordedSnapshotToken[0] = snapshotToken
+                            drawLayer(screenGraphicsLayer)
+                        } else {
+                            drawContent()
                         }
-                        drawContent()
                     }
                     .liquidGlassLayerBackdrop(liquidGlassBackdrop)
             ) {
@@ -910,7 +878,7 @@ fun SwitchScheduleScreen(
                             right = (bounds.right - contentRootX) / pageScale,
                             bottom = (bounds.bottom - contentRootY) / pageScale
                         )
-                        onScreenReady(null, adjustedBounds)
+                        onScreenReady(adjustedBounds)
                     }
                 }
                 // Once the first list layout is available, an offscreen card cannot
@@ -921,7 +889,7 @@ fun SwitchScheduleScreen(
                     withFrameNanos { }
                     if (currentCardBounds == null && switchSnapshotDelivered[0] == 0) {
                         switchSnapshotDelivered[0] = 1
-                        onScreenReady(null, androidx.compose.ui.geometry.Rect.Zero)
+                        onScreenReady(androidx.compose.ui.geometry.Rect.Zero)
                     }
                 }
                 Card(

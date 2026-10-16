@@ -99,6 +99,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
@@ -160,6 +161,8 @@ import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
 import com.haooz.chedule.ui.screens.TodayAssistantCardData
 import com.haooz.chedule.ui.screens.TodayScreen
+import com.haooz.chedule.ui.utils.TransitionLayerImage
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.LocalHostNavigation
@@ -170,7 +173,6 @@ import com.haooz.chedule.ui.utils.clipDuringTransition
 import com.haooz.chedule.ui.utils.clipScreenCorners
 import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
-import com.haooz.chedule.ui.utils.cropImageBitmap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.loadScheduleThemeMode
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
@@ -1036,6 +1038,7 @@ fun CourseScheduleApp(
     val nativeBottomBar = hostNavigation != null && !isTablet
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val density = LocalDensity.current
+    val detailLayerLayoutDirection = LocalLayoutDirection.current
     val screenWPx = with(density) { screenWidthDp().dp.toPx() }
     val screenHPx = with(density) { screenHeightDp().dp.toPx() }
     val latestScreenWPx by rememberUpdatedState(screenWPx)
@@ -1084,7 +1087,8 @@ fun CourseScheduleApp(
     var detailCardTop by remember { mutableFloatStateOf(0f) }
     var detailCardWidth by remember { mutableFloatStateOf(0f) }
     var detailCardHeight by remember { mutableFloatStateOf(0f) }
-    var detailSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+    var detailSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
+    val retainedDetailLayer = rememberGraphicsLayer()
     var showDetail by remember { mutableStateOf(false) }
     // 详情页退出中：主内容提前恢复绘制（快照垫底），画出来后再撤快照。见 onBackStart。
     var detailExiting by remember { mutableStateOf(false) }
@@ -1428,18 +1432,11 @@ fun CourseScheduleApp(
             )
         }
     }
-    var mainContentSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
     // 用布尔量而不用整屏位图当哨兵，避免白养 ~10MB Bitmap
     var switchOverlayActive by remember { mutableStateOf(false) }
-    var switchCardSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+    var switchCardSnapshot by remember { mutableStateOf<TransitionLayerSnapshot?>(null) }
     // 形变插值起止依据（窗口坐标系）
     var switchCardBounds by remember { mutableStateOf<Rect?>(null) }
-    // 退出时拿不到截图则退而用它
-    var switchCurrentCardBounds by remember {
-        mutableStateOf<Rect?>(
-            null
-        )
-    }
     // 页面坐标系 → 窗口坐标系的换算偏移
     var switchContentRootX by remember { mutableFloatStateOf(0f) }
 
@@ -2246,6 +2243,7 @@ fun CourseScheduleApp(
         cardTop: Float,
         cardWidth: Float,
         cardHeight: Float,
+        cardLayer: TransitionLayerSnapshot?,
         fromToday: Boolean,
         courseIdToHide: String = courses.firstOrNull()?.id ?: "",
         targetWeek: Int = 0
@@ -2259,33 +2257,18 @@ fun CourseScheduleApp(
         detailTargetWeek = targetWeek
         // 重新进入：上次退出若没来得及复位（异常路径），这里兜底
         detailExiting = false
-        coroutineScope.launch {
-            // 隐藏课程前先截全屏，保证快照完整
-            val fullSnapshot = captureMainContentBitmap()
-            recycleSnapshot(
-                mainContentSnapshot,
-                fullSnapshot,
-                WallpaperStore.currentImageBitmap(),
-            )
-            mainContentSnapshot = fullSnapshot
-            hiddenCourseIds = setOf(courseIdToHide)
-            val oldDetail = detailSnapshot
-            detailSnapshot = fullSnapshot?.let { snap ->
-                try {
-                    val x = cardLeft.toInt().coerceIn(0, snap.width - 1)
-                    val y = cardTop.toInt().coerceIn(0, snap.height - 1)
-                    val w = cardWidth.toInt().coerceIn(1, snap.width - x)
-                    val h = cardHeight.toInt().coerceIn(1, snap.height - y)
-                    cropImageBitmap(snap, x, y, w, h)
-                } catch (_: Exception) {
-                    null
-                } catch (_: OutOfMemoryError) {
-                    null
-                }
+        detailSnapshot = cardLayer?.takeIf {
+            it.layer.size.width > 0 && it.layer.size.height > 0
+        }?.let { source ->
+            // Retain child layer dependencies above lazy and responsive source branches.
+            retainedDetailLayer.record(density, detailLayerLayoutDirection, source.layer.size) {
+                drawLayer(source.layer)
             }
-            recycleSnapshot(oldDetail, detailSnapshot, fullSnapshot)
-
-            showDetail = true
+            TransitionLayerSnapshot(retainedDetailLayer, source.bounds)
+        }
+        hiddenCourseIds = setOf(courseIdToHide)
+        showDetail = true
+        coroutineScope.launch {
             delay(12.milliseconds)
             launch {
                 backgroundScale.animateTo(
@@ -2483,6 +2466,7 @@ fun CourseScheduleApp(
                 host.onEnterCustomize = null
                 host.onJumpToDate = null
                 host.keepsNativeHeaderDuringCutout = false
+                host.updateDetailBackgroundScale(1f)
             }
         }
     }
@@ -2703,6 +2687,7 @@ fun CourseScheduleApp(
                 )
                 .then(
                     Modifier.drawWithContent {
+                        hostNavigation?.updateDetailBackgroundScale(backgroundScale.value)
                         // 仅在被请求时录制一帧，避免每帧重绘整棵主内容树
                         if (mainSnapshotRequester.lastRecordedToken != mainSnapshotToken) {
                             screenGraphicsLayer.record {
@@ -3001,21 +2986,12 @@ fun CourseScheduleApp(
                         MiuixPopupHost()
                     }
                 ) { paddingValues ->
-                    // 详情动画期间用快照占位；占位须吃满触摸，避免事件穿到卡片。
-                    // detailExiting 期间主内容恢复绘制（快照垫底），见 onBackStart。
-                    val mainContentHidden = showDetail && mainContentSnapshot != null && !detailExiting
+                    // Keep the real source rendered underneath the detail morph.
                     // 不门控 combinations.isEmpty()：网格只依赖 viewModel，与壁纸加载解耦
                     // backdrop 挂在未 padding 的全屏层：录制原点固定在屏幕
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(
-                                if (mainContentHidden) {
-                                    Modifier
-                                        .consumeAllTouches()
-                                        .drawWithContent { }
-                                } else Modifier
-                            )
                             // 开洞时 mustRecord 恒 true：停录会让顶栏/底栏玻璃采样空内容
                             .liquidGlassLayerBackdrop(
                                 backdrop = liquidGlassBackdrop,
@@ -3169,13 +3145,14 @@ fun CourseScheduleApp(
                                             settingsViewModel = settingsViewModel,
                                             hiddenCourseIds = hiddenCourseIds,
                                             holidayDataTick = resumeCount,
-                                            onCourseClick = { courses, left, top, width, height, _, courseIdToHide, targetWeek ->
+                                            onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
                                                 openCourseDetail(
                                                     courses,
                                                     left,
                                                     top,
                                                     width,
                                                     height,
+                                                    cardLayer = cardLayer,
                                                     fromToday = true,
                                                     courseIdToHide = courseIdToHide,
                                                     targetWeek = targetWeek
@@ -3228,13 +3205,14 @@ fun CourseScheduleApp(
                                             pagerState = pagerState,
                                             hiddenCourseIds = hiddenCourseIds,
                                             draggingCourseIds = draggingCourseIds,
-                                            onCourseClick = { courses, left, top, width, height, _, courseIdToHide, targetWeek ->
+                                            onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
                                                 openCourseDetail(
                                                     courses,
                                                     left,
                                                     top,
                                                     width,
                                                     height,
+                                                    cardLayer = cardLayer,
                                                     fromToday = false,
                                                     courseIdToHide = courseIdToHide,
                                                     targetWeek = targetWeek
@@ -4278,54 +4256,7 @@ fun CourseScheduleApp(
                     }
                 }
             }
-            // The snapshot cover must also cover native chrome until it is released.
-            HostedOverlay(active = mainContentSnapshot != null && !showSwitchSchedule && !switchAnimRunning) {
-            val snapshotTransform = if (hostNavigation != null) {
-                Modifier
-                    .then(mainContentBlurModifier)
-                    .graphicsLayer {
-                        val baseScale = if (!showSwitchSchedule) backgroundScale.value else 1f
-                        val exitScale = if (isCustomizeExiting) customizeExitScale.value else 1f
-                        val cutoutScale = cutoutMainScale.value
-                        val effectiveScale = if (isCustomizeExiting && isWindowCutoutActive) {
-                            cutoutScale
-                        } else exitScale * cutoutScale
-                        scaleX = baseScale * effectiveScale
-                        scaleY = baseScale * effectiveScale
-                        alpha = mainContentAlpha
-                        val sheetProgress = ((cutoutScale - 0.65f) / 0.35f).coerceIn(0f, 1f)
-                        translationY = sheetOffsetY.value * (1f - sheetProgress)
-                        transformOrigin = when {
-                            isWindowCutoutActive -> TransformOrigin(0.5f, cutoutCenterYRatio)
-                            isCustomizeExiting -> TransformOrigin(0.5f, 0.58f)
-                            else -> TransformOrigin.Center
-                        }
-                    }
-                    .drawWithContent {
-                        if (screenCornerRadius > 0f &&
-                            (backgroundScale.value < 0.999f || isCustomizeExiting)
-                        ) {
-                            val path = Path().apply {
-                                addSquircleRect(size.width, size.height, screenCornerRadius)
-                            }
-                            clipPath(path) { this@drawWithContent.drawContent() }
-                        } else drawContent()
-                    }
-            } else Modifier
-            if (mainContentSnapshot != null && !showSwitchSchedule && !switchAnimRunning) {
-                // remember 固定包装对象身份：asImageBitmap() 每帧新建会让 Image 的位图纹理
-                // 缓存每帧失效，全屏快照每帧重传纹理
-                val mainSnapshotImage = remember(mainContentSnapshot) {
-                    mainContentSnapshot!!
-                }
-                Image(
-                    bitmap = mainSnapshotImage,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize().consumeAllTouches().then(snapshotTransform),
-                    contentScale = ContentScale.Crop
-                )
-            }
-            }
+
         }
         HostedOverlay(
             active = floatingCardVisible || swapFlightVisible ||
@@ -5045,9 +4976,7 @@ fun CourseScheduleApp(
                 val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
                 val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
                 val classStartTime by viewModel.classStartTime.collectAsState()
-                // ⚠ 必须 remember 缓存包装对象身份：asImageBitmap() 每次调用都 new 一个
-                // AndroidImageBitmap，Image 的位图纹理缓存按对象身份命中，每帧新建 = 缓存全失效
-                val detailSnapshotImage = remember(detailSnapshot) { detailSnapshot }
+                val detailSnapshotImage = detailSnapshot
                 CourseDetailScreen(
                     courses = detailCourses,
                     cardLeft = detailCardLeft,
@@ -5077,18 +5006,6 @@ fun CourseScheduleApp(
                                     animationSpec = tween(350, easing = OobeCubicOutEasing)
                                 )
                             }
-                            // 等主内容重绘出来再撤快照（快照仍在，不会闪黑）
-                            withFrameNanos { }
-                            withFrameNanos { }
-                            val oldMain = mainContentSnapshot
-                            mainContentSnapshot = null
-                            recycleSnapshot(
-                                oldMain,
-                                WallpaperStore.currentImageBitmap(),
-                                wallpaperBitmap,
-                                savedWallpaperBitmap,
-                                originalWallpaperBitmap,
-                            )
                         }
                     },
                     onBack = {
@@ -5099,18 +5016,7 @@ fun CourseScheduleApp(
                             withFrameNanos { }
                             showDetail = false
                             detailExiting = false
-                            // 快照已在 onBackStart 撤掉；等两帧（重组/布局/绘制走完）再清详情快照
-                            withFrameNanos { }
-                            withFrameNanos { }
-                            val oldDetail = detailSnapshot
                             detailSnapshot = null
-                            recycleSnapshot(
-                                oldDetail,
-                                WallpaperStore.currentImageBitmap(),
-                                wallpaperBitmap,
-                                savedWallpaperBitmap,
-                                originalWallpaperBitmap,
-                            )
                         }
                     }
                 )
@@ -5150,17 +5056,8 @@ fun CourseScheduleApp(
                         switchPendingReverse = false
                         switchPreparingLayer = false
                     },
-                    onBack = { switchPageBitmap ->
-                        if (!switchExiting) return@SwitchScheduleScreen
-                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
-                        val switchPageBitmapBmp = switchPageBitmap
-                        if (switchAnimRunning && !switchAnimForward) {
-                            // 退出动画已在跑，这次回调没人消费。它带的整屏截图只用来裁卡片，
-                            // 直接回收，否则每次快速连点返回都漏一张全屏位图
-                            coroutineScope.launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(switchPageBitmapBmp, switchCardSnapshot)
-                            }
+                    onBack = { cardLayer, bounds ->
+                        if (!switchExiting || (switchAnimRunning && !switchAnimForward)) {
                             return@SwitchScheduleScreen
                         }
                         val wasForward = switchAnimForward
@@ -5173,79 +5070,26 @@ fun CourseScheduleApp(
                                 scheduleChanged = false
                                 switchReloadJob?.join()
                                 switchReloadJob = null
-                                // Allow the selected schedule to reach layout before recording it.
                                 withFrameNanos { }
                                 prepareMainContentLayer()
-                            } else {
-                                scheduleChanged = false
                             }
-                            val currentBounds = switchCurrentCardBounds
-                            val screenBitmap = switchPageBitmapBmp
                             switchOverlayActive = true
-                            switchCardBounds = currentBounds
-                            switchCardSnapshot = if (currentBounds != null && screenBitmap != null) {
-                                try {
-                                    val x = currentBounds.left.toInt()
-                                        .coerceIn(0, screenBitmap.width - 1)
-                                    val y = currentBounds.top.toInt()
-                                        .coerceIn(0, screenBitmap.height - 1)
-                                    val w = currentBounds.width.toInt()
-                                        .coerceIn(1, screenBitmap.width - x)
-                                    val h = currentBounds.height.toInt()
-                                        .coerceIn(1, screenBitmap.height - y)
-                                    cropImageBitmap(screenBitmap, x, y, w, h)
-                                } catch (_: Exception) {
-                                    null
-                                } catch (_: OutOfMemoryError) {
-                                    null
-                                }
-                            } else null
-                            val currentProgress = switchAnimProgress.value
+                            switchCardBounds = bounds?.takeIf {
+                                cardLayer != null && it.width > 0f && it.height > 0f
+                            }
+                            switchCardSnapshot = cardLayer
                             val remainingDuration =
-                                ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
+                                ((1f - switchAnimProgress.value) * 560).toInt().coerceAtLeast(1)
                             switchAnimProgress.animateTo(
                                 targetValue = 1f,
-                                animationSpec = tween(
-                                    durationMillis = remainingDuration,
-                                    easing = OobeQuartOutEasing
-                                )
+                                animationSpec = tween(remainingDuration, easing = OobeQuartOutEasing)
                             )
                             showSwitchSchedule = false
-                            FeatureLog.t(
-                                "切换课表", "close", "forward=$wasForward"
-                            )
+                            FeatureLog.t("切换课表", "close", "forward=$wasForward")
                             switchOverlayActive = false
-                            val oldSwitchCard = switchCardSnapshot
-                            val oldSwitchMain = mainContentSnapshot
                             switchCardSnapshot = null
                             switchCardBounds = null
-                            switchCurrentCardBounds = null
-                            mainContentSnapshot = null
                             switchAnimRunning = false
-                            launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(
-                                    oldSwitchCard,
-                                    oldSwitchMain,
-                                    WallpaperStore.currentImageBitmap(),
-                                    wallpaperBitmap,
-                                )
-                                recycleSnapshot(
-                                    oldSwitchMain,
-                                    switchPageBitmapBmp,
-                                    WallpaperStore.currentImageBitmap(),
-                                    wallpaperBitmap,
-                                )
-                                // onBack 带回来的整屏截图只用来裁卡片快照，裁完即弃；
-                                // 仅当它与 mainContentSnapshot 是两个独立对象时才会走到这里。
-                                recycleSnapshot(
-                                    switchPageBitmapBmp,
-                                    oldSwitchCard,
-                                    oldSwitchMain,
-                                    WallpaperStore.currentImageBitmap(),
-                                    wallpaperBitmap,
-                                )
-                            }
                         }
                     },
                     onScheduleChanged = {
@@ -5258,91 +5102,14 @@ fun CourseScheduleApp(
                             scheduleViewModel.refreshScheduleList()
                         }
                     },
-                    onCardClick = { bounds ->
-                        switchCardBounds = bounds
-                    },
-                    onCardSnapshot = { fullBitmap, cardBitmap, bounds ->
-                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
-                        val fullBitmapBmp = fullBitmap
-                        val cardBitmapBmp = cardBitmap
-                        if (!switchExiting || (switchAnimJob?.isActive == true && !switchAnimForward)) {
-                            // 退出动画已在跑：卡片快照和它裁自的整屏截图都无人消费。
-                            // 互为 keep，裁剪区等于整图时两者同一对象，天然都不回收
-                            coroutineScope.launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(cardBitmapBmp, fullBitmapBmp)
-                                recycleSnapshot(fullBitmapBmp, cardBitmapBmp)
-                            }
-                            return@SwitchScheduleScreen
-                        }
-                        switchAnimForward = false
-                        switchAnimRunning = true
-                        switchAnimJob?.cancel()
-                        switchAnimJob = coroutineScope.launch {
-                            switchMainLayerJob?.join()
-                            if (scheduleChanged) {
-                                scheduleChanged = false
-                                switchReloadJob?.join()
-                                switchReloadJob = null
-                                withFrameNanos { }
-                                prepareMainContentLayer()
-                            }
-                            switchOverlayActive = true
-                            switchCardSnapshot = cardBitmapBmp
-                            switchCardBounds = bounds
-                            val currentProgress = switchAnimProgress.value
-                            val remainingDuration =
-                                ((1f - currentProgress) * 560).toInt().coerceAtLeast(1)
-                            switchAnimProgress.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(
-                                    durationMillis = remainingDuration,
-                                    easing = OobeQuartOutEasing
-                                )
-                            )
-                            switchAnimRunning = false
-                            showSwitchSchedule = false
-                            switchOverlayActive = false
-                            switchCardSnapshot = null
-                            switchCardBounds = null
-                            mainContentSnapshot = null
-                            // fullBitmap 只用来裁 cardBitmap，裁完即弃；keep 传 cardBitmap：
-                            // 裁剪区等于整图时两者同一对象，天然不回收。
-                            launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(
-                                    fullBitmapBmp,
-                                    cardBitmapBmp,
-                                    WallpaperStore.currentImageBitmap(),
-                                    wallpaperBitmap,
-                                )
-                            }
-                        }
-                    },
-                    onCurrentCardBounds = { bounds ->
-                        switchCurrentCardBounds = bounds
-                    },
-                    onScreenReady = { screenBitmap, cardBounds ->
-                        // 回调边界：commonMain 传 ImageBitmap，宿主内部 Bitmap 逻辑不变
-                        val screenBitmapBmp = screenBitmap
+                    onScreenReady = { cardBounds ->
                         if (!switchPendingReverse || switchExiting) {
-                            // 锚点 bounds 后续再变会重复回调（见 SwitchScheduleScreen 里的上闩），
-                            // 走到这里说明动画早已启动：这张全屏截图没人要，直接回收
-                            FeatureLog.t(
-                                "切换课表", "screen_ready_stale", "pending=false"
-                            )
-                            coroutineScope.launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(screenBitmapBmp, switchCardSnapshot)
-                            }
+                            FeatureLog.t("切换课表", "screen_ready_stale", "pending=false")
                         } else {
                             switchPendingReverse = false
                             switchAnimForward = true
                             switchAnimRunning = true
-                            FeatureLog.t(
-                                "切换课表", "anim_enter_start",
-                                "bmp=${screenBitmapBmp != null} bounds=$cardBounds"
-                            )
+                            FeatureLog.t("切换课表", "anim_enter_start", "bounds=$cardBounds")
                             switchAnimJob?.cancel()
                             val cardBoundsInScreen = Rect(
                                 left = switchContentRootX + cardBounds.left,
@@ -5350,31 +5117,6 @@ fun CourseScheduleApp(
                                 right = switchContentRootX + cardBounds.right,
                                 bottom = switchContentRootY + cardBounds.bottom
                             )
-                            // 截图失败时 cardSnap=null，动画照常跑，不能卡在 alpha=0
-                            val cardSnap = if (screenBitmapBmp != null) {
-                                try {
-                                    val x = cardBounds.left.toInt()
-                                        .coerceIn(0, screenBitmapBmp.width - 1)
-                                    val y = cardBounds.top.toInt()
-                                        .coerceIn(0, screenBitmapBmp.height - 1)
-                                    val w = cardBounds.width.toInt()
-                                        .coerceIn(1, screenBitmapBmp.width - x)
-                                    val h = cardBounds.height.toInt()
-                                        .coerceIn(1, screenBitmapBmp.height - y)
-                                    cropImageBitmap(screenBitmapBmp, x, y, w, h)
-                                } catch (_: Exception) {
-                                    null
-                                } catch (_: OutOfMemoryError) {
-                                    null
-                                }
-                            } else null
-                            // screenBitmap 只用来裁 cardSnap，裁完即弃：反复进出切换页会在低端机上
-                            // 把动画收尾帧的位图峰值顶爆。延后两帧再回收；keep 传 cardSnap 是必须的
-                            //（裁剪区恰好等于整图时 createBitmap 原样返回它，二者同一对象）。
-                            coroutineScope.launch {
-                                delay(32.milliseconds)
-                                recycleSnapshot(screenBitmapBmp, cardSnap, switchCardSnapshot)
-                            }
                             switchAnimJob = coroutineScope.launch {
                                 switchMainLayerJob?.join()
                                 switchAnimProgress.snapTo(1f)
@@ -5384,29 +5126,20 @@ fun CourseScheduleApp(
                                 switchCardBounds = cardBoundsInScreen.takeIf {
                                     it.width > 0f && it.height > 0f
                                 }
-                                switchCardSnapshot = cardSnap
+                                switchCardSnapshot = null
                                 val remainingDuration = 350
                                 val morphExitEase = CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
                                 launch {
                                     switchReturnBgScrim.animateTo(
                                         0f,
-                                        animationSpec = tween(
-                                            remainingDuration,
-                                            easing = morphExitEase
-                                        )
+                                        animationSpec = tween(remainingDuration, easing = morphExitEase)
                                     )
                                 }
                                 switchAnimProgress.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(
-                                        durationMillis = remainingDuration,
-                                        easing = OobeCubicOutEasing
-                                    )
+                                    0f,
+                                    animationSpec = tween(remainingDuration, easing = OobeCubicOutEasing)
                                 )
-                                FeatureLog.t(
-                                    "切换课表", "anim_enter_end",
-                                    "p=${switchAnimProgress.value}"
-                                )
+                                FeatureLog.t("切换课表", "anim_enter_end", "p=${switchAnimProgress.value}")
                                 switchOverlayActive = false
                                 switchCardSnapshot = null
                                 switchCardBounds = null
@@ -5472,7 +5205,7 @@ private fun SwitchMorphOverlay(
     active: Boolean,
     progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     cardBounds: Rect?,
-    cardSnapshot: ImageBitmap?,
+    cardSnapshot: TransitionLayerSnapshot?,
     mainLayer: GraphicsLayer,
     screenCornerRadius: Float,
     isDark: Boolean,
@@ -5533,9 +5266,8 @@ private fun SwitchMorphOverlay(
             .background(MiuixTheme.colorScheme.background)
     ) {
         if (cardImage != null) {
-            Image(
-                bitmap = cardImage,
-                contentDescription = null,
+            TransitionLayerImage(
+                snapshot = cardImage,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .clip(ContinuousRoundedRectangle(20.dp))

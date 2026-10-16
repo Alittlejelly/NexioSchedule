@@ -20,6 +20,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.NativeDocumentChrome
@@ -353,9 +357,11 @@ class IosAppHost {
      * it a frame or two behind.
      */
     var onCutoutChromeOffset: ((Double) -> Unit)? = null
+    var onDetailChromeScale: ((Double) -> Unit)? = null
 
     init {
         navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
+        navigation.onDetailChromeScale = { scale -> onDetailChromeScale?.invoke(scale) }
     }
 
     val mainController: UIViewController by lazy {
@@ -385,7 +391,15 @@ class IosAppHost {
                     HostOverlayContent(overlays) {
                         nativePages.isEmpty() && !router.hasOverlay && !navigationOverlayActive
                     }
-                    MiuixPopupHost()
+                    Box(Modifier.fillMaxSize().graphicsLayer {
+                        val scale = navigation.detailBackgroundScale
+                        scaleX = scale
+                        scaleY = scale
+                        val blur = ((1f - scale) / 0.08f).coerceIn(0f, 1f) * 5.dp.toPx()
+                        renderEffect = if (blur > 0f) BlurEffect(null, blur, blur, TileMode.Clamp) else null
+                    }) {
+                        MiuixPopupHost()
+                    }
                     // 顺序即层级：课程详情页（overlay）必须盖在弹窗层之上
                     HostOverlayContent(overlays, abovePopups = true)
                 }

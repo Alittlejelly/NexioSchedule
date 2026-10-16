@@ -46,7 +46,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.ImageBitmap
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
+import com.haooz.chedule.ui.utils.TransitionLayerImage
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -264,8 +265,8 @@ fun TimeConfigEditScreen(
     screenHeight: Float = 0f,
     screenCornerRadius: Float = 0f,
     cardStartCornerRadius: Float = 0f,
-    /** 课程卡快照：跨平台用 Compose 的 ImageBitmap（裁剪在 Android 宿主侧完成） */
-    cardSnapshot: ImageBitmap? = null,
+    /** Retained source row drawing, owned by the underlying time-settings page. */
+    cardSnapshot: TransitionLayerSnapshot? = null,
     isFabCreation: Boolean = false,
     /** 删除当前作息并回到一级列表（宿主负责落库与刷新列表） */
     onDeleteRoutine: (Long) -> Unit = {},
@@ -806,9 +807,8 @@ fun TimeConfigEditScreen(
                 )
         ) {
             if (cardSnapshot != null && s.snapshotAlpha > 0f) {
-                Image(
-                    bitmap = cardSnapshot,
-                    contentDescription = null,
+                TransitionLayerImage(
+                    snapshot = cardSnapshot,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()

@@ -25,6 +25,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.platform.LocalGraphicsContext
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -69,7 +75,8 @@ data class TimeConfigCardBounds(
     val left: Float,
     val top: Float,
     val width: Float,
-    val height: Float
+    val height: Float,
+    val snapshot: TransitionLayerSnapshot? = null,
 )
 
 /**
@@ -89,6 +96,13 @@ fun CourseTimeSettingsScreen(
 ) {
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val repository = remember { CourseRepository() }
+    // Rows may disappear while their editor is closing; the page owns their drawing layers.
+    val graphicsContext = LocalGraphicsContext.current
+    val routineLayers = remember(graphicsContext) { mutableMapOf<Long, GraphicsLayer>() }
+    DisposableEffect(graphicsContext) {
+        onDispose { routineLayers.values.forEach(graphicsContext::releaseGraphicsLayer) }
+    }
+    val routineBackground = MiuixTheme.colorScheme.surfaceContainer
     // 液态玻璃效果的透明下拉颜色（与项目其他页面保持一致）
     val liquidGlassDropdownColors = DropdownDefaults.dropdownColors(
         containerColor = Color.Transparent,
@@ -209,6 +223,9 @@ fun CourseTimeSettingsScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 config.safeRoutines.forEach { routine ->
+                                    val routineLayer = routineLayers.getOrPut(routine.id) {
+                                        graphicsContext.createGraphicsLayer()
+                                    }
                                     var bounds by remember {
                                         mutableStateOf(TimeConfigCardBounds(0f, 0f, 0f, 0f))
                                     }
@@ -248,10 +265,20 @@ fun CourseTimeSettingsScreen(
                                             hapticFeedback.performHapticFeedback(
                                                 HapticFeedbackType.Confirm
                                             )
-                                            onEditRoutine(routine, config, bounds)
+                                            onEditRoutine(routine, config, bounds.copy(
+                                                snapshot = TransitionLayerSnapshot(routineLayer)
+                                            ))
                                         },
                                         holdDownState = false,
-                                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                                        modifier = Modifier
+                                            .drawWithContent {
+                                                routineLayer.record {
+                                                    drawRect(routineBackground)
+                                                    this@drawWithContent.drawContent()
+                                                }
+                                                drawLayer(routineLayer)
+                                            }
+                                            .onGloballyPositioned { coordinates ->
                                                 val pos = coordinates.positionInWindow()
                                                 bounds = TimeConfigCardBounds(
                                                     left = pos.x,

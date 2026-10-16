@@ -43,6 +43,16 @@ class HostNavigationState {
      * 开洞期间主内容整体上移的纵向位移（pt）。与主内容 graphicsLayer 的 translationY 同源同值
      */
     var onCutoutChromeOffsetY: ((Double) -> Unit)? = null
+    /** Live source scale while a course card expands above native chrome and popups. */
+    var detailBackgroundScale by mutableFloatStateOf(1f)
+        private set
+    var onDetailChromeScale: ((Double) -> Unit)? = null
+
+    fun updateDetailBackgroundScale(scale: Float) {
+        if (detailBackgroundScale == scale) return
+        detailBackgroundScale = scale
+        onDetailChromeScale?.invoke(scale.toDouble())
+    }
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
     /**

@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -49,7 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
+import com.haooz.chedule.ui.utils.TransitionLayerImage
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -205,8 +205,8 @@ fun CourseEditScreen(
     screenWidth: Float,
     screenHeight: Float,
     screenCornerRadius: Float,
-    /** 课程卡快照：跨平台用 Compose 的 ImageBitmap（裁剪在 Android 宿主侧完成） */
-    cardSnapshot: ImageBitmap?,
+    /** Retained source card drawing, owned by the underlying management page. */
+    cardSnapshot: TransitionLayerSnapshot?,
     cardColor: Color = Color(0xFF4CAF50),
     cardAlpha: Float = 0.15f,
     onBackStart: () -> Unit,
@@ -575,9 +575,8 @@ fun CourseEditScreen(
                 .background(cardColor.copy(alpha = cardAlpha))
         ) {
             if (cardSnapshot != null && s.snapshotAlpha > 0f) {
-                Image(
-                    bitmap = cardSnapshot,
-                    contentDescription = null,
+                TransitionLayerImage(
+                    snapshot = cardSnapshot,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()

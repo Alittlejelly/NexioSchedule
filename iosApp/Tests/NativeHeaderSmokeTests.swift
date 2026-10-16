@@ -606,7 +606,9 @@ final class NativeHeaderSmokeTests: XCTestCase {
                        "Save exit changed the source-card layout")
         capture("Time settings - native save completed original reverse morph")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
+        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable, app.debugDescription)
+        XCTAssertTrue(item("课表节数与时间").isHittable, app.debugDescription)
+        XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
     }
 
     func testTimeEditorRapidCancelAndParentBack() throws {
@@ -628,8 +630,10 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertFalse(app.navigationBars.buttons["保存并关闭"].exists)
         back.tap()
         settle()
-        XCTAssertEqual(app.navigationBars.count, 0,
-                       "Parent back tap during editor exit was swallowed")
+        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable,
+                      "Parent back tap during editor exit did not restore the settings tab")
+        XCTAssertTrue(item("课表节数与时间").isHittable, app.debugDescription)
+        XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
         capture("Time settings - rapid native cancel and parent back without disabled controls")
     }
 
@@ -648,6 +652,58 @@ final class NativeHeaderSmokeTests: XCTestCase {
         requireNativeHeader("桌面小部件")
         nativeBack()
         XCTAssertEqual(app.navigationBars.count, 0)
+    }
+
+    func testCourseManageLayerMenuAndEditorReturn() throws {
+        let scheduleTab = app.tabBars.buttons["课程表"]
+        XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
+        scheduleTab.tap()
+        let more = app.navigationBars.buttons["更多"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5), app.debugDescription)
+        more.tap()
+        open("课程管理")
+        let course = item("9")
+        try XCTSkipUnless(course.waitForExistence(timeout: 5), "Requires the default course fixture named 9")
+        course.press(forDuration: 1.2)
+        XCTAssertTrue(item("编辑").waitForExistence(timeout: 5), app.debugDescription)
+        capture("Course management - layer card above shortcut backdrop")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.85)).tap()
+        settle()
+        course.tap()
+        XCTAssertTrue(item("上课周次").waitForExistence(timeout: 5), app.debugDescription)
+        capture("Course management - layer card expanded into editor")
+        let back = item("返回")
+        XCTAssertTrue(back.waitForExistence(timeout: 5), app.debugDescription)
+        back.tap()
+        settle()
+        XCTAssertTrue(course.exists && course.isHittable, app.debugDescription)
+        capture("Course management - retained source after editor return")
+        item("返回").tap()
+        XCTAssertTrue(app.navigationBars.buttons["课表切换"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    func testCourseDetailLayerPreservesSourcePopupOnReturn() throws {
+        let scheduleTab = app.tabBars.buttons["课程表"]
+        XCTAssertTrue(scheduleTab.waitForExistence(timeout: 5), app.debugDescription)
+        scheduleTab.tap()
+        let course = item("9")
+        try XCTSkipUnless(course.waitForExistence(timeout: 5), "Requires the default course fixture named 9")
+        course.tap()
+        XCTAssertTrue(item("课程详情").waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<2 {
+            item("9").tap()
+            XCTAssertTrue(item("返回").waitForExistence(timeout: 5), app.debugDescription)
+            settle()
+            XCTAssertTrue(item("第1周").exists, app.debugDescription)
+            capture("Course details - layer card expanded")
+            item("返回").tap()
+            settle()
+            XCTAssertTrue(item("课程详情").exists && item("9").isHittable, app.debugDescription)
+            capture("Course details - original popup retained")
+        }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.1)).tap()
+        settle()
+        XCTAssertTrue(app.navigationBars.buttons["课表切换"].isEnabled, app.debugDescription)
     }
 
     func testScheduleLibraryNativeActionsAndReturn() throws {
