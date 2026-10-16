@@ -2,11 +2,8 @@ package com.haooz.chedule.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -22,6 +19,7 @@ import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Months
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -41,16 +39,9 @@ fun ScheduleBottomBar(
 
     val onSelect: (Int) -> Unit = { idx -> onTabSelected(idx) }
     val iconTint = MiuixTheme.colorScheme.onSurfaceContainer.copy(alpha = 0.8f)
-    val navBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomPadding = if (navBarBottomInset > 0.dp) {
-        // 有系统安全区（iOS 的 home indicator / Android 导航栏）：**贴着它**即可，
-        // 不要再加额外间距 —— 安全区本身就是留白，再加 8dp 会让底栏悬在屏幕中间。
-        // 实测 iPhone 18 Pro Max：inset=34dp、底栏 42dp 时看起来「偏上」。
-        navBarBottomInset
-    } else {
-        // 无安全区（桌面/平板全屏等）：给一个最小悬浮边距，避免完全贴边。
-        24.dp
-    }
+    // 底部间距统一走共享算法（见 bottomFloatingPadding）：切换课表底栏、教务导入底部胶囊、
+    // 首页「回到底」浮动按钮都用它，四处互相有对位关系，不能各写各的常量
+    val bottomPadding = bottomFloatingPadding()
 
     Box(
         modifier = Modifier

@@ -38,11 +38,22 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.showToast
+import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 /** 顶栏色条采样高度：只取页面最顶部几行，用来统计主导底色 */
 private const val TOP_MIRROR_SAMPLE_HEIGHT_PX = 12
+
+/**
+ * 顶栏色条采样延迟启动：
+ */
+private const val TOP_MIRROR_START_DELAY_MS = 600L
+
+/**
+ * 采样节流间隔：顶栏色是缓变的大面积底色，逐帧采纯浪费
+ */
+private const val TOP_MIRROR_SAMPLE_INTERVAL_MS = 120L
 
 /** JS 报"基础库没定义"的特征：站点脚本没加载全（多因 `X-Requested-With` 被判非浏览器） */
 private val JS_LIB_MISSING = Regex("""(\$|jQuery) is not defined|requires jQuery""")
@@ -56,9 +67,6 @@ private const val TOP_MIRROR_COLOR_CLOSE_DELTA = 20
 //  页面外壳已迁 :ui-shared（见 ui/web/WebHost.kt 契约），这里只剩网页本体：
 //  创建配置 / UA 与视口策略（委派 WebCompatDelegate）/ JS 桥 / PixelCopy 逐帧采色 / 销毁。
 //  iOS 侧对应 IosWebHost（WKWebView），本文件逻辑一行都复用不了。
-//
-//  ⚠ 搬改时只把「写页面 state」换成「发事件」，其余逐字保留：UA 重取页、
-//  SSL 放行、自定义 scheme 外跳、Cookie 跨页保存都是踩过坑的，未真机验证别重构。
 // ════════════════════════════════════════════════════════════════════════
 
 
@@ -149,29 +157,6 @@ private fun pickDominantColor(src: Bitmap, prevColor: Int): Int {
     return prevColor
 }
 
-private fun dominantColorBitmap(color: Int): Bitmap {
-    val out = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-    out.setPixel(0, 0, color)
-    return out
-}
-
-/** 顶栏色切换时的每帧插值系数：越小越慢、越绵 */
-private const val TOP_MIRROR_COLOR_LERP = 0.16f
-
-private fun lerpArgb(from: Int, to: Int, t: Float): Int {
-    if (from == to) return to
-    val fr = (from ushr 16) and 0xFF
-    val fg = (from ushr 8) and 0xFF
-    val fb = from and 0xFF
-    val tr = (to ushr 16) and 0xFF
-    val tg = (to ushr 8) and 0xFF
-    val tb = to and 0xFF
-    val r = (fr + (tr - fr) * t).toInt().coerceIn(0, 255)
-    val g = (fg + (tg - fg) * t).toInt().coerceIn(0, 255)
-    val b = (fb + (tb - fb) * t).toInt().coerceIn(0, 255)
-    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-}
-
 /**
  * 造一个 Android 网页宿主。
  *
@@ -226,16 +211,14 @@ fun rememberAndroidWebHost(
             }
         )
     }
-    // 顶栏空白区：采样页面顶部一小段取众数色做成 1×1，FillBounds 铺满 contentTopPadding。
-    // 大面积底色压倒文字笔画；整条纯色填充，没有拉伸字形问题。
-    var webTopMirrorBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    // 上一帧主导色（滞回用）与当前已上屏颜色（插值用）
+    // 顶栏空白区：采样页面顶部一小段的主导底色（int 表示，无 bitmap 中间层）。
+    // 上一帧主导色（滞回用）
     val lastTopMirrorColor = remember { intArrayOf(-1) }
-    val lastAppliedMirrorColor = remember { intArrayOf(-1) }
     val edgeSampleHandler = remember { Handler(Looper.getMainLooper()) }
     val topMirrorVisiblePx = with(density) { currentConfig.contentTopPadding.roundToPx() }
     val pixelCopyInFlight = remember { AtomicBoolean(false) }
     val mirrorFrameRunning = remember { AtomicBoolean(false) }
+    val rawBitmapRef = remember { arrayOfNulls<Bitmap>(1) }
 
     val captureWebTopMirror: (WebView) -> Unit = remember(topMirrorVisiblePx) {
         { target ->
@@ -258,7 +241,12 @@ fun rememberAndroidWebHost(
                         location[0] + width,
                         location[1] + strip
                     )
-                    val raw = Bitmap.createBitmap(width, strip, Bitmap.Config.ARGB_8888)
+                    var raw = rawBitmapRef[0]
+                    if (raw == null || raw.isRecycled || raw.width != width || raw.height != strip) {
+                        raw?.takeIf { !it.isRecycled }?.recycle()
+                        raw = Bitmap.createBitmap(width, strip, Bitmap.Config.ARGB_8888)
+                        rawBitmapRef[0] = raw
+                    }
                     PixelCopy.request(
                         window,
                         src,
@@ -266,37 +254,16 @@ fun rememberAndroidWebHost(
                         { result ->
                             if (result == PixelCopy.SUCCESS) {
                                 val target = pickDominantColor(raw, lastTopMirrorColor[0])
-                                raw.recycle()
                                 lastTopMirrorColor[0] = target
-
-                                val prevApplied = lastAppliedMirrorColor[0]
-                                val color = if (prevApplied == -1) {
-                                    target
-                                } else {
-                                    val lerped = lerpArgb(prevApplied, target, TOP_MIRROR_COLOR_LERP)
-                                    // 已非常接近目标时贴齐，避免长期停在中间色
-                                    val dr = abs(((lerped ushr 16) and 0xFF) - ((target ushr 16) and 0xFF))
-                                    val dg = abs(((lerped ushr 8) and 0xFF) - ((target ushr 8) and 0xFF))
-                                    val db = abs((lerped and 0xFF) - (target and 0xFF))
-                                    if (dr <= 1 && dg <= 1 && db <= 1) target else lerped
-                                }
-                                lastAppliedMirrorColor[0] = color
-
-                                val prevBmp = webTopMirrorBitmap
-                                if (prevBmp == null || prevBmp.isRecycled || prevBmp.getPixel(0, 0) != color) {
-                                    prevBmp?.takeIf { !it.isRecycled }?.recycle()
-                                    webTopMirrorBitmap = dominantColorBitmap(color)
-                                    currentEvents.onTopColor(
-                                        Color(
-                                            red = ((color ushr 16) and 0xFF) / 255f,
-                                            green = ((color ushr 8) and 0xFF) / 255f,
-                                            blue = (color and 0xFF) / 255f,
-                                            alpha = 1f
-                                        )
+                                // 每次采样直接上报采样色
+                                currentEvents.onTopColor(
+                                    Color(
+                                        red = ((target ushr 16) and 0xFF) / 255f,
+                                        green = ((target ushr 8) and 0xFF) / 255f,
+                                        blue = (target and 0xFF) / 255f,
+                                        alpha = 1f
                                     )
-                                }
-                            } else {
-                                raw.recycle()
+                                )
                             }
                             pixelCopyInFlight.set(false)
                         },
@@ -313,21 +280,35 @@ fun rememberAndroidWebHost(
 
     DisposableEffect(webView, captureWebTopMirror) {
         val choreographer = Choreographer.getInstance()
+        // 上次实际发起采样的帧时间（ms）；0 = 还没采过
+        val lastSampleMs = longArrayOf(0L)
         val frameCallback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
-                if (!mirrorFrameRunning.get()) return
-                captureWebTopMirror(webView)
+                // 循环常驻：mirrorFrameRunning 只决定这一帧采不采样，
+                // 不在 doFrame 里 return 断链（否则延迟启动后没人再把它唤起）
+                if (mirrorFrameRunning.get()) {
+                    // 节流：顶栏色是缓变的大面积底色，不需要逐帧精度
+                    val nowMs = frameTimeNanos / 1_000_000L
+                    if (nowMs - lastSampleMs[0] >= TOP_MIRROR_SAMPLE_INTERVAL_MS) {
+                        lastSampleMs[0] = nowMs
+                        captureWebTopMirror(webView)
+                    }
+                }
                 choreographer.postFrameCallback(this)
             }
         }
-        mirrorFrameRunning.set(true)
         choreographer.postFrameCallback(frameCallback)
         onDispose {
             mirrorFrameRunning.set(false)
             choreographer.removeFrameCallback(frameCallback)
-            webTopMirrorBitmap?.takeIf { !it.isRecycled }?.recycle()
-            webTopMirrorBitmap = null
+            rawBitmapRef[0]?.takeIf { !it.isRecycled }?.recycle()
+            rawBitmapRef[0] = null
         }
+    }
+    // 顶栏色条采样延后启动：
+    LaunchedEffect(Unit) {
+        delay(TOP_MIRROR_START_DELAY_MS)
+        mirrorFrameRunning.set(true)
     }
     val compatDelegate = remember(webView) { WebCompatDelegate(webView) }
     LaunchedEffect(Unit) {

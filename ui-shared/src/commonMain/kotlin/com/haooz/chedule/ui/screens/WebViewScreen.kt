@@ -5,6 +5,8 @@ package com.haooz.chedule.ui.screens
 // 需要新能力就往 WebHost 契约上加方法，而不是把平台类型带进来。
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -72,6 +74,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.BackdropEffectScope
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -393,13 +396,23 @@ fun WebViewScreen(
                 .background(MiuixTheme.colorScheme.surface)
                 .layerBackdrop(webContentBackdrop)
         ) {
-            // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding，供 ProgressiveBlurTopBar 采样。
+            // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding。
+            // ⚠ 必须用 animateColorAsState 做连续过渡：宿主侧采样已节流到 8Hz 且只报
+            //   目标色（加变化阈值），直接 background(target) 会一跳一跳、且每次上报都
+            //   触发整条顶栏重组（CollapsibleTopAppBar 内含多个 Animatable，重组不便宜）。
+            //   animateColorAsState 在 render 线程驱动 60fps 过渡，采样怎么降频都不影响
+            //   过渡帧率，重组只在目标色离散跳变时发生（稀疏）。
             topColor?.let { color ->
+                val animatedColor by animateColorAsState(
+                    targetValue = color,
+                    animationSpec = tween(durationMillis = 300),
+                    label = "webTopMirrorColor"
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(contentTopPadding)
-                        .background(color)
+                        .background(animatedColor)
                 )
             }
             Box(
@@ -438,7 +451,8 @@ fun WebViewScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp + tabletHorizontalPadding)
-                    .padding(bottom = 24.dp)
+                    // 与首页底栏同一套底部间距算法
+                    .padding(bottom = bottomFloatingPadding())
                     .fillMaxWidth()
                     .drawBackdrop(
                         backdrop = webContentBackdrop,

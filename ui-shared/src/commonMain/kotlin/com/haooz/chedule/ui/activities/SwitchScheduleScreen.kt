@@ -133,6 +133,7 @@ import top.yukonga.miuix.kmp.icon.extended.MoveFile
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
@@ -632,7 +633,8 @@ fun SwitchScheduleScreen(
                                 alpha = appear
                                 clip = false
                             }
-                            .padding(vertical = 28.dp),
+                            // 底部间距与首页底栏 / 教务导入胶囊同一套算法
+                            .padding(top = 28.dp, bottom = bottomFloatingPadding()),
                         contentAlignment = Alignment.Center
                     ) {
                         // 外面多套的动画 Box：整条胶囊作为它的内容被整体包住

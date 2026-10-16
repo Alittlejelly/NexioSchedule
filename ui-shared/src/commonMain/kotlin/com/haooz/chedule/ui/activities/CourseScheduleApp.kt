@@ -165,6 +165,7 @@ import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.HostedOverlay
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
@@ -3753,13 +3754,11 @@ fun CourseScheduleApp(
                             else -> false
                         }
                     val backToNowLabel = "今"
-                    val navBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                    // ⚠ 必须与 ScheduleBottomBar 的底部间距同一套算法：这里若多保留 +8，
-                    // 按钮会比底栏高 8dp → 陷进底栏胶囊里。
-                    val bottomBarPadding = if (navBarBottomInset > 0.dp) navBarBottomInset else 28.dp
+                    // ⚠ 必须与底栏同一套间距算法（bottomFloatingPadding）：按钮悬在底栏胶囊
+                    // 上方 64dp，底栏间距变了这里必须跟着变，否则按钮会陷进底栏里
                     val backToNowBottomPadding = if (nativeBottomBar) {
                         hostNavigation.bottomBarInset.toFloat().dp + 8.dp
-                    } else bottomBarPadding + 64.dp
+                    } else bottomFloatingPadding() + 64.dp
                     Box(modifier = Modifier.fillMaxSize()) {
                         // 对齐切换课表底栏：None 转场 + 手动 appear + graphicsLayer clip=false，
                         // 避免 AnimatedVisibility 收拢尺寸时把阴影裁掉
