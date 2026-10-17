@@ -27,6 +27,14 @@ final class NativeHeaderSmokeTests: XCTestCase {
                           "Expanded native routes are not enabled; opt in explicitly after migration")
     }
 
+    /// 宽屏（平板 rail）下设置页把内容内嵌渲染进右栏，设置项**不再 push 原生文档页**
+    private func requirePhoneWidthSettings(file: StaticString = #filePath,
+                                           line: UInt = #line) throws {
+        try XCTSkipIf(app.frame.width >= 600,
+                      "Wide-screen settings render panes inline and never push native document routes",
+                      file: file, line: line)
+    }
+
     private func stableFrame(of element: XCUIElement) -> CGRect {
         // Compose's fling is not included in XCTest's UIKit-idle detection. Wait for the
         // existing scrolling to stop rather than relaxing any post-navigation assertion.
@@ -139,6 +147,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     func testDocumentHeaderScrollRestorationAndEdgeBack() throws {
+        try requirePhoneWidthSettings()
         showSettings()
         open("关于应用")
         requireNativeHeader("关于应用")
@@ -216,6 +225,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     func testDocumentCompletedEdgeBackAndReopenWithoutCancellation() throws {
+        try requirePhoneWidthSettings()
         showSettings()
         open("关于应用")
         let aboutChangelogY = open("更新日志")
@@ -253,6 +263,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     func testLicenseAndPrivacyUseOriginalAboutEntries() throws {
+        try requirePhoneWidthSettings()
         showSettings()
         open("关于应用")
         open("开源协议")
@@ -280,6 +291,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         try XCTSkipUnless(expected == "dark" || expected == "light",
                           "Set the system appearance and opt into the theme regression fixture")
         let systemDark = expected == "dark"
+        try requirePhoneWidthSettings()
 
         func requireAppearance(_ dark: Bool, _ phase: String) throws {
             settle()
@@ -337,6 +349,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testPreferenceHeaderPreservesOriginalControlsAndLegacyReturn() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("应用偏好设置")
         requireNativeHeader("应用偏好设置")
@@ -351,6 +364,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testHolidayNativeActionAndRotation() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("节假日与调休")
         requireNativeHeader("节假日与调休")
@@ -385,6 +399,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testNativeBackupNestedLocalBackupWebDavKeyboardAndBottomActions() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表备份")
         requireNativeHeader("课表备份")
@@ -433,6 +448,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testNativeAboutLeafPagesPreserveOriginalContent() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("关于应用")
         open("交流与反馈")
@@ -454,6 +470,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testCourseReminderNativeLeafPreservesOriginalControls() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("课程提醒")
         requireNativeHeader("课程提醒")
@@ -466,6 +483,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testNativeExportOriginalFileEntriesAndCancelOnly() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表导出")
         requireNativeHeader("课表导出")
@@ -496,6 +514,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testNativeImportToNativeAiImportAndBackWithoutImporting() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表导入")
         requireNativeHeader("课表导入")
@@ -518,6 +537,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     /// parent-facing title, so it is a precise marker for the menu being labelled at all.
     func testLongPressBackMenuLabelsEveryDestination() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表备份")
         requireNativeHeader("课表备份")
@@ -548,6 +568,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     func testTimeSettingsNativeHeaderDialogsAndComposeEditorReturn() throws {
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表节数与时间")
         requireNativeHeader("课表节数与时间")
@@ -612,6 +633,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     func testTimeEditorRapidCancelAndParentBack() throws {
+        try requirePhoneWidthSettings()
         showSettings()
         open("课表节数与时间")
         let routine = app.staticTexts.matching(NSPredicate(format:
@@ -639,6 +661,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
     func testWidgetGuideDialogAboveNativeChrome() throws {
         try requireExpandedRoutes()
+        try requirePhoneWidthSettings()
         showSettings()
         open("桌面小部件")
         requireNativeHeader("桌面小部件")

@@ -371,12 +371,19 @@ fun TabletSettingsScreen(
     onSendTestNotification: () -> Unit = {},
     /** 是否超级岛设备（决定「测试通知」按钮文案；Android 注入，桌面/iOS false） */
     isIslandSupported: () -> Boolean = { false },
+    /**
+     * 提醒页底部测试按钮文案；null = 按 [isIslandSupported] 走平台默认
+     * （「测试小米超级岛」/「测试实时活动」）。iOS 传「测试灵动岛」/「测试通知」。
+     */
+    testActionLabel: String? = null,
     /** 小部件页「刷新已装小部件」（Android = WidgetUpdateCache） */
     onRefreshWidgets: () -> Unit = {},
     /** 节假日数据变更副作用（重排提醒+刷小部件） */
     onHolidayDataChanged: () -> Unit = {},
     /** 节假日 API 拉取（Android 宿主实现）；null 时返回 emptyList */
     fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
+    /** 是否显示「更新设置」入口（iOS 走 App Store → false，左栏那一项整个不渲染） */
+    showUpdateSettings: Boolean = true,
 ) {
     val selected = TabletSettingsUiState.selected
     val groups = remember { TabletSettingsDest.entries.groupBy { it.group } }
@@ -485,7 +492,10 @@ fun TabletSettingsScreen(
                                     Column(modifier = Modifier.fillMaxWidth()) {
                                         // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                                         val settingsRouter = LocalAppRouter.current
-                                        dests.filterNot { it in StandaloneDests || it in BottomMoreDests }
+                                        dests.filterNot {
+                                            it in StandaloneDests || it in BottomMoreDests ||
+                                                (!showUpdateSettings && it == TabletSettingsDest.Update)
+                                        }
                                             .forEach { dest ->
                                                 val jumpActivity =
                                                     dest == TabletSettingsDest.EducationalImport
@@ -749,7 +759,7 @@ fun TabletSettingsScreen(
                                         .padding(bottom = 20.dp)
                                 ) {
                                     LiquidGlassTextButton(
-                                        text = if (islandEnabled) "测试小米超级岛" else "测试实时活动",
+                                        text = testActionLabel ?: if (islandEnabled) "测试小米超级岛" else "测试实时活动",
                                         onClick = { onSendTestNotification() },
                                         backdrop = rightPaneBackdrop,
                                         modifier = Modifier.fillMaxWidth(),

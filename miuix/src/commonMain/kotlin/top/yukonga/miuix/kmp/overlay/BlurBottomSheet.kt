@@ -89,7 +89,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import top.yukonga.miuix.kmp.basic.rememberScreenTopCornerShape
+import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -284,7 +284,8 @@ private fun BlurBottomSheetContent(
     val dismissThresholdPx = with(density) { 150.dp.toPx() }
     val velocityThresholdPx = with(density) { 800.dp.toPx() }
 
-    val sheetShape = rememberScreenTopCornerShape(36.dp)
+    // 圆角固定 36dp：不再跟随屏幕物理圆角（那样在圆角很大的机型上会明显过大）
+    val sheetShape = remember { ContinuousRoundedRectangle(36.dp) }
     val windowWidth = windowInfo.containerDpSize.width
     val horizontalGap = if (sheetMaxWidth != Dp.Unspecified) {
         ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)

@@ -25,6 +25,8 @@ NATIVE_HEADER_EXPANDED_ROUTES=1 bash iosApp/Tests/run-native-header-smoke.sh
 
 They also explicitly skip when invoked directly without the opt-in XCTest runner environment.
 
+Every method that asserts a native navigation bar for a settings destination is phone-scoped: on a build 600 pt wide or wider it calls `requirePhoneWidthSettings()` and skips, because the tablet rail renders settings destinations inline in the right pane and never pushes those native routes.
+
 Production currently enables 18 native route kinds: Changelog, License, PrivacyPolicy, Communication, AppreciateAuthor, PreferenceSettings, UpdateSettings, LocalBackup, AiImport, WidgetIntro, CourseReminder, HolidaySettings, WebDavSettings, ScheduleExport, ScheduleBackup, ScheduleImport, About, and CourseTimeSettings. CourseManage and EducationalImport retain Compose navigation. CourseTimeSettings retains its route-local Compose card morph with native cancel/save controls. The bar stays visible: entry immediately selects editor controls, and exit immediately restores parent back. A parent-back tap during closing is accepted and deferred until save and disposal finish. UpdateSettings has no normal iOS entry, so this UI suite does not claim coverage of that hidden route.
 
 ## System appearance regression
@@ -66,7 +68,17 @@ hardware are separate checks.
 - The first batch additionally passed Changelog scroll restoration and cancelled/completed edge-pop, plus License/Privacy from native About. Assertions now expect native About on child return, not disappearance of all native bars.
 - Actual screenshots inspected: first batch `Attachments/9B4C48F8-A287-4648-BE0B-6C7AF1873053.png` (native About); confirmation `Attachments/93CC23DB-32C5-405A-94C2-05927E1416D9.png` (restored time settings), `Attachments/D373BCC1-C654-4BCB-9E82-7D785FFF38E1.png` (Compose editor), `Attachments/FBDDC7A7-7BED-4A95-BD27-FFAF4CB32206.png` (section dialog).
 - Final review then corrected the editor's raw status-bar blur-height calculation with native `topInsetAdjustment`. Compilation/unit tests are rerun for the final fix; these UI screenshots precede that adjustment and no third UI pass is claimed.
-- The full 12-method suite was not rerun. The original iPad embedded-pane limitation below remains; wide-screen settings do not push these routes. No new dark-mode, Dynamic Type or hardware verification is claimed.
+- The full 12-method suite was not rerun. The original iPad embedded-pane limitation described below has since been addressed (see “iPad wide-screen behavior”); wide-screen settings do not push these routes. No new dark-mode, Dynamic Type or hardware verification is claimed.
+
+## iPad wide-screen behavior (former blocker)
+
+The earlier blocker was an empty rail detail pane: at 834×1210 points the right pane was `(421.5, 0, 412.5, 1210)` with no License/Privacy entries, because `TabletSettingsScreen.kt` renders those destinations through `androidPane?.invoke(selected) ?: Box(...)` and the iOS host did not supply that pane.
+
+That gap is closed. The iOS host now assembles the same eight platform panes the Android host does (`ui-shared/src/iosMain/kotlin/com/haooz/chedule/ui/screens/IosSettingsScreen.kt`, mirroring `AndroidSettingsScreen.kt`) and hands them to the shared page through `NexioIosMain`'s `settingsPane`; `About` renders embedded with `dialogBackdrop`, and its leaf routes (更新日志 / 开源协议 / 隐私政策) are still pushed natively from there. The empty native navigation-bar strip at the tablet root is hidden in `NativeDocumentNavigation.updateChromeState()` and restored whenever a native page is pushed.
+
+Verified on the iPad Pro 11-inch (M5) simulator, portrait 834×1210: `/tmp/nexio-ipad-survey-4`, `-5`, `-6` show 关于应用 / 课程提醒 / 应用偏好设置 / 本地备份 / 课表导出 / 课表节数与时间 rendering full right panes with the correct titles, 今日 showing only its own date line (no `我的`/`学期与周次` bleed), no 更新设置 entry, `navigationBars=0` at the tablet root and `1` (back + refresh) while 教务系统导入 is pushed, back to `0` after popping. `/tmp/nexio-ipad-survey-4` is the run that shows the correct 我的 顶栏 only when the settings pager page is active. `/tmp/nexio-ipad-recheck-1` repeats the same survey on the build that also carries the later settings-corner-radius work: the same six panes, `navigationBars=0`/`1`/`0`, and no 更新设置 entry.
+
+Because wide-screen settings render inline and do not push those routes, the native-route methods skip at that width rather than asserting a native bar that is not part of the wide-screen design. `/tmp/nexio-ipad-smoke-1` is the pre-guard run: 3 failures, every one from expecting a pushed `关于应用` page. `/tmp/nexio-ipad-probe-2` and `/tmp/nexio-ipad-probe-3` confirm those failures are harness-shaped rather than product defects — the same full-width edge-back gesture pops cleanly back to the tablet root in stable portrait, and the About pane does reach 开源协议 / 《隐私政策》 when the swipe runs at x=0.75 instead of the app centre (the centre swipe does not scroll the right pane).
 
 ## Original fifteen-route verification results
 
@@ -84,9 +96,9 @@ Passing coverage: original three documents and original About entries; one nativ
 
 The full run's sole failure was the test querying `TextField` instead of the existing UIKit `TextView`. The final targeted confirmation passed after correcting that selector. Earlier fling-timing failures were fixed by waiting for three stable frame samples before taking scroll baselines or tapping. **All original assertions and the 3-point scroll tolerance remain unchanged.** No production source was changed for these test corrections.
 
-### iPad blocker and unverified limits
+### iPad original-document attempt (historical) and unverified limits
 
-The corrected rail selector entered `我的` and selected `关于应用`, but its existing tablet detail pane stayed empty. At 834×1210 points, the right pane was `(421.5, 0, 412.5, 1210)` with no License/Privacy entries. `TabletSettingsScreen.kt` currently renders About through `androidPane?.invoke(selected) ?: Box(...)`; the iOS host does not supply that pane. This preserves the existing platform gap and blocks original document-entry verification. No third retry or production fix was performed.
+The run behind the table's iPad row is retained as historical evidence: the corrected rail selector entered `我的` and selected `关于应用`, but the then-empty tablet detail pane at `(421.5, 0, 412.5, 1210)` had no License/Privacy entries, because `TabletSettingsScreen.kt` rendered About through `androidPane?.invoke(selected) ?: Box(...)` and the iOS host did not supply that pane. That platform gap is now closed (see “iPad wide-screen behavior” above), and the native-route methods skip at that width instead of failing.
 
 System appearance was set to dark for that attempt and restored to its captured pre-run value afterward (already dark). The app screenshot was light, so **native iPad document geometry and dark theme are not verified**. Reduced Motion, Dynamic Type, real hardware, and hidden UpdateSettings coverage also remain unverified.
 

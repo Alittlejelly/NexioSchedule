@@ -144,6 +144,12 @@ fun SettingsScreen(
     onSendTestNotification: () -> Unit = {},
     /** 是否超级岛设备（决定「测试通知」按钮文案） */
     isIslandSupported: () -> Boolean = { false },
+    /**
+     * 提醒页底部测试按钮文案；null = 按 [isIslandSupported] 走平台默认文案
+     * （超级岛设备「测试小米超级岛」/ 其余「测试实时活动」）。
+     * iOS 传「测试灵动岛 / 测试通知」，与原生路由页同一套文案。
+     */
+    testActionLabel: String? = null,
     /** 小部件页「刷新已装小部件」（Android = WidgetUpdateCache） */
     onRefreshWidgets: () -> Unit = {},
     /** 节假日数据变更副作用（重排提醒 + 刷小部件） */
@@ -208,9 +214,12 @@ fun SettingsScreen(
             androidPane = androidPane,
             onSendTestNotification = onSendTestNotification,
             isIslandSupported = isIslandSupported,
+            testActionLabel = testActionLabel,
             onRefreshWidgets = onRefreshWidgets,
             onHolidayDataChanged = onHolidayDataChanged,
             fetchHolidayEntries = fetchHolidayEntries,
+            // iOS 走 App Store 更新：入口整个不渲染（平板左栏也要挡）
+            showUpdateSettings = showUpdateSettings,
         )
         return
     }

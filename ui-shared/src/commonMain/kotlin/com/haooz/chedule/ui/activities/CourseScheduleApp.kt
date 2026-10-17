@@ -178,6 +178,8 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.HostedOverlay
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
+import com.haooz.chedule.ui.utils.clipDuringTransition
+import com.haooz.chedule.ui.utils.clipScreenCorners
 import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -1655,6 +1657,42 @@ fun CourseScheduleApp(
 
     val screenCornerRadius = rememberScreenCornerRadiiPx()
 
+    // 设置页的「卡片」圆角 = 屏幕圆角（与 [AppNavHost] 的转场裁切同一把尺）
+    val settingsPageIndex = if (isShiftMode) 1 else 2
+    val settingsPageClipShape = remember(screenCornerRadius, density) {
+        if (screenCornerRadius.maxRadius > 0f) screenCornerRadius.toShape(density) else null
+    }
+    // 顶栏糊带：只圆**顶部两角**（四角全圆会把 120dp 高的糊带变成药丸）
+    val settingsTopBarClipShape = remember(screenCornerRadius, density) {
+        if (screenCornerRadius.maxRadius > 0f) {
+            screenCornerRadius.copy(bottomRight = 0f, bottomLeft = 0f).toShape(density)
+        } else {
+            null
+        }
+    }
+    val settingsCardOnScreen = remember(mainPagerState, isShiftMode) {
+        {
+            val scrollPos = mainPagerState.currentPage +
+                mainPagerState.currentPageOffsetFraction
+            scrollPos > settingsPageIndex - 1f
+        }
+    }
+    // 平板（rail）主界面切页是瞬时的（scrollToPage，无动画），圆角卡片机制不参与。
+    val mainTabTransitionAnimated = navBarStyle != "rail"
+    val settingsPageClipModifier =
+        if (mainTabTransitionAnimated) {
+            Modifier
+                .fillMaxSize()
+                .clipScreenCorners(settingsPageClipShape)
+        } else {
+            Modifier
+        }
+    val settingsTopBarClipModifier =
+        if (mainTabTransitionAnimated) {
+            Modifier.clipDuringTransition(settingsTopBarClipShape, settingsCardOnScreen)
+        } else {
+            Modifier
+        }
 
     val coroutineScope = rememberCoroutineScope()
     val mainTabAnimation = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
@@ -1700,6 +1738,7 @@ fun CourseScheduleApp(
             host.tabCount = if (isShiftMode) 2 else 3
             host.shiftMode = isShiftMode
             host.showsNativeTabBar = nativeBottomBar
+            host.isTabletLayout = isTablet
             host.isDark = effectiveIsDark
             // 需由Swift 读这个值自行施加同样变换（对齐 Android 上 Compose 底栏的行为）
             host.cutoutScale = cutoutMainScale.value
@@ -2783,6 +2822,9 @@ fun CourseScheduleApp(
                                                 }
                                             }
                                         )
+                                        // 滑出中的课表糊带同样裁顶部两角：否则它在卡片左缘留一条
+                                        // 方切口，卡片上方的圆角被它顶掉。
+                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     // 锁本页主题：共享顶栏槽外层主题跟 selectedTab 变，
                                     // 切到设置页（浅色）时课程表顶栏遮罩会跟着跳浅
@@ -2846,6 +2888,9 @@ fun CourseScheduleApp(
                                                 }
                                             }
                                         )
+                                        // ⚠ 顶栏槽画在 pager **之上**：不跟着裁，
+                                        // 这条全宽糊带会盖住卡片上方的两个圆角。
+                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     SettingsTopBar(
                                         liquidGlassBackdrop = chromeBackdrop,
@@ -3087,7 +3132,8 @@ fun CourseScheduleApp(
                                             scaleY = s
                                             // 缩放/平移裁在自身 bounds 内，避免突出课程表页画进侧栏
                                             clip = true
-                                            // Keep the wallpaper stationary while tabs slide over it.
+                                            // 只用用户自己设的偏移：切页时壁纸是静止底图，
+                                            // 圆角卡片从它上面盖过来（见 settingsPageClipModifier）
                                             translationX = sharedWallpaperOffset.x
                                             translationY = sharedWallpaperOffset.y
                                             renderEffect = sharedBlurEffect
@@ -3598,7 +3644,7 @@ fun CourseScheduleApp(
                                         // 设置页始终跟应用主题，不被壁纸锁深色
                                         val settingsDark = appSettingDark
                                         val settingsThemeController = rememberAppThemeController(isDark = settingsDark)
-                                        Box(modifier = Modifier.fillMaxSize()) {
+                                        Box(modifier = settingsPageClipModifier) {
                                         MiuixTheme(controller = settingsThemeController) {
                                             CompositionLocalProvider(LocalForcedDarkTheme provides settingsPageForcedDark) {
                                         RenderSettingsPane(
@@ -3670,7 +3716,7 @@ fun CourseScheduleApp(
                                         titleBarHeight = 56.dp,
                                     )
 
-                                    1 -> Box(modifier = Modifier.fillMaxSize()) {
+                                    1 -> Box(modifier = settingsPageClipModifier) {
                                         RenderSettingsPane(
                                             settingsPane,
                                             SettingsPaneArgs(
@@ -4231,7 +4277,10 @@ fun CourseScheduleApp(
                     // 主题锁定 appSettingDark：不随课程表/壁纸锁色瞬间切换。
                     // ⚠ 平板主界面切页是瞬时的（scrollToPage，无动画），这里不挂跟位位移与圆角裁切
                     //   —— 那套只服务手机的「圆角卡片盖住壁纸」转场。
-                    if (navBarStyle == "rail" && !isShiftMode) {
+                    // ⚠ 叠层必须只在设置页（rail 下第 3 页）当前时渲染：它画的是左栏「我的」+
+                    //   右栏 dest 标题，画在 pager 外面、不带位移，留在今日/课程表页就会串页
+                    //   （「今天是周六 我的 学期与周次」）。
+                    if (navBarStyle == "rail" && !isShiftMode && mainPagerState.currentPage == 2) {
                         val settingsChromeController = rememberAppThemeController(isDark = appSettingDark)
                         MiuixTheme(controller = settingsChromeController) {
                             Box(modifier = Modifier.fillMaxSize()) {

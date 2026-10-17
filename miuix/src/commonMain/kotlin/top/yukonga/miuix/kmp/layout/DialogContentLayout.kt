@@ -75,6 +75,8 @@ import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
 import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.utils.getRoundedCorner
+import top.yukonga.miuix.kmp.utils.Platform
+import top.yukonga.miuix.kmp.utils.platform
 import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
@@ -341,8 +343,10 @@ internal fun DialogContent(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
             WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
     }
-    val extraBottomPaddingPx = remember(density, bottomPadding, outsideMargin.height, isLargeScreen) {
-        if (isLargeScreen) 0f else with(density) { (bottomPadding + outsideMargin.height).toPx() }
+    // iOS：贴底弹窗距屏幕底**只留安全区**
+    val bottomOutsideMargin = if (platform() == Platform.IOS && !isLargeScreen) 0.dp else outsideMargin.height
+    val extraBottomPaddingPx = remember(density, bottomPadding, bottomOutsideMargin, isLargeScreen) {
+        if (isLargeScreen) 0f else with(density) { (bottomPadding + bottomOutsideMargin).toPx() }
     }
 
     val contentModifier = modifier
@@ -424,7 +428,7 @@ internal fun DialogContent(
                 },
             )
             .padding(horizontal = outsideMargin.width)
-            .padding(bottom = outsideMargin.height),
+            .padding(bottom = bottomOutsideMargin),
     ) {
         Column(
             modifier = contentModifier.align(contentAlignment),

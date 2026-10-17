@@ -68,6 +68,13 @@ final class NativeDocumentNavigationController: UINavigationController,
         view.isUserInteractionEnabled = !floatingActive
         view.accessibilityElementsHidden = floatingActive
         retainedRoot.viewIfLoaded?.accessibilityElementsHidden = topViewController !== retainedRoot
+        // 平板（rail）布局下栈底这一层的顶栏全在 Compose 里画
+        let needsNativeBar = host.nativePageActive || host.showsNativeHeader ||
+            host.scheduleLibraryActive || host.keepsNativeHeaderDuringCutout
+        let hideNativeBar = host.isTabletLayout && !needsNativeBar
+        if navigationBar.isHidden != hideNativeBar {
+            setNavigationBarHidden(hideNativeBar, animated: false)
+        }
         // A route-local editor changes native items, never the bar's geometry or alpha.
         // Its Compose card morph runs entirely below this persistent control layer.
         navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight

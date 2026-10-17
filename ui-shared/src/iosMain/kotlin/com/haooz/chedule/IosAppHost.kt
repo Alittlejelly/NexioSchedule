@@ -351,6 +351,8 @@ class IosAppHost {
     val shiftMode: Boolean get() = navigation.shiftMode
     val showsNativeTabBar: Boolean get() = navigation.showsNativeTabBar
     val showsNativeHeader: Boolean get() = navigation.showsNativeHeader
+    /** 主界面是否跑在平板（rail）布局：宿主据此收起栈底那根恒空的原生导航栏 */
+    val isTabletLayout: Boolean get() = navigation.isTabletLayout
     val keepsNativeHeaderDuringCutout: Boolean get() = navigation.keepsNativeHeaderDuringCutout
     val isDark: Boolean get() = navigation.isDark
     val overlayActive: Boolean
@@ -428,6 +430,7 @@ class IosAppHost {
                             nativePages.map { it.chrome.snapshot() },
                             nativeTransitionInFlight,
                             showsNativeHeader,
+                            isTabletLayout,
                             keepsNativeHeaderDuringCutout,
                             scheduleLibraryActive,
                             scheduleLibraryTransitionActive,
@@ -551,6 +554,7 @@ private data class NativeHostSnapshot(
     val nativeChrome: List<NativeDocumentChromeSnapshot>,
     val nativeTransitionInFlight: Boolean,
     val showsNativeHeader: Boolean,
+    val isTabletLayout: Boolean,
     val keepsNativeHeaderDuringCutout: Boolean,
     val scheduleLibraryActive: Boolean,
     val scheduleLibraryTransitionActive: Boolean,

@@ -76,7 +76,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import top.yukonga.miuix.kmp.basic.rememberScreenTopCornerShape
+import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -278,7 +278,8 @@ private fun BlurBottomSheetTabletContent(
     }
 
     // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用
-    val sheetShape = rememberScreenTopCornerShape(38.dp)
+    // 圆角固定 38dp：平板弹窗是居中窄条，本就不贴屏幕边缘，不该跟屏幕物理圆角
+    val sheetShape = remember { ContinuousRoundedRectangle(38.dp) }
     val windowWidth = windowInfo.containerDpSize.width
     val horizontalGap = ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)
 

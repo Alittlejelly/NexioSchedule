@@ -245,6 +245,16 @@ internal fun NexioIosMain(host: IosAppHost) {
                     onReadSharedFileText = { uri -> IosSharedFileReceiver.readText(uri) },
                     // iOS 走 App Store 更新 → 设置页的「更新设置」入口整个不渲染
                     showUpdateSettings = false,
+                    // 平板设置两栏的 8 个平台专有 dest 装配（对齐 Android 的 AndroidSettingsScreen）
+                    settingsPane = { args ->
+                        com.haooz.chedule.ui.screens.IosSettingsScreen(
+                            args = args,
+                            scheduleFileController = fileController,
+                            backupFileController = backupFileController,
+                            reminderController = reminderController,
+                            onHolidayDataChanged = onHolidayDataChanged,
+                        )
+                    },
                 )
         }
     }

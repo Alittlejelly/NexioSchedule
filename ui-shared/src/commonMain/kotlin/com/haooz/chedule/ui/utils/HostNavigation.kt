@@ -65,6 +65,10 @@ class HostNavigationState {
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
     /**
+     * 主界面是否跑在**平板（rail）布局**下。宽度 ≥ 600dp 即为 true
+     */
+    var isTabletLayout by mutableStateOf(false)
+    /**
      * 课表外观页（开洞）期间，原生顶栏右侧是否继续保留。
      *
      * 开洞时主内容整体缩放，原生 chrome 在缩放层之外、得由宿主自己做同一套变换，
