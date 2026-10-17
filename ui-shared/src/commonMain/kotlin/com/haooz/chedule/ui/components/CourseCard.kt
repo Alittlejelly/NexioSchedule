@@ -115,6 +115,14 @@ fun CourseCard(
     showTeacher: Boolean = true,
     cardRefraction: com.haooz.chedule.data.CardRefractionLevel = com.haooz.chedule.data.CardRefractionLevel.DEFAULT,
     isDragging: Boolean = false,
+    /**
+     * 长按后是否允许接着拖动（调课）。
+     *
+     * ⚠ 自定义时间课传 false：它按时间轴定位、不存在「挪到第几节」的目标，
+     * 拖出去也无处可放（还会顺带把「复制」带出来，而复制同样依赖节次跨度）。
+     * 这类课长按只做一件事：弹「编辑 / 删除」菜单。
+     */
+    dragEnabled: Boolean = true,
     disablePadding: Boolean = false,
     isDark: Boolean = isAppDarkTheme(),
     // 非 state：滑动中坐标每帧变，跳过 localToRoot；读取不触发重组
@@ -367,6 +375,7 @@ fun CourseCard(
                         bounds = cardBoundsPx,
                         refreshBounds = refreshCardBounds,
                         scope = scope,
+                        dragEnabled = dragEnabled,
                         onSinkChange = { sinkPressed = it },
                         onLongPressStart = onLongPressStart,
                         onClick = onClick,
@@ -431,6 +440,7 @@ fun CourseCard(
                     bounds = cardBoundsPx,
                     refreshBounds = refreshCardBounds,
                     scope = scope,
+                    dragEnabled = dragEnabled,
                     onSinkChange = { sinkPressed = it },
                     onLongPressStart = onLongPressStart,
                     onClick = onClick,
@@ -452,8 +462,13 @@ fun CourseCard(
  * 课程卡手势：有壁纸 / 无壁纸两条渲染路径共用同一实现，避免各改一份产生漂移。
  *
  * - 轻点（位移 < 8dp）→ [onClick]
- * - 长按 320ms → [onLongPressStart] 弹菜单，随后任意移动进入拖拽
+ * - 长按 320ms → [onLongPressStart] 弹菜单，随后移动即进拖拽态（浮层跟手）
+ * - 拖拽态里位移超过容差（8dp）才算真的拖起来：此时才 [onDragStart]（点亮跟手高光）
+ *   并 [onMenuDismiss] 收菜单（[dragEnabled] 为 false 时这两步都不发生）
  * - 长按前横滑主导 / 位移超容差 / 多指按下 → 放弃本次手势，把滚动让给 Pager
+ *
+ * ⚠ [dragEnabled] = false 时菜单**不随移动收起**：这类课唯一的操作入口就是菜单，
+ * 手指抖一下就把菜单收掉等于没法用。松手后菜单继续留在屏幕上等用户点。
  */
 private fun Modifier.courseCardGesture(
     course: Course,
@@ -461,6 +476,7 @@ private fun Modifier.courseCardGesture(
     bounds: FloatArray,
     refreshBounds: () -> Unit,
     scope: CoroutineScope,
+    dragEnabled: Boolean,
     onSinkChange: (Boolean) -> Unit,
     onLongPressStart: (left: Float, top: Float, width: Float, height: Float) -> Unit,
     onClick: () -> Unit,
@@ -468,7 +484,7 @@ private fun Modifier.courseCardGesture(
     onDrag: (offsetX: Float, offsetY: Float) -> Unit,
     onDragEnd: () -> Unit,
     onMenuDismiss: () -> Unit,
-): Modifier = pointerInput(course) {
+): Modifier = pointerInput(course, dragEnabled) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         down.consume()
@@ -534,17 +550,21 @@ private fun Modifier.courseCardGesture(
                     event.changes.forEach { it.consume() }
                     break
                 }
-                // 菜单已弹出：转为拖拽；位移超容差则收起菜单（拖拽浮层保留）
-                if (menuShown && !isDragging) {
+                // 菜单已弹出：手指一动就进「拖拽态」，浮层开始跟手。
+                // ⚠ 这里**不**调 onDragStart —— 它点亮的是跟手高光，抖动几像素就亮
+                //   会很廉价；高光留给下面真正「拖起来」的那一刻。
+                // ⚠ dragEnabled = false（自定义时间课）时整段跳过：菜单留在原地等用户点
+                if (dragEnabled && menuShown && !isDragging) {
                     isDragging = true
                     onSinkChange(false)
-                    onDragStart()
                 }
-                if (menuShown && moved > slop) {
+                // 位移超容差 = 真的拖起来了：此刻收菜单，并点亮跟手高光
+                if (dragEnabled && menuShown && moved > slop) {
                     menuShown = false
+                    onDragStart()
                     onMenuDismiss()
                 }
-                if (isDragging) onDrag(dx, dy)
+                if (dragEnabled && isDragging) onDrag(dx, dy)
                 event.changes.forEach { it.consume() }
             }
         } finally {

@@ -3269,6 +3269,10 @@ fun CourseScheduleApp(
                                                 hapticFeedback.performHapticFeedback(
                                                     HapticFeedbackType.LongPress
                                                 )
+                                                // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样。
+                                                // 「不能拖动」由卡片侧保证：DayColumn 给这类课传 dragEnabled=false，
+                                                // 手指怎么动都不会 onDragStart/onDrag，浮层停在原位、也没有调课落点。
+                                                // ⚠ draggedWeek 必须同步：删除确认弹窗按「本周」删时读的就是它。
                                                 isDraggingCard = true
                                                 floatingCardVisible = true
                                                 // 新一轮长按：还没开始拖，高光先关
@@ -3334,7 +3338,8 @@ fun CourseScheduleApp(
                                                 shortcutMenuBackdrop = backdrop
                                             },
                                             onCourseDragStart = { _ ->
-                                                // 不关菜单；超过移动阈值后由 onCourseMenuDismiss 关闭
+                                                // 拖过位移阈值才到这里（卡片侧 moved > slop 才回调），
+                                                // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单
                                                 pendingDropTarget = null
                                                 isFloatingCardDragging = true
                                             },
@@ -4346,6 +4351,11 @@ fun CourseScheduleApp(
                         val sectionH = geom?.sectionHeightPx
                             ?: with(density) { displayAppearance.cardHeight.dp.toPx() }
                         // 高度含午休/晚修分界缝，与网格上分段卡片的视觉外接框一致
+                        //
+                        // ⚠ 两种高度的**语义不一样**，别混用：
+                        // - 普通课 = 外接框设定高度（不含卡片 2dp 外缝），浮层要再留一次缝才与网格对齐；
+                        // - 自定义时间课 = 长按实测高，而网格卡片本来就带 2dp 外缝，实测到的已经是
+                        //   **扣完缝的可见高度**，再留一次缝就上下各短 2dp。
                         val heightPx = when {
                             // 自定义时间课按时间轴定位/定高，节次几何算出来的高度对不上，用长按实测高
                             course.hasValidCustomTime() && !isPasteFlight -> draggedCardSize.y
@@ -4377,7 +4387,11 @@ fun CourseScheduleApp(
                             modifier = Modifier
                                 .offset(x = baseOffsetX, y = baseOffsetY)
                                 .size(width = width, height = height)
-                                .padding(vertical = 2.dp)
+                                // 自定义时间课的高度已是扣完外缝的可见高，这里不能再缝一次
+                                .then(
+                                    if (course.hasValidCustomTime()) Modifier
+                                    else Modifier.padding(vertical = 2.dp)
+                                )
                                 .graphicsLayer {
                                     translationX = floatingOffsetX.floatValue
                                     translationY = floatingOffsetY.floatValue
@@ -4487,52 +4501,62 @@ fun CourseScheduleApp(
         val activeEmptyTarget = emptyCellMenuTarget
         if (activeShortcutCourse != null || activeEmptyTarget != null) {
             val menuItems = if (activeShortcutCourse != null) {
-                listOf(
-                    ShortcutMenuItem(
-                        icon = MiuixIcons.Edit,
-                        label = "编辑",
-                        onClick = {
-                            FeatureLog.course("edit_shortcut")
-                            shortcutMenuVisible = false
-                            dismissFloatingCard()
-                            coroutineScope.launch {
-                                delay(240.milliseconds)
-                                shortcutMenuCourse = null
+                buildList {
+                    add(
+                        ShortcutMenuItem(
+                            icon = MiuixIcons.Edit,
+                            label = "编辑",
+                            onClick = {
+                                FeatureLog.course("edit_shortcut")
+                                shortcutMenuVisible = false
+                                dismissFloatingCard()
+                                coroutineScope.launch {
+                                    delay(240.milliseconds)
+                                    shortcutMenuCourse = null
+                                }
+                                viewModel.showEditDialog(activeShortcutCourse)
                             }
-                            viewModel.showEditDialog(activeShortcutCourse)
-                        }
-                    ),
-                    ShortcutMenuItem(
-                        icon = MiuixIcons.Copy,
-                        label = "复制",
-                        onClick = {
-                            FeatureLog.course("copy_shortcut")
-                            copiedCourseForPaste = activeShortcutCourse
-                            shortcutMenuVisible = false
-                            dismissFloatingCard()
-                            coroutineScope.launch {
-                                delay(240.milliseconds)
-                                shortcutMenuCourse = null
-                            }
-                            showToast("已复制")
-                        }
-                    ),
-                    ShortcutMenuItem(
-                        icon = MiuixIcons.Delete,
-                        label = "删除",
-                        onClick = {
-                            FeatureLog.course("delete_shortcut")
-                            deleteConfirmCourse = activeShortcutCourse
-                            shortcutMenuVisible = false
-                            dismissFloatingCard()
-                            coroutineScope.launch {
-                                delay(240.milliseconds)
-                                shortcutMenuCourse = null
-                            }
-                            showDeleteConfirmDialog = true
-                        }
+                        )
                     )
-                )
+                    // ⚠ 自定义时间课不给「复制」：粘贴是按节次跨度落位的，复制它既粘不出
+                    // 正确的时间段、又会让用户以为能复制出一份自定义时间课。
+                    if (!activeShortcutCourse.hasValidCustomTime()) {
+                        add(
+                            ShortcutMenuItem(
+                                icon = MiuixIcons.Copy,
+                                label = "复制",
+                                onClick = {
+                                    FeatureLog.course("copy_shortcut")
+                                    copiedCourseForPaste = activeShortcutCourse
+                                    shortcutMenuVisible = false
+                                    dismissFloatingCard()
+                                    coroutineScope.launch {
+                                        delay(240.milliseconds)
+                                        shortcutMenuCourse = null
+                                    }
+                                    showToast("已复制")
+                                }
+                            )
+                        )
+                    }
+                    add(
+                        ShortcutMenuItem(
+                            icon = MiuixIcons.Delete,
+                            label = "删除",
+                            onClick = {
+                                FeatureLog.course("delete_shortcut")
+                                deleteConfirmCourse = activeShortcutCourse
+                                shortcutMenuVisible = false
+                                dismissFloatingCard()
+                                coroutineScope.launch {
+                                    delay(240.milliseconds)
+                                    shortcutMenuCourse = null
+                                }
+                                showDeleteConfirmDialog = true
+                            }
+                        )
+                    )
+                }
             } else {
                 val emptyDay = activeEmptyTarget?.columnDay ?: -1
                 val emptySection = activeEmptyTarget?.section ?: -1

@@ -490,9 +490,20 @@ private fun CourseCardsLayer(
                         showTeacher = showTeacher,
                         cardRefraction = cardRefraction,
                         isDragging = isDragging,
+                        // 自定义时间课不支持拖动调课（按时间轴定位，没有「挪到第几节」的落点），
+                        // 长按只弹「编辑 / 删除」菜单
+                        dragEnabled = false,
                         onClick = {
                             onPendingChange(-1, -1)
                             onCourseClick(course)
+                        },
+                        onLongPressStart = { left, top, width, height ->
+                            if (isCurrentWeekCourse) {
+                                onCourseLongPress(course, left, top, width, height, wallpaperBackdrop, currentWeek)
+                            }
+                        },
+                        onMenuDismiss = {
+                            onCourseMenuDismiss()
                         },
                     )
                 }
