@@ -13,8 +13,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
@@ -30,26 +28,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -71,7 +62,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -99,22 +89,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.AppearanceStore
-import com.haooz.chedule.data.CardContentAlignment
-import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.SwitchCardSnapshotStore
@@ -133,8 +115,6 @@ import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu
-import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenuItem
-import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.components.BackToNowFloatingButton
@@ -169,7 +149,6 @@ import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
 import com.haooz.chedule.ui.screens.TodayAssistantCardData
 import com.haooz.chedule.ui.screens.TodayScreen
-import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
@@ -181,7 +160,6 @@ import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.clipDuringTransition
 import com.haooz.chedule.ui.utils.clipScreenCorners
-import com.haooz.chedule.ui.utils.consumeAllTouches
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.loadScheduleThemeMode
@@ -208,7 +186,6 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRenderEffectSupported
-import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -216,34 +193,24 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Background
-import top.yukonga.miuix.kmp.icon.extended.Backup
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
-import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Paste
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
-import kotlin.concurrent.Volatile
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.TimeSource
 
 /**
  * 真课表主界面。平台能力全部走注入参数，缺能力的入口不渲染；
@@ -252,683 +219,6 @@ import kotlin.time.TimeSource
 
 /** 宿主注入的位图回收实现（Android = `asAndroidBitmap().recycle()`；iOS/桌面 = null，交给 GC）。 */
 var bitmapRecycler: ((ImageBitmap) -> Unit)? = null
-
-/** 释放独立快照位图；与进程级壁纸缓存或 keep 引用共用时不回收。 */
-private fun recycleSnapshot(bitmap: ImageBitmap?, vararg keep: ImageBitmap?) {
-    if (bitmap == null) return
-    if (bitmap === WallpaperStore.currentImageBitmap()) return
-    if (keep.any { it === bitmap }) return
-    bitmapRecycler?.invoke(bitmap)
-}
-
-/** 将壁纸 offset/scale 从 fromW×fromH 重映射到 toW×toH；无有效 bitmap/参考尺寸时原样返回，避免横竖屏切换算坏数据。 */
-private fun remapWallpaperForScreen(
-    offset: Offset,
-    scale: Float,
-    bitmap: ImageBitmap?,
-    fromW: Float,
-    fromH: Float,
-    toW: Float,
-    toH: Float,
-): Pair<Offset, Float> {
-    if (bitmap == null || bitmap.width <= 0 || bitmap.height <= 0) return offset to scale
-    return WallpaperTransform.remap(
-        offset, scale, bitmap.width, bitmap.height, fromW, fromH, toW, toH
-    )
-}
-
-/** 运行期的外观快照（壁纸位图 + 变换 + 参数）。 */
-data class ScheduleCombination(
-    val bitmap: ImageBitmap?,
-    val offset: Offset,
-    val scale: Float,
-    var snapshot: ImageBitmap? = null,
-    var cardBlurRadius: Float = 4f,
-    var cardAlpha: Float = 0.15f,
-    var cardSurfaceAlpha: Float? = null,
-    var cardHeight: Float = 54f,
-    var cardCornerRadius: Float = 10f,
-    var wallpaperBrightness: Float = 0f,
-    var showBreakDividers: Boolean = true,
-    var cardContentAlignment: CardContentAlignment = CardContentAlignment.CENTER_CENTER,
-    var cardTextColor: CardTextColor = CardTextColor.COLORFUL,
-    var cardTextScale: Float = 1f,
-    var showClassroom: Boolean = true,
-    var showTeacher: Boolean = true,
-    var cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
-    var wallpaperIsLight: Boolean? = null,
-    var wallpaperBlur: Boolean = false,
-)
-
-/** [ScheduleCombination] → 外观配置。 */
-fun AppearanceConfig.Companion.fromCombination(c: ScheduleCombination): AppearanceConfig = AppearanceConfig(
-    cardBlurRadius = c.cardBlurRadius,
-    cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
-    cardSurfaceAlpha = (c.cardSurfaceAlpha ?: 0.15f).coerceIn(0f, 1f),
-    cardHeight = c.cardHeight,
-    cardCornerRadius = c.cardCornerRadius,
-    wallpaperBrightness = c.wallpaperBrightness,
-    showBreakDividers = c.showBreakDividers,
-    cardContentAlignment = c.cardContentAlignment,
-    cardTextColor = c.cardTextColor,
-    cardTextScale = c.cardTextScale,
-    showClassroom = c.showClassroom,
-    showTeacher = c.showTeacher,
-    cardRefraction = c.cardRefraction,
-    wallpaperBlur = c.wallpaperBlur,
-)
-
-/** 设置页装配参数（宿主包装 AndroidSettingsScreen / iOS 自己的装配用）。 */
-data class SettingsPaneArgs(
-    val viewModel: CourseViewModel,
-    val scheduleViewModel: ScheduleViewModel,
-    val settingsViewModel: SettingsViewModel,
-    val shiftViewModel: ShiftViewModel,
-    val isShiftMode: Boolean,
-    val onExitShiftMode: () -> Unit,
-    val onEnterShiftMode: () -> Unit,
-    val navBarStyle: String,
-    val onScrollYChanged: (Int) -> Unit,
-    val settingsScrollBehavior: SharedScrollBehavior?,
-    val liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    /** 是否显示「更新设置」入口（iOS 走 App Store → false） */
-    val showUpdateSettings: Boolean = true,
-)
-
-/**
- * 设置页渲染：宿主注入了 `settingsPane` 就用宿主的，
- * 否则回落共享 [SettingsScreen] 默认装配。
- */
-@Composable
-internal fun RenderSettingsPane(
-    settingsPane: (@Composable (SettingsPaneArgs) -> Unit)?,
-    args: SettingsPaneArgs,
-) {
-    val custom = settingsPane
-    if (custom != null) {
-        custom(args)
-    } else {
-        SettingsScreen(
-            viewModel = args.viewModel,
-            scheduleViewModel = args.scheduleViewModel,
-            settingsViewModel = args.settingsViewModel,
-            shiftViewModel = args.shiftViewModel,
-            isShiftMode = args.isShiftMode,
-            onExitShiftMode = args.onExitShiftMode,
-            onEnterShiftMode = args.onEnterShiftMode,
-            navBarStyle = args.navBarStyle,
-            onScrollYChanged = args.onScrollYChanged,
-            settingsScrollBehavior = args.settingsScrollBehavior,
-            liquidGlassBackdrop = args.liquidGlassBackdrop,
-            showUpdateSettings = args.showUpdateSettings,
-        )
-    }
-}
-
-/** 单调毫秒时钟（拖拽速度采样用；`SystemClock.uptimeMillis` 是 Android 专有）。 */
-private val MonotonicOrigin = TimeSource.Monotonic.markNow()
-
-private fun monotonicNow(): Long = MonotonicOrigin.elapsedNow().inWholeMilliseconds
-
-/** 取消进行中的 pager 滚动/惯性 */
-private suspend fun PagerState.cancelScroll() {
-    scroll(MutatePriority.PreventUserInput) { }
-}
-
-/** 空白格快捷菜单锚点：高亮用列星期，添加课程用调课映射后的星期/周 */
-private data class EmptyCellMenuTarget(
-    val columnDay: Int,
-    val section: Int,
-    val addDay: Int,
-    val addWeek: Int,
-)
-
-/**
- * 粘贴落点：动画/高亮走列星期（几何坐标），写库走调课映射后的数据坐标。
- * 调课日列显示的是 followWeekday/followWeek 的课，只传列星期会落到错误星期/周次。
- */
-private data class PasteTarget(
-    val columnDay: Int,
-    val dataDay: Int,
-    val section: Int,
-    /** 数据周次；调课日 = followWeek，否则 = 正在浏览的周 */
-    val dataWeek: Int,
-)
-
-/** 主 tab 翻页动画（点底栏 tab 时平移切换）；相邻页略偏软 */
-private val MainTabPagerAnimSpec = spring<Float>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 320f,
-)
-
-/** 跨页（今日↔设置，距离 2 页）更缓，避免长距离仍按同刚度显得急 */
-private val MainTabPagerCrossPageAnimSpec = spring<Float>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = 240f,
-)
-
-/** 动画切到目标主 tab；正常结束后若未精确落页则强制吸附 */
-private suspend fun PagerState.animateMainTabTo(target: Int) {
-    val distance = abs(target - currentPage)
-    val spec = if (distance > 1) MainTabPagerCrossPageAnimSpec else MainTabPagerAnimSpec
-    try {
-        animateScrollToPage(target, animationSpec = spec)
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    }
-    if (currentPage != target || abs(currentPageOffsetFraction) > 0.001f) {
-        scrollToPage(target)
-    }
-}
-
-/** 拖拽速度/采样时间；只在松手 spring 时读，避开 composition */
-private class DragMotionHolder {
-    @Volatile
-    var velocityX = 0f
-
-    @Volatile
-    var velocityY = 0f
-
-    @Volatile
-    var lastTimeMs = 0L
-
-    @Volatile
-    var lastOffsetX = 0f
-
-    @Volatile
-    var lastOffsetY = 0f
-
-    fun reset() {
-        velocityX = 0f
-        velocityY = 0f
-        lastTimeMs = 0L
-        lastOffsetX = 0f
-        lastOffsetY = 0f
-    }
-}
-@Composable
-private fun DeleteWeekCourseDialog(
-    show: Boolean,
-    course: Course?,
-    week: Int,
-    viewModel: CourseViewModel,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
-    onDismiss: () -> Unit,
-) {
-    var deleteAllWeeks by remember(show) { mutableStateOf(false) }
-    OverlayDialog(
-        title = if (deleteAllWeeks) "删除课程" else "删除本周课程",
-        summary = if (deleteAllWeeks) {
-            "确定要删除「${course?.name}」的全部课程吗？\n此操作不可撤销。"
-        } else {
-            "确定要删除「${course?.name}」在第${week}周的课程吗？\n此操作不可撤销。"
-        },
-        show = show,
-        liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = onDismiss
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    state = if (deleteAllWeeks) ToggleableState.On else ToggleableState.Off,
-                    onClick = {
-                        deleteAllWeeks = !deleteAllWeeks
-                    }
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "删除全部周",
-                        style = MiuixTheme.textStyles.body1,
-                        color = MiuixTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (deleteAllWeeks) "删除该课程的所有周次" else "关闭则仅删除第${week}周",
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onDismiss()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    text = "删除",
-                    onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        course?.let {
-                            if (deleteAllWeeks) viewModel.deleteCourse(it.id)
-                            else viewModel.deleteCourseForWeek(it.id, week)
-                        }
-                        onDismiss()
-                    },
-                    textColor = Color(0xFFF44336),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PasteRangeDialog(
-    show: Boolean,
-    courseName: String,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
-    onPaste: (allWeeks: Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    OverlayDialog(
-        title = "粘贴课程",
-        summary = "选择「${courseName}」的粘贴范围",
-        show = show,
-        liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = onDismiss
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TextButton(
-                text = "全部周",
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onPaste(true)
-                },
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(
-                text = "当前周",
-                textColor = MiuixTheme.colorScheme.primary,
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onPaste(false)
-                },
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun RescheduleConflictDialog(
-    show: Boolean,
-    source: Course?,
-    target: Course?,
-    /** 目标位数据坐标（星期, 起始节次）：调课日列要映射后的星期，几何/动画不走这里 */
-    dropTarget: Pair<Int, Int>?,
-    /** 目标位数据周次：调课日 = followWeek；交换/覆盖写库按它拆周 */
-    dropTargetWeek: Int,
-    draggedWeek: Int,
-    viewModel: CourseViewModel,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
-    onCancel: () -> Unit,
-    onOverwriteResolved: () -> Unit,
-    onSwapResolved: () -> Unit,
-    onOverwrite: (Set<String>) -> Unit,
-    onSwap: (Set<String>) -> Unit,
-) {
-    OverlayDialog(
-        title = "该位置已有课程",
-        summary = if (target != null && source != null && dropTarget != null) {
-            "「${source.name}」与「${target.name}」的位置冲突\n" +
-                    "覆盖：删除「${target.name}」本周的课程，并把「${source.name}」调到此位置\n" +
-                    "交换：互换本周两节课的位置"
-        } else {
-            "该位置已有课程，要如何处理？"
-        },
-        show = show,
-        liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = onCancel
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TextButton(
-                text = "取消",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onCancel()
-                },
-            )
-            TextButton(
-                text = "覆盖",
-                textColor = Color(0xFFFF9800),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    if (source != null && dropTarget != null && target != null) {
-                        val sectionSpan = source.endSection - source.startSection
-                        val targetEnd = dropTarget.second + sectionSpan
-                        // 源课在 draggedWeek，目标位在 dropTargetWeek（调课日两者可能不同 → 跨周移动）
-                        // 注意 targetWeek 是最后一个参数，别插到中间（全是 Int，错位不报错）
-                        viewModel.overwriteCourseForWeek(
-                            source.id, draggedWeek,
-                            dropTarget.first, dropTarget.second, targetEnd,
-                            dropTargetWeek
-                        )
-                        val sourceCourses = viewModel.getCoursesAtSlot(
-                            draggedWeek, source.dayOfWeek, source.startSection, source.endSection
-                        ).filter { it.id != source.id && !it.isActiveInWeek(draggedWeek) }
-                        if (sourceCourses.isNotEmpty()) {
-                            onOverwrite(sourceCourses.map { it.id }.toSet())
-                        }
-                    }
-                    onOverwriteResolved()
-                },
-            )
-            TextButton(
-                text = "交换",
-                textColor = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    if (source != null && target != null) {
-                        // 源课在 draggedWeek、冲突课在 dropTargetWeek，两侧各拆一周互换
-                        viewModel.swapCoursesForWeek(source.id, target.id, draggedWeek, dropTargetWeek)
-                        val sourceCourses = viewModel.getCoursesAtSlot(
-                            draggedWeek, source.dayOfWeek, source.startSection, source.endSection
-                        ).filter {
-                            it.id != source.id && it.id != target.id && !it.isActiveInWeek(
-                                draggedWeek
-                            )
-                        }
-                        val conflictCourses = viewModel.getCoursesAtSlot(
-                            dropTargetWeek, target.dayOfWeek, target.startSection, target.endSection
-                        ).filter {
-                            it.id != target.id && it.id != source.id && !it.isActiveInWeek(
-                                dropTargetWeek
-                            )
-                        }
-                        val allAnimated = (sourceCourses + conflictCourses).map { it.id }.toSet()
-                        if (allAnimated.isNotEmpty()) {
-                            onSwap(allAnimated)
-                        }
-                    }
-                    onSwapResolved()
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ShiftLoadingOverlay(
-    show: Boolean,
-    onShiftReady: () -> Unit,
-    onHide: () -> Unit,
-    onActivityChanged: (Boolean) -> Unit = {},
-) {
-    AnimatedVisibility(
-        visible = show,
-        enter = fadeIn(animationSpec = tween(100)),
-        exit = fadeOut(animationSpec = tween(100))
-    ) {
-        DisposableEffect(Unit) {
-            onActivityChanged(true)
-            onDispose { onActivityChanged(false) }
-        }
-        LaunchedEffect(Unit) {
-            delay(100.milliseconds)
-            onShiftReady()
-            delay(500.milliseconds)
-            onHide()
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MiuixTheme.colorScheme.surface),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator(
-                    size = 30.dp,
-                    strokeWidth = 2.8.dp,
-                    orbitingDotSize = 3.2.dp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "切换中",
-                    style = MiuixTheme.textStyles.body1.copy(
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MorePopupMenus(
-    showMorePopup: Boolean,
-    onMorePopupDismiss: () -> Unit,
-    onMorePopupExpand: () -> Unit = {},
-    showTodayMorePopup: Boolean,
-    onTodayMorePopupDismiss: () -> Unit,
-    onTodayMorePopupExpand: () -> Unit = {},
-    morePopupFraction: Animatable<Float, *>,
-    todayMorePopupFraction: Animatable<Float, *>,
-    scheduleMenuOffset: () -> Offset = { Offset.Zero },
-    todayMenuOffset: () -> Offset = { Offset.Zero },
-    /** 「更多」占位槽实测顶部（root 坐标 px）；传 state 而非 Float，定位须在绘制期读，首帧才不跳。 */
-    moreSlotTopPx: MutableFloatState = mutableFloatStateOf(0f),
-    scheduleMaterialAlpha: Float = 0f,
-    todayMaterialAlpha: Float = 0f,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop,
-    isShiftMode: Boolean = false,
-    onJumpWeek: () -> Unit,
-    onCourseManage: () -> Unit,
-    onEnterCustomize: () -> Unit,
-    onJumpToDate: () -> Unit,
-    onMoreBackProgress: (Float) -> Unit = {},
-    onMoreBackCancelled: () -> Unit = {},
-    onTodayMoreBackProgress: (Float) -> Unit = {},
-    onTodayMoreBackCancelled: () -> Unit = {},
-    // 平板右上角不显示「更多」：跳转/管理/外观都已在侧栏里
-    enabled: Boolean = true,
-) {
-    if (!enabled) {
-        // 菜单开着时切进/切出禁用场景（平板 rail、课表外观、课表切换）要强制收起，
-        // 否则展开态会盖在新页面上还能点。用 enabled 做 key，翻转即重跑。
-        LaunchedEffect(enabled) {
-            if (showMorePopup) onMorePopupDismiss()
-            if (showTodayMorePopup) onTodayMorePopupDismiss()
-        }
-        return
-    }
-    if (showMorePopup) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onMorePopupDismiss() }
-        )
-    }
-    if (showTodayMorePopup) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onTodayMorePopupDismiss() }
-        )
-    }
-    // 「更多」锚点纵坐标：**绘制期**定位
-    val fallbackAnchorTopPx = with(LocalDensity.current) {
-        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        (if (statusBarTop > 0.dp) statusBarTop - 20.dp else 17.dp)
-            .coerceAtLeast(0.dp)
-            .toPx()
-    }
-    val shadowPaddingPx = with(LocalDensity.current) {
-        com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding.toPx()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                clip = false
-                // moreSlotTopPx 是占位槽顶边，减掉阴影外扩才是内容顶边
-                val measured = moreSlotTopPx.floatValue - shadowPaddingPx
-                translationY = if (measured > 0f) measured else fallbackAnchorTopPx
-            }
-            .offset(x = 9.dp),
-        contentAlignment = Alignment.TopEnd
-    ) {
-        // 课程表页「更多」
-        LiquidGlassDropdownMenu(
-            show = showMorePopup,
-            backdrop = liquidGlassBackdrop,
-            fraction = morePopupFraction,
-            onDismiss = onMorePopupDismiss,
-            onBackProgress = onMoreBackProgress,
-            onBackCancelled = onMoreBackCancelled,
-            triggerIcon = MiuixIcons.More,
-            triggerContentDescription = "更多",
-            onExpand = onMorePopupExpand,
-            offsetPx = scheduleMenuOffset,
-            materialAlpha = scheduleMaterialAlpha,
-        ) {
-            LiquidGlassDropdownMenuItem(
-                text = "跳转周数",
-                onClick = {
-                    onMorePopupDismiss()
-                    onJumpWeek()
-                },
-                icon = {
-                    Icon(
-                        imageVector = MiuixIcons.Basic.FastForward,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            )
-            if (!isShiftMode) {
-                LiquidGlassDropdownMenuItem(
-                    text = "课程管理",
-                    onClick = {
-                        onMorePopupDismiss()
-                        onCourseManage()
-                    },
-                    icon = {
-                        Icon(
-                            imageVector = MiuixIcons.Backup,
-                            contentDescription = null,
-                            tint = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-                )
-            }
-            LiquidGlassDropdownMenuItem(
-                text = "课表外观",
-                onClick = {
-                    onMorePopupDismiss()
-                    onEnterCustomize()
-                },
-                icon = {
-                    Icon(
-                        imageVector = MiuixIcons.Background,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(23.dp)
-                    )
-                }
-            )
-        }
-        // 今日页「更多」
-        LiquidGlassDropdownMenu(
-            show = showTodayMorePopup,
-            backdrop = liquidGlassBackdrop,
-            fraction = todayMorePopupFraction,
-            onDismiss = onTodayMorePopupDismiss,
-            onBackProgress = onTodayMoreBackProgress,
-            onBackCancelled = onTodayMoreBackCancelled,
-            triggerIcon = MiuixIcons.More,
-            triggerContentDescription = "更多",
-            onExpand = onTodayMorePopupExpand,
-            offsetPx = todayMenuOffset,
-            materialAlpha = todayMaterialAlpha,
-        ) {
-            LiquidGlassDropdownMenuItem(
-                text = "跳转日期",
-                onClick = {
-                    onTodayMorePopupDismiss()
-                    onJumpToDate()
-                },
-                icon = {
-                    Icon(
-                        imageVector = MiuixIcons.Basic.FastForward,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(23.dp)
-                    )
-                }
-            )
-            LiquidGlassDropdownMenuItem(
-                text = "课程管理",
-                onClick = {
-                    onTodayMorePopupDismiss()
-                    onCourseManage()
-                },
-                icon = {
-                    Icon(
-                        imageVector = MiuixIcons.Backup,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(23.dp)
-                    )
-                }
-            )
-            LiquidGlassDropdownMenuItem(
-                text = "课表外观",
-                onClick = {
-                    onTodayMorePopupDismiss()
-                    onEnterCustomize()
-                },
-                icon = {
-                    Icon(
-                        imageVector = MiuixIcons.Background,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(23.dp)
-                    )
-                }
-            )
-        }
-    }
-}
 
 /**
  * 点「课表外观」到开始截屏的等待，所有入口共用。
@@ -5294,304 +4584,3 @@ fun CourseScheduleApp(
     }
 }
 
-@Composable
-private fun SwitchMorphOverlay(
-    active: Boolean,
-    progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
-    /** true = 进入切换课表页（p: 1→0）；false = 退出回主界面（p: 0→1）。 */
-    entering: Boolean,
-    cardBounds: Rect?,
-    cardSnapshot: TransitionLayerSnapshot?,
-    /**
-     * 进入方向复用的卡片位图（退出那一帧从卡片图层固化而来）。
-     * 图层跨不过切换页的组合销毁，所以跨次复用的载体只能是位图。
-     */
-    cardBitmap: ImageBitmap?,
-    mainLayer: GraphicsLayer,
-    screenCornerRadius: ScreenCornerRadiiPx,
-    isDark: Boolean,
-) {
-    // 门控必须留在本 composable 内：退出的兜底分支会出现
-    // showSwitchSchedule && !switchOverlayActive 的窗口，无条件绘制会闪一帧全屏底色
-    if (!active) return
-    val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
-    val screenWidth = windowInfo.containerSize.width.toFloat()
-    val screenHeight = windowInfo.containerSize.height.toFloat()
-    val density = LocalDensity.current
-    val p = progress.value
-
-    // The source layer stays owned by the main composition throughout the morph.
-    val cardImage = remember(cardSnapshot) { cardSnapshot }
-    // 本次形变有没有可用的卡片内容：进入看位图，退出看实时图层。
-    val hasCard = if (entering) cardBitmap != null else cardImage != null
-
-    val sBounds = cardBounds
-    val cLeft: Float
-    val cTop: Float
-    val cWidth: Float
-    val cHeight: Float
-    if (sBounds != null) {
-        cLeft = sBounds.left + (0f - sBounds.left) * p
-        cTop = sBounds.top + (0f - sBounds.top) * p
-        cWidth = sBounds.width + (screenWidth - sBounds.width) * p
-        cHeight = sBounds.height + (screenHeight - sBounds.height) * p
-    } else {
-        cLeft = 0f; cTop = 0f; cWidth = screenWidth; cHeight = screenHeight
-    }
-    val startRadius = with(density) { 20.dp.toPx() }
-    val cShape = screenCornerRadius.interpolateFrom(startRadius, p).toShape(density)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (isDark) Color(0xFF2C2C2C).copy(alpha = (p * 0.5f).coerceIn(0f, 0.5f))
-                else Color.Black.copy(alpha = (p * 0.5f).coerceIn(0f, 0.5f))
-            )
-    )
-    Box(
-        modifier = Modifier
-            .offset(
-                x = with(density) { cLeft.toDp() },
-                y = with(density) { cTop.toDp() }
-            )
-            .size(
-                width = with(density) { cWidth.toDp() },
-                height = with(density) { cHeight.toDp() }
-            )
-            .clip(cShape)
-            .graphicsLayer {
-                // 进入方向：有可交叉的卡片时容器整段全实
-                alpha = if (entering) {
-                    if (!hasCard) (p / 0.2f).coerceIn(0f, 1f) else 1f
-                } else {
-                    1f
-                }
-            }
-            .background(MiuixTheme.colorScheme.background)
-    ) {
-        if (cardBitmap != null) {
-            // 进入方向：画退出那一帧固化下来的卡片位图。
-            // 它是容器的子节点（.align(TopStart)）→ 固定在快照顶部、跟着容器一起缩。
-            Image(
-                bitmap = cardBitmap,
-                contentDescription = null,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .clip(ContinuousRoundedRectangle(20.dp))
-                    .graphicsLayer {
-                        // 关键：必须在主界面快照开始化之前（p=0.8）就铺满
-                        alpha = ((1f - p) / 0.2f).coerceIn(0f, 1f)
-                    },
-                contentScale = ContentScale.None,
-            )
-        }
-        if (cardImage != null) {
-            TransitionLayerImage(
-                snapshot = cardImage,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .clip(ContinuousRoundedRectangle(20.dp))
-                    .graphicsLayer {
-                        alpha = if (entering) {
-                            ((1f - p) / 0.2f).coerceIn(0f, 1f)
-                        } else {
-                            (1f - p * 2f).coerceIn(0f, 1f)
-                        }
-                    },
-                contentScale = ContentScale.None
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = when {
-                        !entering -> ((p - 0.2f) / 0.7f).coerceIn(0f, 1f)
-                        // 没有可交叉的卡片（本次会话第一次进入、还没退出过）：
-                        // 保持不透明、由容器 alpha 收尾，否则中段只剩容器纯色底。
-                        !hasCard -> 1f
-                        // 淡出：起点沿用你改的 0.8，终点 0.2（跨 0.6 个进度）
-                        else -> ((p - 0.2f) / 0.6f).coerceIn(0f, 1f)
-                    }
-                }
-                .drawWithContent {
-                    val layerSize = mainLayer.size
-                    if (layerSize.width > 0 && layerSize.height > 0) {
-                        // Match the previous snapshot's Crop / TopCenter alignment.
-                        val scale = maxOf(
-                            size.width / layerSize.width,
-                            size.height / layerSize.height,
-                        )
-                        translate(left = (size.width - layerSize.width * scale) / 2f) {
-                            scale(scale, scale, pivot = Offset.Zero) {
-                                drawLayer(mainLayer)
-                            }
-                        }
-                    }
-                }
-        )
-    }
-}
-
-/**
- * 共享顶栏槽里单页顶栏的主题锁：外层 chrome 主题跟随当前 tab（[forcedDark]），
- * 切页时会先变，尚未移出屏幕的顶栏遮罩瞬间变色；这里按本页自己的主题再锁一层。
- */
-@Composable
-private fun PageLockedTopBarTheme(
-    pageForcedDark: Boolean?,
-    content: @Composable () -> Unit,
-) {
-    val appDark = rememberAppSettingDark()
-    val pageDark = pageForcedDark ?: appDark
-    val controller = rememberAppThemeController(isDark = pageDark)
-    MiuixTheme(controller = controller) {
-        CompositionLocalProvider(LocalForcedDarkTheme provides pageForcedDark) {
-            content()
-        }
-    }
-}
-
-@Composable
-private fun SettingsTopBar(
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    navBarStyle: String,
-    scrollBehavior: SharedScrollBehavior? = null,
-    blurResampleKey: Int = 0,
-    blurSampleTrack: () -> Float = { 0f },
-) {
-    if (liquidGlassBackdrop == null) return
-    val isTablet = navBarStyle == "rail"
-    // 仅设置页顶栏锁应用主题，避免切页时渐变/糊层随课程表壁纸锁色跳变
-    val settingsBarDark = rememberAppSettingDark()
-    val settingsBarController = rememberAppThemeController(isDark = settingsBarDark)
-
-    // 平板设置：渐变画在 TabletSettingsScreen 内容层，这里不再叠全宽遮罩
-    val settingsNativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
-    MiuixTheme(controller = settingsBarController) {
-        ProgressiveBlurTopBar(
-            backdrop = liquidGlassBackdrop,
-            blurAlpha = if (isTablet) 0f else 1f,
-            topInsetAdjustment = settingsNativeBarInset,
-            resampleKey = blurResampleKey,
-            sampleTrack = blurSampleTrack,
-        ) {
-            CollapsibleTopAppBar(
-                // 平板设置：顶栏不再显示「我的」，标题由 MainActivity 叠层绘制
-                title = if (isTablet) "" else "我的",
-                largeTitle = if (isTablet) "" else "我的",
-                showLargeTitle = if (isTablet) false else null,
-                showSmallTitle = if (isTablet) true else null,
-                showGradientOverlay = !isTablet,
-                gradientColorOverride = MiuixTheme.colorScheme.surface,
-                modifier = Modifier.zIndex(1f),
-                scrollBehavior = if (isTablet) null else scrollBehavior,
-                startAction = null,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TodayTopBar(
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    navBarStyle: String,
-    currentDayOfWeek: Int,
-    isToday: Boolean = true,
-    onBackToToday: () -> Unit = {},
-    onJumpToDate: () -> Unit = {},
-    onEnterCustomize: () -> Unit = {},
-    scrollBehavior: SharedScrollBehavior? = null,
-    visible: Boolean = true,
-    blurResampleKey: Int = 0,
-    blurSampleTrack: () -> Float = { 0f },
-    onMoreSlotTop: (Float) -> Unit = {},
-    onMoreMaterial: (Float) -> Unit = {},
-    onMoreExpand: () -> Unit = {},
-) {
-    if (liquidGlassBackdrop == null) return
-    val isTabletLiquidGlass = navBarStyle == "rail"
-    // 同 ScheduleTopBar：iOS 今日页右上角由原生 UIMenu 接管，Compose 侧不渲染
-    val hostOwnsTopRight = LocalHostNavigation.current != null
-    // 平板：标题避让侧栏后左对齐用的附加修饰符
-    val titleRailPadding = if (isTabletLiquidGlass) {
-        com.haooz.chedule.ui.components.tabletNavRailStartPadding().padding(start = 12.dp)
-    } else {
-        Modifier
-    }
-    val dayOfWeekNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-    val dayOfWeekName = if (currentDayOfWeek in 1..7) dayOfWeekNames[currentDayOfWeek - 1] else ""
-    val titleText = if (isToday) "今天是$dayOfWeekName" else dayOfWeekName
-    val todayNativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
-
-    // 隐藏时 alpha=0 但仍测量，保证 currentHeightPx 启动即就位
-    ProgressiveBlurTopBar(
-        backdrop = liquidGlassBackdrop,
-        topInsetAdjustment = todayNativeBarInset,
-        modifier = Modifier.graphicsLayer { alpha = if (visible) 1f else 0f },
-        resampleKey = blurResampleKey,
-        sampleTrack = blurSampleTrack,
-    ) {
-        CollapsibleTopAppBar(
-            title = titleText,
-            largeTitle = titleText,
-            modifier = Modifier.zIndex(1f),
-            scrollBehavior = scrollBehavior,
-            showGradientOverlay = false,
-            // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
-            titleStartAligned = isTabletLiquidGlass,
-            titleModifier = titleRailPadding,
-            // 平板左上角不放返回按钮
-            startAction = null,
-            onAlphaChanged = { backdrop, _ -> onMoreMaterial(backdrop) },
-            endAction = { backdropAlpha, shadowAlpha ->
-                if (visible) {
-                    if (isTabletLiquidGlass) {
-                        // pad：课程管理已在侧栏，右上角直接放跳转日期 + 课表外观
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LiquidTopBarButton(
-                                onClick = onJumpToDate,
-                                backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.Basic.FastForward,
-                                contentDescription = "跳转日期",
-                                iconSize = 23.dp,
-                                backdropAlpha = backdropAlpha,
-                                shadowAlpha = shadowAlpha,
-                            )
-                            LiquidTopBarButton(
-                                onClick = onEnterCustomize,
-                                backdrop = liquidGlassBackdrop,
-                                icon = MiuixIcons.Background,
-                                contentDescription = "课表外观",
-                                iconSize = 23.dp,
-                                backdropAlpha = backdropAlpha,
-                                shadowAlpha = shadowAlpha,
-                            )
-                        }
-                    } else {
-                        // 「更多」按钮由下拉菜单组件自带（收起态即那颗按钮，唯一一份），这里只占位对齐
-                        Spacer(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .then(
-                                    if (!hostOwnsTopRight) Modifier
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null,
-                                            onClick = onMoreExpand,
-                                        )
-                                        .semantics { contentDescription = "更多" }
-                                    else Modifier
-                                )
-                                .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
-                        )
-                    }
-                }
-            },
-        )
-    }
-}
