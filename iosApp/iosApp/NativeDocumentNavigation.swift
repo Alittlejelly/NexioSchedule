@@ -362,23 +362,28 @@ private final class NativeDocumentPageController: UIViewController {
         image: nil, style: .plain, target: self, action: #selector(performSecondaryPageAction)
     )
     private lazy var secondaryActivityIndicator = UIActivityIndicatorView(style: .medium)
-    private lazy var secondaryActivityItem: UIBarButtonItem = {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
-        secondaryActivityIndicator.center = CGPoint(x: 22, y: 22)
-        container.addSubview(secondaryActivityIndicator)
-        container.isAccessibilityElement = true
-        container.accessibilityTraits = [.staticText]
-        return UIBarButtonItem(customView: container)
-    }()
+    private lazy var secondaryActivityItem = makeActivityItem(indicator: secondaryActivityIndicator)
     private lazy var activityIndicator = UIActivityIndicatorView(style: .medium)
-    private lazy var activityItem: UIBarButtonItem = {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
-        activityIndicator.center = CGPoint(x: 22, y: 22)
-        container.addSubview(activityIndicator)
+    private lazy var activityItem = makeActivityItem(indicator: activityIndicator)
+
+    private func makeActivityItem(indicator: UIActivityIndicatorView) -> UIBarButtonItem {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        indicator.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(indicator)
+        // Let the navigation bar override the preferred height for its current metrics.
+        let preferredHeight = container.heightAnchor.constraint(equalToConstant: 44)
+        preferredHeight.priority = .defaultLow
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalTo: indicator.widthAnchor),
+            preferredHeight,
+            indicator.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            indicator.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
         container.isAccessibilityElement = true
         container.accessibilityTraits = [.staticText]
         return UIBarButtonItem(customView: container)
-    }()
+    }
 
     var pageTitle: String { host.nativeRouteTitle(routeId: routeId) }
 
@@ -452,7 +457,7 @@ private final class NativeDocumentPageController: UIViewController {
         if state.symbol.isEmpty {
             activityIndicator.stopAnimating()
         } else if state.busy {
-            activityIndicator.color = chromeTint
+            activityIndicator.color = nil
             activityIndicator.startAnimating()
             activityItem.customView?.accessibilityLabel = state.label
             activityItem.isEnabled = false
@@ -462,13 +467,13 @@ private final class NativeDocumentPageController: UIViewController {
             actionItem.image = UIImage(systemName: state.symbol)
             actionItem.accessibilityLabel = state.label
             actionItem.isEnabled = state.enabled
-            actionItem.tintColor = state.successful ? .systemGreen : chromeTint
+            actionItem.tintColor = state.successful ? .systemGreen : .label
             trailingItems.append(actionItem)
         }
         if state.secondarySymbol.isEmpty {
             secondaryActivityIndicator.stopAnimating()
         } else if state.secondaryBusy {
-            secondaryActivityIndicator.color = chromeTint
+            secondaryActivityIndicator.color = nil
             secondaryActivityIndicator.startAnimating()
             secondaryActivityItem.customView?.accessibilityLabel = state.secondaryLabel
             secondaryActivityItem.isEnabled = false
@@ -478,7 +483,7 @@ private final class NativeDocumentPageController: UIViewController {
             secondaryActionItem.image = UIImage(systemName: state.secondarySymbol)
             secondaryActionItem.accessibilityLabel = state.secondaryLabel
             secondaryActionItem.isEnabled = state.secondaryEnabled
-            secondaryActionItem.tintColor = state.secondarySuccessful ? .systemGreen : chromeTint
+            secondaryActionItem.tintColor = state.secondarySuccessful ? .systemGreen : .label
             trailingItems.append(secondaryActionItem)
         }
         if (navigationItem.rightBarButtonItems ?? []) != trailingItems {
