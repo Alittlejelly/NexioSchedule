@@ -605,8 +605,8 @@ private final class AppHostController: UIViewController {
         if chromeContainer.isHidden || bar.isHidden || bar.bounds.isEmpty {
             inset = 0
         } else {
-            let barBounds = bar.convert(bar.bounds, to: view)
-            inset = min(view.bounds.height, max(0, view.bounds.maxY - barBounds.minY))
+            // UIKit reserves space on the appropriate edge when tabs move to a sidebar.
+            inset = contentInsets.bottom
         }
         guard abs(lastBottomInset - inset) > 0.5 else { return }
         lastBottomInset = inset
