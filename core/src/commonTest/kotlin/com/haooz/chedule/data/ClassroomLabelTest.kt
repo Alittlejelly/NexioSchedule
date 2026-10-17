@@ -13,9 +13,9 @@ import kotlin.test.assertTrue
  * 两组真实反馈串是重点：`2号综合楼B3027` 被系统截成 `2号综合楼B3`（issue #69），
  * `新校区J02西414` 被截成 `新校区J02西4`（前缀把房号挤出去了）。
  *
- * 另外固化一条设计红线：**默认不截断**。自动精简只做格式清理，房号与楼栋永远不由程序删；
+ * 另外固化一条设计红线：默认不截断。自动精简只做格式清理，房号与楼栋永远不由程序删；
  * 只有显式打开 [ClassroomLabelRule.tailKeepEnabled] 才会按宽度丢开头。这条一旦改动，
- * 下面的 `自动模式超宽也不丢字样` 会立刻翻车 —— 刻意的。
+ * 下面的 `自动模式超宽也不丢字样` 会立刻翻车，所以那处检查不能省。
  */
 class ClassroomLabelTest {
 
@@ -105,7 +105,7 @@ class ClassroomLabelTest {
 
     @Test
     fun `缩写对自定义正则的结果同样生效`() {
-        // 正则先把前缀处理掉，楼名该缩还是要缩 —— 否则用户还得再开一次宽度裁剪
+        // 正则先把前缀处理掉，楼名该缩还是要缩，否则用户还得再开一次宽度裁剪
         val rule = ClassroomLabel.rule(
             mode = ClassroomLabel.MODE_CUSTOM,
             pattern = "^.*?校区",
@@ -115,12 +115,72 @@ class ClassroomLabelTest {
     }
 
     @Test
+    fun `原样模式下填了缩写也生效`() {
+        // 设置页那个入口在任何模式下都点得开，填完不生效用户只会以为坏了
+        val rule = ClassroomLabel.rule(
+            mode = ClassroomLabel.MODE_RAW,
+            abbreviations = "第五教学楼=五号楼",
+        )
+        assertEquals("五号楼C509", ClassroomLabel.apply("第五教学楼C509", rule))
+    }
+
+    @Test
+    fun `缩写原名带校区前缀也能生效`() {
+        // 用户和 AI 都容易照着课表原文写「新校区J02西=J02西」。自动精简会先剥掉前缀，
+        // 若不做归一化，这条规则永远匹配不上，表现就是「填了没反应」。
+        val withPrefix = ClassroomLabel.rule(
+            mode = ClassroomLabel.MODE_AUTO,
+            abbreviations = "新校区J02西=J02西",
+        )
+        val withoutPrefix = ClassroomLabel.rule(
+            mode = ClassroomLabel.MODE_AUTO,
+            abbreviations = "J02西=J02西",
+        )
+        val raw = "新校区J02西414"
+        assertEquals("J02西414", ClassroomLabel.apply(raw, withPrefix))
+        assertEquals(
+            ClassroomLabel.apply(raw, withoutPrefix),
+            ClassroomLabel.apply(raw, withPrefix),
+        )
+    }
+
+    @Test
+    fun `缩写原名带括号包裹的校区前缀也能生效`() {
+        val rule = ClassroomLabel.rule(
+            mode = ClassroomLabel.MODE_AUTO,
+            abbreviations = "（新校区）J02西=J02西",
+        )
+        assertEquals("J02西414", ClassroomLabel.apply("新校区J02西414", rule))
+    }
+
+    @Test
+    fun `原样模式没填缩写时仍与原文逐字相同`() {
+        // 升级后的老用户没有这份偏好，行为必须一点不变
+        val rule = ClassroomLabel.rule(mode = ClassroomLabel.MODE_RAW)
+        for (raw in listOf("新校区J02西414", "第五教学楼C509", "2号综合楼B3027")) {
+            assertEquals(raw, ClassroomLabel.apply(raw, rule))
+        }
+    }
+
+    @Test
+    fun `原样模式填了缩写也能配合保尾部`() {
+        val rule = ClassroomLabel.rule(
+            mode = ClassroomLabel.MODE_RAW,
+            tailKeepEnabled = true,
+            slotWidth = 7,
+            abbreviations = "第五教学楼=五教",
+        )
+        // 缩写先把 14 半角压到 8，再由保尾部收到 7：放不下「五教」时留「五」不留「教」
+        assertEquals("五C509", ClassroomLabel.apply("第五教学楼C509", rule))
+    }
+
+    @Test
     fun `缩写生效后不需要宽度裁剪也放得下`() {
         // 这是缩写这一步的主要收益：不靠裁字就压进槽位，也就不会产生碎片。
         // 默认宽度 7 半角（真机锁屏大岛 / 通知栏实测）。
         val rule = ClassroomLabel.rule(mode = ClassroomLabel.MODE_AUTO)
         // 注意：这一步只验「纯缩写」，不开保尾部。缩写后仍 >7 的（如 2号综B3027=10）
-        // 要靠保尾部开关兜底，不在这里断言。
+        // 要靠保尾部开关兜底，这里只验缩写本身。
         for (raw in listOf("新校区J02西414", "第五教学楼C509", "东校区第二教学楼A302")) {
             val shown = ClassroomLabel.apply(raw, rule)
             assertEquals(
@@ -140,8 +200,8 @@ class ClassroomLabelTest {
 
     @Test
     fun `自动模式摘掉括号注解`() {
-        // 「（新）」「(东)」这类注解是补充说明，留着白占宽度，按宽度切还会留下
-        // 「新)A302」这种半个括号的碎片 —— 在缩写阶段就摘掉
+        // 「（新）」「(东)」这类注解是补充说明，留着占宽度，按宽度切还会留下
+        // 「新)A302」这种半个括号的碎片，所以在缩写阶段就摘掉
         assertEquals("博学楼A302", auto("博学楼（新）A302"))
         assertEquals(10, ClassroomLabel.slotDisplayWidth("博学楼A302"))
     }
@@ -159,13 +219,37 @@ class ClassroomLabelTest {
     @Test
     fun `显式打开保尾部才按宽度截断`() {
         // 默认关；打开后从尾部保留，房号一定在。
-        // 实测默认容量 7：SystemUI 截的是尾部，所以必须我们自己先压到 ≤7，
-        // 否则被砍掉的正是房号最后一位
+        // 实测默认容量 7。SystemUI 截的是尾部，我们不先压到 ≤7 的话，
+        // 被砍掉的就是房号最后一位
         assertEquals("综B3027", autoWithTailKeep("2号综合楼B3027"))
-        // 括号注解先被摘掉（「博学楼A302」10 半角），再从尾部切到 7 以内 →「楼A302」(6)
-        assertEquals("楼A302", autoWithTailKeep("博学楼（新）A302"))
-        // 「新校区J02西414」缩成 J02西414 (8) > 7，切到 7 → 02西414
+        // 括号注解先被摘掉（「博学楼A302」10 半角），楼名压到放得下，剩「博A302」(6)
+        assertEquals("博A302", autoWithTailKeep("博学楼（新）A302"))
+        // 「新校区J02西414」缩成 J02西414 (8) > 7，切到 7，剩 02西414
         assertEquals("02西414", autoWithTailKeep("新校区J02西414"))
+    }
+
+    @Test
+    fun `保尾部时先压楼名再切字`() {
+        // 房号一个字都不能少，能压的只有楼名。楼名放不下时先丢通用尾字
+        // （「五教」的「教」不区分楼栋），再退到只留头一个字。
+        val rule = ClassroomLabel.rule(mode = ClassroomLabel.MODE_AUTO, tailKeepEnabled = true)
+        val cases = listOf(
+            "第五教学楼C509" to "五C509",   // 五教(4)+C509(4)=8 > 7 → 五+C509
+            "第二教学楼A302" to "二A302",
+            "第十教学楼B203" to "十B203",
+            "博学楼A302" to "博A302",       // 无内置缩写，楼名 3 字 → 博+A302
+        )
+        for ((raw, expected) in cases) {
+            assertEquals(expected, ClassroomLabel.apply(raw, rule), "「$raw」的楼名压缩结果不对")
+        }
+        // 楼名本身就放得下时不动它，别把「五教」无谓压成「五」
+        assertEquals("五教201", ClassroomLabel.apply("第五教学楼201", rule))
+        // 楼名超过 3 字不走这条路，硬留头一个字反而更认不出
+        assertEquals("中心301", ClassroomLabel.apply("大学生活动中心301", rule))
+        // 楼名与房号之间的分隔符不影响拆分：空格、短横线、下划线都当分隔符
+        for (raw in listOf("第五教学楼-C509", "第五教学楼 C509", "第五教学楼_C509")) {
+            assertEquals("五C509", ClassroomLabel.apply(raw, rule), "「$raw」没按分隔符拆开")
+        }
     }
 
     @Test
@@ -311,7 +395,7 @@ class ClassroomLabelTest {
     fun `读出来的规则直接可用`() {
         // 回归用：设置页把「保留尾部 + 8 半角」写进偏好后，通知链路读出来的规则
         // 必须真的执行截断。曾经 Android 侧手抄字段漏掉这两个键，界面开关点了没反应，
-        // 而编译期没有任何提示 —— 这条用例就是钉住「读出来的规则与写入的意图一致」。
+        // 而编译期没有任何提示。这条用例钉住「读出来的规则与写入的意图一致」。
         val store = InMemoryKeyValueStore(
             mapOf(
                 ClassroomLabel.KEY_MODE to ClassroomLabel.MODE_AUTO,
@@ -356,7 +440,7 @@ class ClassroomLabelTest {
 
     @Test
     fun `预置模板的说明与正则行为一致`() {
-        // sample 写的是「输入 → 输出」，这里逐条按断言跑一遍：
+        // sample 写的是「输入 → 输出」，这里逐条跑一遍：
         // 万一以后有人改了正则忘了改 sample，这条会挂
         fun applyPreset(index: Int, raw: String): String {
             val preset = ClassroomLabel.CUSTOM_PRESETS[index]
@@ -388,9 +472,9 @@ class ClassroomLabelTest {
 
     @Test
     fun `默认宽度取保守值`() {
-        // 容量是从真机锁屏大岛 / 通知栏**实测**的：两张截图分别显示「新校区W…」
+        // 容量是从真机锁屏大岛 / 通知栏量出来的：两张截图分别显示「新校区W…」
         // 「新校区J…」= 新(2)+校(2)+区(2)+ASCII(1) = 7 半角，第 8 个半角起被截。
-        // 必须取 7：SystemUI 截尾部，我们若输出 8，丢的正是房号最后一位。
+        // 必须取 7：SystemUI 截尾部，我们若输出 8，丢的就是房号最后一位。
         assertEquals(7, ClassroomLabel.DEFAULT_SLOT_WIDTH)
         assertTrue(
             ClassroomLabel.SLOT_WIDTH_PRESETS.contains(ClassroomLabel.DEFAULT_SLOT_WIDTH),
@@ -406,8 +490,8 @@ class ClassroomLabelTest {
         val cases = listOf(
             "新校区J02西414" to "02西414",
             "2号综合楼B3027" to "综B3027",
-            "第五教学楼C509" to "教C509",
-            "南校区第五教学楼C509" to "教C509",
+            "第五教学楼C509" to "五C509",
+            "南校区第五教学楼C509" to "五C509",
             "实验楼D区203" to "D区203",
             "图书馆B1-101" to "B1-101",
         )
@@ -505,6 +589,16 @@ class ClassroomLabelTest {
         // 输出格式说清楚，且举了例子
         assertTrue(prompt.contains("原名=缩写") || prompt.contains("楼名=缩写"))
         assertTrue(prompt.contains("第五教学楼=五教"))
+    }
+
+    @Test
+    fun `提示词要求同一栋楼只写一条`() {
+        // 缩写表匹配的是楼名这个词，换房号照样能用；若让 AI 按整串地点输出，
+        // 就得每个房号各写一条，用户改一次房号就失效
+        val prompt = ClassroomLabel.abbreviationPrompt(listOf("第五教学楼C509", "第五教学楼A302"))
+        assertTrue(prompt.contains("同一栋楼只写一条"), "提示词没交代去重要求")
+        assertTrue(prompt.contains("不要按房号重复"), "提示词没交代不要按房号重复")
+        assertTrue(prompt.contains("同一种写法"), "提示词没交代同一栋楼写法要统一")
     }
 
     @Test

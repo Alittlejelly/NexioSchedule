@@ -376,8 +376,8 @@ object IslandNotificationHelper {
         val aodMode = prefs.getInt("island_aod_mode", 0)
 
         val now = System.currentTimeMillis()
-        // 槽位与息屏标题只有十几个半角宽，超了由系统从尾部截断（丢掉的正好是房号），
-        // 所以这里喂精简后的地点；展开态 hintInfo 的「地点」行仍用课表原文。
+        // 槽位、息屏标题、展开态「地点」行都只有十几个半角宽，超了由系统从尾部截断
+        // （丢掉的正好是房号），所以这里一律喂精简后的地点。
         val shortClassroom = prefs.shortClassroom(classroom ?: "")
         val remainMs = courseStartMillis?.let { it - now }
         val counting = remainMs != null && remainMs > 0
@@ -460,7 +460,9 @@ object IslandNotificationHelper {
                 }
                 put("timerInfo", timerInfo)
                 put("subContent", "地点")
-                put("subTitle", classroom ?: "")
+                // 展开态的「地点」行同样只有十几个半角宽，真机上「新校区J02西414」被截成
+                // 「新校区J…」、房号丢失。与缩略态是同一个问题，同样喂精简后的地点。
+                put("subTitle", shortClassroom)
                 put("colorContent", "#666666")
                 put("colorContentDark", "#aaaaaa")
                 put("colorTitle", "#222222")
@@ -586,8 +588,11 @@ object IslandNotificationHelper {
 
         val now = System.currentTimeMillis()
         val counting = courseEndMillis > now
+        // 与课前岛同理：课中岛的息屏标题、展开态「地点」行都是窄条，真机实测会把
+        // 「新校区J02西414」截成「新校区J…」，所以统一喂精简后的地点。
+        val shortClassroom = prefs.shortClassroom(classroom)
         val aodTitle = if (aodMode == 1) {
-            prefs.shortClassroom(classroom).ifEmpty { courseName }
+            shortClassroom.ifEmpty { courseName }
         } else {
             courseName
         }
@@ -660,7 +665,7 @@ object IslandNotificationHelper {
                     }
                 })
                 put("subContent", "地点")
-                put("subTitle", classroom)
+                put("subTitle", shortClassroom)
                 put("colorContent", "#666666")
                 put("colorContentDark", "#aaaaaa")
                 put("colorTitle", "#222222")
