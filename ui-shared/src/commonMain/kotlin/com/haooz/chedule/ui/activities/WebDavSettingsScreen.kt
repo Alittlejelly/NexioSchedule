@@ -39,6 +39,7 @@ import com.haooz.chedule.data.SyncManager
 import com.haooz.chedule.data.WebDavManager
 import com.haooz.chedule.data.formatDateTimeMinute
 import com.haooz.chedule.data.localDateTimeAt
+import com.haooz.chedule.data.resolveWebDavDirUrl
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
@@ -66,9 +67,6 @@ fun WebDavSettingsScreen(
     onTestConnectionReady: (() -> Unit) -> Unit = {},
     onBackupRestoreReady: (onBackup: () -> Unit, onRestore: () -> Unit) -> Unit = { _, _ -> },
     onBusyStateChange: (backingUp: Boolean, restoring: Boolean) -> Unit = { _, _ -> },
-    // 节假日/调休数据变更后的平台副作用（重排提醒 + 勿扰 + 小组件）。
-    // 由 Android 宿主注入：CourseReminderHelper.onHolidayDataChanged(context)。
-    // 不直接调 reminder 模块 —— 那是 Android 专有的（见 :core 的 ScheduleEffects 注释）。
     onHolidayDataChanged: () -> Unit = {},
 ) {
     val webDavManager = remember { WebDavManager { onHolidayDataChanged() } }
@@ -81,17 +79,25 @@ fun WebDavSettingsScreen(
     val settingsViewModel = settingsViewModel()
 
     var serverUrl by remember { mutableStateOf(webDavManager.serverUrl.ifBlank { "https://dav.jianguoyun.com/dav/" }) }
+    // 远端备份目录：可任意层级/任意名字；留空 = 直接放服务器根目录
+    var remotePath by remember { mutableStateOf(webDavManager.remotePath) }
     var username by remember { mutableStateOf(webDavManager.username) }
     var password by remember { mutableStateOf(webDavManager.password) }
     var statusText by remember { mutableStateOf("") }
 
+    // 保存前的最终地址预览（中文目录名已按段百分号编码，所见即真实请求地址）
+    val resolvedDirUrl = remember(serverUrl, remotePath) {
+        resolveWebDavDirUrl(serverUrl, remotePath)
+    }
+
     val saveConfig = {
         webDavManager.serverUrl = serverUrl
+        webDavManager.remotePath = remotePath
         webDavManager.username = username
         webDavManager.password = password
     }
 
-    LaunchedEffect(serverUrl, username, password) {
+    LaunchedEffect(serverUrl, remotePath, username, password) {
         saveConfig()
     }
     var statusIsError by remember { mutableStateOf(false) }
@@ -127,6 +133,7 @@ fun WebDavSettingsScreen(
             statusIsError = false
             coroutineScope.launch {
                 webDavManager.serverUrl = serverUrl
+                webDavManager.remotePath = remotePath
                 webDavManager.username = username
                 webDavManager.password = password
                 syncManager.backupNow()
@@ -140,6 +147,7 @@ fun WebDavSettingsScreen(
             statusIsError = false
             coroutineScope.launch {
                 webDavManager.serverUrl = serverUrl
+                webDavManager.remotePath = remotePath
                 webDavManager.username = username
                 webDavManager.password = password
                 syncManager.restoreNow()
@@ -199,6 +207,7 @@ fun WebDavSettingsScreen(
             connected = false
             coroutineScope.launch {
                 webDavManager.serverUrl = serverUrl
+                webDavManager.remotePath = remotePath
                 webDavManager.username = username
                 webDavManager.password = password
                 val result = webDavManager.testConnection()
@@ -291,6 +300,32 @@ fun WebDavSettingsScreen(
                                 )
                             }
 
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "备份路径",
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MiuixTheme.colorScheme.onSurface
+                                )
+                                NativeTextField(
+                                    value = remotePath,
+                                    onValueChange = { remotePath = it },
+                                    modifier = Modifier.fillMaxWidth(0.65f),
+                                    hint = "留空=根目录",
+                                    singleLine = true,
+                                    textAlign = TextAlign.End,
+                                    textStyle = TextStyle(
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                )
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

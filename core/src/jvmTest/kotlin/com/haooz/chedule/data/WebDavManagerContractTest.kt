@@ -106,7 +106,7 @@ class WebDavManagerContractTest {
 
     @Test
     fun `配置读写与文件名逐字未变`() {
-        // webdav_config 这个 prefs 名与 4 个键名是数据兼容契约
+        // webdav_config 这个 prefs 名与原 4 个键名是数据兼容契约
         manager.serverUrl = "https://dav.example.com/remote.php/dav/"
         assertEquals("https://dav.example.com/remote.php/dav", manager.serverUrl, "尾部斜杠应被裁掉")
         manager.lastSyncTime = 123L
@@ -119,6 +119,89 @@ class WebDavManagerContractTest {
         assertFalse(manager.isConfigured())
     }
 
+    // ── 自定义远端路径 ───────────────────────────
+
+    @Test
+    fun `未配置过路径时回落默认目录，显式留空则放根目录`() {
+        // 老用户没有 remote_path 这个键 → 位置与迁移前一致，云端老备份还能读到
+        assertFalse(store.contains("remote_path"))
+        assertEquals("NexioSchedule/backups", manager.remotePath)
+        assertEquals(
+            "https://dav.example.com/remote.php/dav/NexioSchedule/backups",
+            manager.backupDirUrl(),
+        )
+
+        // 显式留空 = 直接放服务器根目录（有些网盘必须指定已存在的子目录，但根目录仍是合法选项）
+        manager.remotePath = ""
+        assertTrue(store.contains("remote_path"))
+        assertEquals("", manager.remotePath)
+        assertEquals("https://dav.example.com/remote.php/dav", manager.backupDirUrl())
+    }
+
+    @Test
+    fun `路径归一化：斜杠、空格与误粘贴的完整 URL`() {
+        assertEquals("NexioSchedule/backups", normalizeRemotePath("/NexioSchedule/backups/"))
+        assertEquals("a/b", normalizeRemotePath("//a///b//"))
+        assertEquals("我的网盘/课表", normalizeRemotePath(" 我的网盘 / 课表 "))
+        // 用户把整个 WebDAV 地址粘进「备份路径」里 → 只保留路径部分（去掉 scheme + 主机）
+        assertEquals("dav/foo/bar", normalizeRemotePath("https://dav.example.com/dav/foo/bar"))
+        assertEquals("dav", normalizeRemotePath("https://dav.example.com/dav"))
+    }
+
+    @Test
+    fun `中文路径逐段百分号编码，已是转义的不二次编码`() {
+        assertEquals(
+            "https://dav.example.com/dav/%E6%88%91%E7%9A%84%E7%BD%91%E7%9B%98/%E8%AF%BE%E8%A1%A8%20%E5%A4%87%E4%BB%BD",
+            resolveWebDavDirUrl("https://dav.example.com/dav/", "我的网盘/课表 备份"),
+        )
+        // 保留 RFC 3986 unreserved 字符；已有的 %XX 原样放过
+        assertEquals("a-b_c.d~e", encodePathSegment("a-b_c.d~e"))
+        assertEquals("a%20b", encodePathSegment("a%20b"))
+        assertEquals("%2F", encodePathSegment("%2F"))
+    }
+
+    @Test
+    fun `自定义路径：任意层级逐级建目录，文件直接落在该目录`() = runTest {
+        manager.remotePath = "我的网盘/课表备份"
+        http.on("PROPFIND", code = 207)
+        http.on("PUT", code = 201)
+
+        val result = manager.backupAllData(CourseRepository.getInstance())
+        assertTrue(result is BackupResult.Success, "实际: $result")
+
+        // 根目录 + 每一级子目录各探一次（已在 → 不 MKCOL），最后 PUT
+        assertEquals(listOf("PROPFIND", "PROPFIND", "PROPFIND", "PUT"), http.requests.map { it.method })
+        assertEquals("https://dav.example.com/remote.php/dav", http.requests[0].url)
+        assertEquals(
+            "https://dav.example.com/remote.php/dav/%E6%88%91%E7%9A%84%E7%BD%91%E7%9B%98",
+            http.requests[1].url,
+        )
+        assertEquals(
+            "https://dav.example.com/remote.php/dav/%E6%88%91%E7%9A%84%E7%BD%91%E7%9B%98/%E8%AF%BE%E8%A1%A8%E5%A4%87%E4%BB%BD",
+            http.requests[2].url,
+        )
+        val put = http.requests[3]
+        assertTrue(put.url.startsWith(http.requests[2].url + "/backup_"), "实际: ${put.url}")
+        assertTrue(put.url.endsWith(".json"))
+    }
+
+    @Test
+    fun `目录建不出来仍尝试写入，失败文案指向路径`() = runTest {
+        manager.remotePath = "不允许建目录的地方"
+        // PROPFIND 全部 404，MKCOL 全部 409（父目录缺失 / 服务端禁建）
+        http.on("PROPFIND", code = 404)
+        http.on("MKCOL", code = 409)
+        http.on("PUT", code = 409)
+
+        val result = manager.backupAllData(CourseRepository.getInstance())
+        assertTrue(result is BackupResult.Error, "实际: $result")
+        val message = (result as BackupResult.Error).message
+        assertTrue(message.contains("409"), "实际: $message")
+        assertTrue(message.contains("备份路径"), "建目录失败时应提示路径问题，实际: $message")
+        // 关键：MKCOL 失败**没有**提前返回，PUT 照样发出去了
+        assertTrue(http.requests.any { it.method == "PUT" })
+    }
+
     // ── 连接测试 ─────────────────────────────────
 
     @Test
@@ -128,7 +211,8 @@ class WebDavManagerContractTest {
         assertEquals("连接成功", result.getOrNull())
         val r = http.requests.single()
         assertEquals("PROPFIND", r.method)
-        assertEquals("https://dav.example.com/remote.php/dav", r.url)
+        // 探的是**备份目录**，不是服务器根 —— 自定义路径填错要在这里就暴露
+        assertEquals("https://dav.example.com/remote.php/dav/NexioSchedule/backups", r.url)
         assertEquals("Basic dXNlcjpwYXNz", r.headers["Authorization"])
         assertEquals("0", r.headers["Depth"])
     }
@@ -138,9 +222,18 @@ class WebDavManagerContractTest {
         http.on("PROPFIND", code = 401)
         assertTrue(manager.testConnection().exceptionOrNull()?.message!!.contains("认证失败"))
 
+        // 目录 404 但根目录可达 → 目录会在备份时自动创建
         http = FakeHttp().also { manager.http = it }
-        http.on("PROPFIND", code = 404)
+        http.on("PROPFIND", urlSuffix = "/backups", code = 404)
+        http.on("PROPFIND", code = 207)
         assertEquals("连接成功（目录将自动创建）", manager.testConnection().getOrNull())
+        assertEquals(2, http.requests.size, "404 时要再探一次根目录以区分「地址错了」")
+
+        // 目录与根目录都 404 之外的错 → 报服务器错误，不能误报「连接成功」
+        http = FakeHttp().also { manager.http = it }
+        http.on("PROPFIND", urlSuffix = "/backups", code = 404)
+        http.on("PROPFIND", code = 500)
+        assertTrue(manager.testConnection().exceptionOrNull()?.message!!.contains("服务器返回: 500"))
     }
 
     // ── 备份 ─────────────────────────────────────
@@ -155,18 +248,22 @@ class WebDavManagerContractTest {
         val result = manager.backupAllData(repository)
         assertTrue(result is BackupResult.Success, "实际: $result")
 
-        // 两次 PROPFIND（base / backups）+ 一次 PUT，顺序与 URL 都要对
-        assertEquals(listOf("PROPFIND", "PROPFIND", "PUT"), http.requests.map { it.method })
+        // 三级 PROPFIND（根 / NexioSchedule / backups）+ 一次 PUT，顺序与 URL 都要对
+        assertEquals(listOf("PROPFIND", "PROPFIND", "PROPFIND", "PUT"), http.requests.map { it.method })
         assertEquals(
-            "https://dav.example.com/remote.php/dav/NexioSchedule",
+            "https://dav.example.com/remote.php/dav",
             http.requests[0].url,
         )
         assertEquals(
-            "https://dav.example.com/remote.php/dav/NexioSchedule/backups",
+            "https://dav.example.com/remote.php/dav/NexioSchedule",
             http.requests[1].url,
         )
+        assertEquals(
+            "https://dav.example.com/remote.php/dav/NexioSchedule/backups",
+            http.requests[2].url,
+        )
 
-        val put = http.requests[2]
+        val put = http.requests[3]
         assertTrue(put.url.startsWith("https://dav.example.com/remote.php/dav/NexioSchedule/backups/backup_"))
         assertTrue(put.url.endsWith(".json"))
         assertEquals("application/json", put.contentType)
@@ -193,9 +290,18 @@ class WebDavManagerContractTest {
         val result = manager.backupAllData(CourseRepository.getInstance())
         assertTrue(result is BackupResult.Success, "实际: $result")
 
+        // 逐级：根 → NexioSchedule → backups，每级「探不到就 MKCOL」
         assertEquals(
-            listOf("PROPFIND", "MKCOL", "PROPFIND", "MKCOL", "PUT"),
+            listOf("PROPFIND", "MKCOL", "PROPFIND", "MKCOL", "PROPFIND", "MKCOL", "PUT"),
             http.requests.map { it.method },
+        )
+        assertEquals(
+            listOf(
+                "https://dav.example.com/remote.php/dav",
+                "https://dav.example.com/remote.php/dav/NexioSchedule",
+                "https://dav.example.com/remote.php/dav/NexioSchedule/backups",
+            ),
+            http.requests.filter { it.method == "MKCOL" }.map { it.url },
         )
         assertTrue(http.requests.filter { it.method == "MKCOL" }.all { it.headers["Authorization"] != null })
     }
@@ -227,6 +333,29 @@ class WebDavManagerContractTest {
         assertEquals("1", http.requests.single().headers["Depth"])
         // 展示时间由 backupId 推出
         assertEquals("2026-10-01 12:00:00", backups[0].backupTime)
+    }
+
+    /**
+     * 「只以文件确定」的核心：目录名换个毫不相干的也不会影响识别 ——
+     * 用户可能把备份放在网盘里任何一层，目录叫什么、有几层都不该成为约束。
+     */
+    @Test
+    fun `换任意目录名都能列出备份：只按文件名识别`() = runTest {
+        manager.remotePath = "随便什么名字/深层目录"
+        val body = """
+            <?xml version="1.0"?>
+            <d:multistatus xmlns:d="DAV:">
+              <d:response><d:href>/remote.php/dav/x/随便什么名字/深层目录/</d:href></d:response>
+              <d:response><d:href>/remote.php/dav/x/随便什么名字/深层目录/backup_20261001_120000.json</d:href></d:response>
+              <d:response><d:href>/remote.php/dav/x/随便什么名字/深层目录/notes.txt</d:href></d:response>
+              <d:response><d:href>/remote.php/dav/x/随便什么名字/深层目录/backup_20261001_120000.json.bak</d:href></d:response>
+            </d:multistatus>
+        """.trimIndent()
+        http.on("PROPFIND", code = 207, body = body)
+        val backups = manager.listBackups()
+        assertEquals(listOf("backup_20261001_120000"), backups.map { it.backupId })
+        // PROPFIND 打在自定义目录上，而不是写死的 NexioSchedule/backups
+        assertTrue(http.requests.single().url.endsWith("%E9%9A%8F%E4%BE%BF%E4%BB%80%E4%B9%88%E5%90%8D%E5%AD%97/%E6%B7%B1%E5%B1%82%E7%9B%AE%E5%BD%95"), "实际: ${http.requests.single().url}")
     }
 
     @Test
