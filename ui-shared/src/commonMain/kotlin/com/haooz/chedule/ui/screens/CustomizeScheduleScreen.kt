@@ -413,7 +413,6 @@ fun CustomizeScheduleScreen(
     // 新建搭配后自动进入编辑模式
     LaunchedEffect(pendingEnterCutout) {
         if (pendingEnterCutout && !isCutoutActive) {
-            delay(100.milliseconds)
             isCutoutActive = true
             onCutoutEntered()
         }

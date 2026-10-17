@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -37,6 +38,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
@@ -115,6 +118,16 @@ internal fun SwitchMorphOverlay(
      * 图层跨不过切换页的组合销毁，所以跨次复用的载体只能是位图。
      */
     cardBitmap: ImageBitmap?,
+    /**
+     * **课程表页面（主界面）那一屏的整屏原生截图**（含 UITabBar / 导航栏，iOS 专有）。
+     *
+     * 只用它底部的「原生底栏」那一条：顶栏继续用 Compose 图层画的（原生导航栏样式和
+     * 切换页对不上，截进来反而多一条）。见 [bottomBarInsetPx]。
+     * Android/桌面恒为 null，整段走原来的 `drawLayer(mainLayer)`。
+     */
+    nativeScreenShot: ImageBitmap? = null,
+    /** 原生底栏高度（Compose px）。0 = 该端没有原生底栏，不贴条。 */
+    bottomBarInsetPx: Float = 0f,
     mainLayer: GraphicsLayer,
     screenCornerRadius: ScreenCornerRadiiPx,
     isDark: Boolean,
@@ -233,7 +246,28 @@ internal fun SwitchMorphOverlay(
                         )
                         translate(left = (size.width - layerSize.width * scale) / 2f) {
                             scale(scale, scale, pivot = Offset.Zero) {
+                                // Compose 主内容（顶栏是 Compose 画的，正是要的那一版）
                                 drawLayer(mainLayer)
+                                // 原生底栏不在 Compose 图层里：从整屏截图底部裁一条贴上去。
+                                // 只贴底栏、不换整屏 —— 原生导航栏样式和切换页对不上。
+                                val shot = nativeScreenShot
+                                if (shot != null && shot.width > 0 && shot.height > 0 &&
+                                    bottomBarInsetPx > 0.5f
+                                ) {
+                                    val shotPxPerComposePx = shot.height.toFloat() / screenHeight
+                                    val srcH = (bottomBarInsetPx * shotPxPerComposePx)
+                                        .toInt().coerceIn(1, shot.height)
+                                    val dstH = bottomBarInsetPx.toInt()
+                                        .coerceIn(1, layerSize.height)
+                                    drawImage(
+                                        image = shot,
+                                        srcOffset = IntOffset(0, shot.height - srcH),
+                                        srcSize = IntSize(shot.width, srcH),
+                                        dstOffset = IntOffset(0, layerSize.height - dstH),
+                                        dstSize = IntSize(layerSize.width, dstH),
+                                        filterQuality = FilterQuality.None,
+                                    )
+                                }
                             }
                         }
                     }

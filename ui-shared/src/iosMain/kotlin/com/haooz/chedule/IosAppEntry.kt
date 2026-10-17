@@ -32,10 +32,10 @@ import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toByteArray
-import com.haooz.chedule.ui.activities.CourseScheduleApp
+import com.haooz.chedule.ui.activities.main.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
-import com.haooz.chedule.ui.screens.TodayAssistantCard
+import com.haooz.chedule.ui.activities.today.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeatherIos
 import com.haooz.chedule.ui.utils.IosSharedFileReceiver
 import com.haooz.chedule.ui.utils.IosShareImport

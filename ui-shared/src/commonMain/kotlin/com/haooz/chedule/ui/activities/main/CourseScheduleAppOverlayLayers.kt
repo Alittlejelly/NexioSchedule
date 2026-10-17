@@ -920,6 +920,11 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                         switchMainLayerJob?.join()
                                         if (scheduleChanged) {
                                             scheduleChanged = false
+                                            // 主界面内容变了（换过课表），进入前截的那张整屏图作废：
+                                            // 继续用会显示旧课表。清掉后回落到 Compose 图层（底栏会缺，内容是对的）。
+                                            val staleShot = mainScreenShot
+                                            mainScreenShot = null
+                                            recycleSnapshot(staleShot)
                                             switchReloadJob?.join()
                                             switchReloadJob = null
                                             withFrameNanos { }
@@ -984,6 +989,11 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                         switchCardBitmap = null
                                         switchCardBounds = null
                                         switchAnimRunning = false
+                                        // 退出动画结束：课程表页整屏图（~12MB）用完即弃。
+                                        // 先断引用再回收，免得 Compose 还持有它时被释放。
+                                        val spentShot = mainScreenShot
+                                        mainScreenShot = null
+                                        recycleSnapshot(spentShot)
                                     }
                                 },
                                 onScheduleChanged = {
@@ -1029,7 +1039,9 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                                 it.width > 0f && it.height > 0f
                                             }
                                             switchCardSnapshot = null
-                                            // 复用上次退出固化的卡片位图 —— 进入零录制
+                                            // 复用上次退出固化的卡片位图 —— 进入零录制。
+                                            // 卡片区域就是课表卡片本身（不含底栏），所以这张图不用管原生 chrome；
+                                            // 需要底栏的是下面第三层铺满全屏的「主内容图」。
                                             switchCardBitmap = retainedSwitchCardBitmap
                                             val remainingDuration = 320
                                             val morphExitEase =
@@ -1060,6 +1072,9 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                             switchCardBitmap = null
                                             switchCardBounds = null
                                             switchAnimRunning = false
+                                            // ⚠ mainScreenShot 这里**不能释放**：退出方向
+                                            // （切换页 → 主界面）的「主内容层」也要用它，
+                                            // 否则返回时的快照又没有顶栏/底栏。退出动画结束时才回收。
                                         }
                                     }
                                 },
@@ -1088,6 +1103,12 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                         cardBounds = switchCardBounds,
                         cardSnapshot = switchCardSnapshot,
                         cardBitmap = switchCardBitmap,
+                        // 课程表页整屏原生图（含顶栏/底栏）。**进出两个方向都用** ——
+                        // 退出时铺满全屏的主内容层同样需要原生 chrome，Compose 图层录不到。
+                        nativeScreenShot = mainScreenShot,
+                        bottomBarInsetPx = with(density) {
+                            (hostNavigation?.bottomBarInset ?: 0.0).dp.toPx()
+                        },
                         mainLayer = screenGraphicsLayer,
                         screenCornerRadius = screenCornerRadius,
                         isDark = isDark,

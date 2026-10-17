@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.activities.main
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.MutatePriority
@@ -48,6 +49,8 @@ import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.ui.activities.today.TodayAssistantCardData
 import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.ui.components.TabletNavSideState
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_FADE_MILLIS
+import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_SCALE_MILLIS
 import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
@@ -381,10 +384,29 @@ fun CourseScheduleApp(
                     wallpaperScreenRef = latestScreenWPx to latestScreenHPx
                 }
                 cutoutMainScale.snapTo(0.65f)
-                cutoutMainScale.animateTo(
-                    0.75f,
-                    tween(400, easing = CustomizePageEasing)
-                )
+                // 开洞过渡：主内容（含顶/底栏按钮）与封面快照必须**同帧**启动
+                launch {
+                    cutoutMainScale.animateTo(
+                        0.75f,
+                        tween(400, easing = CustomizePageEasing)
+                    )
+                }
+                if (customizeSnapshot != null) {
+                    launch {
+                        customizeCoverScale.animateTo(
+                            0.75f,
+                            tween(CUSTOMIZE_COVER_SCALE_MILLIS, easing = CustomizePageEasing)
+                        )
+                    }
+                    launch {
+                        delay(CUSTOMIZE_COVER_SCALE_MILLIS.toLong().milliseconds)
+                        customizeCoverAlpha.animateTo(
+                            0f,
+                            tween(CUSTOMIZE_COVER_FADE_MILLIS, easing = FastOutSlowInEasing)
+                        )
+                        customizeCoverActive = false
+                    }
+                }
             } else {
                 cutoutMainScale.animateTo(
                     1f,

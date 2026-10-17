@@ -42,6 +42,7 @@ import com.haooz.chedule.data.AppearanceStore
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.UpdateController
@@ -515,6 +516,15 @@ class CourseScheduleAppState {
     // 所以只能在退出那一帧把卡片区域**固化成位图**（位图不依赖任何组合），
     // 下次进入直接画它。进入方向因此零录制。
     var retainedSwitchCardBitmap by mutableStateOf<ImageBitmap?>(null)
+    /**
+     * **课程表页面（主界面）这一屏的整屏原生快照**，含 UITabBar / 导航栏（iOS 专有）。
+     *
+     * 切换课表的进入 morph 需要「主界面整屏图」当主内容层，而 Compose 的 `screenGraphicsLayer`
+     * 录不到原生 chrome（底栏会缺一条）。所以在点「切换课表」、切换页还没上屏之前截这一张，
+     * 由 `SwitchMorphOverlay` 直接当主内容画。Android/桌面该函数恒为 null，走原来的图层。
+     * 用完（动画结束）立刻释放 —— 整屏图 ~12MB。
+     */
+    var mainScreenShot by mutableStateOf<ImageBitmap?>(null)
 
     // 转位图用的临时小图层：只承载卡片那一块，避免整屏 toImageBitmap（12MB + 整屏回读）。
     // 本次形变要画的卡片位图（只有进入方向用；退出方向仍用实时卡片图层）。
@@ -1243,21 +1253,8 @@ class CourseScheduleAppState {
             customizeCoverAlpha.snapTo(1f)
             // 丢弃未落盘的主题预览
             pendingScheduleThemeMode = null
-            delay(CUSTOMIZE_COVER_HOLD_MILLIS.toLong().milliseconds)
-            launch {
-                customizeCoverScale.animateTo(
-                    0.75f,
-                    tween(CUSTOMIZE_COVER_SCALE_MILLIS, easing = CustomizePageEasing)
-                )
-            }
-            launch {
-                delay(CUSTOMIZE_COVER_SCALE_MILLIS.toLong().milliseconds)
-                customizeCoverAlpha.animateTo(
-                    0f,
-                    tween(CUSTOMIZE_COVER_FADE_MILLIS, easing = FastOutSlowInEasing)
-                )
-                customizeCoverActive = false
-            }
+            // 快照的缩小/淡出动画**不在这里启动**：与主内容 cutoutMainScale 一起由
+            // `LaunchedEffect(isWindowCutoutActive)` 驱动，保证两者同帧起跑
             originalCombinationIndex = 0
             originalWallpaperBitmap = wallpaperBitmap
             originalWallpaperOffset = wallpaperOffset
@@ -1339,7 +1336,9 @@ class CourseScheduleAppState {
     var todayJumpToDateTrigger by mutableIntStateOf(0)
     val isViewingCurrentWeek get() = currentViewingWeek == currentWeek
     fun openScheduleLibrary() {
-        if (isShiftMode || (showSwitchSchedule && !switchExiting)) return
+        // switchPreparingLayer：截图+上屏在协程里，期间 showSwitchSchedule 还是 false，
+        // 只靠它防连点（否则会连开两个协程、截两张图）
+        if (isShiftMode || switchPreparingLayer || (showSwitchSchedule && !switchExiting)) return
         switchExiting = false
         switchAnimForward = true
         if (showSwitchSchedule) {
@@ -1362,9 +1361,17 @@ class CourseScheduleAppState {
         } else {
             switchPendingReverse = true
             switchPreparingLayer = true
-            showSwitchSchedule = true
             switchMainLayerJob = coroutineScope.launch {
                 prepareMainContentLayer()
+                // 截的是**课程表页面**这一屏（此刻切换页还没上屏，画面就是主界面）。
+                // 与课表外观页 `captureMainContentBitmap(includeNativeChrome = true)` 同一个函数：
+                // 从 window 渲染整屏，原生 UITabBar / 导航栏都在里面。
+                // Android/桌面恒为 null → morph 仍用 Compose 图层（零回归）。
+                val staleShot = mainScreenShot
+                mainScreenShot = runCatching { captureScreenWithNativeChrome() }.getOrNull()
+                recycleSnapshot(staleShot)
+                // 截图完成后再上屏，保证 overlay 第一帧就有主内容图
+                showSwitchSchedule = true
             }
         }
     }

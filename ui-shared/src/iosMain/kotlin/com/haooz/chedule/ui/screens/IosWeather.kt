@@ -22,6 +22,7 @@ import com.haooz.chedule.data.optJsonArray
 import com.haooz.chedule.data.optJsonObject
 import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.ui.activities.today.WeatherData
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext

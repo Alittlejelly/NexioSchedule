@@ -24,7 +24,7 @@ import com.haooz.chedule.ui.activities.CourseReminderScreen
 import com.haooz.chedule.ui.activities.LocalBackupScreen
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
-import com.haooz.chedule.ui.activities.SettingsPaneArgs
+import com.haooz.chedule.ui.activities.main.SettingsPaneArgs
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.utils.IosShareImport
