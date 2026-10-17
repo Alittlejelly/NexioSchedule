@@ -466,6 +466,10 @@ class IosAppHost {
         }
     }
 
+    fun updateTabTransitionDirection(vertical: Boolean) {
+        navigation.usesVerticalTabTransitions = vertical
+    }
+
     fun updateHorizontalSafeArea(left: Double, right: Double) {
         if (!left.isFinite() || !right.isFinite()) return
         navigation.leftSafeAreaInset = left.coerceAtLeast(0.0)

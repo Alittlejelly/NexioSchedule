@@ -275,6 +275,10 @@ private final class AppHostController: UIViewController {
         chromeController.onLayout = { [weak self] in
             self?.reportBottomInset()
         }
+        chromeController.onTransitionDirectionChange = { [weak self] vertical in
+            self?.host.updateTabTransitionDirection(vertical: vertical)
+        }
+        chromeController.updateTransitionDirection()
         // Compose 绘制阶段直推的位移：同步落到 UIKit，与内容同帧（详见 applyPushedChromeOffset）
         host.onCutoutChromeOffset = { [weak self] offsetY in
             self?.applyPushedChromeOffset(offsetY)
@@ -692,6 +696,7 @@ private final class TabBarPassthroughView: UIView {
 private final class NativeChromeController: UITabBarController, UITabBarControllerDelegate {
     var onUserSelection: ((Int) -> Void)?
     var onLayout: (() -> Void)?
+    var onTransitionDirectionChange: ((Bool) -> Void)?
     private var configuredShiftMode: Bool?
     private var configuredTabCount = 0
 
@@ -700,6 +705,27 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
         view.backgroundColor = .clear
         view.isOpaque = false
         delegate = self
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) {
+                (controller: NativeChromeController, _: UITraitCollection) in
+                controller.updateTransitionDirection()
+            }
+        }
+    }
+
+    func updateTransitionDirection() {
+        guard #available(iOS 27.1, *) else {
+            onTransitionDirectionChange?(false)
+            return
+        }
+        switch traitCollection.verticalBarEdge {
+        case .leading, .trailing:
+            onTransitionDirectionChange?(true)
+        case .unspecified:
+            onTransitionDirectionChange?(false)
+        @unknown default:
+            onTransitionDirectionChange?(false)
+        }
     }
 
     func configure(tabCount: Int, shiftMode: Bool, selectedIndex: Int) {
@@ -734,6 +760,7 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateTransitionDirection()
         onLayout?()
     }
 

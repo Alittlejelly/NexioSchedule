@@ -25,6 +25,7 @@ class HostNavigationState {
     var tabCount by mutableIntStateOf(3)
     var shiftMode by mutableStateOf(false)
     var showsNativeTabBar by mutableStateOf(true)
+    var usesVerticalTabTransitions by mutableStateOf(false)
     var isDark by mutableStateOf(false)
     var bottomBarInset by mutableStateOf(0.0)
     var leftSafeAreaInset by mutableStateOf(0.0)

@@ -1048,6 +1048,8 @@ fun CourseScheduleApp(
     val isTablet = isTabletWidth()
     val navBarStyle = if (isTablet) "rail" else "standard"
     val nativeBottomBar = hostNavigation != null && !isTablet
+    val useVerticalMainPager = isTablet ||
+        (nativeBottomBar && hostNavigation?.usesVerticalTabTransitions == true)
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val density = LocalDensity.current
     val detailLayerLayoutDirection = LocalLayoutDirection.current
@@ -2771,7 +2773,7 @@ fun CourseScheduleApp(
                                                     val page = mainPagerState.currentPage
                                                     val off = mainPagerState.currentPageOffsetFraction
                                                     val delta = scheduleTitleIndex - page - off
-                                                    if (navBarStyle == "rail") {
+                                                    if (useVerticalMainPager) {
                                                         translationX = 0f
                                                         translationY = delta * screenHPx
                                                     } else {
@@ -2834,7 +2836,7 @@ fun CourseScheduleApp(
                                                     val page = mainPagerState.currentPage
                                                     val off = mainPagerState.currentPageOffsetFraction
                                                     val delta = settingsTitleIndex - page - off
-                                                    if (navBarStyle == "rail") {
+                                                    if (useVerticalMainPager) {
                                                         translationX = 0f
                                                         translationY = delta * screenHPx
                                                     } else {
@@ -2875,7 +2877,7 @@ fun CourseScheduleApp(
                                                 val page = mainPagerState.currentPage
                                                 val off = mainPagerState.currentPageOffsetFraction
                                                 val delta = 0 - page - off
-                                                if (navBarStyle == "rail") {
+                                                if (useVerticalMainPager) {
                                                     translationX = 0f
                                                     translationY = delta * screenHPx
                                                 } else {
@@ -2921,7 +2923,7 @@ fun CourseScheduleApp(
                             val page = mainPagerState.currentPage
                             val off = mainPagerState.currentPageOffsetFraction
                             val delta = (if (isShiftMode) 0 else 1) - page - off
-                            if (navBarStyle == "rail") Offset(0f, delta * screenHPx)
+                            if (useVerticalMainPager) Offset(0f, delta * screenHPx)
                             else Offset(delta * screenWPx, 0f)
                         }
                         val todayMoreMenuOffset: () -> Offset = {
@@ -2929,7 +2931,7 @@ fun CourseScheduleApp(
                             val off = mainPagerState.currentPageOffsetFraction
                             // 排班模式下没有今日页，恒移出屏幕
                             val delta = if (isShiftMode) -1f else (-page - off)
-                            if (navBarStyle == "rail") Offset(0f, delta * screenHPx)
+                            if (useVerticalMainPager) Offset(0f, delta * screenHPx)
                             else Offset(delta * screenWPx, 0f)
                         }
                         // 不包 HostedOverlay：iOS 上浮层独立合成根拿不到主内容开洞缩放，
@@ -3108,7 +3110,7 @@ fun CourseScheduleApp(
                                     )
                             ) {
                             // 主 tab 仅由底栏/侧栏点击切换；关闭用户手势翻页。
-                            // 平板（rail）竖向移动，手机横向移动。
+                            // Follow the navigation axis reported by the native host or tablet rail.
                             val mainPagerModifier = Modifier
                                 .fillMaxSize()
                                 .nestedScroll(mainContentNestedScroll)
@@ -3697,7 +3699,7 @@ fun CourseScheduleApp(
                                 }
                             }
                             }
-                            if (navBarStyle == "rail") {
+                            if (useVerticalMainPager) {
                                 // beyond 撑到覆盖全部页，让 0~2（今日/课程表/我的）常驻组合树、切页零成本。
                                 // 「3/4 仅当前页才组合」由 mainPagerPageContent 内容侧兜底。
                                 VerticalPager(
