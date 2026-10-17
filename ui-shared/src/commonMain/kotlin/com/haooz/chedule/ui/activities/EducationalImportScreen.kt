@@ -66,7 +66,6 @@ import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
-import com.haooz.chedule.ui.utils.NativeDocumentLeadingActionEffect
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.web.EduImportSelection
 import com.haooz.chedule.ui.utils.screenWidthDp
@@ -101,6 +100,7 @@ import top.yukonga.miuix.kmp.icon.extended.Update
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -170,11 +170,6 @@ fun EducationalImportScreen(
         nativeChrome?.title = "选择学校"
         nativeChrome?.tintArgb = chromeTint
     }
-    NativeDocumentLeadingActionEffect(
-        if (nativeChrome != null) {
-            NativeDocumentAction(symbol = "chevron.backward", label = "返回", onClick = onFinish)
-        } else null
-    )
     NativeDocumentActionEffect(
         NativeDocumentAction(
             symbol = "arrow.clockwise",
@@ -299,7 +294,10 @@ fun EducationalImportScreen(
             val searchIsLightTheme = !isAppDarkTheme()
             Column(
                 modifier = Modifier
-                    .padding(top = paddingValues.calculateTopPadding() + topBarHeightDp)
+                    // The preceding header reports its height during measurement. Read it
+                    // during layout so the search field starts below it on the first frame.
+                    .padding(top = paddingValues.calculateTopPadding() + CollapsedHeight)
+                    .collapsibleTopInset(scrollBehavior)
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             ) {

@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.activities.EduImportUpdater
+import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentChrome
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.AppRouter
@@ -116,6 +118,10 @@ class IosAppHost {
         var stateKey = route.id
         var occurrence = 2
         while (stateKey in usedKeys) stateKey = "${route.id}#${occurrence++}"
+        if (route == AppRoute.EducationalImport) {
+            // Resolve the initial busy state before UIKit starts the push transition.
+            EduImportUpdater.startUpdateIfNeeded()
+        }
         nativePages.add(NativeDocumentPage(
             id = "native-document-${++nextNativePageId}",
             route = route,
@@ -602,7 +608,29 @@ internal class NativeDocumentPage(
     val stateKey: String,
     restoredValues: Map<String, List<Any?>>?,
 ) {
-    val chrome = NativeDocumentChrome()
+    val chrome = NativeDocumentChrome().apply {
+        if (route == AppRoute.EducationalImport) {
+            // Install the trailing item before push; Compose keeps it up to date afterward.
+            title = "选择学校"
+            val updating = EduImportUpdater.isUpdating.value
+            action = NativeDocumentAction(
+                symbol = "arrow.clockwise",
+                label = "更新",
+                enabled = !updating,
+                busy = updating,
+                onClick = { EduImportUpdater.forceUpdate() },
+            )
+        } else if (route == AppRoute.HolidaySettings) {
+            // Include the item in UIKit's push transition before Compose publishes its handler.
+            title = "节假日与调休"
+            action = NativeDocumentAction(
+                symbol = "arrow.clockwise",
+                label = "更新",
+                enabled = false,
+                onClick = {},
+            )
+        }
+    }
     // Values remain in memory, just like AppNavHost's SaveableStateHolder on iOS.
     val registry = SaveableStateRegistry(restoredValues = restoredValues, canBeSaved = { true })
     var controller: UIViewController? = null
