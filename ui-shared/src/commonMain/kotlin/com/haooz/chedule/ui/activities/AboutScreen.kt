@@ -16,8 +16,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,11 +53,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -150,6 +151,7 @@ fun AboutScreen(
     val scrollBehavior = rememberSharedScrollBehavior()
     val uriHandler = LocalUriHandler.current
     val isInDark = isAppDarkTheme()
+    val layoutDirection = LocalLayoutDirection.current
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
 
@@ -293,10 +295,8 @@ fun AboutScreen(
                         .fillMaxWidth()
                         .padding(
                             top = innerPadding.calculateTopPadding() + 72.dp,
-                            start = WindowInsets.displayCutout.asPaddingValues()
-                                .calculateLeftPadding(LayoutDirection.Ltr),
-                            end = WindowInsets.displayCutout.asPaddingValues()
-                                .calculateRightPadding(LayoutDirection.Ltr),
+                            start = innerPadding.calculateStartPadding(layoutDirection),
+                            end = innerPadding.calculateEndPadding(layoutDirection),
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -392,10 +392,8 @@ fun AboutScreen(
                                 if (WindowInsets.statusBars.asPaddingValues()
                                         .calculateTopPadding() - nativeBarInset > 0.dp
                                 ) (-8).dp else (-20).dp,
-                        start = WindowInsets.displayCutout.asPaddingValues()
-                            .calculateLeftPadding(LayoutDirection.Ltr) + tabletHorizontalPadding,
-                        end = WindowInsets.displayCutout.asPaddingValues()
-                            .calculateRightPadding(LayoutDirection.Ltr) + tabletHorizontalPadding,
+                        start = innerPadding.calculateStartPadding(layoutDirection) + tabletHorizontalPadding,
+                        end = innerPadding.calculateEndPadding(layoutDirection) + tabletHorizontalPadding,
                     ),
                 ) {
                     item(key = "logoSpacer") {
