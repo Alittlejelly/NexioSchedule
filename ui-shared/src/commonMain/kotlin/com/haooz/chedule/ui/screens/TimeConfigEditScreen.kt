@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostStatusBarHeight
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
@@ -832,6 +833,7 @@ fun TimeConfigEditScreen(
                             backdrop = liquidGlassBackdrop!!,
                             // Native controls stay above the morph; preserve the existing inset contract.
                             topInsetAdjustment = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp,
+                            statusBarHeightOverride = hostStatusBarHeight(),
                         ) {
                             CollapsibleTopAppBar(
                                 title = screenTitle,

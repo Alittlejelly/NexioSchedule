@@ -248,14 +248,17 @@ internal fun CourseScheduleAppMainContent(
         ) {
             val hostNav = LocalHostNavigation.current
             val nativeBarInset = (hostNav?.topBarInset ?: 0.0).dp
+            // 右侧避让量：右下角竖排的原生 tab bar 占的空间（折叠屏 iPhone 折叠态）。
+            val titleEndPadding = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp
             val scaffoldContent = @Composable {
                 Scaffold(
                     modifier = Modifier
+                        // ⚠ 只取 Left、不取 Horizontal：`safeDrawing` 的 right 
                         .windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal).union(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Left).union(
                                 WindowInsets(
                                     left = (hostNav?.leftSafeAreaInset ?: 0.0).toFloat().dp,
-                                    right = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp,
+                                    right = 0.dp,
                                 )
                             )
                         )
@@ -373,6 +376,7 @@ internal fun CourseScheduleAppMainContent(
                                             scrollBehavior = scheduleScrollBehavior,
                                             blurResampleKey = railBlurResampleEpoch.intValue,
                                             blurSampleTrack = tabletNavExpandSampleTrack,
+                                            titleEndPadding = titleEndPadding,
                                             onMoreSlotTop = {
                                                 if (canSampleMoreSlot) moreSlotTopPx.value = it
                                             },
@@ -423,6 +427,7 @@ internal fun CourseScheduleAppMainContent(
                                         scrollBehavior = settingsScrollBehavior,
                                         blurResampleKey = railBlurResampleEpoch.intValue,
                                         blurSampleTrack = tabletNavExpandSampleTrack,
+                                        titleEndPadding = titleEndPadding,
                                     )
                                 }
                             }
@@ -476,6 +481,7 @@ internal fun CourseScheduleAppMainContent(
                                         visible = showTodayTitle,
                                         blurResampleKey = railBlurResampleEpoch.intValue,
                                         blurSampleTrack = tabletNavExpandSampleTrack,
+                                        titleEndPadding = titleEndPadding,
                                         onMoreSlotTop = {
                                             if (canSampleMoreSlot) moreSlotTopPx.value = it
                                         },
@@ -687,6 +693,7 @@ internal fun CourseScheduleAppMainContent(
                             // Follow the navigation axis reported by the native host or tablet rail.
                             val mainPagerModifier = Modifier
                                 .fillMaxSize()
+                                .padding(end = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp)
                                 .nestedScroll(mainContentNestedScroll)
                             val mainPagerPageKey: (Int) -> String = { page ->
                                 if (isShiftMode) "shift-$page" else "main-$page"

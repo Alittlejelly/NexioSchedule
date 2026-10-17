@@ -18,6 +18,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostStatusBarHeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -83,6 +84,7 @@ fun DocumentPageScaffold(
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
                     topInsetAdjustment = nativeBarInset,
+                    statusBarHeightOverride = hostStatusBarHeight(),
                 ) {
                     CollapsibleTopAppBar(
                         title = title,

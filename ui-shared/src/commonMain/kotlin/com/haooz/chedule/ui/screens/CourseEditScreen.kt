@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.consumeWindowInsets
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostStatusBarHeight
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
@@ -603,6 +604,7 @@ fun CourseEditScreen(
                         ProgressiveBlurTopBar(
                             backdrop = liquidGlassBackdrop!!,
                             topInsetAdjustment = nativeBarInset,
+                            statusBarHeightOverride = hostStatusBarHeight(),
                         ) {
                             CollapsibleTopAppBar(
                                 title = courseName,

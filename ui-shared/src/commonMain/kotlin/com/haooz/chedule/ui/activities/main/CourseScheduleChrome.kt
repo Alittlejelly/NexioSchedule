@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu
@@ -38,6 +39,7 @@ import com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.theme.rememberAppThemeController
+import com.haooz.chedule.ui.utils.hostStatusBarHeight
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
@@ -287,6 +289,9 @@ internal fun SettingsTopBar(
     scrollBehavior: SharedScrollBehavior? = null,
     blurResampleKey: Int = 0,
     blurSampleTrack: () -> Float = { 0f },
+    // 标题文字的右侧额外内边距：避开右下角竖排的原生 tab bar（折叠屏 iPhone 折叠态）。
+    // 渐变糊带铺满、右上角是原生按钮，都不加这个 padding。
+    titleEndPadding: Dp = 0.dp,
 ) {
     if (liquidGlassBackdrop == null) return
     val isTablet = navBarStyle == "rail"
@@ -301,6 +306,7 @@ internal fun SettingsTopBar(
             backdrop = liquidGlassBackdrop,
             blurAlpha = if (isTablet) 0f else 1f,
             topInsetAdjustment = settingsNativeBarInset,
+            statusBarHeightOverride = hostStatusBarHeight(),
             resampleKey = blurResampleKey,
             sampleTrack = blurSampleTrack,
         ) {
@@ -314,6 +320,11 @@ internal fun SettingsTopBar(
                 gradientColorOverride = MiuixTheme.colorScheme.surface,
                 modifier = Modifier.zIndex(1f),
                 scrollBehavior = if (isTablet) null else scrollBehavior,
+                titleModifier = if (titleEndPadding > 0.dp) {
+                    Modifier.padding(end = titleEndPadding)
+                } else {
+                    Modifier
+                },
                 startAction = null,
             )
         }
@@ -336,6 +347,9 @@ internal fun TodayTopBar(
     onMoreSlotTop: (Float) -> Unit = {},
     onMoreMaterial: (Float) -> Unit = {},
     onMoreExpand: () -> Unit = {},
+    // 标题文字的右侧额外内边距：避开右下角竖排的原生 tab bar（折叠屏 iPhone 折叠态）。
+    // 渐变糊带铺满，且 iOS 侧 Compose 根本不渲染顶栏按钮（原生 chrome 接管），都不加。
+    titleEndPadding: Dp = 0.dp,
 ) {
     if (liquidGlassBackdrop == null) return
     val isTabletLiquidGlass = navBarStyle == "rail"
@@ -356,6 +370,7 @@ internal fun TodayTopBar(
     ProgressiveBlurTopBar(
         backdrop = liquidGlassBackdrop,
         topInsetAdjustment = todayNativeBarInset,
+        statusBarHeightOverride = hostStatusBarHeight(),
         modifier = Modifier.graphicsLayer { alpha = if (visible) 1f else 0f },
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,
@@ -368,7 +383,9 @@ internal fun TodayTopBar(
             showGradientOverlay = false,
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
             titleStartAligned = isTabletLiquidGlass,
-            titleModifier = titleRailPadding,
+            titleModifier = titleRailPadding.then(
+                if (titleEndPadding > 0.dp) Modifier.padding(end = titleEndPadding) else Modifier
+            ),
             // 平板左上角不放返回按钮
             startAction = null,
             onAlphaChanged = { backdrop, _ -> onMoreMaterial(backdrop) },

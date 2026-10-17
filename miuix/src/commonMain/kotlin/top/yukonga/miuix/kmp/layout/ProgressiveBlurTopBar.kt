@@ -50,6 +50,14 @@ private val progressiveBlurShaderSeq = AtomicInt(0)
 private val NoSampleTrack: () -> Float = { 0f }
 
 /**
+ * 顶部没有状态栏时（折叠屏 iPhone 折叠态，状态栏跑到右侧）糊带额外收窄的量。
+ *
+ * 那一档的 80.dp 是按「有状态栏」的观感定的，顶部空出来后糊带显得偏高，统一再收 8dp。
+ * 课表顶栏自己算高度（传 `height`），必须共用这一个值。
+ */
+val NoStatusBarBlurReduction: Dp = 8.dp
+
+/**
  * 读取任意状态并仅失效 draw，不进组合。
  * 侧栏伸缩时顶栏糊层需要跟手重采样，但顶栏自身尺寸不变。
  */
@@ -139,15 +147,33 @@ fun ProgressiveBlurTopBar(
     sampleTrack: () -> Float = NoSampleTrack,
     /** An overlaid native toolbar inset already consumed by the surrounding scaffold. */
     topInsetAdjustment: Dp = 0.dp,
+    /**
+     * **真实状态栏高度**覆盖值（Dp.Unspecified = 用 `WindowInsets.statusBars` 自己算）。
+     *
+     * ⚠ iOS 上 `WindowInsets.statusBars` 读到的是 `view.safeAreaInsets.top`（状态栏 + 导航栏），
+     * 减掉 `topInsetAdjustment` 得 0 只说明「被导航栏吃完了」，判断不出「顶部到底有没有状态栏」。
+     * 折叠屏 iPhone 折叠态状态栏跑到右侧、顶部为 0，此时糊带若还按 120.dp 撑就比常规高 40dp。
+     * 由宿主（iOS）显式喂真实状态栏高度，本组件才能分清楚。
+     */
+    statusBarHeightOverride: Dp = Dp.Unspecified,
     content: @Composable BoxScope.() -> Unit
 ) {
     val density = LocalDensity.current
     val totalHeight = if (height != Dp.Unspecified) {
         height
     } else {
-        val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
-            topInsetAdjustment).coerceAtLeast(0.dp)
-        if (statusBarHeight > 0.dp) 80.dp + statusBarHeight else 120.dp
+        val rawTop = if (statusBarHeightOverride != Dp.Unspecified) {
+            statusBarHeightOverride
+        } else {
+            WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        }
+        val statusBarHeight = (rawTop - topInsetAdjustment).coerceAtLeast(0.dp)
+        when {
+            // 顶部压根没有状态栏（折叠屏折叠态）：别按「被导航栏吃完」那套撑到 120.dp
+            rawTop <= 0.dp -> 80.dp - NoStatusBarBlurReduction
+            statusBarHeight > 0.dp -> 80.dp + statusBarHeight
+            else -> 120.dp
+        }
     }
 
     val blurShapeBlock: () -> androidx.compose.ui.graphics.Shape = remember { { RectangleShape } }

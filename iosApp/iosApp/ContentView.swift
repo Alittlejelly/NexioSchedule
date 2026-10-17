@@ -610,6 +610,11 @@ private final class AppHostController: UIViewController {
         let showHeader = host.showsNativeHeader || host.scheduleLibraryActive ||
             host.keepsNativeHeaderDuringCutout
         let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
+        // 真实状态栏高度（window 的安全区顶部）。折叠屏 iPhone 折叠态状态栏跑到右侧，
+        // 顶部为 0 —— Compose 的 `WindowInsets.statusBars` 在 iOS 上读到的是
+        // `view.safeAreaInsets.top`（含导航栏），判断不出「顶部到底有没有状态栏」，
+        // 所以顶栏糊带高度必须由这里显式喂进去。
+        host.updateStatusBarHeight(points: Double(window.safeAreaInsets.top))
         guard abs(lastTopInset - inset) > 0.5 else { return }
         lastTopInset = inset
         host.updateTopBarInset(points: Double(inset))

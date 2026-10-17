@@ -491,6 +491,13 @@ class IosAppHost {
         }
     }
 
+    fun updateStatusBarHeight(points: Double) {
+        val height = if (points.isFinite()) points.coerceAtLeast(0.0) else -1.0
+        if (kotlin.math.abs(navigation.statusBarHeight - height) > 0.5) {
+            navigation.statusBarHeight = height
+        }
+    }
+
     fun updateTopBarInset(points: Double) {
         val inset = points.coerceAtLeast(0.0)
         // The retained content controller inherits the navigation bar's safe-area overlap.
