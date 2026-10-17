@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.BlendMode as ComposeBlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -131,6 +133,7 @@ fun AboutScreen(
     onExitApp: () -> Unit = {},
     /** 诊断录制控制器（Android = CrashLogHelper 包装）；桌面/iOS 用 NoopDiagnosticRecorder */
     diagnosticRecorder: DiagnosticRecorder = NoopDiagnosticRecorder,
+    appIconShape: Shape = RectangleShape,
 ) {
     // Embedded panes keep their own chrome even when an ancestor has a native page.
     val nativeChrome = LocalNativeDocumentChrome.current.takeUnless { embedded }
@@ -315,7 +318,7 @@ fun AboutScreen(
                             Image(
                                 bitmap = appIcon,
                                 contentDescription = null,
-                                modifier = Modifier.size(88.dp),
+                                modifier = Modifier.size(88.dp).clip(appIconShape),
                             )
                         } else {
                             Text(

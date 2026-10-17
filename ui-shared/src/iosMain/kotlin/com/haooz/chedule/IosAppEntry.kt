@@ -8,6 +8,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.kyant.capsule.ContinuousRoundedRectangle
+import com.kyant.capsule.continuities.G2Continuity
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
@@ -65,6 +68,9 @@ import com.haooz.chedule.ui.navigation.UpdateSettingsRoute
 import com.haooz.chedule.ui.navigation.WebImportRoute
 import com.haooz.chedule.ui.navigation.WebDavSettingsRoute
 import com.haooz.chedule.ui.navigation.WidgetIntroRoute
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.about_app_icon
+import org.jetbrains.compose.resources.imageResource
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.dataWithContentsOfFile
@@ -290,6 +296,8 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.About -> AboutRoute(
             router = router,
             appVersion = AppInfo.version,
+            appIcon = imageResource(Res.drawable.about_app_icon),
+            appIconShape = ContinuousRoundedRectangle(20.dp, continuity = G2Continuity()),
             // 「撤回同意」确认后退出应用：iOS 无 finishAffinity 等价物，
             // 与隐私同意弹窗的拒绝路径一致用 exit(0)。不传的话默认空实现，
             // 撤回只清状态不退出，本该退出的语义就丢了。
