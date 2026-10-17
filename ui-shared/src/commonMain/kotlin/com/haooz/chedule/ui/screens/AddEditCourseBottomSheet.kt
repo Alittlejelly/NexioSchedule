@@ -59,7 +59,6 @@ import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.NativeTextField
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Ok
@@ -82,7 +81,6 @@ import com.haooz.chedule.data.randomUuidV4
 fun AddEditCourseBottomSheet(
     show: Boolean,
     courses: List<Course>,
-    backdrop: LayerBackdrop?,
     liquidGlassBackdrop: Backdrop? = null,
     onDismissRequest: () -> Unit,
     onConfirm: (Course) -> Unit,

@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.components
+package com.haooz.chedule.ui.activities.classschedule
 
 import com.haooz.chedule.data.nowLocalTime
 
@@ -33,12 +33,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -48,10 +47,15 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.data.CardContentAlignment
+import com.haooz.chedule.data.CardRefractionLevel
+import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseTimeSpan
 import kotlinx.coroutines.delay
 import com.haooz.chedule.data.HolidayCourseExclusion
+import com.haooz.chedule.data.SpecialBlock
+import com.haooz.chedule.data.SpecialItem
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberCourseCardEdgeLight
 import com.kyant.backdrop.Backdrop
@@ -67,6 +71,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.ui.theme.scheduleAccentColor
+import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.LocalBackdropViewport
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 // 包在 remember 里，避免每次重组重跑 groupBy/分段
@@ -90,7 +96,7 @@ fun DayColumn(
     afternoonSections: Int = 4,
     eveningSections: Int = 3,
     sectionTimes: Map<Int, String> = Course.defaultSectionTimes,
-    specialBlocks: List<com.haooz.chedule.data.SpecialBlock> = emptyList(),
+    specialBlocks: List<SpecialBlock> = emptyList(),
     // 页面层算好共享，避免 7 列各自重算
     grid: SpecialGridLayout,
     currentWeek: Int = 1,
@@ -110,12 +116,12 @@ fun DayColumn(
     cardCornerRadius: Float = 10f,
     showBreakDividers: Boolean = true,
     isTablet: Boolean = false,
-    cardContentAlignment: com.haooz.chedule.data.CardContentAlignment = com.haooz.chedule.data.CardContentAlignment.CENTER_CENTER,
-    cardTextColor: com.haooz.chedule.data.CardTextColor = com.haooz.chedule.data.CardTextColor.COLORFUL,
+    cardContentAlignment: CardContentAlignment = CardContentAlignment.CENTER_CENTER,
+    cardTextColor: CardTextColor = CardTextColor.COLORFUL,
     cardTextScale: Float = 1f,
     showClassroom: Boolean = true,
     showTeacher: Boolean = true,
-    cardRefraction: com.haooz.chedule.data.CardRefractionLevel = com.haooz.chedule.data.CardRefractionLevel.DEFAULT,
+    cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
     draggingCourseIds: Set<String> = emptySet(),
     onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
     onCourseDragStart: (courseId: String) -> Unit = { _ -> },
@@ -125,7 +131,7 @@ fun DayColumn(
     // 当前列需高亮的节次范围（含起止）
     dropHighlightSections: IntRange? = null,
     // 非 state：滑动中跳过逐帧坐标计算
-    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState? = null,
+    touchState: ScheduleTouchState? = null,
     // 页面层统一读取，避免每列挂 prefs 监听
     isDark: Boolean = false,
     modifier: Modifier = Modifier
@@ -350,17 +356,17 @@ private fun CourseCardsLayer(
     cardAlpha: Float,
     cardSurfaceAlpha: Float = 0.15f,
     isTablet: Boolean,
-    cardContentAlignment: com.haooz.chedule.data.CardContentAlignment,
-    cardTextColor: com.haooz.chedule.data.CardTextColor,
+    cardContentAlignment: CardContentAlignment,
+    cardTextColor: CardTextColor,
     cardTextScale: Float,
     showClassroom: Boolean,
     showTeacher: Boolean,
-    cardRefraction: com.haooz.chedule.data.CardRefractionLevel,
+    cardRefraction: CardRefractionLevel,
     wallpaperBackdrop: Backdrop?,
     solidBackingColor: Color? = null,
     cardBlurRadius: Float,
     draggingCourseIds: Set<String>,
-    touchState: com.haooz.chedule.ui.screens.ScheduleTouchState? = null,
+    touchState: ScheduleTouchState? = null,
     isDark: Boolean,
     viewportTopDp: Float = 0f,
     viewportBottomDp: Float = Float.MAX_VALUE,
@@ -583,7 +589,7 @@ private fun PendingSectionBox(
     cardCornerRadius: Float,
     cardBlurRadius: Float,
     wallpaperBackdrop: Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    hapticFeedback: HapticFeedback,
     onEmptyClick: (Int) -> Unit
 ) {
     val pendingColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
@@ -602,7 +608,7 @@ private fun PendingSectionBox(
                     MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.64f else 0.5f)
                 } else if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
                 val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
-                val pendingEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(isSharedBlur, blurPx) {
+                val pendingEffects: BackdropEffectScope.() -> Unit = remember(isSharedBlur, blurPx) {
                     {
                         if (!isSharedBlur) {
                             blur(blurPx)
@@ -622,7 +628,7 @@ private fun PendingSectionBox(
                             effects = pendingEffects,
                             highlight = null,
                             shadow = null,
-                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
+                            viewport = LocalBackdropViewport.current,
                             onDrawSurface = pendingOnSurface
                         )
                         .edgeLight(shape = edgeLightShape, edgeLight = rememberCourseCardEdgeLight(baseColor = surfaceColor))
@@ -808,11 +814,11 @@ fun SpecialBandOverlay(
     cardBlurRadius: Float,
     cardAlpha: Float,
     cardSurfaceAlpha: Float = 0.15f,
-    cardRefraction: com.haooz.chedule.data.CardRefractionLevel = com.haooz.chedule.data.CardRefractionLevel.DEFAULT,
+    cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
     isTablet: Boolean = false,
     wallpaperBackdrop: Backdrop?,
     // 子块为空时退化为整条显示名称
-    items: List<com.haooz.chedule.data.SpecialItem> = emptyList(),
+    items: List<SpecialItem> = emptyList(),
     // **每个可见列实际显示的星期**（长度=列数），不是列下标：调休日该列画的是被调星期的课。
     // 智能周末下可能只有 1..5，调休时也可能与列下标不一致，决定子块定位与列宽
     dayRange: List<Int> = emptyList()
@@ -845,13 +851,13 @@ fun SpecialBandOverlay(
             }
             // SharedBlurBackdrop 的 drawBackdrop 画已烘焙的模糊层，不用再 blur
             val isSharedBlur = wallpaperBackdrop is SharedBlurBackdrop
-            val bandEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+            val bandEffects: BackdropEffectScope.() -> Unit =
                 remember(isSharedBlur, blurPx, lensRadiusPx, lensStrengthPx, cardRefraction) {
                     {
                         if (!isSharedBlur) {
                             blur(blurPx)
                         }
-                        if (cardRefraction != com.haooz.chedule.data.CardRefractionLevel.OFF) {
+                        if (cardRefraction != CardRefractionLevel.OFF) {
                             lens(lensRadiusPx, lensStrengthPx)
                         }
                     }
@@ -877,7 +883,7 @@ fun SpecialBandOverlay(
                         effects = bandEffects,
                         highlight = null,
                         shadow = null,
-                        viewport = com.kyant.backdrop.LocalBackdropViewport.current,
+                        viewport = LocalBackdropViewport.current,
                         onDrawSurface = onBandSurface
                     )
                     .drawWithContent {
@@ -957,7 +963,7 @@ private fun SpecialBandContent(name: String, isDark: Boolean) {
 @Composable
 private fun SpecialBandBody(
     name: String,
-    items: List<com.haooz.chedule.data.SpecialItem>,
+    items: List<SpecialItem>,
     dayRange: List<Int>,
     isDark: Boolean,
     alphaFactor: Float,
@@ -1017,9 +1023,9 @@ private fun SpecialBandBody(
 // 必须叠在课表 Row 之上：空节次层会消费整列点击，下层横带收不到
 @Composable
 fun SpecialBandClickLayer(
-    items: List<com.haooz.chedule.data.SpecialItem>,
+    items: List<SpecialItem>,
     dayRange: List<Int>,
-    onItemClick: (com.haooz.chedule.data.SpecialItem) -> Unit,
+    onItemClick: (SpecialItem) -> Unit,
     onEmptyClick: (Int) -> Unit
 ) {
     if (dayRange.isEmpty()) return
@@ -1065,7 +1071,7 @@ fun SpecialBandClickLayer(
 
 /** 横带里一段连续列：item 为 null 表示这段列还没排安排 */
 internal data class SpecialBandSegment(
-    val item: com.haooz.chedule.data.SpecialItem?,
+    val item: SpecialItem?,
     val startIndex: Int,
     val endIndex: Int
 )
@@ -1081,7 +1087,7 @@ internal data class SpecialBandSegment(
  * 两段不相邻的同日子块（如调休后周一与周日都显示周日）会各画各的，不连成一条。
  */
 internal fun buildSpecialBandSegments(
-    items: List<com.haooz.chedule.data.SpecialItem>,
+    items: List<SpecialItem>,
     columnDays: List<Int>
 ): List<SpecialBandSegment> {
     if (columnDays.isEmpty()) return emptyList()

@@ -1078,7 +1078,6 @@ fun CourseEditScreen(
                     AddEditCourseBottomSheet(
                         show = showAddCourseSheet,
                         courses = courses,
-                        backdrop = backdrop,
                         liquidGlassBackdrop = dialogGlass,
                         onDismissRequest = { showAddCourseSheet = false },
                         onConfirm = { newCourse ->
@@ -1093,7 +1092,6 @@ fun CourseEditScreen(
                     AddEditCourseBottomSheet(
                         show = showEditCourseSheet,
                         courses = editingGroup?.courses ?: emptyList(),
-                        backdrop = backdrop,
                         liquidGlassBackdrop = dialogGlass,
                         editCourse = editingGroup?.courses?.first(),
                         onDismissRequest = {

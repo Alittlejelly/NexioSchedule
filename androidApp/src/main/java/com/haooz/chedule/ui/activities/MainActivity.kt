@@ -5,7 +5,9 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Bundle
+import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
@@ -13,220 +15,58 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterExitState
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.MutatePriority
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.VerticalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import com.haooz.chedule.ui.utils.AndroidUpdateController
 import com.haooz.chedule.ui.navigation.AppNavHost
-import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.AppRouteContent
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.MainLayerTransition
 import com.haooz.chedule.ui.navigation.rememberAppRouter
 import com.haooz.chedule.ui.navigation.rememberNavTransitionState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
-import androidx.core.content.edit
 import androidx.core.graphics.get
 import androidx.core.graphics.scale
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.PrivacyConsent
 import com.haooz.chedule.data.ScheduleAppearance
 import com.haooz.chedule.data.StatsReporter
-import com.haooz.chedule.data.ThemeMode
-import com.haooz.chedule.data.fromCombination
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
-import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu
-import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenuItem
-import com.haooz.chedule.ui.basic.LiquidTopBarButton
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import com.haooz.chedule.ui.basic.ShortcutMenu
-import com.haooz.chedule.ui.basic.ShortcutMenuItem
-import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.components.BackToNowFloatingButton
-import com.haooz.chedule.ui.components.CourseCard
-import com.haooz.chedule.ui.components.LandRippleSpec
-import com.haooz.chedule.ui.components.LocalLandRipple
-import com.haooz.chedule.ui.components.ScheduleBottomBar
-import com.haooz.chedule.ui.components.ScheduleTopBar
-import com.haooz.chedule.ui.components.ShareImportDialog
 import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.data.showToast
-import com.haooz.chedule.ui.components.UpdateDialog
-import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
-import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
-import com.haooz.chedule.ui.screens.AddCourseDialog
-import com.haooz.chedule.ui.screens.CourseDetailScreen
-import com.haooz.chedule.ui.screens.CombinationThumbnail
-import com.haooz.chedule.ui.screens.CustomizeScheduleScreen
-import com.haooz.chedule.ui.screens.MainScheduleScreen
+import com.haooz.chedule.ui.activities.main.CourseScheduleApp
+import com.haooz.chedule.ui.activities.main.bitmapRecycler
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
-import com.haooz.chedule.ui.screens.ScheduleGridGeometry
 import com.haooz.chedule.ui.screens.AndroidSettingsScreen
 import com.haooz.chedule.ui.screens.FireworksOverlay
-import com.haooz.chedule.ui.screens.ShiftScheduleScreen
-import com.haooz.chedule.ui.screens.TabletCourseManagePane
-import com.haooz.chedule.ui.screens.TabletSwitchSchedulePane
-import com.haooz.chedule.ui.screens.TodayAssistantCard
-import com.haooz.chedule.ui.screens.TodayScreen
+import com.haooz.chedule.ui.activities.today.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeather
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
 import com.haooz.chedule.ui.utils.ApiCompat
-import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
-import com.haooz.chedule.ui.utils.applyNavigationBarIsDark
 import com.haooz.chedule.ui.utils.applyThemeAwareSystemBars
-import com.haooz.chedule.ui.utils.buildShareScheduleMap
-import com.haooz.chedule.ui.utils.consumeAllTouches
-import com.haooz.chedule.ui.utils.courseCardSolidBacking
-import com.haooz.chedule.ui.utils.isAppDarkTheme
-import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.performScheduleShare
-import com.haooz.chedule.ui.utils.rememberAppSettingDark
-import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
-import com.haooz.chedule.viewmodel.CourseViewModel
-import com.haooz.chedule.viewmodel.ScheduleViewModel
-import com.haooz.chedule.viewmodel.SettingsViewModel
-import com.haooz.chedule.viewmodel.ShiftViewModel
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.colorControls
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Checkbox
-import top.yukonga.miuix.kmp.basic.NumberPicker
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.FastForward
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Background
-import top.yukonga.miuix.kmp.icon.extended.Backup
-import top.yukonga.miuix.kmp.icon.extended.Copy
-import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.Edit
-import top.yukonga.miuix.kmp.icon.extended.More
-import top.yukonga.miuix.kmp.icon.extended.Paste
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.squircle.addSquircleRect
-import top.yukonga.miuix.kmp.theme.ColorSchemeMode
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.ThemeController
-import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
-import kotlinx.datetime.LocalDate
-import java.util.Calendar
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.sin
-import kotlin.time.Duration.Companion.milliseconds
-import androidx.compose.ui.graphics.Color as ComposeColor
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
 
@@ -731,7 +571,7 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
     val screenH = with(density) { screenHeightDp().dp.toPx() }
 
     // 共享层快照回收 → Android Bitmap.recycle（iOS/桌面不注入，交给 GC）
-    SideEffect { com.haooz.chedule.ui.activities.bitmapRecycler = SharedBitmapRecycler }
+    SideEffect { bitmapRecycler = SharedBitmapRecycler }
 
     // ── 相册选壁纸：系统选图器 + 三级降采样解码，结果回填共享层状态 ──
     var wallpaperDecodeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -762,15 +602,15 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
         }
     }
 
-    com.haooz.chedule.ui.activities.CourseScheduleApp(
+    CourseScheduleApp(
         privacyConsented = privacyConsented,
         resumeCount = activity?.resumeCount ?: 0,
         isInFreeformWindow = activity?.isInFreeformWindow ?: false,
         onSystemBarsChanged = { statusDark, navDark ->
             val window = activity?.window
             if (window != null) {
-                val statusFlag = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                val navFlag = android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                val statusFlag = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                val navFlag = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                 var appearance = 0
                 if (!statusDark) appearance = appearance or statusFlag
                 if (!navDark) appearance = appearance or navFlag
@@ -783,8 +623,8 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
         onPickWallpaperImage = { onPicked ->
             pendingWallpaperPicked = onPicked
             wallpaperPickerLauncher.launch(
-                androidx.activity.result.PickVisualMediaRequest(
-                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                PickVisualMediaRequest(
+                    ActivityResultContracts.PickVisualMedia.ImageOnly
                 )
             )
         },
@@ -799,7 +639,7 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
         onReadSharedFileText = { uriString ->
             try {
                 activity?.contentResolver
-                    ?.openInputStream(android.net.Uri.parse(uriString))
+                    ?.openInputStream(Uri.parse(uriString))
                     ?.bufferedReader()?.use { it.readText() }
             } catch (e: Exception) {
                 showToast("导入失败: ${e.message}")

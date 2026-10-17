@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.components
+package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,9 +15,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.SpecialBlock
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.ui.theme.scheduleAccentColor
@@ -27,7 +29,7 @@ import com.haooz.chedule.ui.theme.scheduleAccentColor
  * 所以调用方一律取这个常量，别再各自写死一份。
  */
 @Composable
-fun scheduleSectionColumnWidth(isTablet: Boolean): androidx.compose.ui.unit.Dp =
+fun scheduleSectionColumnWidth(isTablet: Boolean): Dp =
     if (isTablet) 56.dp else 36.dp
 
 @Composable
@@ -38,7 +40,7 @@ fun SectionColumn(
     eveningSections: Int = 3,
     sectionTimes: Map<Int, String> = Course.defaultSectionTimes,
     sectionNames: Map<Int, String> = emptyMap(),
-    specialBlocks: List<com.haooz.chedule.data.SpecialBlock> = emptyList(),
+    specialBlocks: List<SpecialBlock> = emptyList(),
     // 页面层共享；为空时列内自算
     grid: SpecialGridLayout? = null,
     cardHeightPerSection: Float = 54f,
@@ -163,7 +165,7 @@ private fun SpecialTimeLabel(
     height: Float,
     hasWallpaper: Boolean,
     isDark: Boolean,
-    sectionWidth: androidx.compose.ui.unit.Dp
+    sectionWidth: Dp
 ) {
     val baseFootnote2 = MiuixTheme.textStyles.footnote2
     val timeStyle = remember(baseFootnote2) { baseFootnote2.copy(fontSize = 10.sp) }

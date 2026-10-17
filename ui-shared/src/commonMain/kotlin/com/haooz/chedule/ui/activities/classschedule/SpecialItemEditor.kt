@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.components
+package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
@@ -128,7 +131,7 @@ fun WeekDayRangeSelector(
                     .clickable(enabled = !occupied) { onDayToggle(day) },
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Text(
+                Text(
                     text = SPECIAL_WEEK_LABELS[day - 1],
                     style = MiuixTheme.textStyles.body2,
                     color = when {
@@ -182,7 +185,7 @@ fun SpecialItemEditDialog(
                 requestFocus = show
             )
             // 按连续区间分组显示：{1,3,4} → "周一 / 周三–周四"
-            androidx.compose.material3.Text(
+            Text(
                 text = describeSpecialDays(selectedDays),
                 style = MiuixTheme.textStyles.body2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
@@ -226,7 +229,7 @@ fun SpecialItemEditDialog(
 /** 安排行尾的圆形图标按钮（编辑 / 删除），尺寸与配色与项目内其它圆形入口一致 */
 @Composable
 private fun SpecialItemIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
     tint: Color = MiuixTheme.colorScheme.onBackground,
@@ -243,7 +246,7 @@ private fun SpecialItemIconButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.material3.Icon(
+        Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,
@@ -295,12 +298,12 @@ fun SpecialItemsEditorSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    androidx.compose.material3.Text(
+                    Text(
                         text = item.name.ifBlank { "未命名" },
                         style = MiuixTheme.textStyles.body1,
                         color = MiuixTheme.colorScheme.onSurface
                     )
-                    androidx.compose.material3.Text(
+                    Text(
                         text = describeSpecialItemDays(item),
                         // 与名称同字号：星期范围是这行真正要读的信息，
                         // 用 footnote2 太小，「周一–周五」在手机上几乎看不清

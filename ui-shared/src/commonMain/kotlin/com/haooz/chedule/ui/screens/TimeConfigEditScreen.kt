@@ -79,8 +79,8 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.components.SpecialItemsEditorSection
-import com.haooz.chedule.ui.components.describeSpecialDays
+import com.haooz.chedule.ui.activities.classschedule.SpecialItemsEditorSection
+import com.haooz.chedule.ui.activities.classschedule.describeSpecialDays
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeFifthpowerOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuadraticOutEasing
@@ -118,7 +118,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast

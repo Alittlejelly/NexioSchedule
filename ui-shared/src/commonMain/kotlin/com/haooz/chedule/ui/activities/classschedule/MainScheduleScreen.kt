@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities.classschedule
 
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -18,6 +18,8 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -45,6 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -72,9 +75,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -95,24 +100,16 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.SpecialItem
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import com.haooz.chedule.ui.components.DayColumn
-import com.haooz.chedule.ui.components.SectionColumn
-import com.haooz.chedule.ui.components.SpecialBandClickLayer
-import com.haooz.chedule.ui.components.SpecialBandOverlay
-import com.haooz.chedule.ui.components.SpecialItemEditDialog
-import com.haooz.chedule.ui.components.computeSpecialGridLayout
-import com.haooz.chedule.ui.components.mergeConsecutiveDays
-import com.haooz.chedule.ui.components.nextSpecialItemIds
-import com.haooz.chedule.ui.components.scheduleSectionColumnWidth
-import com.haooz.chedule.ui.components.scheduleContentTopPadding
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberCourseCardEdgeLight
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
@@ -130,18 +127,14 @@ import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -154,6 +147,11 @@ import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.BackdropViewport
+import com.kyant.backdrop.LocalBackdropViewport
+import com.kyant.backdrop.backdrops.LayerBackdrop
 
 // 普通 holder 而非 state：避免 onGloballyPositioned 每次写入触发卡片重组
 private class CardBoundsHolder {
@@ -204,7 +202,7 @@ fun MainScheduleScreen(
         addDay: Int,
         addWeek: Int,
     ) -> Unit = { _, _, _, _, _, _, _, _ -> },
-    onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: com.kyant.backdrop.Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
+    onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
     onCourseDragStart: (courseId: String) -> Unit = { _ -> },
     onCourseDrag: (courseId: String, offsetX: Float, offsetY: Float) -> Unit = { _, _, _ -> },
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
@@ -215,12 +213,12 @@ fun MainScheduleScreen(
     // true：壁纸由主 pager 后共享层绘制，本页透明叠上，切 tab 时不随页平移
     useSharedWallpaper: Boolean = false,
     // 共享壁纸层 backdrop，供卡片玻璃采样（useSharedWallpaper 时必传 LayerBackdrop）
-    sharedWallpaperBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop? = null,
+    sharedWallpaperBackdrop: LayerBackdrop? = null,
     isWallpaperEditing: Boolean = false,
     onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
-    appearance: com.haooz.chedule.data.AppearanceConfig = com.haooz.chedule.data.AppearanceConfig(),
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    appearance: AppearanceConfig = AppearanceConfig(),
+    liquidGlassBackdrop: Backdrop? = null,
     // 拖拽落点高亮：Pair(dayOfWeek, sectionRange)，sectionRange 为落点覆盖的节次区间
     dropHighlight: Pair<Int, IntRange>? = null,
     // 落点遮罩出现动画的起点（通常是源课格），避免首次直接闪现在落点
@@ -228,7 +226,7 @@ fun MainScheduleScreen(
     onGridGeometryChange: (ScheduleGridGeometry) -> Unit = {},
     scheduleScrollBehavior: SharedScrollBehavior? = null,
     // 由 Activity 层传入：不是防销毁，是液态玻璃重录要在外层读滚动状态 / 弹窗开合
-    externalScrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    externalScrollState: ScrollState = rememberScrollState(),
     externalShowCourseDetail: MutableState<Boolean> = mutableStateOf(false),
     externalSelectedCourse: MutableState<Course?> = mutableStateOf(null),
     externalSelectedCourses: MutableState<List<Course>> = mutableStateOf(emptyList()),
@@ -713,7 +711,7 @@ fun MainScheduleScreen(
 
     // onDraw 必须稳定：每次新建会换掉 LayerBackdrop 实例，SharedBlur 与全部课卡采样跟着重建
     val wallpaperBackColorState = rememberUpdatedState(wallpaperBackdropColor)
-    val wallpaperOnDraw: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit =
+    val wallpaperOnDraw: ContentDrawScope.() -> Unit =
         remember {
             {
                 drawRect(wallpaperBackColorState.value)
@@ -726,7 +724,7 @@ fun MainScheduleScreen(
     val localCourseCardBackdrop = key(wallpaperBitmap) {
         rememberKyantLayerBackdrop(onDraw = wallpaperOnDraw)
     }
-    val courseCardBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop =
+    val courseCardBackdrop: LayerBackdrop =
         if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
         else localCourseCardBackdrop
 
@@ -736,7 +734,7 @@ fun MainScheduleScreen(
     } else null
     // blur=0 也走共享层：省掉每卡独立重录；滚动 LOD 时可直接 blit 共享采样
     val hasSharedBlur = sharedBlurManager != null && isRenderEffectSupported()
-    val activeCardBackdrop: com.kyant.backdrop.Backdrop? = when {
+    val activeCardBackdrop: Backdrop? = when {
         wallpaperBitmap == null -> null
         hasSharedBlur -> sharedBlurManager
         else -> courseCardBackdrop
@@ -747,7 +745,7 @@ fun MainScheduleScreen(
     }
 
     // 非 state：滚动不触发重组
-    val scheduleViewport = remember { com.kyant.backdrop.BackdropViewport() }
+    val scheduleViewport = remember { BackdropViewport() }
 
     // 这些量不变时跳过壁纸录制与共享模糊；必须覆盖所有影响壁纸层内容的因素
     val wallpaperRecordKey = listOf(
@@ -764,8 +762,8 @@ fun MainScheduleScreen(
     // 根 Box 滚动时**不移动**，所以 onGloballyPositioned 只在旋转/分屏/边距变化等
     // 布局改动时触发，边界天然不会在滚动中过期；挂滚动容器则要靠 touchState 去
     // 猜「Y 没变」，边界一旦算错就会误剔可见卡片（出空洞）。
-    androidx.compose.runtime.CompositionLocalProvider(
-        com.kyant.backdrop.LocalBackdropViewport provides scheduleViewport
+    CompositionLocalProvider(
+        LocalBackdropViewport provides scheduleViewport
     ) {
     Box(
         modifier = Modifier
@@ -793,8 +791,8 @@ fun MainScheduleScreen(
                 val brightnessFilter = remember(wallpaperBrightness) {
                     if (wallpaperBrightness != 0f) {
                         val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
-                            androidx.compose.ui.graphics.ColorMatrix(
+                        ColorFilter.colorMatrix(
+                            ColorMatrix(
                                 floatArrayOf(
                                     b, 0f, 0f, 0f, 0f,
                                     0f, b, 0f, 0f, 0f,
@@ -814,7 +812,7 @@ fun MainScheduleScreen(
                         BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
                     } else null
                 }
-                androidx.compose.foundation.Image(
+                Image(
                     bitmap = wallpaperBitmap,
                     contentDescription = null,
                     modifier = Modifier
@@ -1138,7 +1136,7 @@ fun MainScheduleScreen(
                                         }
                                     }
                                 }
-                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, com.kyant.backdrop.Backdrop?, Int) -> Unit =
+                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, Backdrop?, Int) -> Unit =
                                 remember(page, dayOfWeek) {
                                     { course, left, top, width, height, _, cWeek ->
                                         // 同步补一次最新几何，保证上层锚点用当前页 dayBounds
@@ -1333,7 +1331,7 @@ fun MainScheduleScreen(
                                 .then(
                                     if (hasWallpaperDivider) {
                                         val dividerBackdrop = activeCardBackdrop ?: courseCardBackdrop
-                                        val dividerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+                                        val dividerEffects: BackdropEffectScope.() -> Unit =
                                             remember(dividerBackdrop, dividerBlurPx, dividerLensRadiusPx, dividerLensStrengthPx) {
                                                 {
                                                     if (dividerBackdrop !is SharedBlurBackdrop) {
@@ -1348,7 +1346,7 @@ fun MainScheduleScreen(
                                             effects = dividerEffects,
                                             highlight = null,
                                             shadow = null,
-                                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
+                                            viewport = LocalBackdropViewport.current,
                                             onDrawSurface = remember(dividerFgSurface) {
                                                 {
                                                     drawRect(dividerFgSurface)
@@ -1690,7 +1688,7 @@ fun MainScheduleScreen(
                             val base = block.safeItems.filter { it.id != specialItemEditingId }
                             val ids = nextSpecialItemIds(base, ranges.size)
                             val newItems = ranges.mapIndexed { i, (s, e) ->
-                                com.haooz.chedule.data.SpecialItem(
+                                SpecialItem(
                                     id = ids[i],
                                     name = trimmedName,
                                     startDay = s,
@@ -1730,7 +1728,7 @@ fun MainScheduleScreen(
 private fun CourseDetailSheet(
     showState: MutableState<Boolean>,
     isTablet: Boolean,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     onDismiss: () -> Unit,
     endAction: @Composable () -> Unit,
     content: @Composable () -> Unit,
@@ -1776,13 +1774,13 @@ private fun AnimatedDropTargetMask(
     dropHighlight: Pair<Int, IntRange>?,
     dropHighlightOrigin: Pair<Int, IntRange>?,
     pageDayRange: List<Int>,
-    grid: com.haooz.chedule.ui.components.SpecialGridLayout,
+    grid: SpecialGridLayout,
     cardHeightPerSection: Float,
     cardCornerRadius: Float,
     isTablet: Boolean,
     isDark: Boolean,
     hasWallpaper: Boolean,
-    wallpaperBackdrop: com.kyant.backdrop.Backdrop?,
+    wallpaperBackdrop: Backdrop?,
     cardBlurRadius: Float,
 ) {
     val density = LocalDensity.current
@@ -1891,7 +1889,7 @@ private fun AnimatedDropTargetMask(
         val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
         val maskShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
         // 稳定引用：内联 lambda 会让 drawBackdrop 每次重组重建 RenderEffect
-        val maskEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+        val maskEffects: BackdropEffectScope.() -> Unit =
             remember(wallpaperBackdrop, blurPx) {
                 {
                     if (wallpaperBackdrop !is SharedBlurBackdrop) blur(blurPx)

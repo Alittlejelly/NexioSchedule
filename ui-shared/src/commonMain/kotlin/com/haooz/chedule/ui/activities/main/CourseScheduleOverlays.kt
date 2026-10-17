@@ -1,7 +1,8 @@
-package com.haooz.chedule.ui.activities
+package com.haooz.chedule.ui.activities.main
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +45,7 @@ import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.toShape
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -80,7 +83,7 @@ internal fun ShiftLoadingOverlay(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator(
+                InfiniteProgressIndicator(
                     size = 30.dp,
                     strokeWidth = 2.8.dp,
                     orbitingDotSize = 3.2.dp
@@ -102,7 +105,7 @@ internal fun ShiftLoadingOverlay(
 @Composable
 internal fun SwitchMorphOverlay(
     active: Boolean,
-    progress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    progress: Animatable<Float, AnimationVector1D>,
     /** true = 进入切换课表页（p: 1→0）；false = 退出回主界面（p: 0→1）。 */
     entering: Boolean,
     cardBounds: Rect?,
@@ -119,7 +122,7 @@ internal fun SwitchMorphOverlay(
     // 门控必须留在本 composable 内：退出的兜底分支会出现
     // showSwitchSchedule && !switchOverlayActive 的窗口，无条件绘制会闪一帧全屏底色
     if (!active) return
-    val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
+    val windowInfo = LocalWindowInfo.current
     val screenWidth = windowInfo.containerSize.width.toFloat()
     val screenHeight = windowInfo.containerSize.height.toFloat()
     val density = LocalDensity.current

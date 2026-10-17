@@ -1,9 +1,5 @@
 package com.haooz.chedule.ui.screens
 
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.lengthOfMonth
-import com.haooz.chedule.data.todayLocalDate
-
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -65,8 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.ui.navigation.AppRoute
-import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
@@ -76,12 +73,9 @@ import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavChromeTitleSlot
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import top.yukonga.miuix.kmp.utils.LocalOverScrollState
-import top.yukonga.miuix.kmp.utils.OverScrollState
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -102,17 +96,19 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Update
+import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlinx.datetime.LocalDate
+import top.yukonga.miuix.kmp.utils.LocalOverScrollState
+import top.yukonga.miuix.kmp.utils.OverScrollState
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.time.Duration.Companion.milliseconds
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。

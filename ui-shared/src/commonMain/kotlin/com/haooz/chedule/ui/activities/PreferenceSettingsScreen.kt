@@ -41,7 +41,7 @@ import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import com.haooz.chedule.ui.screens.ClassEndEffectSettings
+import com.haooz.chedule.ui.activities.today.ClassEndEffectSettings
 import com.haooz.chedule.ui.theme.LocalSystemDarkTheme
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.theme_preview_light

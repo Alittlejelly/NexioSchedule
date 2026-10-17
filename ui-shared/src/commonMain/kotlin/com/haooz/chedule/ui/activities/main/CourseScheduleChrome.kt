@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.activities
+package com.haooz.chedule.ui.activities.main
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
@@ -34,12 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenuItem
+import com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
+import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Background
@@ -70,7 +72,7 @@ internal fun MorePopupMenus(
     moreSlotTopPx: MutableFloatState = mutableFloatStateOf(0f),
     scheduleMaterialAlpha: Float = 0f,
     todayMaterialAlpha: Float = 0f,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop,
+    liquidGlassBackdrop: Backdrop,
     isShiftMode: Boolean = false,
     onJumpWeek: () -> Unit,
     onCourseManage: () -> Unit,
@@ -120,7 +122,7 @@ internal fun MorePopupMenus(
             .toPx()
     }
     val shadowPaddingPx = with(LocalDensity.current) {
-        com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding.toPx()
+        LiquidGlassDropdownShadowPadding.toPx()
     }
     Box(
         modifier = Modifier
@@ -280,7 +282,7 @@ internal fun PageLockedTopBarTheme(
 
 @Composable
 internal fun SettingsTopBar(
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     navBarStyle: String,
     scrollBehavior: SharedScrollBehavior? = null,
     blurResampleKey: Int = 0,
@@ -320,7 +322,7 @@ internal fun SettingsTopBar(
 
 @Composable
 internal fun TodayTopBar(
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     navBarStyle: String,
     currentDayOfWeek: Int,
     isToday: Boolean = true,

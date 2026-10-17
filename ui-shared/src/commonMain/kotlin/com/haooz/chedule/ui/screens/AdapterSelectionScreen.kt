@@ -58,6 +58,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import com.haooz.chedule.ui.utils.screenWidthDp
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 适配器选择底部弹窗
@@ -149,10 +150,10 @@ fun AdapterSelectionBottomSheet(
                     var revealCount by remember { mutableIntStateOf(0) }
                     LaunchedEffect(adapters.size) {
                         revealCount = 0
-                        delay(120)
+                        delay(120.milliseconds)
                         for (i in 1..adapters.size) {
                             revealCount = i
-                            delay(56)
+                            delay(56.milliseconds)
                         }
                     }
                     adapters.forEachIndexed { index, adapter ->

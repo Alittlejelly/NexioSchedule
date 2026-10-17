@@ -527,7 +527,7 @@ fun CourseDetailScreen(
                                         var best = -1
                                         var bestDiff = Int.MAX_VALUE
                                         weekGroups.forEachIndexed { i, (week, _) ->
-                                            val diff = kotlin.math.abs(week - targetWeek)
+                                            val diff = abs(week - targetWeek)
                                             if (diff < bestDiff) {
                                                 bestDiff = diff
                                                 best = i

@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities.classschedule
 
 /**
  * 课程表页面级触控状态。刻意用普通 holder 而非 snapshot state：

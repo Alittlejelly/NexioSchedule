@@ -1,26 +1,7 @@
 package com.haooz.chedule.ui.screens
 
-import com.haooz.chedule.ui.utils.LocalHostNavigation
-
 // ⚠ 本文件不得出现 android.* / androidx.activity / androidx.core；平台能力做成注入参数。
 
-import com.haooz.chedule.data.minusWeeks
-
-import com.haooz.chedule.data.lengthOfMonth
-import com.haooz.chedule.data.minusDays
-import com.haooz.chedule.data.todayLocalDate
-import com.haooz.chedule.data.weeksBetween
-import kotlinx.datetime.isoDayNumber
-
-import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.ui.activities.AboutScreen
-import com.haooz.chedule.ui.activities.AiImportScreen
-import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
-import com.haooz.chedule.ui.activities.CourseReminderScreen
-import com.haooz.chedule.ui.activities.LocalBackupScreen
-import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
-import com.haooz.chedule.ui.activities.ScheduleDataManageMode
-import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,29 +35,21 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.TimeConfig
+import com.haooz.chedule.data.lengthOfMonth
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.ui.utils.FeatureLog
+import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.haooz.chedule.ui.utils.parseShareCourseWeekModel
-import com.haooz.chedule.ui.utils.parseShareCourses
-import com.haooz.chedule.ui.utils.parseShareSelectedWeeks
-import com.haooz.chedule.ui.utils.parseShareSettings
-import com.haooz.chedule.ui.utils.parseShareTotalWeeks
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.ShiftViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
@@ -86,20 +59,20 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlinx.datetime.LocalDate
-import com.haooz.chedule.data.todayLocalDate
-import com.haooz.chedule.data.randomUuidV4
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
-import com.haooz.chedule.data.showToast
-import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 // 解析失败时回退到今天，避免弹窗初值出现非法日期
 internal fun parseDate(dateStr: String): Triple<Int, Int, Int> {

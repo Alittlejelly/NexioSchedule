@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.components
+package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -32,9 +31,11 @@ import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.formatMonthDay
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
+import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
@@ -77,7 +78,7 @@ fun ScheduleTopBar(
     onEnterCustomize: () -> Unit = {},
     isTablet: Boolean = false,
     isShiftMode: Boolean = false,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     scrollBehavior: SharedScrollBehavior? = null,
     blurResampleKey: Int = 0,
     blurSampleTrack: () -> Float = { 0f },

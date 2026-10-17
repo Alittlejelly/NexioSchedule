@@ -1,5 +1,6 @@
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities.today
 
+import androidx.compose.foundation.Image
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 
@@ -30,8 +31,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,14 +54,16 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -68,6 +73,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -114,7 +120,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
@@ -122,6 +127,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
+import com.kyant.backdrop.BackdropEffectScope
 
 // 有壁纸 backdrop 才走毛玻璃半透明路径，与模糊半径无关（blur=0 仍采样壁纸）
 // 原 TIME_FORMATTER("HH:mm") / DATE_FORMATTER("yyyy年M月d日") 是 JVM 侧的 DateTimeFormatter，
@@ -170,7 +176,7 @@ fun BlurCard(
         // effects/onDrawSurface 必须 remember 稳定：内联 lambda 每次重组换引用，
         // DrawBackdropElement.equals 会判不等并重建 RenderEffect，造成壁纸玻璃无意义重绘
         val blurPx = with(LocalDensity.current) { remember(blurRadius) { blurRadius.dp.toPx() } }
-        val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+        val glassEffects: BackdropEffectScope.() -> Unit =
             remember(refraction, blurPx) {
                 {
                     blur(blurPx)
@@ -179,7 +185,7 @@ fun BlurCard(
                     }
                 }
             }
-        val glassSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
+        val glassSurface: DrawScope.() -> Unit =
             remember(isDark, surfaceOpacity) {
                 {
                     drawRect(
@@ -368,7 +374,7 @@ fun TodayScreen(
     settingsViewModel: SettingsViewModel,
     hiddenCourseIds: Set<String> = emptySet(),
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
-    pagerState: androidx.compose.foundation.pager.PagerState,
+    pagerState: PagerState,
     navBarStyle: String = "standard",
     onScrollYChanged: (Int) -> Unit = {},
     onListScrollInProgress: (Boolean) -> Unit = {},
@@ -379,7 +385,7 @@ fun TodayScreen(
     jumpToDateTrigger: Int = 0,
     onJumpToDateProcessed: () -> Unit = {},
     wallpaperBitmap: ImageBitmap? = null,
-    wallpaperOffset: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero,
+    wallpaperOffset: Offset = Offset.Zero,
     wallpaperScale: Float = 1f,
     wallpaperBrightness: Float = 0f,
     cardBlurRadius: Float = 0f,
@@ -548,8 +554,8 @@ fun TodayScreen(
                 ) {
                     val brightnessFilter = if (wallpaperBrightness != 0f) {
                         val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
-                            androidx.compose.ui.graphics.ColorMatrix(
+                        ColorFilter.colorMatrix(
+                            ColorMatrix(
                                 floatArrayOf(
                                     b, 0f, 0f, 0f, 0f,
                                     0f, b, 0f, 0f, 0f,
@@ -568,7 +574,7 @@ fun TodayScreen(
                             BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
                         } else null
                     }
-                    androidx.compose.foundation.Image(
+                    Image(
                         bitmap = wallpaperBitmap,
                         contentDescription = null,
                         modifier = Modifier
@@ -1623,7 +1629,7 @@ private fun CourseSectionTitle(
     blurRadius: Float = 0f,
     surfaceOpacity: Float,
     modifier: Modifier = Modifier,
-    style: androidx.compose.ui.text.TextStyle =
+    style: TextStyle =
         MiuixTheme.textStyles.subtitle.copy(fontWeight = FontWeight.Medium),
     textAlign: TextAlign? = null,
 ) {
@@ -1638,7 +1644,7 @@ private fun CourseSectionTitle(
     if (wallpaperBackdrop != null) {
         val shape = ContinuousCapsule()
         val blurPx = with(LocalDensity.current) { remember(blurRadius) { blurRadius.dp.toPx() } }
-        val titleEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+        val titleEffects: BackdropEffectScope.() -> Unit =
             remember(refraction, blurPx) {
                 {
                     blur(blurPx)
@@ -1647,7 +1653,7 @@ private fun CourseSectionTitle(
                     }
                 }
             }
-        val titleSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
+        val titleSurface: DrawScope.() -> Unit =
             remember(isDark, surfaceOpacity) {
                 {
                     drawRect(
@@ -1778,7 +1784,7 @@ private fun CourseDetailSectionCard(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.addCourseSections(
+private fun LazyListScope.addCourseSections(
     morningCourses: List<Course>,
     afternoonCourses: List<Course>,
     eveningCourses: List<Course>,
@@ -1901,7 +1907,7 @@ private fun CourseItemWithClick(
     showClassroom: Boolean = true,
     showTeacher: Boolean = true
 ) {
-    var itemBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var itemBounds by remember { mutableStateOf<Rect?>(null) }
     val isHidden = course.id in hiddenCourseIds
     val cardLayer = rememberGraphicsLayer()
     Column(
@@ -1927,9 +1933,9 @@ private fun CourseItemWithClick(
                 //   差 4 个明度阶 —— 课程条目会比今日助手卡 / 分区卡偏一个色。
                 .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
                 .onGloballyPositioned { coordinates ->
-                    val position = coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
+                    val position = coordinates.localToRoot(Offset.Zero)
                     val size = coordinates.size
-                    itemBounds = androidx.compose.ui.geometry.Rect(
+                    itemBounds = Rect(
                         left = position.x, top = position.y,
                         right = position.x + size.width, bottom = position.y + size.height
                     )

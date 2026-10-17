@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.activities
+package com.haooz.chedule.ui.activities.main
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -18,6 +18,8 @@ import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.ShiftViewModel
+import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.CancellationException
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
@@ -78,22 +80,23 @@ data class ScheduleCombination(
 )
 
 /** [ScheduleCombination] → 外观配置。 */
-fun AppearanceConfig.Companion.fromCombination(c: ScheduleCombination): AppearanceConfig = AppearanceConfig(
-    cardBlurRadius = c.cardBlurRadius,
-    cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
-    cardSurfaceAlpha = (c.cardSurfaceAlpha ?: 0.15f).coerceIn(0f, 1f),
-    cardHeight = c.cardHeight,
-    cardCornerRadius = c.cardCornerRadius,
-    wallpaperBrightness = c.wallpaperBrightness,
-    showBreakDividers = c.showBreakDividers,
-    cardContentAlignment = c.cardContentAlignment,
-    cardTextColor = c.cardTextColor,
-    cardTextScale = c.cardTextScale,
-    showClassroom = c.showClassroom,
-    showTeacher = c.showTeacher,
-    cardRefraction = c.cardRefraction,
-    wallpaperBlur = c.wallpaperBlur,
-)
+fun AppearanceConfig.Companion.fromCombination(c: ScheduleCombination): AppearanceConfig =
+    AppearanceConfig(
+        cardBlurRadius = c.cardBlurRadius,
+        cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
+        cardSurfaceAlpha = (c.cardSurfaceAlpha ?: 0.15f).coerceIn(0f, 1f),
+        cardHeight = c.cardHeight,
+        cardCornerRadius = c.cardCornerRadius,
+        wallpaperBrightness = c.wallpaperBrightness,
+        showBreakDividers = c.showBreakDividers,
+        cardContentAlignment = c.cardContentAlignment,
+        cardTextColor = c.cardTextColor,
+        cardTextScale = c.cardTextScale,
+        showClassroom = c.showClassroom,
+        showTeacher = c.showTeacher,
+        cardRefraction = c.cardRefraction,
+        wallpaperBlur = c.wallpaperBlur,
+    )
 
 /** 设置页装配参数（宿主包装 AndroidSettingsScreen / iOS 自己的装配用）。 */
 data class SettingsPaneArgs(
@@ -107,7 +110,7 @@ data class SettingsPaneArgs(
     val navBarStyle: String,
     val onScrollYChanged: (Int) -> Unit,
     val settingsScrollBehavior: SharedScrollBehavior?,
-    val liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    val liquidGlassBackdrop: Backdrop?,
     /** 是否显示「更新设置」入口（iOS 走 App Store → false） */
     val showUpdateSettings: Boolean = true,
 )
@@ -153,7 +156,7 @@ internal suspend fun PagerState.cancelScroll() {
 }
 
 /** 空白格快捷菜单锚点：高亮用列星期，添加课程用调课映射后的星期/周 */
-internal data class EmptyCellMenuTarget(
+data class EmptyCellMenuTarget(
     val columnDay: Int,
     val section: Int,
     val addDay: Int,
@@ -164,7 +167,7 @@ internal data class EmptyCellMenuTarget(
  * 粘贴落点：动画/高亮走列星期（几何坐标），写库走调课映射后的数据坐标。
  * 调课日列显示的是 followWeekday/followWeek 的课，只传列星期会落到错误星期/周次。
  */
-internal data class PasteTarget(
+data class PasteTarget(
     val columnDay: Int,
     val dataDay: Int,
     val section: Int,
@@ -190,7 +193,7 @@ internal suspend fun PagerState.animateMainTabTo(target: Int) {
     val spec = if (distance > 1) MainTabPagerCrossPageAnimSpec else MainTabPagerAnimSpec
     try {
         animateScrollToPage(target, animationSpec = spec)
-    } catch (e: kotlinx.coroutines.CancellationException) {
+    } catch (e: CancellationException) {
         throw e
     }
     if (currentPage != target || abs(currentPageOffsetFraction) > 0.001f) {
@@ -199,7 +202,7 @@ internal suspend fun PagerState.animateMainTabTo(target: Int) {
 }
 
 /** 拖拽速度/采样时间；只在松手 spring 时读，避开 composition */
-internal class DragMotionHolder {
+class DragMotionHolder {
     @Volatile
     var velocityX = 0f
 

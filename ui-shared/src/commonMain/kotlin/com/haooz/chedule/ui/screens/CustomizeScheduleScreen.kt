@@ -23,9 +23,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,10 +30,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -55,7 +55,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -65,6 +64,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.TransformOrigin
@@ -90,22 +90,19 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.formatOneDecimal
-import androidx.compose.ui.graphics.ImageBitmap
-import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import com.kyant.backdrop.edgelight.edgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.addScreenCornerRect
-import com.haooz.chedule.ui.utils.toShape
-import com.haooz.chedule.ui.utils.LocalHostNavigation
-import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
-import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
-import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_WINDOW_MILLIS
-import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.screenHeightDp
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.toShape
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.capsule.ContinuousCapsule
@@ -133,19 +130,19 @@ import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Image
 import top.yukonga.miuix.kmp.icon.extended.Months
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import top.yukonga.miuix.kmp.layout.isTabletWidth
-import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.utils.screenHeightDp
 
 /** 挖洞遮罩路径缓存：尺寸/圆角不变时只 translate，避免每帧重建 squircle */
 private class CutoutPathCache {

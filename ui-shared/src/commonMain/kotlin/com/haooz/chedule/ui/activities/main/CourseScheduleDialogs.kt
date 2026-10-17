@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.activities
+package com.haooz.chedule.ui.activities.main
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,11 +16,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.viewmodel.CourseViewModel
+import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -37,8 +39,8 @@ internal fun DeleteWeekCourseDialog(
     course: Course?,
     week: Int,
     viewModel: CourseViewModel,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    liquidGlassBackdrop: Backdrop?,
+    hapticFeedback: HapticFeedback,
     onDismiss: () -> Unit,
 ) {
     var deleteAllWeeks by remember(show) { mutableStateOf(false) }
@@ -116,8 +118,8 @@ internal fun DeleteWeekCourseDialog(
 internal fun PasteRangeDialog(
     show: Boolean,
     courseName: String,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    liquidGlassBackdrop: Backdrop?,
+    hapticFeedback: HapticFeedback,
     onPaste: (allWeeks: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -166,8 +168,8 @@ internal fun RescheduleConflictDialog(
     dropTargetWeek: Int,
     draggedWeek: Int,
     viewModel: CourseViewModel,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
-    hapticFeedback: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    liquidGlassBackdrop: Backdrop?,
+    hapticFeedback: HapticFeedback,
     onCancel: () -> Unit,
     onOverwriteResolved: () -> Unit,
     onSwapResolved: () -> Unit,
