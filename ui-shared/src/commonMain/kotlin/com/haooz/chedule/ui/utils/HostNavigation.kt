@@ -55,12 +55,20 @@ class HostNavigationState {
      */
     var detailBackgroundBlur by mutableFloatStateOf(0f)
         private set
-    var onDetailChromeBlur: ((Double) -> Unit)? = null
+    /** 下层背景模糊强度（0…1，不是 dp）：iOS 没有可设的半径，宿主只能按强度插值。 */
+    var onDetailBackdropBlurProgress: ((Double) -> Unit)? = null
+
+    companion object {
+        /** 详情 morph 的目标模糊半径（dp）；也是换算成 0…1 强度的基准，两处必须同源。 */
+        const val DETAIL_BACKDROP_BLUR_DP = 16f
+    }
 
     fun updateDetailBackgroundBlur(blurDp: Float) {
         if (detailBackgroundBlur == blurDp) return
         detailBackgroundBlur = blurDp
-        onDetailChromeBlur?.invoke(blurDp.toDouble())
+        onDetailBackdropBlurProgress?.invoke(
+            (blurDp / DETAIL_BACKDROP_BLUR_DP).coerceIn(0f, 1f).toDouble()
+        )
     }
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)

@@ -51,18 +51,23 @@ private final class NativeSessionController: UIViewController {
     private let rootController: AppHostController
     private let documentNavigation: NativeDocumentNavigationController
     private let floatingContainer = FloatingOverlayPassthroughView()
-    /// 全屏背景模糊层：详情页之下、其余一切之上
+    /// 全屏背景模糊层：详情页之下、其余一切之上。
+    /// iOS 没有可设的模糊半径，只能让材质从 nil 渐变到满、强度逐帧写 `fractionComplete`。
+    /// ⚠ 起始 effect 必须是 nil，animator 的动画才是「无 → 有」。
     private let detailBackdropBlur: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        let view = UIVisualEffectView(effect: nil)
         view.isUserInteractionEnabled = false
         view.isHidden = true
-        view.alpha = 0
         return view
     }()
     /// 详情页容器：唯一盖在 `detailBackdropBlur` 之上的 Compose 容器
     private let detailContainer = FloatingOverlayPassthroughView()
-    private var detailBlurDp: CGFloat = 0
-    private var detailBlurProgress: CGFloat = 0
+    /// Compose 推来的目标强度（0…1）
+    private var detailBlurTarget: CGFloat = 0
+    /// 已写入 animator 的强度（-1 = 还没写过）
+    private var detailBlurApplied: CGFloat = -1
+    /// 强度插值器；须在视图进 window 后创建
+    private var detailBlurAnimator: UIViewPropertyAnimator?
 
     init(host: IosAppHost) {
         self.host = host
@@ -90,9 +95,9 @@ private final class NativeSessionController: UIViewController {
         detailContainer.backgroundColor = .clear
         pin(detailContainer, to: view)
         embed(host.abovePopupsController, in: detailContainer)
-        // Compose 绘制阶段直推模糊半径，与主内容同帧
-        host.onDetailChromeBlur = { [weak self] blurDp in
-            self?.applyDetailBlur(blurDp)
+        // Compose 绘制阶段直推模糊强度（0…1），与主内容同帧
+        host.onDetailBackdropBlurProgress = { [weak self] progress in
+            self?.applyDetailBlurProgress(progress)
         }
         host.onStateChanged = { [weak self] in
             if Thread.isMainThread {
@@ -133,26 +138,39 @@ private final class NativeSessionController: UIViewController {
         refreshDetailBlur()
     }
 
-    /// Compose 侧 morph 的目标半径（`managePageBlurRadius` = 16f），用于把半径换算成 0…1 强度
-    private let detailBlurReferenceDp: CGFloat = 16
-
-    /// Compose 侧每帧推来的模糊半径（dp）；0 = 动画结束，隐藏模糊层。
-    /// `UIVisualEffectView` 只糊它身后的内容，所以这层压在「除详情页外的一切」之上。
-    /// 只由页面级模糊驱动；课程长按菜单在弹窗层内，不进来。
-    private func applyDetailBlur(_ blurDp: KotlinDouble) {
-        detailBlurDp = CGFloat(blurDp.doubleValue)
+    /// Compose 每帧推来的强度（0…1，dp→强度已在 Kotlin 侧归一化）；0 = 结束、隐藏本层。
+    /// 只驱动页面级模糊，长按菜单在弹窗层内，不走这里。
+    private func applyDetailBlurProgress(_ progress: KotlinDouble) {
+        detailBlurTarget = CGFloat(progress.doubleValue)
         refreshDetailBlur()
     }
 
     /// 压着上层原生文档页时整块不能糊：那一页不属于背景
     private func refreshDetailBlur() {
-        let target = host.nativePageActive
-            ? 0
-            : max(0, min(1, detailBlurDp / detailBlurReferenceDp))
-        guard abs(target - detailBlurProgress) > 0.001 else { return }
-        detailBlurProgress = target
-        detailBackdropBlur.alpha = target
+        guard isViewLoaded else { return }
+        let target = host.nativePageActive ? 0 : max(0, min(1, detailBlurTarget))
+        guard let animator = detailBlurAnimatorIfReady() else { return }
+        guard abs(target - detailBlurApplied) > 0.001 else { return }
+        detailBlurApplied = target
+        // 0/1 端点会让 animator 判为「已结束」，之后写进度失效 → 夹住，端点交给 isHidden
+        animator.fractionComplete = min(max(target, 0.001), 0.999)
         detailBackdropBlur.isHidden = target <= 0.001
+    }
+
+    /// animator 的闭包会改 `effect`，须等视图进 window 再建；新建时是 inactive，
+    /// 要先 `startAnimation()` 再 `pauseAnimation()` 把强度停在 0。
+    /// `curve` 不参与输出（只赋 `fractionComplete`），别在这里再套缓动 → 双重缓动。
+    private func detailBlurAnimatorIfReady() -> UIViewPropertyAnimator? {
+        if let animator = detailBlurAnimator { return animator }
+        guard view.window != nil else { return nil }
+        let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
+            self?.detailBackdropBlur.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+        }
+        animator.pausesOnCompletion = true
+        animator.startAnimation()
+        animator.pauseAnimation()
+        detailBlurAnimator = animator
+        return animator
     }
 
     private func embed(_ controller: UIViewController, in container: UIView) {

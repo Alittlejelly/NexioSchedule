@@ -175,6 +175,7 @@ import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import com.haooz.chedule.ui.utils.LocalHostNavigation
+import com.haooz.chedule.ui.utils.HostNavigationState
 import com.haooz.chedule.ui.utils.HostedOverlay
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
@@ -2300,7 +2301,7 @@ fun CourseScheduleApp(
         // 详情 morph 只做下层模糊，不做缩放（整屏离屏层是掉帧第一来源）
         coroutineScope.launch {
             managePageBlurRadius.animateTo(
-                16f,
+                HostNavigationState.DETAIL_BACKDROP_BLUR_DP,
                 animationSpec = tween(540, easing = OobeQuartOutEasing)
             )
         }

@@ -369,12 +369,12 @@ class IosAppHost {
      * it a frame or two behind.
      */
     var onCutoutChromeOffset: ((Double) -> Unit)? = null
-    /** 连贯动画期间下层的模糊半径（dp）；宿主据此在「详情页之下、其余一切之上」压一层背景模糊 */
-    var onDetailChromeBlur: ((Double) -> Unit)? = null
+    /** 下层背景模糊强度（0…1，换算在 commonMain 完成）；宿主据此在「详情页之下、其余一切之上」压一层 */
+    var onDetailBackdropBlurProgress: ((Double) -> Unit)? = null
 
     init {
         navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
-        navigation.onDetailChromeBlur = { blurDp -> onDetailChromeBlur?.invoke(blurDp) }
+        navigation.onDetailBackdropBlurProgress = { onDetailBackdropBlurProgress?.invoke(it) }
     }
 
     val mainController: UIViewController by lazy {
