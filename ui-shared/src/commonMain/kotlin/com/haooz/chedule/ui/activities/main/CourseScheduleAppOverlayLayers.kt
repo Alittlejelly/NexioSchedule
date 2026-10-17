@@ -1103,12 +1103,10 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                         cardBounds = switchCardBounds,
                         cardSnapshot = switchCardSnapshot,
                         cardBitmap = switchCardBitmap,
-                        // 课程表页整屏原生图（含顶栏/底栏）。**进出两个方向都用** ——
-                        // 退出时铺满全屏的主内容层同样需要原生 chrome，Compose 图层录不到。
+                        // 课程表页整屏原生图（含顶栏/底栏）。**进出两个方向都用**：
+                        // 上半屏仍由 Compose 图层画（顶栏要 Compose 那版），下半屏换成这张图 ——
+                        // 原生底栏不管横跨底部还是右下角竖排，都落在下半这块里。
                         nativeScreenShot = mainScreenShot,
-                        bottomBarInsetPx = with(density) {
-                            (hostNavigation?.bottomBarInset ?: 0.0).dp.toPx()
-                        },
                         mainLayer = screenGraphicsLayer,
                         screenCornerRadius = screenCornerRadius,
                         isDark = isDark,
