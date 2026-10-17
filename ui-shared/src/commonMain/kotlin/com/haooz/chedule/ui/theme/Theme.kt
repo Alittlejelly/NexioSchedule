@@ -27,6 +27,8 @@ import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
+import top.yukonga.miuix.kmp.theme.LocalScreenTopCornerRadii
+import top.yukonga.miuix.kmp.theme.ScreenTopCornerRadii
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -143,9 +145,13 @@ fun CourseScheduleTheme(
         }
     }
     val density = LocalDensity.current
-    // 弹窗保持统一圆角，取物理四角的最大值。
-    val screenCornerRadiusPx = rememberScreenCornerRadiiPx().maxRadius
-    val screenCornerRadius = with(density) { screenCornerRadiusPx.toDp() }
+    val screenCorners = rememberScreenCornerRadiiPx()
+    val screenCornerRadius = with(density) { screenCorners.maxRadius.toDp() }
+    val screenTopCorners = with(density) {
+        if (screenCorners.maxRadius > 0f) {
+            ScreenTopCornerRadii(screenCorners.topLeft.toDp(), screenCorners.topRight.toDp())
+        } else null
+    }
     MiuixTheme(
         controller = controller,
         content = {
@@ -158,6 +164,7 @@ fun CourseScheduleTheme(
             val outerTextStyle: TextStyle = LocalTextStyle.current
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
+                LocalScreenTopCornerRadii provides screenTopCorners,
                 LocalHapticFeedback provides gatedHaptic,
                 // 弹窗（BlurBottomSheet）会读它来决定自建 controller 用不用 Monet 模式，
                 // 所以这里下发的是**有效值**：偏好开启 && 平台支持。

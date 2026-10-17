@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -83,7 +85,11 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.capsule.ContinuousRoundedRectangle
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import top.yukonga.miuix.kmp.basic.rememberScreenTopCornerShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -278,7 +284,11 @@ private fun BlurBottomSheetContent(
     val dismissThresholdPx = with(density) { 150.dp.toPx() }
     val velocityThresholdPx = with(density) { 800.dp.toPx() }
 
-    val sheetShape = remember { ContinuousRoundedRectangle(36.dp) }
+    val sheetShape = rememberScreenTopCornerShape(36.dp)
+    val windowWidth = windowInfo.containerDpSize.width
+    val horizontalGap = if (sheetMaxWidth != Dp.Unspecified) {
+        ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)
+    } else 0.dp
 
             // 显示/隐藏动画（同时驱动弹窗位移与遮罩透明度，确保二者完全同步）
     LaunchedEffect(show) {
@@ -397,6 +407,7 @@ private fun BlurBottomSheetContent(
                 // 弹窗本体不做壁纸玻璃模糊，纯实色
                 .edgeLight(shape = sheetShape, edgeLight = rememberDefaultEdgeLight(baseColor = sheetBgColor))
                 .background(sheetBgColor)
+                .consumeWindowInsets(PaddingValues(horizontal = horizontalGap))
                 .pointerInput(Unit) {
                     // 消费弹窗空白处的点击，防止事件穿透到背景层触发关闭
                     detectTapGestures(onTap = {})
@@ -587,6 +598,7 @@ private fun BlurBottomSheetContent(
                                     Modifier.layerBackdrop(sheetContentBackdrop)
                                 } else Modifier
                             )
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     ) {
                         content()
                     }
@@ -616,6 +628,7 @@ private fun BlurBottomSheetContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(76.dp)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .zIndex(2f),
                     ) {
                         Text(

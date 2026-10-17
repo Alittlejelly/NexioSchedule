@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -951,6 +955,7 @@ fun CustomizeScheduleScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .padding(top = statusBarPadding + 16.dp)
                             .padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1217,6 +1222,7 @@ fun CustomizeScheduleScreen(
                             // 「内容高 + 底部 padding」，而 padding 又由这个高度算出来 →
                             // 自指方程，收敛因子 -1/2，工具栏会交替上下跳（198→17→107→62…px）。
                             // 放进来只观测内容高，padding 不再反噬自己。
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .padding(bottom = toolBottomPadding)
                             .onSizeChanged { toolRowHeightPx = it.height.toFloat() }
                             .graphicsLayer {

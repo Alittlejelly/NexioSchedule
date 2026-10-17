@@ -8,6 +8,10 @@ package com.haooz.chedule.ui.activities
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -206,7 +210,7 @@ fun WebImportScreen(
                     showShadow = false,
                     showGradientOverlay = false,
                     titleColor = webBarContentColor,
-                    modifier = Modifier,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = webViewScrollBehavior,
                     contentPadding = {},
                     startAction = { backdropAlpha, shadowAlpha ->

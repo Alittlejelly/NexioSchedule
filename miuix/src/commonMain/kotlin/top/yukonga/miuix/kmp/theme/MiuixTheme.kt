@@ -74,6 +74,11 @@ fun MiuixTheme(
 /** Screen radius supplied by the host; null retains the component's platform fallback. */
 val LocalScreenCornerRadius = staticCompositionLocalOf<Dp?> { null }
 
+/** Physical top corners supplied by the host, independent of layout direction. */
+data class ScreenTopCornerRadii(val topLeft: Dp, val topRight: Dp)
+
+val LocalScreenTopCornerRadii = staticCompositionLocalOf<ScreenTopCornerRadii?> { null }
+
 object MiuixTheme {
     val colorScheme: Colors
         @Composable @ReadOnlyComposable

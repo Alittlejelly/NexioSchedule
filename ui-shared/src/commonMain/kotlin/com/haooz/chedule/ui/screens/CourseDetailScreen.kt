@@ -15,6 +15,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -411,7 +416,9 @@ fun CourseDetailScreen(
                             CollapsibleTopAppBar(
                                 title = courseName,
                                 largeTitle = courseName,
-                                modifier = Modifier,
+                                modifier = Modifier.windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+                                ),
                                 scrollBehavior = scrollBehavior,
                                 contentPadding = {},
                                 startAction = { backdropAlpha, shadowAlpha ->
@@ -558,6 +565,7 @@ fun CourseDetailScreen(
                                     state = listState,
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                                         .overScrollVertical()
                                         .scrollEndHaptic(
                                             hapticFeedbackType = HapticFeedbackType.TextHandleMove

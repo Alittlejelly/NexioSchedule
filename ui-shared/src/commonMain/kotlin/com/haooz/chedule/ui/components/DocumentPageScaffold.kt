@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -93,6 +94,7 @@ fun DocumentPageScaffold(
     CompositionLocalProvider(LocalOverScrollState provides pageOverScrollState) {
         Scaffold(
             modifier = Modifier
+                .background(backgroundColor)
                 .windowInsetsPadding(
                     WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
                 )

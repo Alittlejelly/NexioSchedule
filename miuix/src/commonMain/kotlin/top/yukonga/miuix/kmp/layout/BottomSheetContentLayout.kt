@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.displayCutout
@@ -24,8 +27,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -58,7 +64,9 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
@@ -66,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -84,6 +93,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.LocalDismissState
+import top.yukonga.miuix.kmp.theme.LocalScreenTopCornerRadii
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 import kotlin.coroutines.cancellation.CancellationException
@@ -601,6 +611,12 @@ private fun BottomSheetColumn(
 ) {
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
+    val screenCorners = LocalScreenTopCornerRadii.current
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val topLeft = screenCorners?.topLeft ?: cornerRadius
+    val topRight = screenCorners?.topRight ?: cornerRadius
+    val windowWidth = LocalWindowInfo.current.containerDpSize.width
+    val horizontalGaps = remember { mutableStateOf(PaddingValues(0.dp)) }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -622,6 +638,13 @@ private fun BottomSheetColumn(
                 .wrapContentHeight()
                 .heightIn(max = windowHeight - topInset)
                 .onGloballyPositioned { coordinates ->
+                    // Caller modifiers may override widthIn; use the actual physical bounds.
+                    val left = with(density) { coordinates.positionInWindow().x.toDp() }
+                    val right = windowWidth - left - with(density) { coordinates.size.width.toDp() }
+                    horizontalGaps.value = PaddingValues(
+                        start = (if (isRtl) right else left).coerceAtLeast(0.dp) + outsideMargin.width,
+                        end = (if (isRtl) left else right).coerceAtLeast(0.dp) + outsideMargin.width,
+                    )
                     // Only capture the natural sheet height while the IME is closed; otherwise the
                     // bottom inset added by imePadding would inflate sheetHeightPx, shifting the
                     // dim threshold and causing translationY jumps mid-animation.
@@ -633,10 +656,16 @@ private fun BottomSheetColumn(
                 .padding(horizontal = outsideMargin.width)
                 .squircleSurface(
                     color = backgroundColor,
-                    topStart = cornerRadius,
-                    topEnd = cornerRadius,
+                    topStart = if (isRtl) topRight else topLeft,
+                    topEnd = if (isRtl) topLeft else topRight,
                     bottomEnd = 0.dp,
                     bottomStart = 0.dp,
+                )
+                .consumeWindowInsets(horizontalGaps.value)
+                .then(
+                    if (defaultWindowInsetsPadding) {
+                        Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    } else Modifier
                 )
                 .padding(horizontal = insideMargin.width)
                 .padding(bottom = insideMargin.height),

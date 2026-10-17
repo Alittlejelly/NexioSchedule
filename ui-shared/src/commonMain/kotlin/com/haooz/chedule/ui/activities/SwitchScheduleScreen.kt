@@ -24,6 +24,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -522,7 +527,7 @@ fun SwitchScheduleScreen(
                     CollapsibleTopAppBar(
                         title = displayTitle,
                         largeTitle = displayTitle,
-                        modifier = Modifier,
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                         scrollBehavior = scrollBehavior,
                         contentPadding = {},
                         startAction = if (nativeNavigation) null else { backdropAlpha, shadowAlpha ->
@@ -599,6 +604,7 @@ fun SwitchScheduleScreen(
                     visible = navBarVisible,
                     enter = EnterTransition.None,
                     exit = ExitTransition.None,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     label = "BottomEditBar"
                 ) {
                     val checkedCount = selectedSchedules.size + selectedFolders.size
@@ -944,6 +950,7 @@ fun SwitchScheduleScreen(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .overScrollVertical()
                             .scrollEndHaptic(
                                 hapticFeedbackType = HapticFeedbackType.TextHandleMove

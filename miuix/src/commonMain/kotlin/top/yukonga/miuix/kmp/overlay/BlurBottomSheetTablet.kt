@@ -9,6 +9,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,7 +72,11 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.capsule.ContinuousRoundedRectangle
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import top.yukonga.miuix.kmp.basic.rememberScreenTopCornerShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -271,7 +278,9 @@ private fun BlurBottomSheetTabletContent(
     }
 
     // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用
-    val sheetShape = remember { ContinuousRoundedRectangle(38.dp) }
+    val sheetShape = rememberScreenTopCornerShape(38.dp)
+    val windowWidth = windowInfo.containerDpSize.width
+    val horizontalGap = ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)
 
             Box(
         modifier = Modifier
@@ -307,6 +316,8 @@ private fun BlurBottomSheetTabletContent(
                 // 弹窗本体不做壁纸玻璃模糊，纯实色
                 .edgeLight(shape = sheetShape, edgeLight = rememberDefaultEdgeLight(baseColor = sheetBgColor))
                 .background(sheetBgColor)
+                // A centered sheet already clears the window edges by this distance.
+                .consumeWindowInsets(PaddingValues(horizontal = horizontalGap))
                 .onGloballyPositioned { coordinates ->
                     if (enableContentHeightSnap) detentState.updateCollapsedHeight(coordinates.size.height)
                 }
@@ -447,6 +458,7 @@ private fun BlurBottomSheetTabletContent(
                                     Modifier.layerBackdrop(sheetContentBackdrop)
                                 } else Modifier
                             )
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     ) {
                         content()
                     }
@@ -475,6 +487,7 @@ private fun BlurBottomSheetTabletContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(74.dp)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .zIndex(2f),
                     ) {
                         Text(

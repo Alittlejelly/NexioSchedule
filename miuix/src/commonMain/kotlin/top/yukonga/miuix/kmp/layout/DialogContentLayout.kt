@@ -13,17 +13,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.captionBar
-import androidx.compose.foundation.layout.captionBarPadding
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -327,13 +326,11 @@ internal fun DialogContent(
     }
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
 
-    val calculatedTopInset = if (topInset != null) {
-        topInset
+    val safeDrawingInsets = WindowInsets.safeDrawing
+    val dialogInsets = if (topInset != null) {
+        safeDrawingInsets.union(WindowInsets(top = topInset))
     } else {
-        val statusBars = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val captionBar = WindowInsets.captionBar.asPaddingValues().calculateTopPadding()
-        val displayCutout = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
-        maxOf(statusBars, captionBar, displayCutout)
+        safeDrawingInsets
     }
 
     // Predictive-back translation pad (small-screen only). Pre-converted to px so the per-frame
@@ -406,16 +403,6 @@ internal fun DialogContent(
 
     Box(
         modifier = Modifier
-            .then(
-                if (defaultWindowInsetsPadding) {
-                    Modifier
-                        .imePadding()
-                        .navigationBarsPadding()
-                        .captionBarPadding()
-                } else {
-                    Modifier
-                },
-            )
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -428,8 +415,16 @@ internal fun DialogContent(
                     true
                 }
             }
+            // Keep the scrim and outside-tap area full screen; constrain the entire dialog surface.
+            .then(
+                if (defaultWindowInsetsPadding) {
+                    Modifier.windowInsetsPadding(dialogInsets).imePadding()
+                } else {
+                    Modifier.padding(top = topInset ?: safeDrawingInsets.asPaddingValues().calculateTopPadding())
+                },
+            )
             .padding(horizontal = outsideMargin.width)
-            .padding(top = calculatedTopInset, bottom = outsideMargin.height),
+            .padding(bottom = outsideMargin.height),
     ) {
         Column(
             modifier = contentModifier.align(contentAlignment),

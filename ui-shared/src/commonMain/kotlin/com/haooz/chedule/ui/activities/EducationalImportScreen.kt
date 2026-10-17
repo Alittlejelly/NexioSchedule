@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -210,7 +214,7 @@ fun EducationalImportScreen(
                     )
                 ) {
                     com.haooz.chedule.ui.screens.SchoolSelectionScreen(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                         isUpdating = isUpdating,
                         dataVersion = dataVersion,
                         isInFreeformWindow = isInFreeformWindow,
@@ -237,7 +241,7 @@ fun EducationalImportScreen(
                     title = "选择学校",
                     largeTitle = "选择学校",
                     showLargeTitle = true,
-                    modifier = Modifier,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},
                     gradientMaskHeight = CollapsedHeight + 190.dp,
@@ -297,6 +301,7 @@ fun EducationalImportScreen(
                 modifier = Modifier
                     .padding(top = paddingValues.calculateTopPadding() + topBarHeightDp)
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             ) {
                 SearchBar(
                     modifier = Modifier.padding(

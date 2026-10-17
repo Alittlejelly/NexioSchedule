@@ -8,6 +8,28 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.theme.LocalScreenTopCornerRadii
+
+/** Keeps sheet top corners attached to the physical screen edges, including in RTL. */
+@Composable
+internal fun rememberScreenTopCornerShape(cornerRadius: Dp): Shape {
+    val corners = LocalScreenTopCornerRadii.current
+    return remember(corners, cornerRadius) {
+        val delegate = ContinuousRoundedRectangle(
+            topStart = corners?.topLeft ?: cornerRadius,
+            topEnd = corners?.topRight ?: cornerRadius,
+            bottomEnd = cornerRadius,
+            bottomStart = cornerRadius,
+        )
+        object : Shape {
+            override fun createOutline(
+                size: androidx.compose.ui.geometry.Size,
+                layoutDirection: LayoutDirection,
+                density: Density,
+            ): Outline = delegate.createOutline(size, LayoutDirection.Ltr, density)
+        }
+    }
+}
 
 /**
  * 创建一个圆角随动画进度反向放大的 Shape。

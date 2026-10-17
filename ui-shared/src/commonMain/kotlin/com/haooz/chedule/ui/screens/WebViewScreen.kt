@@ -17,6 +17,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -428,6 +433,7 @@ fun WebViewScreen(
                 webHost.Content(
                     Modifier
                         .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .graphicsLayer {
                             compositingStrategy = CompositingStrategy.Offscreen
                         }
@@ -454,6 +460,7 @@ fun WebViewScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 16.dp + tabletHorizontalPadding)
                     // 与首页底栏同一套底部间距算法
                     .padding(bottom = bottomFloatingPadding())
@@ -612,6 +619,7 @@ private fun WebAlertDialog(
             color = MiuixTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 20.dp + tabletHorizontalPadding)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -667,6 +675,7 @@ private fun WebPromptDialog(
             color = MiuixTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 20.dp + tabletHorizontalPadding)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -741,6 +750,7 @@ private fun WebSelectionDialog(
             color = MiuixTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 20.dp + tabletHorizontalPadding)
                 .heightIn(max = 400.dp)
         ) {
@@ -825,6 +835,7 @@ private fun CourseTablePickerDialog(
             color = MiuixTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 20.dp + tabletHorizontalPadding)
                 .heightIn(max = 400.dp)
         ) {

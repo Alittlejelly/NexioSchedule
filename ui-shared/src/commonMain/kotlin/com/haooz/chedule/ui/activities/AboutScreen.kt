@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -255,7 +259,7 @@ fun AboutScreen(
                     showShadow = scrollProgress >= 1f,
                     // 关于页渐变遮罩保持随滚动显隐
                     gradientOverlayScrollTriggered = true,
-                    modifier = Modifier,
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},
                     startAction = if (embedded || nativeChrome != null) null else { backdropAlpha, shadowAlpha ->
