@@ -1,0 +1,1119 @@
+package com.haooz.chedule.ui.activities.main
+
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import com.haooz.chedule.data.AppearanceConfig
+import com.haooz.chedule.data.AppearanceStore
+import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.SwitchCardSnapshotStore
+import com.haooz.chedule.data.WallpaperStore
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.activities.SwitchScheduleScreen
+import com.haooz.chedule.ui.basic.ShortcutMenu
+import com.haooz.chedule.ui.basic.ShortcutMenuItem
+import com.haooz.chedule.ui.activities.classschedule.CourseCard
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
+import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
+import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
+import com.haooz.chedule.ui.screens.CombinationThumbnail
+import com.haooz.chedule.ui.screens.CourseDetailScreen
+import com.haooz.chedule.ui.screens.CustomizeScheduleScreen
+import com.haooz.chedule.ui.theme.rememberAppThemeController
+import com.haooz.chedule.ui.utils.FeatureLog
+import com.haooz.chedule.ui.utils.HostedOverlay
+import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
+import com.haooz.chedule.ui.utils.LocalHostOverlays
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.addScreenCornerRect
+import com.haooz.chedule.ui.utils.buildShareScheduleMap
+import com.haooz.chedule.ui.utils.courseCardSolidBacking
+import com.haooz.chedule.ui.utils.loadScheduleThemeMode
+import com.haooz.chedule.ui.utils.saveScheduleThemeMode
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Copy
+import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Edit
+import top.yukonga.miuix.kmp.icon.extended.Paste
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.time.Duration.Companion.milliseconds
+
+/**
+ * 课表主界面「浮层组」：浮动卡片/交换飞行、快捷菜单、课表外观页、详情页、切换课表、排班 loading。
+ *
+ * 从 `CourseScheduleApp.kt` 拆出。层级顺序与原来完全一致（详情页要盖在弹窗之上）。
+ */
+@Composable
+internal fun BoxScope.CourseScheduleAppOverlayLayers(
+    state: CourseScheduleAppState,
+    displayAppearance: AppearanceConfig,
+    isEntryAnimating: Boolean,
+) {
+    with(state) {
+        val density = densityProvider
+        HostedOverlay(
+            active = floatingCardVisible || swapFlightVisible ||
+                    shortcutMenuVisible || shortcutMenuCourse != null || emptyCellMenuTarget != null ||
+                    showCustomizePage || isCustomizeExiting || isWindowCutoutActive || customizeCoverActive ||
+                    snapshotCoverBitmap != null || showDetail || detailSnapshot != null ||
+                    showShiftLoading || shiftLoadingActive,
+        ) {
+            // 浮层主题跟壁纸/应用设置
+            val overlayEffectiveForcedDark =
+                if (captureThemeActive) captureThemeIsDark else forcedDark
+            val overlayEffectiveDark = overlayEffectiveForcedDark ?: appSettingDark
+            val overlayPageController = rememberAppThemeController(isDark = overlayEffectiveDark)
+            // 无壁纸时浮层垫课程表页底色（与网格课程卡同一份，取值见 courseCardSolidBacking）
+            val floatSolidBacking = courseCardSolidBacking(
+                isDark = overlayEffectiveDark,
+                hasWallpaper = wallpaperBitmap != null
+            )
+            // 拖浮层跟手高光的中心（px，非 state：只在 draw 里写，不触发额外失效）
+            val glowCenterPx = remember { FloatArray(2) }
+            val dragCardHighlight = remember {
+                InteractiveHighlight(
+                    animationScope = coroutineScope,
+                    position = { _, _ ->
+                        if (isFloatingCardDragging && floatingCardVisible) {
+                            glowCenterPx[0] = draggedCardPosition.x + floatingOffsetX.floatValue
+                            glowCenterPx[1] = draggedCardPosition.y + floatingOffsetY.floatValue
+                        }
+                        Offset(glowCenterPx[0], glowCenterPx[1])
+                    },
+                    radiusScale = { 1f / 3f },
+                    radiusBaseDp = 250.dp,
+                    // 按压进度由 glowAlpha 驱动（150ms 淡变），不走组件自带手势
+                    pressProgressOverride = { glowAlpha },
+                    // 只要圆形光晕，不要整幅提亮
+                    drawFlatOverlay = false,
+                )
+            }
+            MiuixTheme(controller = overlayPageController) {
+                CompositionLocalProvider(LocalForcedDarkTheme provides overlayEffectiveForcedDark) {
+                    // 跟手高光：画在浮层之前（同一父级里先声明先画），压在整页之上、浮层之下
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .then(dragCardHighlight.modifier)
+                    )
+                    if (floatingCardVisible) {
+                        val course = draggedCardCourse
+                        if (course != null) {
+                            // 锚点只用长按瞬间的中心；拖拽/吸附位移走 graphicsLayer，不进组合
+                            val widthPx = draggedCardSize.x
+                            val geom = gridGeometry
+                            val sectionH = geom?.sectionHeightPx
+                                ?: with(density) { displayAppearance.cardHeight.dp.toPx() }
+                            // 高度含午休/晚修分界缝，与网格上分段卡片的视觉外接框一致
+                            //
+                            // ⚠ 两种高度的**语义不一样**，别混用：
+                            // - 普通课 = 外接框设定高度（不含卡片 2dp 外缝），浮层要再留一次缝才与网格对齐；
+                            // - 自定义时间课 = 长按实测高，而网格卡片本来就带 2dp 外缝，实测到的已经是
+                            //   **扣完缝的可见高度**，再留一次缝就上下各短 2dp。
+                            val heightPx = when {
+                                // 自定义时间课按时间轴定位/定高，节次几何算出来的高度对不上，用长按实测高
+                                course.hasValidCustomTime() && !isPasteFlight -> draggedCardSize.y
+                                geom != null -> courseVisualHeightPx(
+                                    geom,
+                                    course.startSection,
+                                    course.endSection,
+                                    dividerPxFor(geom)
+                                )
+
+                                else -> (course.endSection - course.startSection + 1) * sectionH
+                            }
+                            val baseOffsetX = with(density) {
+                                (draggedCardPosition.x - widthPx / 2f).toDp()
+                            }
+                            val baseOffsetY = with(density) {
+                                (draggedCardPosition.y - heightPx / 2f).toDp()
+                            }
+                            val width = with(density) { widthPx.toDp() }
+                            val height = with(density) { heightPx.toDp() }
+                            LaunchedEffect(floatingCardVisible, isPasteFlight) {
+                                // 粘贴飞行自行控制缩放，跳过长按入场
+                                if (floatingCardVisible && !isPasteFlight) {
+                                    floatingScale.snapTo(0.94f)
+                                    floatingScale.animateTo(1.08f, tween(durationMillis = 120))
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = baseOffsetX, y = baseOffsetY)
+                                    .size(width = width, height = height)
+                                    // 自定义时间课的高度已是扣完外缝的可见高，这里不能再缝一次
+                                    .then(
+                                        if (course.hasValidCustomTime()) Modifier
+                                        else Modifier.padding(vertical = 2.dp)
+                                    )
+                                    .graphicsLayer {
+                                        translationX = floatingOffsetX.floatValue
+                                        translationY = floatingOffsetY.floatValue
+                                        scaleX = floatingScale.value
+                                        scaleY = floatingScale.value
+                                    }
+                            ) {
+                                CourseCard(
+                                    course = course,
+                                    // 粘贴飞行强制本周样式，避免源课不在当前周飞出灰卡
+                                    isCurrentWeek = if (isPasteFlight) true else course.isActiveInWeek(
+                                        draggedWeek
+                                    ),
+                                    wallpaperBackdrop = if (wallpaperBitmap != null) liquidGlassBackdrop else null,
+                                    cardBlurRadius = displayAppearance.cardBlurRadius,
+                                    cardRefraction = displayAppearance.cardRefraction,
+                                    cardAlpha = displayAppearance.cardAlpha,
+                                    cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
+                                    // 无壁纸时垫页底色，取值见 floatSolidBacking
+                                    solidBackingColor = floatSolidBacking,
+                                    cardHeightPerSection = displayAppearance.cardHeight,
+                                    // ⚠ 必须把浮层 Box 的高度原样传给卡片，否则长按浮层会偏上：
+                                    // 卡片高（customCardHeightDp ?: 节次数×每节高）与 Box 高度 heightPx
+                                    // 不一致时按顶部对齐，视觉中心偏上 (heightPx − 卡片高)/2。
+                                    customCardHeightDp = with(density) { heightPx.toDp().value },
+                                    cardCornerRadius = displayAppearance.cardCornerRadius,
+                                    isTablet = isTablet,
+                                    cardContentAlignment = displayAppearance.cardContentAlignment,
+                                    cardTextColor = displayAppearance.cardTextColor,
+                                    cardTextScale = displayAppearance.cardTextScale,
+                                    showClassroom = displayAppearance.showClassroom,
+                                    showTeacher = displayAppearance.showTeacher,
+                                    disablePadding = true,
+                                    onClick = {}
+                                )
+                            }
+                        }
+                    }
+                    if (swapFlightVisible) {
+                        val swapCourse = swapFlightCourse
+                        if (swapCourse != null) {
+                            val centerX = swapFlightOriginCenter.x + swapFlightOffsetX.value
+                            val centerY = swapFlightOriginCenter.y + swapFlightOffsetY.value
+                            val widthPx = swapFlightWidth
+                            val sectionCount = swapCourse.endSection - swapCourse.startSection + 1
+                            val sectionH = gridGeometry?.sectionHeightPx
+                                ?: with(density) { displayAppearance.cardHeight.dp.toPx() }
+                            val heightPx = sectionCount * sectionH
+                            val offsetX = with(density) { (centerX - widthPx / 2f).toDp() }
+                            val offsetY = with(density) { (centerY - heightPx / 2f).toDp() }
+                            val width = with(density) { widthPx.toDp() }
+                            val height = with(density) { heightPx.toDp() }
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = offsetX, y = offsetY)
+                                    .size(width = width, height = height)
+                                    .padding(vertical = 2.dp)
+                                    .graphicsLayer {
+                                        scaleX = swapFlightScale.value
+                                        scaleY = swapFlightScale.value
+                                    }
+                            ) {
+                                CourseCard(
+                                    course = swapCourse,
+                                    isCurrentWeek = true,
+                                    wallpaperBackdrop = if (wallpaperBitmap != null) liquidGlassBackdrop else null,
+                                    cardBlurRadius = displayAppearance.cardBlurRadius,
+                                    cardRefraction = displayAppearance.cardRefraction,
+                                    cardAlpha = displayAppearance.cardAlpha,
+                                    cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
+                                    // 无壁纸时垫页底色，取值见 floatSolidBacking
+                                    solidBackingColor = floatSolidBacking,
+                                    cardHeightPerSection = displayAppearance.cardHeight,
+                                    cardCornerRadius = displayAppearance.cardCornerRadius,
+                                    isTablet = isTablet,
+                                    cardContentAlignment = displayAppearance.cardContentAlignment,
+                                    cardTextColor = displayAppearance.cardTextColor,
+                                    cardTextScale = displayAppearance.cardTextScale,
+                                    showClassroom = displayAppearance.showClassroom,
+                                    showTeacher = displayAppearance.showTeacher,
+                                    disablePadding = true,
+                                    onClick = {}
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (shortcutMenuCourse != null || emptyCellMenuTarget != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            // 退场动画并行，结束后再清空
+                            shortcutMenuVisible = false
+                            dismissFloatingCard()
+                            coroutineScope.launch {
+                                delay(220.milliseconds)
+                                shortcutMenuCourse = null
+                                emptyCellMenuTarget = null
+                            }
+                        }
+                )
+            }
+            val activeShortcutCourse = shortcutMenuCourse
+            val activeEmptyTarget = emptyCellMenuTarget
+            if (activeShortcutCourse != null || activeEmptyTarget != null) {
+                val menuItems = if (activeShortcutCourse != null) {
+                    buildList {
+                        add(
+                            ShortcutMenuItem(
+                                icon = MiuixIcons.Edit,
+                                label = "编辑",
+                                onClick = {
+                                    FeatureLog.course("edit_shortcut")
+                                    shortcutMenuVisible = false
+                                    dismissFloatingCard()
+                                    coroutineScope.launch {
+                                        delay(240.milliseconds)
+                                        shortcutMenuCourse = null
+                                    }
+                                    viewModel.showEditDialog(activeShortcutCourse)
+                                }
+                            )
+                        )
+                        // ⚠ 自定义时间课不给「复制」：粘贴是按节次跨度落位的，复制它既粘不出
+                        // 正确的时间段、又会让用户以为能复制出一份自定义时间课。
+                        if (!activeShortcutCourse.hasValidCustomTime()) {
+                            add(
+                                ShortcutMenuItem(
+                                    icon = MiuixIcons.Copy,
+                                    label = "复制",
+                                    onClick = {
+                                        FeatureLog.course("copy_shortcut")
+                                        copiedCourseForPaste = activeShortcutCourse
+                                        shortcutMenuVisible = false
+                                        dismissFloatingCard()
+                                        coroutineScope.launch {
+                                            delay(240.milliseconds)
+                                            shortcutMenuCourse = null
+                                        }
+                                        showToast("已复制")
+                                    }
+                                )
+                            )
+                        }
+                        add(
+                            ShortcutMenuItem(
+                                icon = MiuixIcons.Delete,
+                                label = "删除",
+                                onClick = {
+                                    FeatureLog.course("delete_shortcut")
+                                    deleteConfirmCourse = activeShortcutCourse
+                                    shortcutMenuVisible = false
+                                    dismissFloatingCard()
+                                    coroutineScope.launch {
+                                        delay(240.milliseconds)
+                                        shortcutMenuCourse = null
+                                    }
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                        )
+                    }
+                } else {
+                    val emptyDay = activeEmptyTarget?.columnDay ?: -1
+                    val emptySection = activeEmptyTarget?.section ?: -1
+                    val emptyAddDay = activeEmptyTarget?.addDay ?: emptyDay
+                    val emptyAddWeek = activeEmptyTarget?.addWeek ?: -1
+                    buildList {
+                        if (copiedCourseForPaste != null && activeEmptyTarget != null) {
+                            add(
+                                ShortcutMenuItem(
+                                    icon = MiuixIcons.Paste,
+                                    label = "粘贴",
+                                    onClick = {
+                                        pasteRangeTarget = PasteTarget(
+                                            columnDay = emptyDay,
+                                            dataDay = emptyAddDay,
+                                            section = emptySection,
+                                            dataWeek = if (emptyAddWeek > 0) emptyAddWeek else currentViewingWeek,
+                                        )
+                                        showPasteRangeDialog = true
+                                        shortcutMenuVisible = false
+                                        coroutineScope.launch {
+                                            delay(240.milliseconds)
+                                            emptyCellMenuTarget = null
+                                        }
+                                    }
+                                )
+                            )
+                        }
+                        if (activeEmptyTarget != null) {
+                            add(
+                                ShortcutMenuItem(
+                                    icon = MiuixIcons.Add,
+                                    label = "添加",
+                                    iconSize = 24.dp,
+                                    onClick = {
+                                        val defaultWeeks =
+                                            if (emptyAddWeek > 0) setOf(emptyAddWeek) else emptySet()
+                                        viewModel.showAddDialog(
+                                            emptyAddDay,
+                                            emptySection,
+                                            null,
+                                            defaultWeeks
+                                        )
+                                        shortcutMenuVisible = false
+                                        coroutineScope.launch {
+                                            delay(240.milliseconds)
+                                            emptyCellMenuTarget = null
+                                        }
+                                    }
+                                )
+                            )
+                        }
+                    }
+                }
+                ShortcutMenu(
+                    show = shortcutMenuVisible,
+                    items = menuItems,
+                    modifier = Modifier.offset(
+                        // ShadowPadding 12dp，左移使可见左缘与卡片对齐
+                        x = with(density) { shortcutMenuPosition.x.toDp() - 12.dp },
+                        y = with(density) { (shortcutMenuPosition.y - shortcutMenuSize.height).toDp() + 4.dp }
+                    ),
+                    backdrop = liquidGlassBackdrop,
+                    anchorRightPx = shortcutMenuPosition.x + shortcutMenuAnchorWidth,
+                    onMeasuredSize = { width, height ->
+                        shortcutMenuSize = IntSize(width, height)
+                    },
+                    onDismiss = {
+                        shortcutMenuVisible = false
+                        dismissFloatingCard()
+                        coroutineScope.launch {
+                            delay(220.milliseconds)
+                            shortcutMenuCourse = null
+                            emptyCellMenuTarget = null
+                        }
+                    }
+                )
+            }
+            if (showCustomizePage && customizeSnapshot != null) {
+                LaunchedEffect(true) {
+                    if (showCustomizePage) {
+                        onSystemBarsChanged(true, true)
+                    } else {
+                        onSystemBarsChanged(false, false)
+                    }
+                }
+                val dismissCustomize: () -> Unit = {
+                    isApplyingCustomize = false
+                    // 取消时丢弃未落盘主题预览
+                    pendingScheduleThemeMode = null
+                    coroutineScope.launch {
+                        blurSnapshotJob?.cancel()
+                        // 动画期间保持编辑后实时状态；结束时统一恢复。仅锁定原搭配主题防跟随编辑壁纸
+                        captureThemeActive = true
+                        captureThemeIsDark = originalWallpaperIsLight?.let { !it }
+                        // 复用进入时快照，从开洞放大回全屏盖住回退
+                        customizeCoverActive = true
+                        customizeCoverScale.stop()
+                        customizeCoverScale.snapTo(cutoutMainScale.value)
+                        customizeCoverAlpha.stop()
+                        customizeCoverAlpha.snapTo(0f)
+                        customizeExitScale.stop()
+                        customizeExitScale.snapTo(cutoutMainScale.value)
+                        customizeExitAlpha.stop()
+                        customizeExitAlpha.snapTo(1f)
+                        isCustomizeExiting = true
+                        onSystemBarsChanged(false, false)
+                    }
+                }
+                val applyCustomize: () -> Unit = {
+                    coroutineScope.launch {
+                        val bitmap = wallpaperBitmap
+                        val isLight =
+                            combinations.getOrNull(currentCombinationIndex)?.wallpaperIsLight
+                        // 仅内存预览用
+                        val capturedSnapshot = captureMainContentBitmap()
+                        val saveJob = launch(ioDispatcher) {
+                            // 壁纸文件独立落盘（WallpaperStore.save 是 suspend，进不了 batchSave 块）；
+                            // 参数快照仍合并为一次磁盘提交
+                            if (bitmap != null) {
+                                WallpaperStore.save(bitmap)
+                            } else {
+                                // 删文件，否则旧壁纸会在重启后恢复
+                                WallpaperStore.clear()
+                            }
+                            AppearanceStore.batchSave {
+                                AppearanceStore.saveState(
+                                    wallpaperOffset.x,
+                                    wallpaperOffset.y,
+                                    wallpaperScale,
+                                    // 与当前显示尺寸绑定，旋转后可按参考屏重映射
+                                    latestScreenWPx,
+                                    latestScreenHPx
+                                )
+                                val appearanceToSave = currentAppearance()
+                                AppearanceStore.saveCardBlur(
+                                    appearanceToSave.cardBlurRadius
+                                )
+                                AppearanceStore.saveCardAlpha(
+                                    appearanceToSave.cardAlpha
+                                )
+                                AppearanceStore.saveCardSurfaceAlpha(
+                                    appearanceToSave.cardSurfaceAlpha
+                                )
+                                AppearanceStore.saveCardHeight(
+                                    appearanceToSave.cardHeight
+                                )
+                                AppearanceStore.saveCardCornerRadius(
+                                    appearanceToSave.cardCornerRadius
+                                )
+                                AppearanceStore.saveWallpaperBrightness(
+                                    appearanceToSave.wallpaperBrightness
+                                )
+                                AppearanceStore.saveWallpaperIsLight(isLight)
+                                AppearanceStore.saveShowBreakDividers(
+                                    appearanceToSave.showBreakDividers
+                                )
+                                AppearanceStore.saveCardContentAlignment(
+                                    appearanceToSave.cardContentAlignment
+                                )
+                                AppearanceStore.saveCardTextColor(
+                                    appearanceToSave.cardTextColor
+                                )
+                                AppearanceStore.saveCardTextScale(
+                                    appearanceToSave.cardTextScale
+                                )
+                                AppearanceStore.saveShowClassroom(
+                                    appearanceToSave.showClassroom
+                                )
+                                AppearanceStore.saveShowTeacher(
+                                    appearanceToSave.showTeacher
+                                )
+                                AppearanceStore.saveCardRefraction(
+                                    appearanceToSave.cardRefraction
+                                )
+                                AppearanceStore.saveWallpaperBlur(
+                                    appearanceToSave.wallpaperBlur
+                                )
+                            }
+                            // 「应用」才写入偏好
+                            pendingScheduleThemeMode?.let { mode ->
+                                saveScheduleThemeMode(mode)
+                                pendingScheduleThemeMode = null
+                            }
+                        }
+                        // 快照仅存内存；替换前记下旧 snapshot，延迟回收
+                        val idx = currentCombinationIndex
+                        val replacedSnapshot = combinations.getOrNull(idx)?.snapshot
+                        if (idx in combinations.indices) {
+                            combinations = combinations.toMutableList().also {
+                                it[idx] = it[idx].copy(
+                                    bitmap = bitmap,
+                                    offset = wallpaperOffset,
+                                    scale = wallpaperScale,
+                                    snapshot = capturedSnapshot,
+                                    wallpaperIsLight = isLight
+                                )
+                            }
+                        }
+                        if (replacedSnapshot !== capturedSnapshot) {
+                            launch {
+                                delay(32.milliseconds)
+                                recycleSnapshot(
+                                    replacedSnapshot,
+                                    capturedSnapshot,
+                                    customizeSnapshot,
+                                    WallpaperStore.currentImageBitmap(),
+                                    wallpaperBitmap,
+                                )
+                            }
+                        }
+                        savedWallpaperBitmap = bitmap
+                        savedWallpaperOffset = wallpaperOffset
+                        savedWallpaperScale = wallpaperScale
+                        savedAppearance = currentAppearance()
+                        saveJob.join()
+                        isApplyingCustomize = true
+                        // 从开洞大小（0.75）放大回全屏
+                        customizeExitScale.snapTo(cutoutMainScale.value)
+                        customizeExitAlpha.snapTo(1f)
+                        isCustomizeExiting = true
+                    }
+                }
+                // ⚠ 必须 remember：`asImageBitmap()` 每次调用都新建包装对象，不 remember 会让
+                // 页面里 `remember(wallpaperBitmap, …)` 之类的 key 每帧都变（白跑一遍计算）。
+                val customizeSnapshotImage = customizeSnapshot
+                val customizeWallpaperImage = wallpaperBitmap
+                // 搭配缩略图：页面只认「两张图」，宿主的 Combination（含 Bitmap，要做
+                // remap/recycle/测光）留在这一侧，按需映射。
+                val customizeThumbnails = remember(combinations) {
+                    combinations.map {
+                        CombinationThumbnail(
+                            snapshot = it.snapshot,
+                            wallpaper = it.bitmap,
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = customizeExitAlpha.value
+                        }
+                ) {
+                    CustomizeScheduleScreen(
+                        snapshot = customizeSnapshotImage,
+                        screenCornerRadius = screenCornerRadius,
+                        onDismiss = dismissCustomize,
+                        onApply = applyCustomize,
+                        onThemeModePreview = { mode -> pendingScheduleThemeMode = mode },
+                        onPickWallpaper = { onPickWallpaperImage?.invoke(applyPickedWallpaper) },
+                        onClearWallpaper = {
+                            wallpaperBitmap = null
+                            wallpaperOffset = Offset.Zero
+                            wallpaperScale = 1f
+                            val idx = currentCombinationIndex
+                            if (idx in combinations.indices) {
+                                combinations = combinations.toMutableList().also { list ->
+                                    list[idx] = list[idx].copy(
+                                        bitmap = null,
+                                        offset = Offset.Zero,
+                                        scale = 1f,
+                                        wallpaperIsLight = null
+                                    )
+                                }
+                            }
+                        },
+                        pendingEnterCutout = pendingEnterCutout,
+                        onCutoutEntered = { pendingEnterCutout = false },
+                        combinations = customizeThumbnails,
+                        currentCombinationIndex = currentCombinationIndex,
+                        isExiting = isCustomizeExiting,
+                        isApplying = isApplyingCustomize,
+                        isApplyingCustomize = isApplyingCustomize,
+                        wallpaperBitmap = customizeWallpaperImage,
+                        // 「默认主题」档位读写（Android = ScheduleAppearance）
+                        themeMode = { loadScheduleThemeMode() },
+                        onThemeModePersist = { saveScheduleThemeMode(it) },
+                        wallpaperOffset = wallpaperOffset,
+                        wallpaperScale = wallpaperScale,
+                        onWallpaperOffsetChange = {
+                            wallpaperOffset = it
+                            val idx = currentCombinationIndex
+                            if (idx in combinations.indices) {
+                                combinations = combinations.toMutableList().also { list ->
+                                    list[idx] = list[idx].copy(offset = it)
+                                }
+                            }
+                        },
+                        onWallpaperScaleChange = {
+                            wallpaperScale = it
+                            val idx = currentCombinationIndex
+                            if (idx in combinations.indices) {
+                                combinations = combinations.toMutableList().also { list ->
+                                    list[idx] = list[idx].copy(scale = it)
+                                }
+                            }
+                        },
+                        onCutoutCenterChange = { cutoutCenterYRatio = it },
+                        sheetOffsetShared = sheetOffsetY,
+                        appearance = currentAppearance(),
+                        onAppearanceChange = { newAppearance ->
+                            applyAppearance(newAppearance)
+                        },
+                        hasWallpaper = wallpaperBitmap != null,
+                        previewPage = if (selectedTab == 1) 1 else 0,
+                        onPreviewPageChange = { page ->
+                            val target = if (page == 1) 1 else 0
+                            if (selectedTab != target) {
+                                mainTabProgrammatic = true
+                                selectedTab = target
+                                coroutineScope.launch {
+                                    try {
+                                        if (navBarStyle == "rail") {
+                                            mainPagerState.scrollToPage(target)
+                                        } else {
+                                            mainPagerState.animateMainTabTo(target)
+                                        }
+                                    } finally {
+                                        mainTabProgrammatic = false
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (snapshotCoverBitmap != null) {
+                val coverImage = remember(snapshotCoverBitmap) { snapshotCoverBitmap!! }
+                Image(
+                    bitmap = coverImage,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            // 只作用于快照这一层，避免叠加闪烁
+            if (customizeCoverActive && customizeSnapshot != null) {
+                val customizeImage = remember(customizeSnapshot) { customizeSnapshot!! }
+                Image(
+                    bitmap = customizeImage,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = customizeCoverAlpha.value
+                            scaleX = customizeCoverScale.value
+                            scaleY = customizeCoverScale.value
+                            transformOrigin = TransformOrigin(0.5f, cutoutCenterYRatio)
+                        }
+                        .drawWithContent {
+                            val path = Path().apply {
+                                addScreenCornerRect(
+                                    width = size.width,
+                                    height = size.height,
+                                    corners = screenCornerRadius
+                                )
+                            }
+                            clipPath(path) {
+                                this@drawWithContent.drawContent()
+                            }
+                        },
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            LaunchedEffect(isCustomizeExiting) {
+                if (isCustomizeExiting && customizeSnapshot != null) {
+                    coroutineScope {
+                        launch {
+                            customizeExitScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    500,
+                                    easing = CustomizePageEasing
+                                )
+                            )
+                        }
+                        if (!isApplyingCustomize) {
+                            launch {
+                                customizeCoverScale.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = tween(
+                                        500,
+                                        easing = CustomizePageEasing
+                                    )
+                                )
+                            }
+                            launch {
+                                customizeCoverAlpha.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = tween(
+                                        400,
+                                        easing = CustomizePageEasing
+                                    )
+                                )
+                            }
+                        }
+                        if (!isApplyingCustomize) {
+                            launch {
+                                customizeExitAlpha.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(
+                                        500,
+                                        easing = CustomizePageEasing
+                                    )
+                                )
+                            }
+                        }
+                        launch {
+                            cutoutMainScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    500,
+                                    easing = CustomizePageEasing
+                                )
+                            )
+                        }
+                    }
+                    isCustomizeExiting = false
+                    showCustomizePage = false
+                    val exitingSnapshot = customizeSnapshot
+                    val exitingCover = snapshotCoverBitmap
+                    customizeSnapshot = null
+                    snapshotCoverBitmap = null
+                    // combinations 可能仍持有同一 snapshot 引用，共用时不 recycle
+                    val keptCombSnapshots = combinations.mapNotNull { it.snapshot }.toTypedArray()
+                    val keptCombBitmaps = combinations.mapNotNull { it.bitmap }.toTypedArray()
+                    recycleSnapshot(
+                        exitingSnapshot,
+                        exitingCover,
+                        WallpaperStore.currentImageBitmap(),
+                        wallpaperBitmap,
+                        originalWallpaperBitmap,
+                        savedWallpaperBitmap,
+                        *keptCombSnapshots,
+                        *keptCombBitmaps,
+                    )
+                    recycleSnapshot(
+                        exitingCover,
+                        exitingSnapshot,
+                        WallpaperStore.currentImageBitmap(),
+                        wallpaperBitmap,
+                        originalWallpaperBitmap,
+                        savedWallpaperBitmap,
+                        *keptCombSnapshots,
+                        *keptCombBitmaps,
+                    )
+                    customizeCoverActive = false
+                    isWindowCutoutActive = false
+                    // 原搭配已恢复，forcedDark 自然接管
+                    captureThemeActive = false
+                    captureThemeIsDark = null
+                    if (!isApplyingCustomize) {
+                        // 非应用：整体还原，覆盖编辑回调改过的字段
+                        wallpaperBitmap = originalWallpaperBitmap
+                        wallpaperOffset = originalWallpaperOffset
+                        wallpaperScale = originalWallpaperScale
+                        currentCombinationIndex = originalCombinationIndex
+                        val restoreIdx = originalCombinationIndex
+                        val restored = originalCombination
+                        if (restoreIdx in combinations.indices && restored != null) {
+                            combinations = combinations.toMutableList().also {
+                                it[restoreIdx] = restored
+                            }
+                        }
+                    }
+                    isApplyingCustomize = false
+                    onSystemBarsChanged(false, false)
+                }
+            }
+        }
+        // 课程详情页必须盖在弹窗层之上（见 HostOverlayEntry.abovePopups）：它是在课程表弹出的
+        // 「课程详情」底部弹窗里点卡片长出来的，弹窗得留在它下面（对齐 Android 的层级）。
+        HostedOverlay(
+            active = showDetail || detailSnapshot != null,
+            abovePopups = true,
+        ) {
+            if (showDetail) {
+                val windowInfo = LocalWindowInfo.current
+                val sectionTimes by settingsViewModel.sectionTimes.collectAsState()
+                val classStartTime by viewModel.classStartTime.collectAsState()
+                val detailSnapshotImage = detailSnapshot
+                CourseDetailScreen(
+                    courses = detailCourses,
+                    cardLeft = detailCardLeft,
+                    cardTop = detailCardTop,
+                    cardWidth = detailCardWidth,
+                    cardHeight = detailCardHeight,
+                    screenWidth = windowInfo.containerSize.width.toFloat(),
+                    screenHeight = windowInfo.containerSize.height.toFloat(),
+                    screenCornerRadius = screenCornerRadius,
+                    cardSnapshot = detailSnapshotImage,
+                    sectionTimes = sectionTimes,
+                    classStartTime = classStartTime,
+                    teachingWeekReorganizations = teachingWeekRules,
+                    targetWeek = detailTargetWeek,
+                    onBackStart = {
+                        detailExiting = true
+                        coroutineScope.launch {
+                            managePageBlurRadius.animateTo(
+                                0f,
+                                animationSpec = tween(320, easing = OobeCubicOutEasing)
+                            )
+                        }
+                    },
+                    onBack = {
+                        hiddenCourseIds = emptySet()
+                        // ⚠ 详情页延后一帧再消失：morph 结束时卡片已缩回原位，此刻 sheet 里
+                        // 的原卡片还没画出来，同帧摘掉详情页就闪一帧空白。
+                        coroutineScope.launch {
+                            withFrameNanos { }
+                            showDetail = false
+                            detailExiting = false
+                            detailSnapshot = null
+                        }
+                    }
+                )
+            }
+        }
+        // Retain the card morph below native navigation chrome, not in the modal layer.
+        CompositionLocalProvider(
+            LocalHostOverlays provides
+                    (hostNavigation?.scheduleLibraryOverlays
+                        ?: LocalHostOverlays.current),
+        ) {
+            HostedOverlay(active = showSwitchSchedule || switchAnimRunning || switchOverlayActive) {
+                // Entry shading belongs below native controls, never in the modal layer.
+                if (isEntryAnimating) {
+                    Box(Modifier.fillMaxSize().background(Color.Black).graphicsLayer {
+                        alpha = switchReturnBgScrim.value * if (isDark) 1f else 0.6f
+                    })
+                }
+                // 切换课表：p 在卡片↔全屏之间形变；进入 p:1→0，退出 p:0→1
+                if (showSwitchSchedule) {
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // A zero-alpha layer may skip recording its target snapshot on iOS.
+                                alpha = if (switchPreparingLayer) 0.001f else 1f
+                            }
+                    ) {
+                        val switchShareRepository = remember { CourseRepository() }
+                        CompositionLocalProvider(
+                            LocalNativeDocumentChrome provides
+                                    if (nativeBottomBar && !isTablet) hostNavigation?.scheduleLibraryChrome else null,
+                        ) {
+                            SwitchScheduleScreen(
+                                onBackStart = {
+                                    switchExiting = true
+                                    switchPendingReverse = false
+                                    switchPreparingLayer = false
+                                },
+                                onBack = { cardLayer, bounds ->
+                                    if (!switchExiting || (switchAnimRunning && !switchAnimForward)) {
+                                        return@SwitchScheduleScreen
+                                    }
+                                    val wasForward = switchAnimForward
+                                    switchAnimForward = false
+                                    switchAnimRunning = true
+                                    switchAnimJob?.cancel()
+                                    switchAnimJob = coroutineScope.launch {
+                                        switchMainLayerJob?.join()
+                                        if (scheduleChanged) {
+                                            scheduleChanged = false
+                                            switchReloadJob?.join()
+                                            switchReloadJob = null
+                                            withFrameNanos { }
+                                            prepareMainContentLayer()
+                                        }
+                                        switchOverlayActive = true
+                                        switchCardBounds = bounds?.takeIf {
+                                            cardLayer != null && it.width > 0f && it.height > 0f
+                                        }
+                                        switchCardSnapshot = cardLayer
+                                        switchCardBitmap = null
+                                        // 固化给**下次进入**复用（进入方向不录制任何东西）
+                                        if (cardLayer != null) {
+                                            launch {
+                                                val layerSize = cardLayer.layer.size
+                                                val src = cardLayer.bounds ?: Rect(
+                                                    0f,
+                                                    0f,
+                                                    layerSize.width.toFloat(),
+                                                    layerSize.height.toFloat(),
+                                                )
+                                                val cardW = src.width.toInt()
+                                                val cardH = src.height.toInt()
+                                                val bmp = if (cardW <= 0 || cardH <= 0) {
+                                                    null
+                                                } else {
+                                                    runCatching {
+                                                        // 只把**卡片那一块**录进一张卡片大小的小图层，再转位图
+                                                        retainedSwitchCardScratchLayer.record(
+                                                            density,
+                                                            switchLayerLayoutDirection,
+                                                            IntSize(cardW, cardH),
+                                                        ) {
+                                                            translate(-src.left, -src.top) {
+                                                                drawLayer(cardLayer.layer)
+                                                            }
+                                                        }
+                                                        retainedSwitchCardScratchLayer.toImageBitmap()
+                                                    }.getOrNull()
+                                                }
+                                                if (bmp != null) {
+                                                    retainedSwitchCardBitmap = bmp
+                                                    // 落盘：保持到下次切换课表退出为止
+                                                    SwitchCardSnapshotStore.save(bmp)
+                                                }
+                                            }
+                                        }
+                                        val remainingDuration =
+                                            ((1f - switchAnimProgress.value) * 540).toInt()
+                                                .coerceAtLeast(1)
+                                        switchAnimProgress.animateTo(
+                                            targetValue = 1f,
+                                            animationSpec = tween(
+                                                remainingDuration,
+                                                easing = OobeQuartOutEasing
+                                            )
+                                        )
+                                        showSwitchSchedule = false
+                                        FeatureLog.t("切换课表", "close", "forward=$wasForward")
+                                        switchOverlayActive = false
+                                        switchCardSnapshot = null
+                                        switchCardBitmap = null
+                                        switchCardBounds = null
+                                        switchAnimRunning = false
+                                    }
+                                },
+                                onScheduleChanged = {
+                                    FeatureLog.t("切换课表", "schedule_changed")
+                                    switchReloadJob = viewModel.reloadCourses()
+                                    settingsViewModel.refreshSettings()
+                                    scheduleChanged = true
+                                    // 切换页直接改 repository，须把 ScheduleViewModel 拉回一致；摘要放 IO
+                                    coroutineScope.launch(ioDispatcher) {
+                                        scheduleViewModel.refreshScheduleList()
+                                    }
+                                },
+                                onScreenReady = { cardBounds ->
+                                    if (!switchPendingReverse || switchExiting) {
+                                        FeatureLog.t(
+                                            "切换课表",
+                                            "screen_ready_stale",
+                                            "pending=false"
+                                        )
+                                    } else {
+                                        switchPendingReverse = false
+                                        switchAnimForward = true
+                                        switchAnimRunning = true
+                                        FeatureLog.t(
+                                            "切换课表",
+                                            "anim_enter_start",
+                                            "bounds=$cardBounds"
+                                        )
+                                        switchAnimJob?.cancel()
+                                        val cardBoundsInScreen = Rect(
+                                            left = switchContentRootX + cardBounds.left,
+                                            top = switchContentRootY + cardBounds.top,
+                                            right = switchContentRootX + cardBounds.right,
+                                            bottom = switchContentRootY + cardBounds.bottom
+                                        )
+                                        switchAnimJob = coroutineScope.launch {
+                                            switchMainLayerJob?.join()
+                                            switchAnimProgress.snapTo(1f)
+                                            switchReturnBgScrim.snapTo(0.4f)
+                                            switchPreparingLayer = false
+                                            switchOverlayActive = true
+                                            switchCardBounds = cardBoundsInScreen.takeIf {
+                                                it.width > 0f && it.height > 0f
+                                            }
+                                            switchCardSnapshot = null
+                                            // 复用上次退出固化的卡片位图 —— 进入零录制
+                                            switchCardBitmap = retainedSwitchCardBitmap
+                                            val remainingDuration = 320
+                                            val morphExitEase =
+                                                CubicBezierEasing(0.3f, 0.65f, 0.35f, 1.0f)
+                                            launch {
+                                                switchReturnBgScrim.animateTo(
+                                                    0f,
+                                                    animationSpec = tween(
+                                                        remainingDuration,
+                                                        easing = morphExitEase
+                                                    )
+                                                )
+                                            }
+                                            switchAnimProgress.animateTo(
+                                                0f,
+                                                animationSpec = tween(
+                                                    remainingDuration,
+                                                    easing = OobeCubicOutEasing
+                                                )
+                                            )
+                                            FeatureLog.t(
+                                                "切换课表",
+                                                "anim_enter_end",
+                                                "p=${switchAnimProgress.value}"
+                                            )
+                                            switchOverlayActive = false
+                                            switchCardSnapshot = null
+                                            switchCardBitmap = null
+                                            switchCardBounds = null
+                                            switchAnimRunning = false
+                                        }
+                                    }
+                                },
+                                onContentOffset = { x, y ->
+                                    switchContentRootX = x
+                                    switchContentRootY = y
+                                },
+                                pageScale = 1f,
+                                onShareSchedule = { name, changed ->
+                                    onShareSchedule?.invoke(name, changed)
+                                },
+                                isScheduleShareable = { name ->
+                                    buildShareScheduleMap(switchShareRepository, name) != null
+                                },
+                                initialScheduleNames = scheduleViewModel.scheduleNames.collectAsState().value,
+                                initialCurrentScheduleId = scheduleViewModel.currentScheduleName.collectAsState().value,
+                                initialScheduleSummaries = scheduleViewModel.scheduleSummaries.collectAsState().value
+                            )
+                        }
+                    }
+                    // Morph between the retained main layer and the destination card.
+                    SwitchMorphOverlay(
+                        active = switchOverlayActive,
+                        progress = switchAnimProgress,
+                        entering = switchAnimForward,
+                        cardBounds = switchCardBounds,
+                        cardSnapshot = switchCardSnapshot,
+                        cardBitmap = switchCardBitmap,
+                        mainLayer = screenGraphicsLayer,
+                        screenCornerRadius = screenCornerRadius,
+                        isDark = isDark,
+                    )
+                }
+
+            }
+        }
+        HostedOverlay(active = showShiftLoading || shiftLoadingActive) {
+            ShiftLoadingOverlay(
+                show = showShiftLoading,
+                onShiftReady = {
+                    if (isExitingShift) {
+                        FeatureLog.shift("exit_confirmed")
+                        shiftViewModel.exitShiftMode()
+                        selectedTab = 0
+                        selectedTab = 0
+                        coroutineScope.launch { mainPagerState.scrollToPage(0) }
+                    } else {
+                        FeatureLog.shift("enter_confirmed")
+                        shiftViewModel.enterShiftMode()
+                    }
+                },
+                onHide = { showShiftLoading = false },
+                onActivityChanged = { shiftLoadingActive = it },
+            )
+        }
+    }
+}
