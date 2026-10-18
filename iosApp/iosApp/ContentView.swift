@@ -565,10 +565,9 @@ private final class AppHostController: UIViewController {
     /// 开洞（课表外观）时把原生 chrome（tab bar + 导航栏）跟着主内容一起移动缩小。
     /// 两者都不在 Compose 的缩放层里，得自己施加同一套变换（scale + 洞心原点）。
     ///
-    /// ⚠ 缩放对象既不能是 `chromeContainer`：容器带非单位 transform 后 UIKit 会重新解析
+    /// ⚠ 不能直接缩 `chromeContainer`：容器带非单位 transform 后 UIKit 会重新解析
     /// `verticalBarEdge`，折叠屏 iPhone 的侧边竖排 tab bar 会从 (397,0,69,678) 掉回底部
-    /// (0,595,466,83)；也不能只是 `UITabBar`：竖排模式下它只画背景，图标在 SwiftUI 托管的
-    /// `FloatingBarHostingView<FloatingBarContainer>` 里。
+    /// (0,595,466,83)。所以只能逐个缩「真正的 chrome 视图」，且每个都必须单独确认，见下。
     private func updateCutoutTransform() {
         let screenW = view.bounds.width
         let screenH = view.bounds.height
@@ -578,8 +577,8 @@ private final class AppHostController: UIViewController {
         let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
-        // 竖排侧栏不是 UITabBar：UIKit 把它放在 `FloatingBarHostingView<FloatingBarContainer>`
-        // （SwiftUI 托管）里，UITabBar 只画背景。缩放对象必须是这一层。
+        // 竖排 tab bar 本体。`chromeController.view` 子树里若有 SwiftUI 托管的
+        // `FloatingBarHostingView`（其他 iOS 版本/布局下图标在那里）优先缩它，否则缩 `UITabBar`。
         let barHost = findView(chromeController.view, className: "FloatingBarHostingView")
             ?? chromeController.tabBar
         applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: barHost, pivot: pivot)
@@ -590,6 +589,15 @@ private final class AppHostController: UIViewController {
                 to: bar,
                 pivot: pivot
             )
+        }
+        // 折叠屏竖排模式下，顶栏的「更多 / 切换课表」不在 UINavigationBar 里（它高度为 0），
+        // 而是被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` →
+        // `FloatingBarHostingView<FloatingBarContainer>`（和 chromeController.view 是兄弟）。
+        // 这一层同样要跟着缩，否则只有这两个按钮原地不动。
+        if let navView = navigationController?.view,
+           let floatingBar = findView(navView, className: "_UIFloatingBarContainerView"),
+           let host = findView(floatingBar, className: "FloatingBarHostingView") {
+            applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: host, pivot: pivot)
         }
     }
 
