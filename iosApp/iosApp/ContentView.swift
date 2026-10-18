@@ -590,14 +590,20 @@ private final class AppHostController: UIViewController {
                 pivot: pivot
             )
         }
-        // 折叠屏竖排模式下，顶栏的「更多 / 切换课表」不在 UINavigationBar 里（它高度为 0），
-        // 而是被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` →
-        // `FloatingBarHostingView<FloatingBarContainer>`（和 chromeController.view 是兄弟）。
-        // 这一层同样要跟着缩，否则只有这两个按钮原地不动。
+        // 折叠屏竖排模式：顶栏的「更多 / 切换课表」不在 `UINavigationBar`（它高度为 0），
+        // 而被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` →
+        // `FloatingBarHostingView<FloatingBarContainer>`（与 chromeController.view 是兄弟）。
+        //
+        // ⚠ 这一层缩不动：只要祖先带缩放，它就按 1/scale 反向撑大自己的 bounds
+        // （实测 scale 0.75 → bounds 621×904），内容视觉尺寸恒不变，只会错位（偏上）。
+        // UIView.transform / layer.transform / anchorPoint / sublayerTransform / 逐个缩子视图
+        // 全都试过，结果不是偏上就是图标与玻璃分离。开洞期间直接淡出：
+        // 这一页的头部本来就由 Compose 的「取消 / 应用」承担。
         if let navView = navigationController?.view,
            let floatingBar = findView(navView, className: "_UIFloatingBarContainerView"),
            let host = findView(floatingBar, className: "FloatingBarHostingView") {
-            applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: host, pivot: pivot)
+            let fade = max(0, min(1, (scale - 0.72) / 0.28))
+            if abs(host.alpha - fade) > 0.01 { host.alpha = fade }
         }
     }
 
