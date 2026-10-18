@@ -691,9 +691,15 @@ internal fun CourseScheduleAppMainContent(
                         ) {
                             // 主 tab 仅由底栏/侧栏点击切换；关闭用户手势翻页。
                             // Follow the navigation axis reported by the native host or tablet rail.
+                            // ⚠ pager 不再整体内缩（折叠屏 iPhone 折叠态右下角竖排原生 tab bar）
+                            val pageRightInset = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp
+                            val pageInsetModifier = if (pageRightInset > 0.dp) {
+                                Modifier.padding(end = pageRightInset)
+                            } else {
+                                Modifier
+                            }
                             val mainPagerModifier = Modifier
                                 .fillMaxSize()
-                                .padding(end = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp)
                                 .nestedScroll(mainContentNestedScroll)
                             val mainPagerPageKey: (Int) -> String = { page ->
                                 if (isShiftMode) "shift-$page" else "main-$page"
@@ -702,90 +708,21 @@ internal fun CourseScheduleAppMainContent(
                                 if (!isShiftMode) {
                                     when (page) {
                                         0 -> {
-                                            // 今日页主题预先固定，切 tab 不跟着 chrome 闪一帧
-                                            val todayForced =
-                                                if (captureThemeActive) captureThemeIsDark else todayPageForcedDark
-                                            val todayDark = todayForced ?: appSettingDark
-                                            val todayThemeController =
-                                                rememberAppThemeController(isDark = todayDark)
-                                            MiuixTheme(controller = todayThemeController) {
-                                                CompositionLocalProvider(LocalForcedDarkTheme provides todayForced) {
-                                                    TodayScreen(
-                                                        viewModel = viewModel,
-                                                        settingsViewModel = settingsViewModel,
-                                                        hiddenCourseIds = hiddenCourseIds,
-                                                        holidayDataTick = resumeCount,
-                                                        onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
-                                                            openCourseDetail(
-                                                                courses,
-                                                                left,
-                                                                top,
-                                                                width,
-                                                                height,
-                                                                cardLayer = cardLayer,
-                                                                fromToday = true,
-                                                                courseIdToHide = courseIdToHide,
-                                                                targetWeek = targetWeek
-                                                            )
-                                                        },
-                                                        pagerState = todayPagerState,
-                                                        navBarStyle = navBarStyle,
-                                                        onScrollYChanged = { _ -> },
-                                                        settingsScrollBehavior = todayScrollBehavior,
-                                                        onSelectedDayChanged = {
-                                                            todaySelectedDayOfWeek = it
-                                                        },
-                                                        onSelectedDateChanged = {
-                                                            todayIsToday = it
-                                                        },
-                                                        scrollToTodayTrigger = scrollToTodayTrigger,
-                                                        jumpToDateTrigger = todayJumpToDateTrigger,
-                                                        onJumpToDateProcessed = {
-                                                            todayJumpToDateTrigger = 0
-                                                        },
-                                                        wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
-                                                        wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
-                                                        wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
-                                                        useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
-                                                        sharedWallpaperBackdrop = sharedWallpaperBackdrop,
-                                                        wallpaperBrightness = displayAppearance.wallpaperBrightness,
-                                                        cardBlurRadius = displayAppearance.cardBlurRadius,
-                                                        cardRefraction = displayAppearance.cardRefraction,
-                                                        cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
-                                                        wallpaperBlur = displayAppearance.wallpaperBlur,
-                                                        liquidGlassBackdrop = liquidGlassBackdrop,
-                                                        showClassroom = displayAppearance.showClassroom,
-                                                        showTeacher = displayAppearance.showTeacher,
-                                                        onListScrollInProgress = {
-                                                            todayListScrollInProgress.value = it
-                                                        },
-                                                        // 今日助手卡留在 :androidApp（天气/定位/Geocoder），通过槽位注入
-                                                        todayAssistantCard = todayAssistantCard,
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        1 -> {
-                                            val scheduleForced =
-                                                if (captureThemeActive) captureThemeIsDark else wallpaperForcedDark
-                                            val scheduleDark = scheduleForced ?: appSettingDark
-                                            val scheduleThemeController =
-                                                rememberAppThemeController(isDark = scheduleDark)
-                                            MiuixTheme(controller = scheduleThemeController) {
-                                                CompositionLocalProvider(LocalForcedDarkTheme provides scheduleForced) {
-                                                    CompositionLocalProvider(
-                                                        LocalLandRipple provides LandRippleSpec(
-                                                            center = landRippleCenter,
-                                                            token = landRippleToken
-                                                        )
-                                                    ) {
-                                                        MainScheduleScreen(
+                                            // 内容避让右侧栏；页面背景（共享壁纸）仍然铺到屏幕边缘
+                                            Box(Modifier.fillMaxSize().then(pageInsetModifier)) {
+                                                // 今日页主题预先固定，切 tab 不跟着 chrome 闪一帧
+                                                val todayForced =
+                                                    if (captureThemeActive) captureThemeIsDark else todayPageForcedDark
+                                                val todayDark = todayForced ?: appSettingDark
+                                                val todayThemeController =
+                                                    rememberAppThemeController(isDark = todayDark)
+                                                MiuixTheme(controller = todayThemeController) {
+                                                    CompositionLocalProvider(LocalForcedDarkTheme provides todayForced) {
+                                                        TodayScreen(
                                                             viewModel = viewModel,
                                                             settingsViewModel = settingsViewModel,
-                                                            pagerState = pagerState,
                                                             hiddenCourseIds = hiddenCourseIds,
-                                                            draggingCourseIds = draggingCourseIds,
+                                                            holidayDataTick = resumeCount,
                                                             onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
                                                                 openCourseDetail(
                                                                     courses,
@@ -794,468 +731,543 @@ internal fun CourseScheduleAppMainContent(
                                                                     width,
                                                                     height,
                                                                     cardLayer = cardLayer,
-                                                                    fromToday = false,
+                                                                    fromToday = true,
                                                                     courseIdToHide = courseIdToHide,
                                                                     targetWeek = targetWeek
                                                                 )
                                                             },
-                                                            onPopupStateChange = {
-                                                                showCourseDetailPopup = it
+                                                            pagerState = todayPagerState,
+                                                            navBarStyle = navBarStyle,
+                                                            onScrollYChanged = { _ -> },
+                                                            settingsScrollBehavior = todayScrollBehavior,
+                                                            onSelectedDayChanged = {
+                                                                todaySelectedDayOfWeek = it
                                                             },
-                                                            onEmptyLongPress = { day, section, centerX, cellTopY, width, _, addDay, addWeek ->
-                                                                shortcutMenuCourse = null
-                                                                emptyCellMenuTarget =
-                                                                    EmptyCellMenuTarget(
-                                                                        columnDay = day,
-                                                                        section = section,
-                                                                        addDay = addDay,
-                                                                        addWeek = addWeek,
-                                                                    )
-                                                                shortcutMenuVisible = true
-                                                                shortcutMenuPosition = Offset(
-                                                                    centerX - width / 2f,
-                                                                    cellTopY
-                                                                )
-                                                                shortcutMenuAnchorWidth = width
+                                                            onSelectedDateChanged = {
+                                                                todayIsToday = it
                                                             },
-                                                            onCourseLongPress = { course, left, top, width, height, backdrop, currentWeek ->
-                                                                hapticFeedback.performHapticFeedback(
-                                                                    HapticFeedbackType.LongPress
-                                                                )
-                                                                // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样。
-                                                                // 「不能拖动」由卡片侧保证：DayColumn 给这类课传 dragEnabled=false，
-                                                                // 手指怎么动都不会 onDragStart/onDrag，浮层停在原位、也没有调课落点。
-                                                                // ⚠ draggedWeek 必须同步：删除确认弹窗按「本周」删时读的就是它。
-                                                                isDraggingCard = true
-                                                                floatingCardVisible = true
-                                                                // 新一轮长按：还没开始拖，高光先关
-                                                                isFloatingCardDragging = false
-                                                                draggingCourseIds = setOf(course.id)
-                                                                draggedCardCourse = course
-                                                                draggedWeek = currentWeek
-                                                                // 跨午休/晚修课以整课视觉几何为锚点，避免长按在分段卡片上时中心偏移
-                                                                val geom = gridGeometry
-                                                                val anchorCenter: Offset
-                                                                val anchorSize: Offset
-                                                                if (geom != null) {
-                                                                    val div = dividerPxFor(geom)
-                                                                    val fullH =
-                                                                        courseVisualHeightPx(
-                                                                            geom,
-                                                                            course.startSection,
-                                                                            course.endSection,
-                                                                            div
-                                                                        )
-                                                                    val bounds =
-                                                                        geom.dayBounds[course.dayOfWeek]
-                                                                            ?: geom.dayBounds.values.firstOrNull()
-                                                                    // 宽度沿用卡片回调（含 Day 列内 2dp padding 后的实际宽），不要用整列 dayBounds
-                                                                    val topRel = sectionTopPx(
-                                                                        geom,
-                                                                        course.startSection,
-                                                                        div
-                                                                    )
-                                                                    // X 必须用卡片实测中心 left：调课日列数据星期 ≠ 列星期，
-                                                                    // dayBounds[course.dayOfWeek] 会取到隔壁列；自定义时间课按时间轴定位。
-                                                                    anchorCenter = when {
-                                                                        course.hasValidCustomTime() ->
-                                                                            Offset(left, top)
-
-                                                                        bounds != null && bounds.size >= 3 ->
-                                                                            Offset(
-                                                                                left,
-                                                                                bounds[2] + topRel + fullH / 2f
-                                                                            )
-
-                                                                        else ->
-                                                                            Offset(left, top)
-                                                                    }
-                                                                    anchorSize =
-                                                                        if (course.hasValidCustomTime()) {
-                                                                            Offset(width, height)
-                                                                        } else {
-                                                                            Offset(width, fullH)
-                                                                        }
-                                                                } else {
-                                                                    anchorCenter = Offset(left, top)
-                                                                    anchorSize =
-                                                                        Offset(width, height)
-                                                                }
-                                                                draggedCardPosition = anchorCenter
-                                                                // 由卡片实测 X 反推所在列：数据星期在调课日列对不上列
-                                                                draggedColumnDay =
-                                                                    geom?.dayBounds?.entries
-                                                                        ?.firstOrNull { (_, b) ->
-                                                                            b.size >= 2 && left >= b[0] && left <= b[1]
-                                                                        }?.key ?: course.dayOfWeek
-                                                                dragMotion.reset()
-                                                                floatingOffsetX.floatValue = 0f
-                                                                floatingOffsetY.floatValue = 0f
-                                                                draggedCardSize = anchorSize
-                                                                draggedCardBackdrop = backdrop
-                                                                shortcutMenuCourse = course
-                                                                emptyCellMenuTarget = null
-                                                                shortcutMenuVisible = true
-                                                                shortcutMenuPosition =
-                                                                    Offset(
-                                                                        anchorCenter.x - anchorSize.x / 2f,
-                                                                        anchorCenter.y - anchorSize.y / 2f
-                                                                    )
-                                                                shortcutMenuAnchorWidth =
-                                                                    anchorSize.x
-                                                                shortcutMenuBackdrop = backdrop
-                                                            },
-                                                            onCourseDragStart = { _ ->
-                                                                // 拖过位移阈值才到这里（卡片侧 moved > slop 才回调），
-                                                                // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单
-                                                                pendingDropTarget = null
-                                                                isFloatingCardDragging = true
-                                                            },
-                                                            onCourseMenuDismiss = {
-                                                                shortcutMenuVisible = false
-                                                                coroutineScope.launch {
-                                                                    delay(220.milliseconds)
-                                                                    shortcutMenuCourse = null
-                                                                }
-                                                            },
-                                                            onCourseDrag = { _, offsetX, offsetY ->
-                                                                // 跟手 1:1；offset 只进 graphicsLayer，速度进 holder
-                                                                val now = monotonicNow()
-                                                                if (dragMotion.lastTimeMs != 0L) {
-                                                                    val dt =
-                                                                        (now - dragMotion.lastTimeMs).coerceAtLeast(
-                                                                            1L
-                                                                        )
-                                                                    dragMotion.velocityX =
-                                                                        (offsetX - dragMotion.lastOffsetX) / dt * 1000f
-                                                                    dragMotion.velocityY =
-                                                                        (offsetY - dragMotion.lastOffsetY) / dt * 1000f
-                                                                }
-                                                                dragMotion.lastTimeMs = now
-                                                                dragMotion.lastOffsetX = offsetX
-                                                                dragMotion.lastOffsetY = offsetY
-                                                                floatingOffsetX.floatValue = offsetX
-                                                                floatingOffsetY.floatValue = offsetY
-                                                                // 落点仅跨格时写 state，避免逐帧重组课表
-                                                                val course = draggedCardCourse
-                                                                if (course != null) {
-                                                                    val geomNow = gridGeometry
-                                                                    val sectionH =
-                                                                        geomNow?.sectionHeightPx
-                                                                            ?: 0f
-                                                                    val sectionCount =
-                                                                        course.endSection - course.startSection + 1
-                                                                    // 必须与浮层卡片用同一套高度（含分界缝与特殊块挤占）：写死
-                                                                    // sectionCount * sectionH 会让「起始节次中心」算偏，落点命中与高亮错开一节。
-                                                                    val cardHeightPx = when {
-                                                                        course.hasValidCustomTime() -> draggedCardSize.y
-                                                                        geomNow != null -> courseVisualHeightPx(
-                                                                            geomNow,
-                                                                            course.startSection,
-                                                                            course.endSection,
-                                                                            dividerPxFor(geomNow),
-                                                                        )
-
-                                                                        else -> sectionCount * sectionH
-                                                                    }
-                                                                    val centerX =
-                                                                        draggedCardPosition.x + offsetX
-                                                                    val cardTopY =
-                                                                        draggedCardPosition.y + offsetY - cardHeightPx / 2f
-                                                                    val firstSectionCenterY =
-                                                                        cardTopY + sectionH / 2f
-                                                                    val rawTarget =
-                                                                        computeDropTarget(
-                                                                            centerX,
-                                                                            firstSectionCenterY
-                                                                        )
-                                                                    // 放不下的格子不给落点（与粘贴路径同款校验）：起始节次+跨度
-                                                                    // 超过总节次时松手会写出 endSection > totalSections 的课，渲染溢出/错位。
-                                                                    val newTarget =
-                                                                        rawTarget?.takeIf {
-                                                                            it.second + sectionCount - 1 <= totalSections
-                                                                        }
-                                                                    if (newTarget != pendingDropTarget) {
-                                                                        pendingDropTarget =
-                                                                            newTarget
-                                                                    }
-                                                                }
-                                                            },
-                                                            onCourseDragEnd = { _ ->
-                                                                // 手指已离开：高光立刻开始淡出，不等下面的退场动画
-                                                                isFloatingCardDragging = false
-                                                                // 只结束拖拽浮层；菜单关闭交给 onCourseMenuDismiss
-                                                                val source = draggedCardCourse
-                                                                val target = pendingDropTarget
-                                                                val week = draggedWeek
-                                                                pendingDropTarget = null
-                                                                if (source != null && target != null) {
-                                                                    // 列 → 数据坐标：调课日列显示的是 followWeekday/followWeek 的课，
-                                                                    // 冲突检测与写库都必须落在数据坐标上，几何/动画仍用列
-                                                                    val (targetDay, targetWeek) =
-                                                                        dataPositionForColumn(target.first)
-                                                                    val sectionSpan =
-                                                                        source.endSection - source.startSection
-                                                                    val targetStart = target.second
-                                                                    val targetEnd =
-                                                                        targetStart + sectionSpan
-                                                                    // 同格按数据坐标判：调课日列里原地拖动不再被误判成跨天
-                                                                    val sameSlot =
-                                                                        source.dayOfWeek == targetDay &&
-                                                                                week == targetWeek &&
-                                                                                source.startSection == targetStart &&
-                                                                                source.endSection == targetEnd
-                                                                    if (!sameSlot) {
-                                                                        val conflicts =
-                                                                            viewModel.getCoursesAtSlot(
-                                                                                targetWeek,
-                                                                                targetDay,
-                                                                                targetStart,
-                                                                                targetEnd
-                                                                            ).filter {
-                                                                                it.id != source.id && it.isActiveInWeek(
-                                                                                    targetWeek
-                                                                                )
-                                                                            }
-                                                                        if (conflicts.isEmpty()) {
-                                                                            viewModel.moveCourseForWeek(
-                                                                                source.id,
-                                                                                week,
-                                                                                targetDay,
-                                                                                targetStart,
-                                                                                targetEnd,
-                                                                                targetWeek
-                                                                            )
-                                                                            // 单周调课可能拆分/合并出新 id，按目标位重收并隐藏防叠影
-                                                                            draggingCourseIds =
-                                                                                viewModel.getCoursesAtSlot(
-                                                                                    targetWeek,
-                                                                                    targetDay,
-                                                                                    targetStart,
-                                                                                    targetEnd
-                                                                                )
-                                                                                    .filter {
-                                                                                        it.isActiveInWeek(
-                                                                                            targetWeek
-                                                                                        )
-                                                                                    }
-                                                                                    .map { it.id }
-                                                                                    .toSet()
-                                                                            snapFloatingCardToTarget(
-                                                                                target.first,
-                                                                                targetStart,
-                                                                                sectionSpan
-                                                                            )
-                                                                            // 原位置露出的非本周课程淡入放大
-                                                                            val sourceCourses =
-                                                                                viewModel.getCoursesAtSlot(
-                                                                                    week,
-                                                                                    source.dayOfWeek,
-                                                                                    source.startSection,
-                                                                                    source.endSection
-                                                                                ).filter {
-                                                                                    it.id != source.id && !it.isActiveInWeek(
-                                                                                        week
-                                                                                    )
-                                                                                }
-                                                                            if (sourceCourses.isNotEmpty()) {
-                                                                                animateInCourseIds =
-                                                                                    sourceCourses.map { it.id }
-                                                                                        .toSet()
-                                                                                coroutineScope.launch {
-                                                                                    delay(350.milliseconds)
-                                                                                    animateInCourseIds =
-                                                                                        emptySet()
-                                                                                }
-                                                                            }
-                                                                        } else {
-                                                                            // 浮层连贯移到目标卡上方悬停等用户选择
-                                                                            pendingConflictCourse =
-                                                                                conflicts.first()
-                                                                            pendingDropTarget =
-                                                                                target.first to targetStart
-                                                                            showRescheduleConflictDialog =
-                                                                                true
-                                                                            val hoverTargetCenter =
-                                                                                computeTargetCenter(
-                                                                                    target.first,
-                                                                                    targetStart,
-                                                                                    sectionSpan
-                                                                                )
-                                                                            if (hoverTargetCenter != null) {
-                                                                                coroutineScope.launch {
-                                                                                    stopConflictHover()
-                                                                                    isConflictHover =
-                                                                                        true
-                                                                                    isSnapping =
-                                                                                        true
-                                                                                    // 拖拽位移已在 floatingOffset*
-                                                                                    val sectionHPx =
-                                                                                        gridGeometry?.sectionHeightPx
-                                                                                            ?: 0f
-                                                                                    val floatH =
-                                                                                        (sectionSpan + 1) * sectionHPx
-                                                                                    val gap =
-                                                                                        with(density) {
-                                                                                            10.dp.toPx()
-                                                                                        }
-                                                                                    val hoverOffsetX =
-                                                                                        hoverTargetCenter.x -
-                                                                                                draggedCardPosition.x
-                                                                                    val hoverOffsetY =
-                                                                                        hoverTargetCenter.y -
-                                                                                                draggedCardPosition.y -
-                                                                                                floatH - gap
-                                                                                    val settleEase =
-                                                                                        CubicBezierEasing(
-                                                                                            0.32f,
-                                                                                            0.72f,
-                                                                                            0.28f,
-                                                                                            1f
-                                                                                        )
-                                                                                    val jobX =
-                                                                                        launch {
-                                                                                            animateFloatState(
-                                                                                                floatingOffsetX,
-                                                                                                hoverOffsetX,
-                                                                                                tween(
-                                                                                                    durationMillis = 420,
-                                                                                                    easing = settleEase
-                                                                                                )
-                                                                                            )
-                                                                                        }
-                                                                                    val jobY =
-                                                                                        launch {
-                                                                                            animateFloatState(
-                                                                                                floatingOffsetY,
-                                                                                                hoverOffsetY,
-                                                                                                tween(
-                                                                                                    durationMillis = 420,
-                                                                                                    easing = settleEase
-                                                                                                )
-                                                                                            )
-                                                                                        }
-                                                                                    val jobScale =
-                                                                                        launch {
-                                                                                            floatingScale.animateTo(
-                                                                                                1.08f,
-                                                                                                tween(
-                                                                                                    durationMillis = 420
-                                                                                                )
-                                                                                            )
-                                                                                        }
-                                                                                    jobX.join(); jobY.join(); jobScale.join()
-                                                                                    val bobAmp =
-                                                                                        with(density) {
-                                                                                            4.dp.toPx()
-                                                                                        }
-                                                                                    conflictHoverBobJob =
-                                                                                        launch {
-                                                                                            while (true) {
-                                                                                                animateFloatState(
-                                                                                                    floatingOffsetY,
-                                                                                                    hoverOffsetY + bobAmp,
-                                                                                                    tween(
-                                                                                                        durationMillis = 1400,
-                                                                                                        easing = FastOutSlowInEasing
-                                                                                                    )
-                                                                                                )
-                                                                                                animateFloatState(
-                                                                                                    floatingOffsetY,
-                                                                                                    hoverOffsetY - bobAmp,
-                                                                                                    tween(
-                                                                                                        durationMillis = 1400,
-                                                                                                        easing = FastOutSlowInEasing
-                                                                                                    )
-                                                                                                )
-                                                                                            }
-                                                                                        }
-                                                                                }
-                                                                            } else {
-                                                                                coroutineScope.launch {
-                                                                                    floatingScale.animateTo(
-                                                                                        1f,
-                                                                                        tween(
-                                                                                            durationMillis = 180
-                                                                                        )
-                                                                                    )
-                                                                                    delay(180.milliseconds)
-                                                                                    isDraggingCard =
-                                                                                        false
-                                                                                    floatingCardVisible =
-                                                                                        false
-                                                                                    draggingCourseIds =
-                                                                                        emptySet()
-                                                                                    floatingOffsetX.floatValue =
-                                                                                        0f
-                                                                                    floatingOffsetY.floatValue =
-                                                                                        0f
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    } else {
-                                                                        snapFloatingCardToOrigin()
-                                                                    }
-                                                                } else if (source != null) {
-                                                                    // 无落点：松手在网格外 / 超出总节次 / 落到重组休课日
-                                                                    // → 与「同格」一样吸回原位，不凭空消失
-                                                                    stopConflictHover()
-                                                                    snapFloatingCardToOrigin()
-                                                                } else {
-                                                                    dismissFloatingCard()
-                                                                }
+                                                            scrollToTodayTrigger = scrollToTodayTrigger,
+                                                            jumpToDateTrigger = todayJumpToDateTrigger,
+                                                            onJumpToDateProcessed = {
+                                                                todayJumpToDateTrigger = 0
                                                             },
                                                             wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
                                                             wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
                                                             wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
                                                             useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
                                                             sharedWallpaperBackdrop = sharedWallpaperBackdrop,
-                                                            isWallpaperEditing = isWindowCutoutActive,
-                                                            onWallpaperOffsetChange = {
-                                                                wallpaperOffset = it
-                                                            },
-                                                            onWallpaperScaleChange = {
-                                                                wallpaperScale = it
-                                                            },
-                                                            appearance = displayAppearance,
+                                                            wallpaperBrightness = displayAppearance.wallpaperBrightness,
+                                                            cardBlurRadius = displayAppearance.cardBlurRadius,
+                                                            cardRefraction = displayAppearance.cardRefraction,
+                                                            cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
+                                                            wallpaperBlur = displayAppearance.wallpaperBlur,
                                                             liquidGlassBackdrop = liquidGlassBackdrop,
-                                                            onGridGeometryChange = { geom ->
-                                                                gridGeometry = geom
+                                                            showClassroom = displayAppearance.showClassroom,
+                                                            showTeacher = displayAppearance.showTeacher,
+                                                            onListScrollInProgress = {
+                                                                todayListScrollInProgress.value = it
                                                             },
-                                                            dropHighlight = run {
-                                                                val emptyTarget =
-                                                                    emptyCellMenuTarget
-                                                                if (emptyTarget != null && shortcutMenuVisible) {
-                                                                    emptyTarget.columnDay to (emptyTarget.section..emptyTarget.section)
-                                                                } else {
-                                                                    val target = pendingDropTarget
+                                                            // 今日助手卡留在 :androidApp（天气/定位/Geocoder），通过槽位注入
+                                                            todayAssistantCard = todayAssistantCard,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        1 -> {
+                                            // 内容避让右侧栏；壁纸/页面背景仍然铺到屏幕边缘
+                                            Box(Modifier.fillMaxSize().then(pageInsetModifier)) {
+                                                val scheduleForced =
+                                                    if (captureThemeActive) captureThemeIsDark else wallpaperForcedDark
+                                                val scheduleDark = scheduleForced ?: appSettingDark
+                                                val scheduleThemeController =
+                                                    rememberAppThemeController(isDark = scheduleDark)
+                                                MiuixTheme(controller = scheduleThemeController) {
+                                                    CompositionLocalProvider(LocalForcedDarkTheme provides scheduleForced) {
+                                                        CompositionLocalProvider(
+                                                            LocalLandRipple provides LandRippleSpec(
+                                                                center = landRippleCenter,
+                                                                token = landRippleToken
+                                                            )
+                                                        ) {
+                                                            MainScheduleScreen(
+                                                                viewModel = viewModel,
+                                                                settingsViewModel = settingsViewModel,
+                                                                pagerState = pagerState,
+                                                                hiddenCourseIds = hiddenCourseIds,
+                                                                draggingCourseIds = draggingCourseIds,
+                                                                onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
+                                                                    openCourseDetail(
+                                                                        courses,
+                                                                        left,
+                                                                        top,
+                                                                        width,
+                                                                        height,
+                                                                        cardLayer = cardLayer,
+                                                                        fromToday = false,
+                                                                        courseIdToHide = courseIdToHide,
+                                                                        targetWeek = targetWeek
+                                                                    )
+                                                                },
+                                                                onPopupStateChange = {
+                                                                    showCourseDetailPopup = it
+                                                                },
+                                                                onEmptyLongPress = { day, section, centerX, cellTopY, width, _, addDay, addWeek ->
+                                                                    shortcutMenuCourse = null
+                                                                    emptyCellMenuTarget =
+                                                                        EmptyCellMenuTarget(
+                                                                            columnDay = day,
+                                                                            section = section,
+                                                                            addDay = addDay,
+                                                                            addWeek = addWeek,
+                                                                        )
+                                                                    shortcutMenuVisible = true
+                                                                    shortcutMenuPosition = Offset(
+                                                                        centerX - width / 2f,
+                                                                        cellTopY
+                                                                    )
+                                                                    shortcutMenuAnchorWidth = width
+                                                                },
+                                                                onCourseLongPress = { course, left, top, width, height, backdrop, currentWeek ->
+                                                                    hapticFeedback.performHapticFeedback(
+                                                                        HapticFeedbackType.LongPress
+                                                                    )
+                                                                    // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样。
+                                                                    // 「不能拖动」由卡片侧保证：DayColumn 给这类课传 dragEnabled=false，
+                                                                    // 手指怎么动都不会 onDragStart/onDrag，浮层停在原位、也没有调课落点。
+                                                                    // ⚠ draggedWeek 必须同步：删除确认弹窗按「本周」删时读的就是它。
+                                                                    isDraggingCard = true
+                                                                    floatingCardVisible = true
+                                                                    // 新一轮长按：还没开始拖，高光先关
+                                                                    isFloatingCardDragging = false
+                                                                    draggingCourseIds = setOf(course.id)
+                                                                    draggedCardCourse = course
+                                                                    draggedWeek = currentWeek
+                                                                    // 跨午休/晚修课以整课视觉几何为锚点，避免长按在分段卡片上时中心偏移
+                                                                    val geom = gridGeometry
+                                                                    val anchorCenter: Offset
+                                                                    val anchorSize: Offset
+                                                                    if (geom != null) {
+                                                                        val div = dividerPxFor(geom)
+                                                                        val fullH =
+                                                                            courseVisualHeightPx(
+                                                                                geom,
+                                                                                course.startSection,
+                                                                                course.endSection,
+                                                                                div
+                                                                            )
+                                                                        val bounds =
+                                                                            geom.dayBounds[course.dayOfWeek]
+                                                                                ?: geom.dayBounds.values.firstOrNull()
+                                                                        // 宽度沿用卡片回调（含 Day 列内 2dp padding 后的实际宽），不要用整列 dayBounds
+                                                                        val topRel = sectionTopPx(
+                                                                            geom,
+                                                                            course.startSection,
+                                                                            div
+                                                                        )
+                                                                        // X 必须用卡片实测中心 left：调课日列数据星期 ≠ 列星期，
+                                                                        // dayBounds[course.dayOfWeek] 会取到隔壁列；自定义时间课按时间轴定位。
+                                                                        anchorCenter = when {
+                                                                            course.hasValidCustomTime() ->
+                                                                                Offset(left, top)
+
+                                                                            bounds != null && bounds.size >= 3 ->
+                                                                                Offset(
+                                                                                    left,
+                                                                                    bounds[2] + topRel + fullH / 2f
+                                                                                )
+
+                                                                            else ->
+                                                                                Offset(left, top)
+                                                                        }
+                                                                        anchorSize =
+                                                                            if (course.hasValidCustomTime()) {
+                                                                                Offset(width, height)
+                                                                            } else {
+                                                                                Offset(width, fullH)
+                                                                            }
+                                                                    } else {
+                                                                        anchorCenter = Offset(left, top)
+                                                                        anchorSize =
+                                                                            Offset(width, height)
+                                                                    }
+                                                                    draggedCardPosition = anchorCenter
+                                                                    // 由卡片实测 X 反推所在列：数据星期在调课日列对不上列
+                                                                    draggedColumnDay =
+                                                                        geom?.dayBounds?.entries
+                                                                            ?.firstOrNull { (_, b) ->
+                                                                                b.size >= 2 && left >= b[0] && left <= b[1]
+                                                                            }?.key ?: course.dayOfWeek
+                                                                    dragMotion.reset()
+                                                                    floatingOffsetX.floatValue = 0f
+                                                                    floatingOffsetY.floatValue = 0f
+                                                                    draggedCardSize = anchorSize
+                                                                    draggedCardBackdrop = backdrop
+                                                                    shortcutMenuCourse = course
+                                                                    emptyCellMenuTarget = null
+                                                                    shortcutMenuVisible = true
+                                                                    shortcutMenuPosition =
+                                                                        Offset(
+                                                                            anchorCenter.x - anchorSize.x / 2f,
+                                                                            anchorCenter.y - anchorSize.y / 2f
+                                                                        )
+                                                                    shortcutMenuAnchorWidth =
+                                                                        anchorSize.x
+                                                                    shortcutMenuBackdrop = backdrop
+                                                                },
+                                                                onCourseDragStart = { _ ->
+                                                                    // 拖过位移阈值才到这里（卡片侧 moved > slop 才回调），
+                                                                    // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单
+                                                                    pendingDropTarget = null
+                                                                    isFloatingCardDragging = true
+                                                                },
+                                                                onCourseMenuDismiss = {
+                                                                    shortcutMenuVisible = false
+                                                                    coroutineScope.launch {
+                                                                        delay(220.milliseconds)
+                                                                        shortcutMenuCourse = null
+                                                                    }
+                                                                },
+                                                                onCourseDrag = { _, offsetX, offsetY ->
+                                                                    // 跟手 1:1；offset 只进 graphicsLayer，速度进 holder
+                                                                    val now = monotonicNow()
+                                                                    if (dragMotion.lastTimeMs != 0L) {
+                                                                        val dt =
+                                                                            (now - dragMotion.lastTimeMs).coerceAtLeast(
+                                                                                1L
+                                                                            )
+                                                                        dragMotion.velocityX =
+                                                                            (offsetX - dragMotion.lastOffsetX) / dt * 1000f
+                                                                        dragMotion.velocityY =
+                                                                            (offsetY - dragMotion.lastOffsetY) / dt * 1000f
+                                                                    }
+                                                                    dragMotion.lastTimeMs = now
+                                                                    dragMotion.lastOffsetX = offsetX
+                                                                    dragMotion.lastOffsetY = offsetY
+                                                                    floatingOffsetX.floatValue = offsetX
+                                                                    floatingOffsetY.floatValue = offsetY
+                                                                    // 落点仅跨格时写 state，避免逐帧重组课表
+                                                                    val course = draggedCardCourse
+                                                                    if (course != null) {
+                                                                        val geomNow = gridGeometry
+                                                                        val sectionH =
+                                                                            geomNow?.sectionHeightPx
+                                                                                ?: 0f
+                                                                        val sectionCount =
+                                                                            course.endSection - course.startSection + 1
+                                                                        // 必须与浮层卡片用同一套高度（含分界缝与特殊块挤占）：写死
+                                                                        // sectionCount * sectionH 会让「起始节次中心」算偏，落点命中与高亮错开一节。
+                                                                        val cardHeightPx = when {
+                                                                            course.hasValidCustomTime() -> draggedCardSize.y
+                                                                            geomNow != null -> courseVisualHeightPx(
+                                                                                geomNow,
+                                                                                course.startSection,
+                                                                                course.endSection,
+                                                                                dividerPxFor(geomNow),
+                                                                            )
+
+                                                                            else -> sectionCount * sectionH
+                                                                        }
+                                                                        val centerX =
+                                                                            draggedCardPosition.x + offsetX
+                                                                        val cardTopY =
+                                                                            draggedCardPosition.y + offsetY - cardHeightPx / 2f
+                                                                        val firstSectionCenterY =
+                                                                            cardTopY + sectionH / 2f
+                                                                        val rawTarget =
+                                                                            computeDropTarget(
+                                                                                centerX,
+                                                                                firstSectionCenterY
+                                                                            )
+                                                                        // 放不下的格子不给落点（与粘贴路径同款校验）：起始节次+跨度
+                                                                        // 超过总节次时松手会写出 endSection > totalSections 的课，渲染溢出/错位。
+                                                                        val newTarget =
+                                                                            rawTarget?.takeIf {
+                                                                                it.second + sectionCount - 1 <= totalSections
+                                                                            }
+                                                                        if (newTarget != pendingDropTarget) {
+                                                                            pendingDropTarget =
+                                                                                newTarget
+                                                                        }
+                                                                    }
+                                                                },
+                                                                onCourseDragEnd = { _ ->
+                                                                    // 手指已离开：高光立刻开始淡出，不等下面的退场动画
+                                                                    isFloatingCardDragging = false
+                                                                    // 只结束拖拽浮层；菜单关闭交给 onCourseMenuDismiss
                                                                     val source = draggedCardCourse
-                                                                    if (floatingCardVisible && target != null && source != null) {
+                                                                    val target = pendingDropTarget
+                                                                    val week = draggedWeek
+                                                                    pendingDropTarget = null
+                                                                    if (source != null && target != null) {
+                                                                        // 列 → 数据坐标：调课日列显示的是 followWeekday/followWeek 的课，
+                                                                        // 冲突检测与写库都必须落在数据坐标上，几何/动画仍用列
+                                                                        val (targetDay, targetWeek) =
+                                                                            dataPositionForColumn(target.first)
                                                                         val sectionSpan =
                                                                             source.endSection - source.startSection
-                                                                        target.first to (target.second..(target.second + sectionSpan))
-                                                                    } else null
-                                                                }
-                                                            },
-                                                            dropHighlightOrigin = run {
-                                                                val source = draggedCardCourse
-                                                                if (floatingCardVisible && source != null && !isPasteFlight) {
-                                                                    // 高亮画在网格列上：调课日列要用列星期，不能用数据星期
-                                                                    draggedColumnDay to (source.startSection..source.endSection)
-                                                                } else {
+                                                                        val targetStart = target.second
+                                                                        val targetEnd =
+                                                                            targetStart + sectionSpan
+                                                                        // 同格按数据坐标判：调课日列里原地拖动不再被误判成跨天
+                                                                        val sameSlot =
+                                                                            source.dayOfWeek == targetDay &&
+                                                                                    week == targetWeek &&
+                                                                                    source.startSection == targetStart &&
+                                                                                    source.endSection == targetEnd
+                                                                        if (!sameSlot) {
+                                                                            val conflicts =
+                                                                                viewModel.getCoursesAtSlot(
+                                                                                    targetWeek,
+                                                                                    targetDay,
+                                                                                    targetStart,
+                                                                                    targetEnd
+                                                                                ).filter {
+                                                                                    it.id != source.id && it.isActiveInWeek(
+                                                                                        targetWeek
+                                                                                    )
+                                                                                }
+                                                                            if (conflicts.isEmpty()) {
+                                                                                viewModel.moveCourseForWeek(
+                                                                                    source.id,
+                                                                                    week,
+                                                                                    targetDay,
+                                                                                    targetStart,
+                                                                                    targetEnd,
+                                                                                    targetWeek
+                                                                                )
+                                                                                // 单周调课可能拆分/合并出新 id，按目标位重收并隐藏防叠影
+                                                                                draggingCourseIds =
+                                                                                    viewModel.getCoursesAtSlot(
+                                                                                        targetWeek,
+                                                                                        targetDay,
+                                                                                        targetStart,
+                                                                                        targetEnd
+                                                                                    )
+                                                                                        .filter {
+                                                                                            it.isActiveInWeek(
+                                                                                                targetWeek
+                                                                                            )
+                                                                                        }
+                                                                                        .map { it.id }
+                                                                                        .toSet()
+                                                                                snapFloatingCardToTarget(
+                                                                                    target.first,
+                                                                                    targetStart,
+                                                                                    sectionSpan
+                                                                                )
+                                                                                // 原位置露出的非本周课程淡入放大
+                                                                                val sourceCourses =
+                                                                                    viewModel.getCoursesAtSlot(
+                                                                                        week,
+                                                                                        source.dayOfWeek,
+                                                                                        source.startSection,
+                                                                                        source.endSection
+                                                                                    ).filter {
+                                                                                        it.id != source.id && !it.isActiveInWeek(
+                                                                                            week
+                                                                                        )
+                                                                                    }
+                                                                                if (sourceCourses.isNotEmpty()) {
+                                                                                    animateInCourseIds =
+                                                                                        sourceCourses.map { it.id }
+                                                                                            .toSet()
+                                                                                    coroutineScope.launch {
+                                                                                        delay(350.milliseconds)
+                                                                                        animateInCourseIds =
+                                                                                            emptySet()
+                                                                                    }
+                                                                                }
+                                                                            } else {
+                                                                                // 浮层连贯移到目标卡上方悬停等用户选择
+                                                                                pendingConflictCourse =
+                                                                                    conflicts.first()
+                                                                                pendingDropTarget =
+                                                                                    target.first to targetStart
+                                                                                showRescheduleConflictDialog =
+                                                                                    true
+                                                                                val hoverTargetCenter =
+                                                                                    computeTargetCenter(
+                                                                                        target.first,
+                                                                                        targetStart,
+                                                                                        sectionSpan
+                                                                                    )
+                                                                                if (hoverTargetCenter != null) {
+                                                                                    coroutineScope.launch {
+                                                                                        stopConflictHover()
+                                                                                        isConflictHover =
+                                                                                            true
+                                                                                        isSnapping =
+                                                                                            true
+                                                                                        // 拖拽位移已在 floatingOffset*
+                                                                                        val sectionHPx =
+                                                                                            gridGeometry?.sectionHeightPx
+                                                                                                ?: 0f
+                                                                                        val floatH =
+                                                                                            (sectionSpan + 1) * sectionHPx
+                                                                                        val gap =
+                                                                                            with(density) {
+                                                                                                10.dp.toPx()
+                                                                                            }
+                                                                                        val hoverOffsetX =
+                                                                                            hoverTargetCenter.x -
+                                                                                                    draggedCardPosition.x
+                                                                                        val hoverOffsetY =
+                                                                                            hoverTargetCenter.y -
+                                                                                                    draggedCardPosition.y -
+                                                                                                    floatH - gap
+                                                                                        val settleEase =
+                                                                                            CubicBezierEasing(
+                                                                                                0.32f,
+                                                                                                0.72f,
+                                                                                                0.28f,
+                                                                                                1f
+                                                                                            )
+                                                                                        val jobX =
+                                                                                            launch {
+                                                                                                animateFloatState(
+                                                                                                    floatingOffsetX,
+                                                                                                    hoverOffsetX,
+                                                                                                    tween(
+                                                                                                        durationMillis = 420,
+                                                                                                        easing = settleEase
+                                                                                                    )
+                                                                                                )
+                                                                                            }
+                                                                                        val jobY =
+                                                                                            launch {
+                                                                                                animateFloatState(
+                                                                                                    floatingOffsetY,
+                                                                                                    hoverOffsetY,
+                                                                                                    tween(
+                                                                                                        durationMillis = 420,
+                                                                                                        easing = settleEase
+                                                                                                    )
+                                                                                                )
+                                                                                            }
+                                                                                        val jobScale =
+                                                                                            launch {
+                                                                                                floatingScale.animateTo(
+                                                                                                    1.08f,
+                                                                                                    tween(
+                                                                                                        durationMillis = 420
+                                                                                                    )
+                                                                                                )
+                                                                                            }
+                                                                                        jobX.join(); jobY.join(); jobScale.join()
+                                                                                        val bobAmp =
+                                                                                            with(density) {
+                                                                                                4.dp.toPx()
+                                                                                            }
+                                                                                        conflictHoverBobJob =
+                                                                                            launch {
+                                                                                                while (true) {
+                                                                                                    animateFloatState(
+                                                                                                        floatingOffsetY,
+                                                                                                        hoverOffsetY + bobAmp,
+                                                                                                        tween(
+                                                                                                            durationMillis = 1400,
+                                                                                                            easing = FastOutSlowInEasing
+                                                                                                        )
+                                                                                                    )
+                                                                                                    animateFloatState(
+                                                                                                        floatingOffsetY,
+                                                                                                        hoverOffsetY - bobAmp,
+                                                                                                        tween(
+                                                                                                            durationMillis = 1400,
+                                                                                                            easing = FastOutSlowInEasing
+                                                                                                        )
+                                                                                                    )
+                                                                                                }
+                                                                                            }
+                                                                                    }
+                                                                                } else {
+                                                                                    coroutineScope.launch {
+                                                                                        floatingScale.animateTo(
+                                                                                            1f,
+                                                                                            tween(
+                                                                                                durationMillis = 180
+                                                                                            )
+                                                                                        )
+                                                                                        delay(180.milliseconds)
+                                                                                        isDraggingCard =
+                                                                                            false
+                                                                                        floatingCardVisible =
+                                                                                            false
+                                                                                        draggingCourseIds =
+                                                                                            emptySet()
+                                                                                        floatingOffsetX.floatValue =
+                                                                                            0f
+                                                                                        floatingOffsetY.floatValue =
+                                                                                            0f
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        } else {
+                                                                            snapFloatingCardToOrigin()
+                                                                        }
+                                                                    } else if (source != null) {
+                                                                        // 无落点：松手在网格外 / 超出总节次 / 落到重组休课日
+                                                                        // → 与「同格」一样吸回原位，不凭空消失
+                                                                        stopConflictHover()
+                                                                        snapFloatingCardToOrigin()
+                                                                    } else {
+                                                                        dismissFloatingCard()
+                                                                    }
+                                                                },
+                                                                wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
+                                                                wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
+                                                                wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
+                                                                useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
+                                                                sharedWallpaperBackdrop = sharedWallpaperBackdrop,
+                                                                isWallpaperEditing = isWindowCutoutActive,
+                                                                onWallpaperOffsetChange = {
+                                                                    wallpaperOffset = it
+                                                                },
+                                                                onWallpaperScaleChange = {
+                                                                    wallpaperScale = it
+                                                                },
+                                                                appearance = displayAppearance,
+                                                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                                                onGridGeometryChange = { geom ->
+                                                                    gridGeometry = geom
+                                                                },
+                                                                dropHighlight = run {
                                                                     val emptyTarget =
                                                                         emptyCellMenuTarget
                                                                     if (emptyTarget != null && shortcutMenuVisible) {
                                                                         emptyTarget.columnDay to (emptyTarget.section..emptyTarget.section)
-                                                                    } else null
-                                                                }
-                                                            },
-                                                            scheduleScrollBehavior = scheduleScrollBehavior,
-                                                            externalScrollState = scheduleScrollState,
-                                                            externalShowCourseDetail = scheduleShowCourseDetail,
-                                                            externalSelectedCourse = scheduleSelectedCourse,
-                                                            externalSelectedCourses = scheduleSelectedCourses
-                                                        )
+                                                                    } else {
+                                                                        val target = pendingDropTarget
+                                                                        val source = draggedCardCourse
+                                                                        if (floatingCardVisible && target != null && source != null) {
+                                                                            val sectionSpan =
+                                                                                source.endSection - source.startSection
+                                                                            target.first to (target.second..(target.second + sectionSpan))
+                                                                        } else null
+                                                                    }
+                                                                },
+                                                                dropHighlightOrigin = run {
+                                                                    val source = draggedCardCourse
+                                                                    if (floatingCardVisible && source != null && !isPasteFlight) {
+                                                                        // 高亮画在网格列上：调课日列要用列星期，不能用数据星期
+                                                                        draggedColumnDay to (source.startSection..source.endSection)
+                                                                    } else {
+                                                                        val emptyTarget =
+                                                                            emptyCellMenuTarget
+                                                                        if (emptyTarget != null && shortcutMenuVisible) {
+                                                                            emptyTarget.columnDay to (emptyTarget.section..emptyTarget.section)
+                                                                        } else null
+                                                                    }
+                                                                },
+                                                                scheduleScrollBehavior = scheduleScrollBehavior,
+                                                                externalScrollState = scheduleScrollState,
+                                                                externalShowCourseDetail = scheduleShowCourseDetail,
+                                                                externalSelectedCourse = scheduleSelectedCourse,
+                                                                externalSelectedCourses = scheduleSelectedCourses
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1266,30 +1278,42 @@ internal fun CourseScheduleAppMainContent(
                                             val settingsDark = appSettingDark
                                             val settingsThemeController =
                                                 rememberAppThemeController(isDark = settingsDark)
+                                            // 卡片面铺满整屏（含右侧栏下方），列表内容再避让右侧栏。
+                                            // 只内缩内容的话，屏幕圆角裁切会在屏内 ~84pt 处收口 ——
+                                            // 圆角跑到屏幕里侧、右边露一条壁纸，与顶部渐变糊带的沉浸口径不一致。
                                             Box(modifier = settingsPageClipModifier) {
                                                 MiuixTheme(controller = settingsThemeController) {
                                                     CompositionLocalProvider(LocalForcedDarkTheme provides settingsPageForcedDark) {
-                                                        RenderSettingsPane(
-                                                            settingsPane,
-                                                            SettingsPaneArgs(
-                                                                viewModel = viewModel,
-                                                                scheduleViewModel = scheduleViewModel,
-                                                                settingsViewModel = settingsViewModel,
-                                                                shiftViewModel = shiftViewModel,
-                                                                isShiftMode = false,
-                                                                onExitShiftMode = {},
-                                                                onEnterShiftMode = {
-                                                                    FeatureLog.shift("enter_loading")
-                                                                    showShiftLoading = true
-                                                                    isExitingShift = false
-                                                                },
-                                                                navBarStyle = navBarStyle,
-                                                                onScrollYChanged = { _ -> },
-                                                                settingsScrollBehavior = settingsScrollBehavior,
-                                                                liquidGlassBackdrop = liquidGlassBackdrop,
-                                                                showUpdateSettings = showUpdateSettings,
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                // ⚠ 顺序不能反：background 必须在 padding 之前 ——
+                                                                // 卡片面要铺到屏幕边缘（右侧栏下方），只有内容内缩
+                                                                .background(MiuixTheme.colorScheme.surface)
+                                                                .then(pageInsetModifier)
+                                                        ) {
+                                                            RenderSettingsPane(
+                                                                settingsPane,
+                                                                SettingsPaneArgs(
+                                                                    viewModel = viewModel,
+                                                                    scheduleViewModel = scheduleViewModel,
+                                                                    settingsViewModel = settingsViewModel,
+                                                                    shiftViewModel = shiftViewModel,
+                                                                    isShiftMode = false,
+                                                                    onExitShiftMode = {},
+                                                                    onEnterShiftMode = {
+                                                                        FeatureLog.shift("enter_loading")
+                                                                        showShiftLoading = true
+                                                                        isExitingShift = false
+                                                                    },
+                                                                    navBarStyle = navBarStyle,
+                                                                    onScrollYChanged = { _ -> },
+                                                                    settingsScrollBehavior = settingsScrollBehavior,
+                                                                    liquidGlassBackdrop = liquidGlassBackdrop,
+                                                                    showUpdateSettings = showUpdateSettings,
+                                                                )
                                                             )
-                                                        )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -1332,43 +1356,55 @@ internal fun CourseScheduleAppMainContent(
                                     }
                                 } else {
                                     when (page) {
-                                        0 -> ShiftScheduleScreen(
-                                            shiftViewModel = shiftViewModel,
-                                            settingsViewModel = settingsViewModel,
-                                            pagerState = pagerState,
-                                            scheduleDataVersion = dataVersion,
-                                            cardHeightPerSection = currentAppearance().cardHeight,
-                                            liquidGlassBackdrop = liquidGlassBackdrop,
-                                            scheduleScrollBehavior = scheduleScrollBehavior,
-                                            isInFreeformWindow = isInFreeformWindow,
-                                            titleBarHeight = 56.dp,
-                                        )
+                                        0 -> Box(Modifier.fillMaxSize().then(pageInsetModifier)) {
+                                                // 内容避让右侧栏；壁纸/页面背景仍然铺到屏幕边缘
+                                                ShiftScheduleScreen(
+                                                    shiftViewModel = shiftViewModel,
+                                                    settingsViewModel = settingsViewModel,
+                                                    pagerState = pagerState,
+                                                    scheduleDataVersion = dataVersion,
+                                                    cardHeightPerSection = currentAppearance().cardHeight,
+                                                    liquidGlassBackdrop = liquidGlassBackdrop,
+                                                    scheduleScrollBehavior = scheduleScrollBehavior,
+                                                    isInFreeformWindow = isInFreeformWindow,
+                                                    titleBarHeight = 56.dp,
+                                                )
+                                        }
 
                                         1 -> Box(modifier = settingsPageClipModifier) {
-                                            RenderSettingsPane(
-                                                settingsPane,
-                                                SettingsPaneArgs(
-                                                    viewModel = viewModel,
-                                                    scheduleViewModel = scheduleViewModel,
-                                                    settingsViewModel = settingsViewModel,
-                                                    shiftViewModel = shiftViewModel,
-                                                    isShiftMode = true,
-                                                    onExitShiftMode = {
-                                                        FeatureLog.shift("exit_loading")
-                                                        showShiftLoading = true
-                                                        isExitingShift = true
-                                                    },
-                                                    onEnterShiftMode = {
-                                                        showShiftLoading = true
-                                                        isExitingShift = false
-                                                    },
-                                                    navBarStyle = navBarStyle,
-                                                    onScrollYChanged = { _ -> },
-                                                    settingsScrollBehavior = settingsScrollBehavior,
-                                                    liquidGlassBackdrop = liquidGlassBackdrop,
-                                                    showUpdateSettings = showUpdateSettings,
+                                            // 卡片面铺满整屏，列表内容再避让右侧栏（口径同手机设置页）
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    // ⚠ background 在 padding 之前：卡片面铺到屏幕边缘
+                                                    .background(MiuixTheme.colorScheme.surface)
+                                                    .then(pageInsetModifier)
+                                            ) {
+                                                RenderSettingsPane(
+                                                    settingsPane,
+                                                    SettingsPaneArgs(
+                                                        viewModel = viewModel,
+                                                        scheduleViewModel = scheduleViewModel,
+                                                        settingsViewModel = settingsViewModel,
+                                                        shiftViewModel = shiftViewModel,
+                                                        isShiftMode = true,
+                                                        onExitShiftMode = {
+                                                            FeatureLog.shift("exit_loading")
+                                                            showShiftLoading = true
+                                                            isExitingShift = true
+                                                        },
+                                                        onEnterShiftMode = {
+                                                            showShiftLoading = true
+                                                            isExitingShift = false
+                                                        },
+                                                        navBarStyle = navBarStyle,
+                                                        onScrollYChanged = { _ -> },
+                                                        settingsScrollBehavior = settingsScrollBehavior,
+                                                        liquidGlassBackdrop = liquidGlassBackdrop,
+                                                        showUpdateSettings = showUpdateSettings,
+                                                    )
                                                 )
-                                            )
+                                            }
                                         }
                                     }
                                 }

@@ -375,6 +375,16 @@ private fun BlurBottomSheetContent(
                     backProgress.value * currentHeight +
                     if (enableContentHeightSnap) detentState.dismissOffsetPx else 0f
             }
+            // 水平方向系统栏（iPadOS 竖排 tab bar / 横屏导航条）避让**加在外壳上**，
+            // 整个卡片（含底色、圆角、边缘光）一起内缩，内容不再单独避让。
+            // 反过来（外壳全宽 + 内容避让）会看到「实色背景铺到系统栏底下，文字却缩了一条」，
+            // 标题也按全宽居中，看起来歪。
+            // 指定 sheetMaxWidth 时是居中窄条，本就不贴边，不加（否则会把窄条顶到左边）。
+            .then(
+                if (sheetMaxWidth == Dp.Unspecified) {
+                    Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                } else Modifier
+            )
 
         val sheetOffsetDpValue = if (sheetOffsetDp != Dp.Unspecified) sheetOffsetDp else 200.dp
 
@@ -599,7 +609,7 @@ private fun BlurBottomSheetContent(
                                     Modifier.layerBackdrop(sheetContentBackdrop)
                                 } else Modifier
                             )
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            // 水平系统栏避让已提到弹窗外壳上，这里不再内缩，否则会双倍避让
                     ) {
                         content()
                     }
@@ -629,7 +639,7 @@ private fun BlurBottomSheetContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(76.dp)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            // 水平避让已在外壳上，标题按卡片实际宽度居中
                             .zIndex(2f),
                     ) {
                         Text(
