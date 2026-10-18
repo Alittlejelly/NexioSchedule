@@ -562,8 +562,13 @@ private final class AppHostController: UIViewController {
         if target.transform != transform { target.transform = transform }
     }
 
-    /// 开洞（课表外观）时把原生 chrome（底栏容器 + 导航栏）跟着主内容一起移动缩小。
+    /// 开洞（课表外观）时把原生 chrome（tab bar + 导航栏）跟着主内容一起移动缩小。
     /// 两者都不在 Compose 的缩放层里，得自己施加同一套变换（scale + 洞心原点）。
+    ///
+    /// ⚠ 缩放对象既不能是 `chromeContainer`：容器带非单位 transform 后 UIKit 会重新解析
+    /// `verticalBarEdge`，折叠屏 iPhone 的侧边竖排 tab bar 会从 (397,0,69,678) 掉回底部
+    /// (0,595,466,83)；也不能只是 `UITabBar`：竖排模式下它只画背景，图标在 SwiftUI 托管的
+    /// `FloatingBarHostingView<FloatingBarContainer>` 里。
     private func updateCutoutTransform() {
         let screenW = view.bounds.width
         let screenH = view.bounds.height
@@ -573,7 +578,11 @@ private final class AppHostController: UIViewController {
         let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
-        applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: chromeContainer, pivot: pivot)
+        // 竖排侧栏不是 UITabBar：UIKit 把它放在 `FloatingBarHostingView<FloatingBarContainer>`
+        // （SwiftUI 托管）里，UITabBar 只画背景。缩放对象必须是这一层。
+        let barHost = findView(chromeController.view, className: "FloatingBarHostingView")
+            ?? chromeController.tabBar
+        applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: barHost, pivot: pivot)
         if let bar = navigationController?.navigationBar {
             applyCutoutScale(
                 scale,
@@ -586,6 +595,15 @@ private final class AppHostController: UIViewController {
 
     /// 外观页弹窗让位时主内容的纵向位移（pt，负值=上移；0 = 当前无位移）
     private var cachedChromeOffsetY: CGFloat = 0
+
+    private func findView(_ root: UIView, className: String, _ depth: Int = 0) -> UIView? {
+        if depth > 6 { return nil }
+        if String(describing: type(of: root)).hasPrefix(className) { return root }
+        for sub in root.subviews {
+            if let hit = findView(sub, className: className, depth + 1) { return hit }
+        }
+        return nil
+    }
 
     private func applyPushedChromeOffset(_ offsetY: KotlinDouble) {
         cachedChromeOffsetY = CGFloat(offsetY.doubleValue)
