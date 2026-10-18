@@ -19,6 +19,10 @@ local.properties
 # --- Kotlin 编译缓存 ---
 .kotlin/
 
+# --- Gradle / 编译产物 ---
+build/
+.gradle/
+
 # --- OS 文件 ---
 .DS_Store
 Thumbs.db
