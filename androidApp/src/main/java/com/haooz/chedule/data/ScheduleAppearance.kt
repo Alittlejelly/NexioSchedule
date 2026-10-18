@@ -38,8 +38,9 @@ import java.io.FileOutputStream
  * 外观参数快照 —— 落盘的唯一结构。
  *
  * ⚠️ 这里的默认值就是**实际生效的默认值**：反序列化后直接读它。
- * [AppearanceConfig] 与 [Combination] 里同名字段的默认值只在直接构造对象时有效，
- * 走 `fromCombination` 时一律被覆盖 —— **三处必须保持一致**。
+ * [AppearanceConfig] 与 ui-shared 的 `ScheduleCombination` 里同名字段的默认值只在
+ * 直接构造对象时有效，走 `AppearanceConfig.fromCombination` 时一律被覆盖 ——
+ * **三处必须保持一致**。
  *
  * 枚举字段声明为可空并配 safe getter：Gson UnsafeAllocator 使 Kotlin 默认值不生效。
  */
@@ -160,54 +161,6 @@ fun CombinationStyle.toAppearanceStyle(): AppearanceStyle = AppearanceStyle(
     showTeacher = showTeacher,
     cardRefraction = cardRefraction,
     wallpaperBlur = wallpaperBlur,
-)
-
-/** 运行期的外观快照（壁纸位图 + 变换 + 参数），供课表页直接消费 */
-data class Combination(
-    val bitmap: Bitmap?,
-    val offset: androidx.compose.ui.geometry.Offset,
-    val scale: Float,
-    var snapshot: Bitmap? = null,
-    var cardBlurRadius: Float = 4f,
-    var cardAlpha: Float = 0.15f,
-    var cardSurfaceAlpha: Float? = null,
-    var cardHeight: Float = 54f,
-    var cardCornerRadius: Float = 10f,
-    var wallpaperBrightness: Float = 0f,
-    var showBreakDividers: Boolean = true,
-    var cardContentAlignment: CardContentAlignment = CardContentAlignment.CENTER_CENTER,
-    var cardTextColor: CardTextColor = CardTextColor.COLORFUL,
-    var cardTextScale: Float = 1f,
-    var showClassroom: Boolean = true,
-    var showTeacher: Boolean = true,
-    var cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
-    var wallpaperIsLight: Boolean? = null,
-    var wallpaperBlur: Boolean = false
-)
-
-/**
- * 课表外观配置 —— 本体已拆到 `:core`（`core/src/commonMain/.../AppearanceConfig.kt`），
- * 因为 `MainScheduleScreen` 迁入 `:ui-shared` 后需要它作为页面参数类型。
- *
- * [fromCombination] 依赖 android 版 [Combination]（含 Bitmap），以 companion 扩展
- * 留在本文件，调用方式 `AppearanceConfig.fromCombination(c)` 与迁移前一致。
- */
-fun AppearanceConfig.Companion.fromCombination(c: Combination): AppearanceConfig = AppearanceConfig(
-    cardBlurRadius = c.cardBlurRadius,
-    cardAlpha = c.cardAlpha.coerceIn(0f, 1f),
-    cardSurfaceAlpha = (c.cardSurfaceAlpha
-        ?: CombinationStyle.CARD_SURFACE_ALPHA_DEFAULT).coerceIn(0f, 1f),
-    cardHeight = c.cardHeight,
-    cardCornerRadius = c.cardCornerRadius,
-    wallpaperBrightness = c.wallpaperBrightness,
-    showBreakDividers = c.showBreakDividers,
-    cardContentAlignment = c.cardContentAlignment,
-    cardTextColor = c.cardTextColor,
-    cardTextScale = c.cardTextScale,
-    showClassroom = c.showClassroom,
-    showTeacher = c.showTeacher,
-    cardRefraction = c.cardRefraction,
-    wallpaperBlur = c.wallpaperBlur
 )
 
 /**
@@ -581,30 +534,5 @@ object ScheduleAppearance {
         } catch (_: Exception) {
             null
         }
-    }
-
-    /** 组装运行期快照，供课表页消费 */
-    fun currentCombination(): Combination {
-        val style = getStyle()
-        return Combination(
-            bitmap = loadWallpaper(),
-            offset = androidx.compose.ui.geometry.Offset(style.offsetX, style.offsetY),
-            scale = style.scale,
-            cardBlurRadius = style.cardBlur,
-            cardAlpha = style.cardAlpha,
-            cardSurfaceAlpha = style.cardSurfaceAlpha,
-            cardHeight = style.cardHeight,
-            cardCornerRadius = style.cardCornerRadius,
-            wallpaperBrightness = style.wallpaperBrightness,
-            showBreakDividers = style.showBreakDividers,
-            cardContentAlignment = style.safeAlignment,
-            cardTextColor = style.safeTextColor,
-            cardTextScale = style.safeCardTextScale,
-            showClassroom = style.showClassroom,
-            showTeacher = style.showTeacher,
-            cardRefraction = style.safeRefraction,
-            wallpaperIsLight = style.wallpaperIsLight,
-            wallpaperBlur = style.wallpaperBlur
-        )
     }
 }

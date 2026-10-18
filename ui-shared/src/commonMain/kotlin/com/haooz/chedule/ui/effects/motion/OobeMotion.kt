@@ -1,4 +1,10 @@
 /*
+ * 缓动与时序常量。
+ *
+ * 类名沿用「Oobe」前缀只是历史遗留 —— OOBE 开屏引导早已下线，原本配套的一整簇
+ * OOBE 动效（*Transform() 与OOBE_*_MILLIS）已随之删除。剩下的 Oobe*OutEasing
+ * 是各页面 morph / 转场动画真正在用的，别按名字当成残留删掉。
+ *
  * Animation timings are derived from HyperCeiler provision at commit
  * 7266aaa0d698ad10795381c5bf23651c2e1719d0.
  * Copyright (C) 2023-2026 HyperCeiler Contributions
@@ -9,40 +15,9 @@ package com.haooz.chedule.ui.effects.motion
 // ⚠ 全部 internal 已开放为 public：跨模块（:androidApp 的 MainActivity/AppNavHost 等）读不到
 // internal 会编译报错（"Cannot access … it is internal in file"），勿改回 internal。
 
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
-
-const val OOBE_PAGE_TRANSITION_MILLIS = 350
-const val OOBE_EXIT_MILLIS = 360
-const val OOBE_HOME_ENTER_MILLIS = 619
-
-val OobeAccelerateDecelerateEasing = Easing { fraction ->
-    (cos((fraction + 1f) * PI).toFloat() / 2f) + 0.5f
-}
-
-
-// 余弦加速 先慢后快 Cosine In
-val OobeCosAccelerateEasing = Easing { fraction ->
-    1f - cos(fraction * PI.toFloat() / 2f)
-}
-
-val OobeSinOutEasing = Easing { fraction ->
-    sin(fraction * PI.toFloat() / 2f)
-}
 
 val OobeQuadraticOutEasing = Easing { fraction ->
     1f - (1f - fraction) * (1f - fraction)
@@ -111,70 +86,3 @@ val OobeFifthpowerOutEasing = Easing { fraction ->
     val inverse = 1f - fraction
     1f - inverse * inverse * inverse * inverse * inverse
 }
-
-val OobeHomeSpringEasing = Easing { fraction ->
-    if (fraction <= 0f) return@Easing 0f
-    if (fraction >= 1f) return@Easing 1f
-    val dampingRatio = 0.65f
-    val angularFrequency = 10.5f
-    val dampedFrequency = angularFrequency * sqrt(1f - dampingRatio * dampingRatio)
-    val envelope = exp((-dampingRatio * angularFrequency * fraction).toDouble()).toFloat()
-    1f - envelope * (
-        cos(dampedFrequency * fraction) +
-            dampingRatio / sqrt(1f - dampingRatio * dampingRatio) * sin(dampedFrequency * fraction)
-        )
-}
-
-private val OobeSineInOutEasing = CubicBezierEasing(0.37f, 0f, 0.63f, 1f)
-
-fun uiStyleSwitchTransform(): ContentTransform =
-    ((scaleIn(
-        initialScale = 1.4f,
-        animationSpec = tween(OOBE_HOME_ENTER_MILLIS, easing = OobeHomeSpringEasing),
-    ) + fadeIn(
-        animationSpec = tween(
-            durationMillis = 230,
-            delayMillis = 60,
-            easing = OobeSineInOutEasing,
-        ),
-    )).togetherWith(
-        fadeOut(
-            animationSpec = tween(OOBE_EXIT_MILLIS, easing = OobeSineInOutEasing),
-        ),
-    )).apply {
-        targetContentZIndex = 1f
-    }
-
-fun oobeToHomeTransform(): ContentTransform =
-    (scaleIn(
-        initialScale = 1.3f,
-        animationSpec = tween(OOBE_HOME_ENTER_MILLIS, easing = OobeHomeSpringEasing),
-    ) + fadeIn(
-        animationSpec = tween(durationMillis = 230, delayMillis = 60, easing = OobeSinOutEasing),
-    )).togetherWith(
-        scaleOut(
-            targetScale = 0.8f,
-            animationSpec = tween(OOBE_EXIT_MILLIS, easing = OobeHomeSpringEasing),
-        ) + fadeOut(
-            animationSpec = tween(OOBE_EXIT_MILLIS, easing = OobeSinOutEasing),
-        ),
-    )
-
-fun homeToOobeTransform(): ContentTransform =
-    (fadeIn(tween(OOBE_EXIT_MILLIS)) + scaleIn(initialScale = 0.96f))
-        .togetherWith(ExitTransition.None)
-
-fun oobeStepTransform(): ContentTransform =
-    (scaleIn(
-        initialScale = 0.96f,
-        animationSpec = tween(OOBE_PAGE_TRANSITION_MILLIS, easing = OobeCubicOutEasing),
-    ) + fadeIn(
-        animationSpec = tween(OOBE_PAGE_TRANSITION_MILLIS, easing = OobeCubicOutEasing),
-    )).togetherWith(
-        scaleOut(
-            targetScale = 0.96f,
-            animationSpec = tween(OOBE_PAGE_TRANSITION_MILLIS, easing = OobeCubicOutEasing),
-        ) + fadeOut(
-            animationSpec = tween(OOBE_PAGE_TRANSITION_MILLIS, easing = OobeCubicOutEasing),
-        ),
-    )

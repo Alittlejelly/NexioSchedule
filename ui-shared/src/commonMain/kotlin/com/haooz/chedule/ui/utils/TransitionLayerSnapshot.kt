@@ -18,7 +18,24 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 
-/** A retained drawing layer, optionally restricted to a region in its local pixel coordinates. */
+/**
+ * A retained drawing layer, optionally restricted to a region in its local pixel coordinates.
+ *
+ * 这里用 `GraphicsLayer` + `clipRect` 做裁剪，**不分配位图**。早期实现走的是
+ * `ImageBitmap` 裁剪（`Bitmap.createBitmap(src,x,y,w,h)` 的跨平台替身），已删除 ——
+ * 它在 Android 上有个绕不开的坑，值得记下来：
+ *
+ * - `GraphicsLayer.toImageBitmap()` 在 Android 走 `Bitmap.createBitmap(Picture)`，
+ *   内部固定 `Config.HARDWARE` → 读回的是**硬件位图**；
+ * - 目标却是 `ImageBitmap(w,h)` 这种**软件**位图，`Canvas.throwIfCannotDraw` 遇
+ *   「HARDWARE 源 + 软件canvas」直接抛
+ *   `IllegalArgumentException: Software rendering doesn't support hardware bitmaps`；
+ * - 异常被 `runCatching { }.getOrNull()` 兜住 → 静默返回 null → 卡片底图凭空消失。
+ *   整屏不裁剪的那条路（快捷菜单）走**硬件** canvas 一切正常，所以现象只在
+ *   **需要裁剪**的页面出现，且只有 Android 端有。
+ * - 顺带：Skiko 上 `drawLayer` 是重放录制命令而非光栅化，零分配 —— 这正是本实现
+ *   在 iOS/桌面也不掉帧的原因（对比：承载静止快照必须落成 ImageBitmap）。
+ */
 data class TransitionLayerSnapshot(
     val layer: GraphicsLayer,
     val bounds: Rect? = null,

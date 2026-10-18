@@ -9,8 +9,9 @@ package com.haooz.chedule.data
  * ⚠️ 2026-10-11 从 `:androidApp` 的 `data/ScheduleAppearance.kt` 拆到 `:core` ——
  * `MainScheduleScreen` 迁入 `:ui-shared` 后作为页面参数类型需要跨平台可见；
  * 本类是纯数据（Float/Boolean/三个 :core 枚举），拆分零风险。
- * `fromCombination`（依赖 android.graphics.Bitmap 版的 `Combination`）
- * 以 **companion 扩展**留在 `ScheduleAppearance.kt`，调用方式不变。
+ * `fromCombination` 曾以 **companion 扩展**留在 `ScheduleAppearance.kt`（依赖含 Bitmap 的
+ * android 版 `Combination`），已随迁移完成删除 —— 现役实现在 `:ui-shared`
+ * 的 `CourseScheduleAppTypes.kt`，参数是跨平台的 `ScheduleCombination`。
  */
 data class AppearanceConfig(
     val cardBlurRadius: Float = 4f,

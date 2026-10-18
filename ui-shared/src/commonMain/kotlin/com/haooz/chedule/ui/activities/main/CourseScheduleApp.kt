@@ -89,7 +89,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 真课表主界面。平台能力全部走注入参数，缺能力的入口不渲染；
- * 位图统一 [ImageBitmap]，快照裁剪走 `cropImageBitmap`，壁纸存储走 `WallpaperStore`。
+ * 位图统一 [ImageBitmap]，快照裁剪走 [TransitionLayerSnapshot]（GraphicsLayer + clipRect，零位图分配），
+ * 壁纸存储走 `WallpaperStore`。
  */
 
 /** 宿主注入的位图回收实现（Android = `asAndroidBitmap().recycle()`；iOS/桌面 = null，交给 GC）。 */
