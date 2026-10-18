@@ -365,6 +365,7 @@ class IosAppHost {
     val mainProgress: Double get() = mainTransition.value.toDouble()
     val cutoutScale: Float get() = navigation.cutoutScale
     val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
+    val cutoutCenterXRatio: Float get() = navigation.cutoutCenterXRatio
 
     /**
      * Per-frame push of the main content's vertical offset while the customize page's sheet is
@@ -430,6 +431,7 @@ class IosAppHost {
                         NativeHostSnapshot(
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
+                            cutoutCenterXRatio,
                             nativeRouteIds, floatingOverlayActive, detailOverlayActive,
                             // 逐字段快照（含底栏与系统标题开关）—— 见 NativeDocumentChrome.snapshot
                             nativePages.map { it.chrome.snapshot() },
@@ -560,6 +562,7 @@ private data class NativeHostSnapshot(
     val mainProgress: Double,
     val cutoutScale: Float,
     val cutoutCenterYRatio: Float,
+    val cutoutCenterXRatio: Float,
     val nativeRouteIds: List<String>,
     val floatingOverlayActive: Boolean,
     val detailOverlayActive: Boolean,

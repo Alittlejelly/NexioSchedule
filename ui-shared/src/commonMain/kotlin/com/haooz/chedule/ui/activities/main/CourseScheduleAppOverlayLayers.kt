@@ -649,7 +649,12 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                 }
                             }
                         },
-                        onCutoutCenterChange = { cutoutCenterYRatio = it },
+                        onCutoutCenterChange = { xRatio, yRatio ->
+                            cutoutCenterXRatio = xRatio
+                            cutoutCenterYRatio = yRatio
+                        },
+                        // 折叠屏竖排底栏会在右侧留一条（~84pt），开洞要整体往左让开
+                        rightChromeReserved = (hostNavigation?.rightSafeAreaInset ?: 0.0) > 0.0,
                         sheetOffsetShared = sheetOffsetY,
                         appearance = currentAppearance(),
                         onAppearanceChange = { newAppearance ->
@@ -701,7 +706,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             alpha = customizeCoverAlpha.value
                             scaleX = customizeCoverScale.value
                             scaleY = customizeCoverScale.value
-                            transformOrigin = TransformOrigin(0.5f, cutoutCenterYRatio)
+                            transformOrigin = TransformOrigin(cutoutCenterXRatio, cutoutCenterYRatio)
                         }
                         .drawWithContent {
                             val path = Path().apply {

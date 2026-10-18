@@ -574,7 +574,10 @@ private final class AppHostController: UIViewController {
         guard screenW > 0, screenH > 0 else { return }
         let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
         let scale = raw < 0.999 ? raw : 1
-        let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
+        let pivot = CGPoint(
+            x: screenW * CGFloat(host.cutoutCenterXRatio),
+            y: screenH * CGFloat(host.cutoutCenterYRatio)
+        )
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
         // 竖排 tab bar 本体。`chromeController.view` 子树里若有 SwiftUI 托管的

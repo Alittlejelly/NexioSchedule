@@ -475,6 +475,7 @@ class CourseScheduleAppState {
     // 横竖屏（含自由窗口）尺寸变化：把当前显示中的变换从旧屏重映射到新屏
     val cutoutMainScale = Animatable(1f)
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
+    var cutoutCenterXRatio by mutableFloatStateOf(0.5f)
 
     // 与 CustomizeScheduleScreen 共享实例，直接读 .value 同帧同步
     val sheetOffsetY = Animatable(0f)

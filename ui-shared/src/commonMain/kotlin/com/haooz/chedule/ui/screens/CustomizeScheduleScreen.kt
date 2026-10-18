@@ -197,7 +197,13 @@ fun CustomizeScheduleScreen(
     wallpaperScale: Float = 1f,
     onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
-    onCutoutCenterChange: (Float) -> Unit = {},
+    /** 开洞中心回传（屏幕比例）：x 供宿主对齐横向缩放原点，y 同原有的竖向原点 */
+    onCutoutCenterChange: (xRatio: Float, yRatio: Float) -> Unit = { _, _ -> },
+    /**
+     * 右侧是否有一条原生 chrome 占位（折叠屏 iPhone 竖排底栏，约 84pt）。
+     * 这类机型内容实际中心比屏幕中心偏左，开洞要整体让开 —— 见下面的两个微调旋钮。
+     */
+    rightChromeReserved: Boolean = false,
     // 弹窗开合时开洞与主界面共用的位移驱动器：两边直接读同一 Animatable.value，保证同帧同步
     sheetOffsetShared: Animatable<Float, androidx.compose.animation.core.AnimationVector1D> = Animatable(
         0f
@@ -218,8 +224,12 @@ fun CustomizeScheduleScreen(
     onThemeModePersist: (ThemeMode) -> Unit = {},
 ) {
     val densityObj = LocalDensity.current
-    // 开洞到位后，洞心相对屏幕中心的竖向微调
-    val cutoutOffsetTargetPx = with(densityObj) { 0.dp.toPx() }
+    // ── 开洞微调旋钮 ────────────────────────────────────────────────────────
+    // 竖向：正值=下移；横向：负值=左移
+    val cutoutOffsetDp = if (rightChromeReserved) (-16).dp else 0.dp
+    val cutoutOffsetXDp = if (rightChromeReserved) (-56).dp else 0.dp
+    val cutoutOffsetTargetPx = with(densityObj) { cutoutOffsetDp.toPx() }
+    val cutoutOffsetXTargetPx = with(densityObj) { cutoutOffsetXDp.toPx() }
     val sheetOffsetTargetPx = with(densityObj) { 90.dp.toPx() }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isTablet = isTabletWidth()
@@ -398,6 +408,7 @@ fun CustomizeScheduleScreen(
     val cardScaleAnim = remember { Animatable(0.65f) }
     val buttonAlphaAnim = remember { Animatable(1f) }
     val cutoutOffsetY = remember { Animatable(0f) }
+    val cutoutOffsetX = remember { Animatable(0f) }
     // 与 MainActivity 共享同一 Animatable，弹窗开合时两边同帧同步位移
     val sheetOffsetY = sheetOffsetShared
     val cutoutEnterProgress = remember { Animatable(0f) }
@@ -542,6 +553,12 @@ fun CustomizeScheduleScreen(
                     )
                 }
                 launch {
+                    cutoutOffsetX.animateTo(
+                        cutoutOffsetXTargetPx,
+                        tween(400, easing = CustomizePageEasing)
+                    )
+                }
+                launch {
                     cutoutEnterProgress.animateTo(
                         1f,
                         tween(400, easing = CustomizePageEasing)
@@ -564,6 +581,12 @@ fun CustomizeScheduleScreen(
                 launch { buttonAlphaAnim.animateTo(1f, tween(250)) }
                 launch {
                     cutoutOffsetY.animateTo(
+                        0f,
+                        tween(400, easing = CustomizePageEasing)
+                    )
+                }
+                launch {
+                    cutoutOffsetX.animateTo(
                         0f,
                         tween(400, easing = CustomizePageEasing)
                     )
@@ -596,10 +619,15 @@ fun CustomizeScheduleScreen(
 
     // snapshotFlow 订阅，避免把 Animatable.value 当 LaunchedEffect key 导致重启
     val latestScreenHPx by rememberUpdatedState(screenHPx)
+    val latestScreenWPx by rememberUpdatedState(screenWPx)
     val latestOnCutoutCenterChange by rememberUpdatedState(onCutoutCenterChange)
     LaunchedEffect(Unit) {
-        snapshotFlow { cutoutOffsetY.value }.collect { offsetY ->
-            latestOnCutoutCenterChange(0.58f + offsetY / (latestScreenHPx * 0.35f))
+        snapshotFlow { cutoutOffsetX.value to cutoutOffsetY.value }.collect { (offsetX, offsetY) ->
+            // 与主内容缩放同源：1 - prog == (1 - scale) / 0.35，故原点比值 = 0.5 + o / (0.35 * 屏边)
+            latestOnCutoutCenterChange(
+                0.5f + offsetX / (latestScreenWPx * 0.35f),
+                0.58f + offsetY / (latestScreenHPx * 0.35f)
+            )
         }
     }
 
@@ -660,8 +688,9 @@ fun CustomizeScheduleScreen(
                     val snapshotW = snapshot?.width?.toFloat() ?: size.width
                     val snapshotH = snapshot?.height?.toFloat() ?: size.height
                     val aspect = snapshotH / snapshotW
-                    val cardCenterX = size.width / 2f
                     val scaleProg = ((cardScaleAnim.value - 0.65f) / (1f - 0.65f)).coerceIn(0f, 1f)
+                    // 横向微调与竖向同一套「按缩放进度淡出」的算法：落地时归零，洞整体回屏幕中心
+                    val cardCenterX = size.width / 2f + cutoutOffsetX.value * (1f - scaleProg)
                     val baseOffsetY =
                         size.height * 0.028f + cutoutOffsetY.value + sheetOffsetY.value
                     val cardCenterY = size.height / 2f + baseOffsetY * (1f - scaleProg)
@@ -730,6 +759,8 @@ fun CustomizeScheduleScreen(
             // 观感就是开洞区域底部往上跳一下。
             val currentTranslationY =
                 (cutoutOffsetY.value + sheetOffsetY.value) * (1f - cutoutScaleProg)
+            // 横向同理：横向微调也不在 0.5 这个缩放原点里（弹窗没有横向让位，故不含 sheetOffset）
+            val currentTranslationX = cutoutOffsetX.value * (1f - cutoutScaleProg)
 
             Box(
                 modifier = Modifier
@@ -787,6 +818,8 @@ fun CustomizeScheduleScreen(
                         val cardBaseOffsetY =
                             screenH * 0.028f + cutoutOffsetY.value + sheetOffsetY.value
                         val cardOffsetY = cardBaseOffsetY * (1f - cardScaleProg)
+                        // 与 drawBehind 里洞的横向位移逐项一致（含 (1 - prog) 淡出），否则洞与卡片错位
+                        val cardOffsetX = cutoutOffsetX.value * (1f - cardScaleProg)
                         val comb = combinations.getOrNull(page)
                         val isCurrentComb = page == currentCombinationIndex
                         // 缩放中心固定为屏幕中心，稳态与动画终点一致，无跳变
@@ -800,7 +833,10 @@ fun CustomizeScheduleScreen(
                             modifier = Modifier
                                 .width(cardWidthDp)
                                 .height(cardHeightDp)
-                                .offset(y = with(densityObj) { cardOffsetY.toDp() })
+                                .offset(
+                                    x = with(densityObj) { cardOffsetX.toDp() },
+                                    y = with(densityObj) { cardOffsetY.toDp() }
+                                )
                                 .graphicsLayer {
                                     scaleX = cardScale
                                     scaleY = cardScale
@@ -1330,6 +1366,7 @@ fun CustomizeScheduleScreen(
                                     scaleX = currentScale
                                     scaleY = currentScale
                                     transformOrigin = TransformOrigin(0.5f, 0.58f)
+                                    translationX = currentTranslationX
                                     translationY = currentTranslationY
                                     clip = true
                                     shape = screenCornerRadius.toShape(densityObj)

@@ -201,7 +201,7 @@ internal fun CourseScheduleAppMainContent(
                             }
                             if (isWindowCutoutActive) {
                                 // 使用 CustomizeScheduleScreen 传回的裁剪中心比例，保证两者完全对齐
-                                transformOrigin = TransformOrigin(0.5f, cutoutCenterYRatio)
+                                transformOrigin = TransformOrigin(cutoutCenterXRatio, cutoutCenterYRatio)
                             }
                         }
                     } else {

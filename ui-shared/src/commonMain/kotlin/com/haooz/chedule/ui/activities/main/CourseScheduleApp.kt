@@ -599,6 +599,7 @@ fun CourseScheduleApp(
                 // 需由Swift 读这个值自行施加同样变换（对齐 Android 上 Compose 底栏的行为）
                 host.cutoutScale = cutoutMainScale.value
                 host.cutoutCenterYRatio = cutoutCenterYRatio
+                host.cutoutCenterXRatio = cutoutCenterXRatio
             }
         }
         // 外观页弹窗让位时主内容的纵向位移，改由主内容自己的 graphicsLayer 块直推

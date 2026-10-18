@@ -54,6 +54,11 @@ class HostNavigationState {
      */
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
     /**
+     * 开洞缩放的变换原点横比。折叠屏上开洞要求整体左移（右侧被竖排底栏占掉一条），
+     * 洞心不在屏幕中心，故与纵比一样由 CustomizeScheduleScreen 回传。
+     */
+    var cutoutCenterXRatio by mutableFloatStateOf(0.5f)
+    /**
      * 开洞期间主内容整体上移的纵向位移（pt）。与主内容 graphicsLayer 的 translationY 同源同值
      */
     var onCutoutChromeOffsetY: ((Double) -> Unit)? = null
