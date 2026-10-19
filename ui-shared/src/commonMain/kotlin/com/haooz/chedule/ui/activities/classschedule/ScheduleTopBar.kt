@@ -32,7 +32,7 @@ import com.haooz.chedule.data.formatMonthDay
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
@@ -55,11 +55,10 @@ private val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五",
 // 不用 Scaffold paddingValues：随当前 tab 顶栏高度变化，切页时内容位移，
 // 叠加 SharedBlur 层 draw 阶段写入滞后一帧，表现为顶部慢一帧就位
 // （原为 internal；MainScheduleScreen 在 :androidApp 引用，跨模块必须 public）
-fun scheduleContentTopPadding(statusBarHeight: Dp, rawStatusBarTop: Dp): Dp {
+fun scheduleContentTopPadding(statusBarHeight: Dp, verticalBarEdge: Boolean): Dp {
     val appBar = CollapsedHeight
-    // 与 ScheduleTopBar 的 topBarHeight 同一套判定：见那里关于
-    // 「statusBarHeight == 0 有两种含义」的说明 —— 折叠屏iPhone顶部没有状态栏
-    val noTopStatusBar = rawStatusBarTop <= 0.dp
+    // 折叠屏折叠态屏幕顶部没有状态栏，糊带按 112dp 算（与 ScheduleTopBar 的 topBarHeight 同源）
+    val noTopStatusBar = verticalBarEdge
     val blurHeight = when {
         noTopStatusBar -> 120.dp - NoStatusBarBlurReduction
         statusBarHeight > 0.dp -> 120.dp + statusBarHeight
@@ -113,16 +112,12 @@ fun ScheduleTopBar(
         else -> "第${pagerCurrentPage + 1}周"
     }
 
-    // 宿主上报的真实状态栏高度优先：iOS 折叠屏折叠态状态栏在右侧、顶部为 0，
-    // 而 WindowInsets.statusBars 在 iOS 读到的是 view.safeAreaInsets.top（含导航栏），判不出来
-    val rawStatusBarTop = hostStatusBarHeight().let { override ->
-        if (override != Dp.Unspecified) override
-        else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    }
-    val statusBarHeight = (rawStatusBarTop - nativeBarInset).coerceAtLeast(0.dp)
-    // statusBarHeight == 0 有两种完全不同的含义，必须靠 rawStatusBarTop 区分：
+    // 竖排 tab bar 形态（折叠屏折叠态）：屏幕顶部没有状态栏，走另一套几何
+    val noTopStatusBar = hostVerticalBarEdge()
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
+        nativeBarInset).coerceAtLeast(0.dp)
     val topBarHeight = when {
-        rawStatusBarTop <= 0.dp -> 120.dp - NoStatusBarBlurReduction
+        noTopStatusBar -> 120.dp - NoStatusBarBlurReduction
         statusBarHeight > 0.dp -> 120.dp + statusBarHeight
         else -> 160.dp
     }
@@ -222,7 +217,7 @@ fun ScheduleTopBar(
                 isReorganized = isReorganized,
                 isTablet = isTablet,
                 contentEndPadding = titleEndPadding,
-                modifier = Modifier.dayOfWeekTopPadding(statusBarHeight, rawStatusBarTop, scrollBehavior)
+                modifier = Modifier.dayOfWeekTopPadding(statusBarHeight, noTopStatusBar, scrollBehavior)
             )
         }
     }
@@ -299,7 +294,7 @@ private fun DayOfWeekRow(
 // 未测量时用 CollapsedHeight+状态栏兜底（本顶栏 showLargeTitle=false，实测恒为该值）
 private fun Modifier.dayOfWeekTopPadding(
     statusBarHeight: Dp,
-    rawStatusBarTop: Dp,
+    verticalBarEdge: Boolean,
     scrollBehavior: SharedScrollBehavior?,
 ): Modifier = layout { measurable, constraints ->
     val statusBarPx = statusBarHeight.roundToPx()
@@ -309,10 +304,9 @@ private fun Modifier.dayOfWeekTopPadding(
     } else {
         CollapsedHeight.roundToPx() + statusBarPx
     }
-    // 与 scheduleContentTopPadding 同一套判定（内容顶 = 星期行底 + 2dp，两边必须同源）：
-    // statusBarHeight == 0 时只有「状态栏被原生导航栏吃完」才补那 40dp；
-    // 折叠屏 iPhone 折叠态顶部压根没有状态栏，再补就把星期行整体压低 40dp。
-    val noTopStatusBar = rawStatusBarTop <= 0.dp
+    // 与 scheduleContentTopPadding 同源（内容顶 = 星期行底 + 2dp）；
+    // 顶部没有状态栏的折叠态不补这 40dp，否则星期行整体压低
+    val noTopStatusBar = verticalBarEdge
     val gapPx = if (noTopStatusBar || statusBarPx > 0) 0 else 40.dp.roundToPx()
     val top = statusBarPx + measuredBarPx + gapPx
     val placeable = measurable.measure(constraints)

@@ -39,7 +39,7 @@ import com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.theme.rememberAppThemeController
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
@@ -306,7 +306,7 @@ internal fun SettingsTopBar(
             backdrop = liquidGlassBackdrop,
             blurAlpha = if (isTablet) 0f else 1f,
             topInsetAdjustment = settingsNativeBarInset,
-            statusBarHeightOverride = hostStatusBarHeight(),
+            noTopStatusBar = hostVerticalBarEdge(),
             resampleKey = blurResampleKey,
             sampleTrack = blurSampleTrack,
         ) {
@@ -370,7 +370,7 @@ internal fun TodayTopBar(
     ProgressiveBlurTopBar(
         backdrop = liquidGlassBackdrop,
         topInsetAdjustment = todayNativeBarInset,
-        statusBarHeightOverride = hostStatusBarHeight(),
+        noTopStatusBar = hostVerticalBarEdge(),
         modifier = Modifier.graphicsLayer { alpha = if (visible) 1f else 0f },
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,

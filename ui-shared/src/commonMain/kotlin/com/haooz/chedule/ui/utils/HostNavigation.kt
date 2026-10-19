@@ -14,7 +14,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -33,15 +32,13 @@ class HostNavigationState {
     var rightSafeAreaInset by mutableStateOf(0.0)
     var topBarInset by mutableStateOf(0.0)
     /**
-     * **真实状态栏高度**（pt）。-1 = 宿主没上报（Android/桌面），此时回落到
-     * `WindowInsets.statusBars`。
+     * 竖排 tab bar 形态（iOS 的 `traitCollection.verticalBarEdge` 为 leading/trailing）：
+     * 折叠屏 iPhone 折叠态，tab bar 竖排到侧边、状态栏跟着移到右侧，**屏幕顶部没有状态栏**，
+     * 顶栏糊带与星期行走另一套几何。
      *
-     * ⚠ 不能用 `WindowInsets.statusBars` 代替：iOS 上它读到的是 `view.safeAreaInsets.top`
-     * （状态栏 + 导航栏），减掉 topBarInset 后得 0 只说明「被导航栏吃完了」，
-     * 判断不出「顶部到底有没有状态栏」。折叠屏 iPhone 折叠态状态栏跑到右侧、顶部为 0，
-     * 顶栏糊带因此不能按「有状态栏」那套撑高。
+     * 形态只认这个 trait：状态栏高度算出来是 0 有两种可能（顶部没有 / 被 `topBarInset` 吃光）。
      */
-    var statusBarHeight by mutableStateOf(-1.0)
+    var verticalBarEdgeActive by mutableStateOf(false)
     var onTabSelected: ((Int) -> Unit)? = null
     /**
      * 开洞缩放进度，1f=正常。宿主（当前只有 iOS）据此对原生 chrome 施加同样缩放——
@@ -200,18 +197,9 @@ fun HostOverlayContent(
 }
 
 /**
- * 宿主上报的**真实状态栏高度**；没有宿主上报（Android/桌面）返回 [androidx.compose.ui.unit.Dp.Unspecified]，
- * 调用方回落到 `WindowInsets.statusBars`。
- *
- * 折叠屏 iPhone 折叠态状态栏跑到右侧、顶部为 0 —— 这个值是唯一能区分
- * 「顶部没有状态栏」和「状态栏被导航栏吃完」的依据。
+ * 是否竖排 tab bar 形态（折叠屏 iPhone 折叠态，屏幕顶部没有状态栏）：糊带收窄
+ * [top.yukonga.miuix.kmp.layout.NoStatusBarBlurReduction]、星期行不再补那 40dp。
+ * 无宿主（Android/桌面）恒为 false，走常规几何。
  */
 @Composable
-fun hostStatusBarHeight(): androidx.compose.ui.unit.Dp {
-    val reported = LocalHostNavigation.current?.statusBarHeight ?: -1.0
-    return if (reported >= 0.0) {
-        reported.toFloat().dp
-    } else {
-        androidx.compose.ui.unit.Dp.Unspecified
-    }
-}
+fun hostVerticalBarEdge(): Boolean = LocalHostNavigation.current?.verticalBarEdgeActive == true

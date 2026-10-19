@@ -70,7 +70,7 @@ import com.haooz.chedule.ui.data.changelogData
 import com.haooz.chedule.ui.effects.background.BgEffectBackground
 import com.haooz.chedule.ui.effects.miuix.rememberBlurBackdrop
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
@@ -251,7 +251,7 @@ fun AboutScreen(
                 backdrop = liquidGlassBackdrop,
                 tintIntensity = scrollProgress * 0.2f,
                 topInsetAdjustment = nativeBarInset,
-                statusBarHeightOverride = hostStatusBarHeight(),
+                noTopStatusBar = hostVerticalBarEdge(),
             ) {
                 CollapsibleTopAppBar(
                     title = "关于应用",

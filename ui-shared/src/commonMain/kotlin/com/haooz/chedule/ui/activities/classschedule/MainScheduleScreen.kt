@@ -1,6 +1,6 @@
 package com.haooz.chedule.ui.activities.classschedule
 
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 
@@ -99,7 +99,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.AppearanceConfig
@@ -299,16 +298,13 @@ fun MainScheduleScreen(
     val latestDraggingCourseIds by rememberUpdatedState(draggingCourseIds)
     // 由顶栏自身几何纯计算（切页不变），避免 paddingValues 随 tab 变化导致位移
     val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
-    // rawStatusBarTop 必须单独传：statusBarHeight == 0 既可能是「状态栏被原生导航栏吃完」，
-    // 也可能是「顶部压根没有状态栏」（折叠屏 iPhone 折叠态，状态栏跑到右侧）—— 后者不该
-    // 按 160.dp 那套撑高，否则课表内容整体偏下。详见 scheduleContentTopPadding。
-    val rawStatusBarTop = hostStatusBarHeight().let { override ->
-        if (override != Dp.Unspecified) override
-        else WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    }
-    val statusBarHeight = (rawStatusBarTop - nativeBarInset).coerceAtLeast(0.dp)
-    val contentTopPaddingDp = remember(statusBarHeight, rawStatusBarTop) {
-        scheduleContentTopPadding(statusBarHeight, rawStatusBarTop)
+    // 竖排 tab bar 形态（折叠屏折叠态，屏幕顶部没有状态栏）：内容顶不按 160.dp 那套撑，
+    // 详见 scheduleContentTopPadding
+    val verticalBarEdge = hostVerticalBarEdge()
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
+        nativeBarInset).coerceAtLeast(0.dp)
+    val contentTopPaddingDp = remember(statusBarHeight, verticalBarEdge) {
+        scheduleContentTopPadding(statusBarHeight, verticalBarEdge)
     }
 
     // 填满短边不露底；最小缩放 = cover/fit

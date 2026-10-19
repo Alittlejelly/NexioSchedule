@@ -66,7 +66,7 @@ import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.blockTouchPassThrough
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
@@ -413,7 +413,7 @@ fun CourseDetailScreen(
                     topBar = {
                         ProgressiveBlurTopBar(
                             backdrop = liquidGlassBackdrop,
-                            statusBarHeightOverride = hostStatusBarHeight(),
+                            noTopStatusBar = hostVerticalBarEdge(),
                         ) {
                             CollapsibleTopAppBar(
                                 title = courseName,

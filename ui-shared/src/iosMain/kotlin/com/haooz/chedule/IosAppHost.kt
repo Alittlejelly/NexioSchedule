@@ -493,11 +493,9 @@ class IosAppHost {
         }
     }
 
-    fun updateStatusBarHeight(points: Double) {
-        val height = if (points.isFinite()) points.coerceAtLeast(0.0) else -1.0
-        if (kotlin.math.abs(navigation.statusBarHeight - height) > 0.5) {
-            navigation.statusBarHeight = height
-        }
+    /** 屏幕形态：tab bar 是否竖排到屏幕一侧（`traitCollection.verticalBarEdge`）。 */
+    fun updateVerticalBarEdge(active: Boolean) {
+        navigation.verticalBarEdgeActive = active
     }
 
     fun updateTopBarInset(points: Double) {

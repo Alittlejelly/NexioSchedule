@@ -88,7 +88,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
-import com.haooz.chedule.ui.utils.hostStatusBarHeight
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
 import com.haooz.chedule.ui.utils.NativeDocumentLeadingActionEffect
@@ -524,7 +524,7 @@ fun SwitchScheduleScreen(
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
                     topInsetAdjustment = nativeBarInset,
-                    statusBarHeightOverride = hostStatusBarHeight(),
+                    noTopStatusBar = hostVerticalBarEdge(),
                 ) {
                     CollapsibleTopAppBar(
                         title = displayTitle,
