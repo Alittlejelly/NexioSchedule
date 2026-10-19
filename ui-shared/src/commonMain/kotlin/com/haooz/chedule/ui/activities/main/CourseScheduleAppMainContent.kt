@@ -1409,15 +1409,16 @@ internal fun CourseScheduleAppMainContent(
                                     }
                                 }
                             }
+                            // 竖排分支不预组合相邻页：Compose 从「当前页 + 1」开始数
+                            // beyondViewportPageCount 个页去测量，请求的页号不会夹回 pageCount
+                            // （折叠屏 iPhone 实测 IndexOutOfBoundsException: Index 3, size 3）。
                             if (useVerticalMainPager) {
-                                // beyond 撑到覆盖全部页，让 0~2（今日/课程表/我的）常驻组合树、切页零成本。
-                                // 「3/4 仅当前页才组合」由 mainPagerPageContent 内容侧兜底。
                                 VerticalPager(
                                     state = mainPagerState,
                                     modifier = mainPagerModifier,
                                     key = mainPagerPageKey,
                                     userScrollEnabled = false,
-                                    beyondViewportPageCount = mainPagerPageCount,
+                                    beyondViewportPageCount = 0,
                                 ) { page -> mainPagerPageContent(page) }
                             } else {
                                 // 手机切 tab 是 spring 平移动画：beyond=1 时目标页隔壁那页会在动画途中

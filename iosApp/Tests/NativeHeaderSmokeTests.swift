@@ -942,4 +942,46 @@ final class NativeHeaderSmokeTests: XCTestCase {
         // 菜单交互后 UIKit 会把这块 platter reparent，XCTest 的无障碍树就找不到它
         // （屏幕上仍可见）。快照能否拍到它由 captureScreenPNG 从 window 渲染保证。
     }
+
+    /// 折叠屏 iPhone（Duo）回归：回主屏时系统给 scene 拍快照，会在 draw 里跑一次懒布局测量。
+    /// 本用例连做 3 轮「退出 → 再打开」，覆盖主 Pager 越界那次崩溃。
+    func testBackgroundAndReopenDoesNotCrash() {
+        // 元素定位不成本用例的目的：就算找不到按钮也要把 home 那一步走完
+        continueAfterFailure = true
+        XCTAssertTrue(app.tabBars.buttons["课程表"].waitForExistence(timeout: 8) ||
+                      app.buttons.count > 0, "App did not finish launching")
+        // 让 app 走一会儿（模拟用户「玩了一分钟」）：切 tab、点更多、滚一下
+        if app.tabBars.buttons["课程表"].waitForExistence(timeout: 3) {
+            app.tabBars.buttons["课程表"].tap(); settle()
+        }
+        if app.tabBars.buttons["今日"].waitForExistence(timeout: 3) {
+            app.tabBars.buttons["今日"].tap(); settle()
+            app.tabBars.buttons["课程表"].tap(); settle()
+        }
+        if app.navigationBars.buttons["更多"].waitForExistence(timeout: 3) {
+            app.navigationBars.buttons["更多"].tap(); settle()
+            // 关闭弹出的菜单
+            app.tap()
+        }
+        Thread.sleep(forTimeInterval: 3.0)
+        capture("Before background")
+
+        // 连做 3 轮「退出 → 再打开」：崩溃是概率性的，单轮容易漏
+        for round in 1...3 {
+            XCUIDevice.shared.press(.home)
+            // 崩溃发生在后台快照，给系统充足时间拍完
+            Thread.sleep(forTimeInterval: 5.0)
+            let state = app.state
+            XCTAssertTrue(
+                state == .runningBackground || state == .runningBackgroundSuspended ||
+                    state == .runningForeground,
+                "Round \(round): app is gone after going to background (state \(state.rawValue))"
+            )
+            app.activate()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10),
+                          "Round \(round): app did not come back")
+            settle()
+        }
+        capture("After 3 background rounds")
+    }
 }
