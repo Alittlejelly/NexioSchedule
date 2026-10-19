@@ -403,7 +403,7 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
             onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
-        // 课表节数与时间 / 课程管理：iOS 没有自由小窗，传 false
+        // 课程时间管理 / 课程管理：iOS 没有自由小窗，传 false
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
         // 教务导入（学校选择）：外壳全在 :ui-shared，无需平台能力（索引更新走共享 HttpService）。

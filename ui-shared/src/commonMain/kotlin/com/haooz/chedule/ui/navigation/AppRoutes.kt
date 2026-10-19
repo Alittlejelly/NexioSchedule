@@ -731,7 +731,7 @@ fun BackupAndMigrationRoute(
 // 快捷菜单还要在模糊层之外再叠一层卡片快照。结构必须整体搬，不能只搬 Screen。
 
 /**
- * 课表节数与时间。
+ * 课程时间管理。
  *
  * 比普通文档页多两层结构：外层 `Box` 做「背景缩放 + 模糊」动画；
  * ⚠ 二级编辑页 `TimeConfigEditScreen` 必须渲染在 `Scaffold` **外面**，否则会被顶栏裁掉。
@@ -789,7 +789,7 @@ fun CourseTimeSettingsRoute(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 DocumentPageScaffold(
-                    title = "课表节数与时间",
+                    title = "课程时间管理",
                     onBack = { router.popBack() },
                 ) { scrollBehavior, liquidGlassBackdrop ->
                     CourseTimeSettingsScreen(

@@ -570,8 +570,8 @@ final class NativeHeaderSmokeTests: XCTestCase {
     func testTimeSettingsNativeHeaderDialogsAndComposeEditorReturn() throws {
         try requirePhoneWidthSettings()
         showSettings()
-        open("课表节数与时间")
-        requireNativeHeader("课表节数与时间")
+        open("课程时间管理")
+        requireNativeHeader("课程时间管理")
         XCTAssertEqual(app.navigationBars.buttons.count, 1)
         XCTAssertTrue(item("作息方案").exists)
         let sectionY = open("课表节数")
@@ -580,7 +580,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         capture("Time settings - section dialog above native chrome")
         item("取消").tap()
         settle()
-        requireNativeHeader("课表节数与时间")
+        requireNativeHeader("课程时间管理")
         XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3)
         let leadingFrame = app.navigationBars.buttons.element(boundBy: 0).frame
         let routineSummary = app.staticTexts.matching(NSPredicate(format:
@@ -609,7 +609,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         cancel.tap()
         settle()
-        requireNativeHeader("课表节数与时间")
+        requireNativeHeader("课程时间管理")
         XCTAssertEqual(app.keyboards.count, 0, "Morph editor keyboard remained after cancellation")
         XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3,
                        "Editor exit changed retained settings geometry")
@@ -622,20 +622,20 @@ final class NativeHeaderSmokeTests: XCTestCase {
         requireNativeHeader("编辑作息")
         app.navigationBars.buttons["保存并关闭"].tap()
         settle()
-        requireNativeHeader("课表节数与时间")
+        requireNativeHeader("课程时间管理")
         XCTAssertEqual(item("课表节数").frame.minY, sectionY, accuracy: 3,
                        "Save exit changed the source-card layout")
         capture("Time settings - native save completed original reverse morph")
         nativeBack()
         XCTAssertTrue(app.tabBars.buttons["我的"].isHittable, app.debugDescription)
-        XCTAssertTrue(item("课表节数与时间").isHittable, app.debugDescription)
+        XCTAssertTrue(item("课程时间管理").isHittable, app.debugDescription)
         XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
     }
 
     func testTimeEditorRapidCancelAndParentBack() throws {
         try requirePhoneWidthSettings()
         showSettings()
-        open("课表节数与时间")
+        open("课程时间管理")
         let routine = app.staticTexts.matching(NSPredicate(format:
             "label == %@ OR label ENDSWITH %@", "始终生效", "生效")).firstMatch
         XCTAssertTrue(routine.exists && routine.isHittable)
@@ -654,7 +654,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         settle()
         XCTAssertTrue(app.tabBars.buttons["我的"].isHittable,
                       "Parent back tap during editor exit did not restore the settings tab")
-        XCTAssertTrue(item("课表节数与时间").isHittable, app.debugDescription)
+        XCTAssertTrue(item("课程时间管理").isHittable, app.debugDescription)
         XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
         capture("Time settings - rapid native cancel and parent back without disabled controls")
     }

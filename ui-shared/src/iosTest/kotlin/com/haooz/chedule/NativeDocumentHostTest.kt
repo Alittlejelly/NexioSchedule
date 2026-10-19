@@ -181,7 +181,7 @@ class NativeDocumentHostTest {
             AppRoute.ScheduleBackup to "课表备份",
             AppRoute.ScheduleImport to "课表导入",
             AppRoute.About to "关于应用",
-            AppRoute.CourseTimeSettings to "课表节数与时间",
+            AppRoute.CourseTimeSettings to "课程时间管理",
         )
         for ((route, title) in documents) {
             val host = IosAppHost()
@@ -292,7 +292,7 @@ class NativeDocumentHostTest {
         var cancelled = 0
         var saved = 0
         var parentClicks = 0
-        chrome.title = "课表节数与时间"
+        chrome.title = "课程时间管理"
         chrome.contentOverlayActive = true
         chrome.editor = NativeDocumentEditorChrome(
             "编辑作息",
@@ -318,7 +318,7 @@ class NativeDocumentHostTest {
         chrome.contentOverlayActive = false
         assertTrue(host.nativeContentOverlayActive)
         chrome.editor = null
-        assertEquals("课表节数与时间", host.nativeRouteTitle(id))
+        assertEquals("课程时间管理", host.nativeRouteTitle(id))
         assertEquals("chevron.backward", host.nativePageLeadingSymbol(id))
         assertEquals("arrow.clockwise", host.nativePageActionSymbol(id))
         host.performNativePageLeadingAction(id)

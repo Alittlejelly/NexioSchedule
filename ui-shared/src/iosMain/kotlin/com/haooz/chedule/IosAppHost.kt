@@ -676,7 +676,7 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.ScheduleBackup -> "课表备份"
     AppRoute.ScheduleImport -> "课表导入"
     AppRoute.About -> "关于应用"
-    AppRoute.CourseTimeSettings -> "课表节数与时间"
+    AppRoute.CourseTimeSettings -> "课程时间管理"
     // 网页导入页与选择页同级：必须是原生文档（走 Compose 栈会被原生文档挡住）
     AppRoute.WebImport -> "网页导入"
     // ⚠ 必须是原生文档：从「课表导出/导入/备份」这些原生文档页跳进来，

@@ -123,7 +123,7 @@ private enum class DesktopPage(val title: String) {
     PrivacyPolicy("隐私政策"),
     Communication("交流与反馈"),
     SchoolSelection("教务导入 · 选择学校"),
-    CourseTimeSettings("课表节数与时间"),
+    CourseTimeSettings("课程时间管理"),
     AppreciateAuthor("赞赏作者"),
     AddCourse("添加课程（弹窗）"),
     WidgetIntro("桌面小部件介绍"),
@@ -164,7 +164,7 @@ private fun DesktopShell() {
                             scrollBehavior = scrollBehavior,
                             onAdapterSelected = { _, _ -> },
                         )
-                        // 课表节数与时间（onEditRoutine 指向宿主路由，桌面端给空实现）
+                        // 课程时间管理（onEditRoutine 指向宿主路由，桌面端给空实现）
                         DesktopPage.CourseTimeSettings -> CourseTimeSettingsScreen(
                             onEditRoutine = { _, _, _ -> },
                             scrollBehavior = scrollBehavior,

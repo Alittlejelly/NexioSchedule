@@ -116,7 +116,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 enum class TabletSettingsDest(val title: String, val group: String) {
     Semester("学期与周次", "基本设置"),
-    CourseTime("课表节数与时间", "基本设置"),
+    CourseTime("课程时间管理", "基本设置"),
     Reminder("课程提醒", "特色功能"),
     Holiday("节假日与调休", "特色功能"),
     Widget("桌面小部件", "特色功能"),
@@ -137,7 +137,7 @@ enum class TabletSettingsDest(val title: String, val group: String) {
 object TabletSettingsUiState {
     var selected by mutableStateOf(TabletSettingsDest.Semester)
 
-    /** 课表节数与时间的编辑屏是否打开：打开时叠层不画右栏标题，避免与编辑屏标题重合 */
+    /** 课程时间管理的编辑屏是否打开：打开时叠层不画右栏标题，避免与编辑屏标题重合 */
     var timeEditorOpen by mutableStateOf(false)
 }
 
@@ -399,7 +399,7 @@ fun TabletSettingsScreen(
     var onWebDavTestConnection by remember { mutableStateOf({}) }
     var holidayLoading by remember { mutableStateOf(false) }
     var onHolidayUpdate by remember { mutableStateOf({}) }
-    // 课表节数与时间：右栏叠编辑屏
+    // 课程时间管理：右栏叠编辑屏
     val courseRepository = remember { com.haooz.chedule.data.CourseRepository() }
     var editingTimeConfig by remember { mutableStateOf<com.haooz.chedule.data.TimeConfig?>(null) }
     var editingTimeRoutineId by remember { mutableStateOf<Long?>(null) }
@@ -920,7 +920,7 @@ fun TabletSettingsScreen(
                         else -> {}
                     }
 
-                    // 课表节数与时间：右栏叠编辑屏，从底部滑入/滑出（对齐 BlurBottomSheet 曲线时长，无透明度变化）
+                    // 课程时间管理：右栏叠编辑屏，从底部滑入/滑出（对齐 BlurBottomSheet 曲线时长，无透明度变化）
                     if (editingTimeConfig != null) {
                         Box(
                             modifier = Modifier

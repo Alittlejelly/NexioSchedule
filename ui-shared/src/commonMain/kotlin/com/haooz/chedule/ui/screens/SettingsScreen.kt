@@ -336,7 +336,7 @@ fun SettingsScreen(
                             }
 
                             ArrowPreference(
-                                title = "课表节数与时间",
+                                title = "课程时间管理",
                                 summary = "管理课表的节数与课程时间",
                                 onClick = {
                                     FeatureLog.timeConfig("open")
