@@ -1268,12 +1268,11 @@ private fun PopupGlassCanvas(
 /**
  * 材质层：**节点就是面板矩形**（不是整块画布），自带淡入淡出。
  *
- * 为什么不再 `matchParentSize`：`lens()` 的折射 SDF 只由「节点尺寸 + 圆角」决定，而且只支持
- * `RoundedRectangularShape` / `CornerBasedShape`（两者都铺满节点）。画布比面板每边大
- * [PopupPanelStyle.overshootRoomPx] + 阴影留白，撑满画布会让折射环落到面板外、自定义的
- * `AnimatedPanelRectShape` 更是直接被 lens 抛 `UnsupportedOperationException`。
- * 改成在布局期把这一层量成面板矩形，交给标准圆角矩形——折射才和面板边缘对齐。
- * 回弹（spring 过冲）也由 rect 自己跟着涨，不需要靠画布兜。
+ * `lens()` 的折射 SDF 只由「节点尺寸 + 圆角」决定，且只认铺满节点的
+ * `RoundedRectangularShape` / `CornerBasedShape`。原先 `matchParentSize` 撑满画布
+ * （每边比面板大 overshootRoom + 阴影留白）会让折射环落到面板外，自定义的
+ * `AnimatedPanelRectShape` 更是直接被 lens 抛异常 —— 所以在布局期把这一层量成面板矩形，
+ * 形状用标准圆角矩形。回弹（spring 过冲）由 rect 自己跟着涨，不需要靠画布兜。
  *
  * 单独一层是为了让 alpha 只作用在这里，挂在玻璃盒上会把里面的内容一起罩住。
  */

@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
 
 /**
- * 应用材质质量档（通透玻璃 / 清透磨砂 / 性能优先优先，供玻璃模糊、折射、边光等读取），默认清透磨砂。
+ * 应用材质质量档（通透玻璃 / 清透磨砂 / 性能优先），玻璃模糊、折射、边光都读它；默认清透磨砂。
  */
 object AppMaterialSettings {
 
@@ -65,8 +65,7 @@ object AppMaterialSettings {
 
     /**
      * 弹出面板（下拉菜单）采样模糊半径（dp）。
-     *
-     * 通透玻璃档恒定 4 —— 面板在通透玻璃档**不随展开渐变**：折射已经做出「厚度」，再叠模糊只会糊掉边缘。
+     * 通透玻璃档取恒定值、**不随展开渐变**（折射已经做出「厚度」，再叠模糊只会糊掉边缘）；
      * 其余档取展开态的 24（小玻璃件 8 + 16 跨度）。
      */
     fun glassPanelBlurDp(): Float =
