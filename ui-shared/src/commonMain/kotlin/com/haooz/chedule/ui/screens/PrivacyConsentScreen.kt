@@ -34,24 +34,32 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *   「不同意」直接退出应用，不等动画（退出后动画无意义）；
  * - 合规要求必须由用户明确选择，故 onDismissRequest = null（点外部/返回键都不关闭），
  *   同时关掉预测性返回手势动画，避免手势把弹窗拖走却关不掉；
- * - 点击《隐私政策》在应用内打开全文页。
+ * - 点击《隐私政策》在应用内打开全文页。**打开时先把本弹窗收起来**：本屏挂在 AppNavHost
+ *   之后（要盖住原生 TabBar），它的遮罩会压住全文页，读不了也滑不动；全文页出栈后弹回来。
  */
 @Composable
 fun PrivacyConsentScreen(
     onAgree: () -> Unit,
     onDecline: () -> Unit,
     onOpenPolicy: () -> Unit,
+    /** 《隐私政策》全文页是否在栈上；在的话把弹窗让开，否则它的遮罩会压住全文页 */
+    policyPageVisible: Boolean = false,
 ) {
     // 关闭动画：先让弹窗播完退出动画，再执行实际动作（进入主界面）
     var dialogVisible by remember { mutableStateOf(true) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // 两种收起：用户点了「同意」（收起不放回，动作挂在 onDismissFinished 上），
+    // 和全文页打开（收起，关掉全文页后放回）。后者 pendingAction 为 null，
+    // 走 onDismissFinished 也不会误触发动作。
+    val show = dialogVisible && !policyPageVisible
 
     // 透明 Scaffold：只为提供 LocalDialogStates + MiuixPopupHost，让弹窗能渲染在最上层
     Scaffold(containerColor = Color.Transparent) { _ ->
         OverlayDialog(
             title = "隐私政策",
             summary = "欢迎使用 Nexio 课程表。\n\n为提供课程表、课程提醒、天气等功能，我们需要在您同意后申请必要权限，并处理实现功能所必需的信息。\n您的课程数据默认仅保存在本机，设备信息仅用于匿名统计且不含身份信息。",
-            show = dialogVisible,
+            show = show,
             // 不可点击外部或返回键关闭，必须明确选择
             onDismissRequest = null,
             onDismissFinished = { pendingAction?.invoke() },

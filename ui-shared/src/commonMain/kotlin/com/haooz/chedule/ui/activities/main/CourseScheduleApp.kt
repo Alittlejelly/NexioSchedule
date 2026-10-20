@@ -72,6 +72,7 @@ import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
 import com.haooz.chedule.viewmodel.shiftViewModel
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -201,6 +202,13 @@ fun CourseScheduleApp(
 
         isDark = isAppDarkTheme()
         liquidGlassBackdrop = rememberLayerBackdrop()
+        // 顶栏/底栏各自再录一层：两者都在内容层之上，只有把它们也录进来，
+        // 「比底栏更高一层」的组合采样层才成立
+        topBarSampleBackdrop = rememberLayerBackdrop()
+        bottomBarSampleBackdrop = rememberLayerBackdrop()
+        overlayGlassBackdrop = rememberCombinedBackdrop(
+            liquidGlassBackdrop, topBarSampleBackdrop, bottomBarSampleBackdrop
+        )
         // 供今日/课程表卡片玻璃采样：录的是共享壁纸层，不是页内透明占位
         sharedWallpaperBackdrop = rememberLayerBackdrop()
 

@@ -258,6 +258,10 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(PrivacyConsent.hasConsented())
                 }
                 val router = rememberAppRouter()
+                // 《隐私政策》全文页在栈上时，把隐私弹窗让开：它挂在 AppNavHost 之上，
+                // 遮罩不撤的话全文页读不了也滑不动（见 PrivacyConsentScreen）
+                val policyPageVisible =
+                    router.routes.any { it == com.haooz.chedule.ui.navigation.AppRoute.PrivacyPolicy }
                 // 主界面（常驻底座，不在 AppNavHost 的 AnimatedContent 里）的首层转场进度。
                 // 栈被 rememberSaveable 恢复成非空时（旋转 / 进程重建），主界面应已是「被盖住」的 1，
                 // 不能从 0 起步白播一次进入动画。
@@ -295,7 +299,8 @@ class MainActivity : ComponentActivity() {
                                 onDecline = { finish() },
                                 onOpenPolicy = {
                                     router.navigate(com.haooz.chedule.ui.navigation.AppRoute.PrivacyPolicy)
-                                }
+                                },
+                                policyPageVisible = policyPageVisible,
                             )
                         }
                     }

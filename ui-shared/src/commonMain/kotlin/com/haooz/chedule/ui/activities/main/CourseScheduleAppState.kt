@@ -107,6 +107,19 @@ class CourseScheduleAppState {
     lateinit var shiftViewModel: ShiftViewModel
     lateinit var router: AppRouter
     lateinit var liquidGlassBackdrop: LayerBackdrop
+    /**
+     * 顶栏那一层的玻璃采样层：只录顶栏本身。它自己是玻璃，采的是
+     * [liquidGlassBackdrop]；录出来的这一层给更上面的组合层用。
+     */
+    lateinit var topBarSampleBackdrop: LayerBackdrop
+    /** 底栏那一层的玻璃采样层，用途同 [topBarSampleBackdrop] */
+    lateinit var bottomBarSampleBackdrop: LayerBackdrop
+    /**
+     * [liquidGlassBackdrop] + 顶栏 + 底栏 的组合层 = 「比底栏还高一层」的采样层。
+     * 画在弹窗层的东西（「更多」下拉菜单、OverlayDialog）采它，玻璃里才看得到顶栏/底栏。
+     * 顶栏/底栏自己**不能**采它（会采到自己，见 LayerBackdropModifier 的循环采样问题）。
+     */
+    lateinit var overlayGlassBackdrop: Backdrop
     lateinit var sharedWallpaperBackdrop: LayerBackdrop
     lateinit var windowInfo: WindowInfo
     lateinit var densityProvider: Density

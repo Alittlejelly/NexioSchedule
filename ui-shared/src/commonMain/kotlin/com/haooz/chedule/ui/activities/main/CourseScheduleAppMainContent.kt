@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -106,6 +107,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.isRenderEffectSupported
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -118,6 +120,16 @@ import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+
+/**
+ * 「更多」菜单收起动画播到这个 fraction 就摘掉「比底栏更高一层」的采样层。
+ * 0.5 = 面板缩到一半、还在动的时候换层；等动画播完再换，按钮已经静止在右上角，
+ * 玻璃里少掉顶栏/底栏那一层会当场跳一下。
+ */
+private const val MENU_GLASS_RELEASE_FRACTION = 0.5f
+
+/** 其余弹窗：退场动画（最长约 320ms）播完再摘采样层，那时屏幕上已经没有它的玻璃了 */
+private const val OVERLAY_GLASS_RELEASE_DELAY_MS = 420L
 
 /**
  * 课表主界面「主内容层」：整屏 Box + graphicsLayer 模糊/裁切 + Scaffold 内容。
@@ -143,6 +155,25 @@ internal fun CourseScheduleAppMainContent(
         fun currentDetailBlurDp(): Float =
             if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value
             else managePageBlurRadius.value
+
+        // 顶栏/底栏那两层采样层的重录谓词。⚠️ 不能复用 liquidGlassMustRecord：那份闭包里
+        // 带着 rail 强制续录的帧计数与「侧栏进度是否还在动」的比较状态，两个节点各调一次
+        // 会把计数双倍扣掉、把 expandMoving 判成 false。这两层只跟滚动，自己另起一份。
+        val chromeBarMustRecord = remember(
+            scheduleScrollState,
+            todayListScrollInProgress,
+            pagerState,
+            todayPagerState,
+            mainPagerState,
+        ) {
+            {
+                scheduleScrollState.isScrollInProgress ||
+                        todayListScrollInProgress.value ||
+                        pagerState.isScrollInProgress ||
+                        todayPagerState.isScrollInProgress ||
+                        mainPagerState.isScrollInProgress
+            }
+        }
 
         // 主内容（带模糊和裁切）
         // 空闲态不挂 graphicsLayer：全屏离屏合成是周滑 P50 主头之一。
@@ -250,6 +281,48 @@ internal fun CourseScheduleAppMainContent(
             val nativeBarInset = (hostNav?.topBarInset ?: 0.0).dp
             // 右侧避让量：右下角竖排的原生 tab bar 占的空间（折叠屏 iPhone 折叠态）。
             val titleEndPadding = (hostNav?.rightSafeAreaInset ?: 0.0).toFloat().dp
+            // 顶栏/底栏那两层录制**按需挂载**：只有真的有浮层在采「比底栏更高一层」的采样层时
+            // 才挂上，否则滚动帧里会白白多录两条全宽条带。
+            // ⚠️ Scaffold 先组 popup → 顶栏 → 底栏，**最后**才组 content，所以这里要读的
+            // 开关不能是 content 槽里的局部量（那时顶栏/底栏已经组完了）。
+            // 这两个 collectAsState 因此提前到 Scaffold 之外订阅。
+            val showJumpWeekDialog by viewModel.showJumpWeekDialog.collectAsState()
+            val showAddDialog by viewModel.showAddDialog.collectAsState()
+            var notice by remember { mutableStateOf<Notice?>(null) }
+            var updateDialogShowing by remember { mutableStateOf(false) }
+            val menuGlassWanted = showMorePopup || showTodayMorePopup
+            val otherGlassWanted = showJumpWeekDialog ||
+                showAddDialog ||
+                notice != null ||
+                sharedFileIntent != null ||
+                showDeleteConfirmDialog ||
+                showPasteRangeDialog ||
+                showRescheduleConflictDialog ||
+                updateDialogShowing
+            // 菜单单独一路：它有明确的收起进度（fraction）可以跟
+            var menuGlassActive by remember { mutableStateOf(menuGlassWanted) }
+            // 挂上要**同帧生效**（展开第一帧玻璃就得多采到顶栏），所以在组合期直接写
+            if (menuGlassWanted && !menuGlassActive) menuGlassActive = true
+            LaunchedEffect(menuGlassWanted) {
+                if (menuGlassWanted) return@LaunchedEffect
+                // 摘掉的时机在**收起动画播到一半**时：面板还在缩，眼睛在看运动，
+                // 采样层换一层看不出来。等动画播完再摘就晚了 —— 那时按钮已经静止在
+                // 右上角，玻璃里少掉顶栏那一层会当场跳一下。
+                snapshotFlow {
+                    maxOf(morePopupFraction.value, todayMorePopupFraction.value)
+                }.first { it <= MENU_GLASS_RELEASE_FRACTION }
+                menuGlassActive = false
+            }
+            // 其余弹窗一路：退场动画播完屏幕上已经没有它的玻璃了，
+            // 什么时候摘都看不见，按固定延时摘即可
+            var otherGlassActive by remember { mutableStateOf(otherGlassWanted) }
+            if (otherGlassWanted && !otherGlassActive) otherGlassActive = true
+            LaunchedEffect(otherGlassWanted) {
+                if (otherGlassWanted) return@LaunchedEffect
+                delay(OVERLAY_GLASS_RELEASE_DELAY_MS)
+                otherGlassActive = false
+            }
+            val overlayGlassActive = menuGlassActive || otherGlassActive
             val scaffoldContent = @Composable {
                 Scaffold(
                     modifier = Modifier
@@ -266,13 +339,28 @@ internal fun CourseScheduleAppMainContent(
                     bottomBar = {
                         // 平板导航在叠层；这里不占 Scaffold bottomBar，避免全屏挡住内容滚动
                         if (navBarStyle != "rail" && !nativeBottomBar) {
-                            ScheduleBottomBar(
-                                navBarStyle = navBarStyle,
-                                isShiftMode = isShiftMode,
-                                selectedTab = selectedTab,
-                                onTabSelected = onMainTabSelected,
-                                liquidGlassBackdrop = chromeBackdrop,
-                            )
+                            // 底栏再录一层：弹窗层的玻璃（下拉菜单 / OverlayDialog）要采到它。
+                            // 只在真有浮层在采时挂——没挂时 backdrop.layerCoordinates 恒 null，
+                            // 组合采样自动退化成「只有内容」那一层，即收起态的行为。
+                            Box(
+                                modifier = if (overlayGlassActive) {
+                                    Modifier.liquidGlassLayerBackdrop(
+                                        backdrop = bottomBarSampleBackdrop,
+                                        recordKey = liquidGlassRecordKey,
+                                        mustRecord = chromeBarMustRecord,
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            ) {
+                                ScheduleBottomBar(
+                                    navBarStyle = navBarStyle,
+                                    isShiftMode = isShiftMode,
+                                    selectedTab = selectedTab,
+                                    onTabSelected = onMainTabSelected,
+                                    liquidGlassBackdrop = chromeBackdrop,
+                                )
+                            }
                         }
                     },
                     topBar = {
@@ -313,7 +401,24 @@ internal fun CourseScheduleAppMainContent(
                                 }
                             }
                         }
-                        Box(modifier = Modifier.fillMaxWidth()) {
+                        // 顶栏同样再录一层：下拉菜单挂在它下面、OverlayDialog 也会压到它，
+                        // 两者的采样层要「比底栏还高一层」，即内容 + 顶栏 + 底栏
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    // 同底栏：按需挂载，没挂载时组合采样自动退化成内容层
+                                    if (overlayGlassActive) {
+                                        Modifier.liquidGlassLayerBackdrop(
+                                            backdrop = topBarSampleBackdrop,
+                                            recordKey = liquidGlassRecordKey,
+                                            mustRecord = chromeBarMustRecord,
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
                             if (showScheduleTitle) {
                                 val scheduleTitleIndex = if (isShiftMode) 0 else 1
                                 // 空闲停在本页时 delta=0：不挂 graphicsLayer，免掉顶栏整棵离屏合成。
@@ -531,7 +636,7 @@ internal fun CourseScheduleAppMainContent(
                                 moreSlotTopPx = moreSlotTopPx,
                                 scheduleMaterialAlpha = scheduleMaterialAlpha.value,
                                 todayMaterialAlpha = todayMaterialAlpha.value,
-                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                liquidGlassBackdrop = overlayGlassBackdrop,
                                 isShiftMode = isShiftMode,
                                 // 平板（rail）右上角不显示「更多」：跳转/管理/外观都在侧栏里。
                                 // iOS 主界面右上角那颗已由原生 UIMenu 接管，Compose 侧恒不渲染
@@ -1516,16 +1621,16 @@ internal fun CourseScheduleAppMainContent(
                         courseViewModel = viewModel,
                         scheduleViewModel = scheduleViewModel,
                         settingsViewModel = settingsViewModel,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                     )
 
                     // 更新能力（检查/下载/校验/安装）由宿主注入
                     UpdateDialog(
                         updateController = updateController ?: NoopUpdateController,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
+                        onShowChanged = { updateDialogShowing = it },
                     )
 
-                    val showJumpWeekDialog by viewModel.showJumpWeekDialog.collectAsState()
                     var jumpWeekTemp by remember { mutableIntStateOf(1) }
                     val hapticFeedback = LocalHapticFeedback.current
                     LaunchedEffect(showJumpWeekDialog) {
@@ -1536,7 +1641,7 @@ internal fun CourseScheduleAppMainContent(
                     OverlayDialog(
                         title = "跳转周数",
                         show = showJumpWeekDialog,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                         onDismissRequest = { viewModel.hideJumpWeekDialog() }
                     ) {
                         Column(
@@ -1583,7 +1688,6 @@ internal fun CourseScheduleAppMainContent(
                         }
                     }
 
-                    val showAddDialog by viewModel.showAddDialog.collectAsState()
                     val editingCourse by viewModel.editingCourse.collectAsState()
                     val selectedStartSection by viewModel.selectedStartSection.collectAsState()
                     val selectedEndSection by viewModel.selectedEndSection.collectAsState()
@@ -1602,7 +1706,7 @@ internal fun CourseScheduleAppMainContent(
                                 show = showAddDialog,
                                 course = editingCourse,
                                 selectedDay = viewModel.selectedDay.collectAsState().value,
-                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                liquidGlassBackdrop = overlayGlassBackdrop,
                                 totalWeeks = totalWeeks,
                                 totalSections = totalSections,
                                 defaultStartSection = editingStartSection,
@@ -1638,14 +1742,14 @@ internal fun CourseScheduleAppMainContent(
                         course = deleteConfirmCourse,
                         week = draggedWeek,
                         viewModel = viewModel,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                         hapticFeedback = hapticFeedback,
                         onDismiss = { showDeleteConfirmDialog = false },
                     )
                     PasteRangeDialog(
                         show = showPasteRangeDialog,
                         courseName = copiedCourseForPaste?.name ?: "",
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                         hapticFeedback = hapticFeedback,
                         onPaste = { allWeeks ->
                             val meta = copiedCourseForPaste
@@ -1735,7 +1839,7 @@ internal fun CourseScheduleAppMainContent(
                         } ?: draggedWeek,
                         draggedWeek = draggedWeek,
                         viewModel = viewModel,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                         hapticFeedback = hapticFeedback,
                         onCancel = {
                             showRescheduleConflictDialog = false
@@ -1803,7 +1907,7 @@ internal fun CourseScheduleAppMainContent(
                         },
                     )
                     // 节点常驻组合树、仅 show 控显隐，退出动画才能播完
-                    var notice by remember { mutableStateOf<Notice?>(null) }
+                    // ⚠ notice 的声明在 Scaffold 之外（采样层开关要先读它）
                     LaunchedEffect(privacyConsented) {
                         // 合规：未同意隐私政策前不拉取公告（不触网）
                         if (!privacyConsented) return@LaunchedEffect
@@ -1816,7 +1920,7 @@ internal fun CourseScheduleAppMainContent(
                         title = notice?.title,
                         summary = notice?.content?.ifBlank { null },
                         show = notice != null,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
+                        liquidGlassBackdrop = overlayGlassBackdrop,
                         onDismissRequest = { notice = null },
                         onDismissFinished = { notice = null }
                     ) {
