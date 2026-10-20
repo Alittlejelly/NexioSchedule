@@ -25,6 +25,8 @@ actual fun rememberNavigationBack(): NavigationBackState = remember {
         // 调用方的状态机仍可只靠 onBackCompleted 正常关闭，不会误判。
         isTransitioningBack = { false },
         backProgress = { null },
+        // 没有手势源：不报边缘（2 = EDGE_NONE）
+        backSwipeEdge = { 2 },
         onHandler = {},
     )
 }

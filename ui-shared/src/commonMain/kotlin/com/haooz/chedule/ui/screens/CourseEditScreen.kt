@@ -41,7 +41,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -75,19 +74,13 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeFifthpowerOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeQuadraticOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.utils.CourseSorting
-import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.blockTouchPassThrough
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
-import com.haooz.chedule.ui.utils.toShape
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -110,60 +103,12 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import top.yukonga.miuix.kmp.layout.isTabletWidth
-
-// ===================== Animation Foundation =====================
-
-private data class EditAnimState(
-    val bgAlpha: Float,
-    val snapshotAlpha: Float,
-    val contentAlpha: Float,
-    val translationX: Float,
-    val translationY: Float,
-    val scale: Float,
-    val clipBottom: Float,
-    val progress: Float,
-    val gesture: Float
-)
-
-/**
- * 裁切形状。宽度必须取当次回调的 size：clipShape 是 remember 单例，
- * 捕获外部宽度会让平板右栏变宽后裁切停在旧值（右侧被裁掉看不见）。
- */
-private class EditAnimClipShape(
-    private val screenCornerRadiusPx: ScreenCornerRadiiPx,
-    private val startCornerRadiusPx: Float,
-    private val animState: androidx.compose.runtime.State<EditAnimState>
-) : androidx.compose.ui.graphics.Shape {
-    override fun createOutline(
-        size: androidx.compose.ui.geometry.Size,
-        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
-        density: androidx.compose.ui.unit.Density
-    ): androidx.compose.ui.graphics.Outline {
-        val s = animState.value
-        // 预测性返回：裁切圆角固定为屏幕圆角（不除以 scale，随页面缩放一起缩放）；
-        // 其余按 morph 进度插值
-        val radiusPx = when {
-            s.gesture > 0f -> screenCornerRadiusPx
-            s.progress >= 1f -> ScreenCornerRadiiPx.Zero
-            s.progress <= 0.7f -> screenCornerRadiusPx.interpolateFrom(startCornerRadiusPx, s.progress / 0.7f)
-            else -> screenCornerRadiusPx
-        }
-        // 补偿在"预测返回不补偿（×1）"与"正常 morph 除以 scale"之间按 gesture 平滑插值，
-        // 避免松手瞬间圆角跳变大
-        val compensate = (1f - s.gesture) / s.scale + s.gesture
-        return radiusPx.scaled(compensate).toShape(density).createOutline(
-            androidx.compose.ui.geometry.Size(size.width, s.clipBottom),
-            layoutDirection,
-            density
-        )
-    }
-}
+import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 
 // ===================== Course Grouping Helpers =====================
 
@@ -248,183 +193,22 @@ fun CourseEditScreen(
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     val density = LocalDensity.current
-    // 内嵌时直接以全尺寸为初值，首帧即为静态终态
-    val animProgress = remember { Animatable(if (embedded) 1f else 0f) }
-    val animTransY = remember { Animatable(if (embedded) 1f else 0f) }
     val scope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
-    val startCornerRadiusPx = 16f * density.density
-    val morphOpenEase = OobeQuartOutEasing
-    val morphExitEase = OobeCubicOutEasing
-    val isUpperHalf = cardTop < screenHeight / 2f
-    val transOpenEase = OobeFifthpowerOutEasing
-    val transExitEase = OobeQuadraticOutEasing
-    val transOpenMillis = if (isUpperHalf) 500 else 500
-    val transExitMillis = if (isUpperHalf) 320 else 320
 
-    // 预测性返回：手势只驱动 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
-    // 期间围绕屏幕中心缩放，位移/裁切保持全屏；取消回弹、完成随关闭动画缩回卡片。
-    // ⚠ 走 :miuix 的 rememberNavigationBack（androidx.navigationevent 仅 Android artifact）；
-    // handler 与进度读取必须绑定同一份状态，拆开会跟手动画失效且编译无报错。
-    val navigationBackState = rememberNavigationBack()
-    // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
-    val gestureBackProgress = remember { Animatable(0f) }
-    val scaleProgress = remember { Animatable(if (embedded) 1f else 0f) }
-    // 手势是否正在推进：进行中裁切完全跟随页面缩放，松手/取消后进入平滑过渡
-    var isGestureActive by remember { mutableStateOf(false) }
-
-    // 内嵌（平板右栏）不拦截返回手势，也不播放进出形变
-    if (!embedded) {
-        navigationBackState.handler(
-            enabled = true,
-            onBackCancelled = {
-                isGestureActive = false
-                scope.launch {
-                    if (gestureBackProgress.value > 0f) {
-                        // 手势取消：缩放回弹恢复全屏
-                        gestureBackProgress.animateTo(0f, animationSpec = tween(180))
-                        scaleProgress.animateTo(1f, animationSpec = tween(180))
-                    }
-                }
-            },
-            onBackCompleted = {
-                isGestureActive = false
-                onBackStart()
-                scope.launch {
-                    coroutineScope {
-                        // 缩放中心从屏幕中心平滑过渡回左上角锚点（140ms），morph 位移随之接管
-                        launch { gestureBackProgress.animateTo(0f, animationSpec = tween(140)) }
-                        launch {
-                            scaleProgress.animateTo(
-                                targetValue = 0f,
-                                animationSpec = tween(
-                                    durationMillis = 320,
-                                    easing = morphExitEase
-                                )
-                            )
-                        }
-                        launch {
-                            animProgress.animateTo(
-                                targetValue = 0f,
-                                animationSpec = tween(
-                                    durationMillis = 320,
-                                    easing = morphExitEase
-                                )
-                            )
-                        }
-                        launch {
-                            animTransY.animateTo(
-                                targetValue = 0f,
-                                animationSpec = tween(
-                                    durationMillis = transExitMillis,
-                                    easing = transExitEase
-                                )
-                            )
-                        }
-                    }
-                    onBack()
-                }
-            },
-        )
-    }
-
-    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
-    // 缩放行程为「卡片→全屏」的 200%（滑到底 scaleProgress=-1），松手后按关闭动画回到卡片。
-    LaunchedEffect(Unit) {
-        // backProgress() 已内含「转场进行中且方向为后退」判定，非手势期间为 null —— 保持静止。
-        // ⚠ 判定与迁移前逐字等价，勿改。
-        snapshotFlow { navigationBackState.backProgress() }
-            .collect { progress ->
-                if (progress != null) {
-                    // 预测性返回动画开关：关闭时不驱动跟随动画（返回仍被拦截，直接关闭）
-                    if (PredictiveBackSettings.enabled) {
-                        isGestureActive = true
-                        gestureBackProgress.snapTo(progress)
-                        scaleProgress.snapTo(1f - progress * 0.3f)
-                    }
-                }
-            }
-    }
-
-    LaunchedEffect(Unit) {
-        if (embedded) {
-            // 内嵌：直接到全尺寸静态态，不播放展开形变
-            scaleProgress.snapTo(1f)
-            animProgress.snapTo(1f)
-            animTransY.snapTo(1f)
-            return@LaunchedEffect
-        }
-        launch {
-            scaleProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = 540,
-                    easing = morphOpenEase
-                )
-            )
-        }
-        launch {
-            animProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = 540,
-                    easing = morphOpenEase
-                )
-            )
-        }
-        launch {
-            animTransY.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = transOpenMillis,
-                    easing = transOpenEase
-                )
-            )
-        }
-    }
-
-    // graphicsLayer.scale 同时缩放宽高，clipBottom 需反向补偿使 p=0 时 scale*clipBottom == cardHeight
-    val animState = remember {
-        derivedStateOf {
-            val p = animProgress.value
-            val ty = animTransY.value
-            val bgAlpha = if (embedded) 0f else (p * 0.5f).coerceIn(0f, 0.5f)
-            val snapAlpha = (1f - p * 3f).coerceIn(0f, 1f)
-            val contAlpha = ((p - 0.1f) / 0.5f).coerceIn(0f, 1f)
-            // 手势只驱动 scaleProgress，位移与裁切保持全屏（p 不变）；
-            // coerceAtLeast 防止窄卡片时 scale 变负翻转。
-            val scale = (cardWidth / screenWidth + (1f - cardWidth / screenWidth) * scaleProgress.value).coerceAtLeast(0.05f)
-            // 起点 = cardCenter, 终点 = screenCenter；ty 作为曲线参数，前快后慢
-            val cardCenter = cardTop + cardHeight / 2f
-            val screenCenter = screenHeight / 2f
-            val curveT = ty  // 直接用 ty 作为曲线参数
-            val targetCenter = cardCenter + (screenCenter - cardCenter) * curveT
-            // 正常 morph 锚点为屏幕顶部居中（y 围绕顶部、x 围绕屏幕中轴）；预测返回期间围绕屏幕中心缩放。
-            val gesture = gestureBackProgress.value
-            val normalY =
-                targetCenter - screenHeight / 2f * (1f - scale) - (cardHeight + (screenHeight - cardHeight) * p) / 2f
-            val normalX = (cardLeft - screenWidth / 2f * (1f - cardWidth / screenWidth)) * (1f - p)
-            val translationY = normalY * (1f - gesture)
-            val translationX = normalX * (1f - gesture)
-            // 手势期间裁切跟随「当前展开高度×缩放」（打开未完成时也连续）；
-            // 松手/取消过渡期按 gesture 平滑插值衔接 morph 的底部收缩。
-            val morphClip = cardHeight + (screenHeight - cardHeight) * p
-            val predictiveClip = morphClip * scale
-            val rawClipBottom = if (isGestureActive) predictiveClip else predictiveClip * gesture + morphClip * (1f - gesture)
-            val clipBottom = rawClipBottom / scale
-            EditAnimState(
-                bgAlpha,
-                snapAlpha,
-                contAlpha,
-                translationX,
-                translationY,
-                scale,
-                clipBottom,
-                p,
-                gesture
-            )
-        }
-    }
+    val morph = rememberMorphTransition(
+        cardLeft = cardLeft,
+        cardTop = cardTop,
+        cardWidth = cardWidth,
+        cardHeight = cardHeight,
+        screenWidth = screenWidth,
+        screenHeight = screenHeight,
+        screenCornerRadius = screenCornerRadius,
+        startCornerRadiusDp = 16f,
+        onBackStart = onBackStart,
+        onBack = onBack,
+        embedded = embedded,
+    )
 
     // ---- UI State ----
     val isDark = isAppDarkTheme()
@@ -450,15 +234,7 @@ fun CourseEditScreen(
     fun closeEditor() {
         if (exiting) return
         exiting = true
-        onBackStart()
-        scope.launch {
-            coroutineScope {
-                launch { scaleProgress.animateTo(0f, tween(320, easing = morphExitEase)) }
-                launch { animProgress.animateTo(0f, tween(320, easing = morphExitEase)) }
-                launch { animTransY.animateTo(0f, tween(transExitMillis, easing = transExitEase)) }
-            }
-            onBack()
-        }
+        morph.close()
     }
 
     if (!embedded) {
@@ -491,31 +267,10 @@ fun CourseEditScreen(
     var hasTriggeredAutoBack by remember { mutableStateOf(false) }
     LaunchedEffect(courses.size) {
         // 内嵌（平板右栏）不自动关闭，交由外层切换选中项
-        if (!embedded && courses.isEmpty() && !hasTriggeredAutoBack && animProgress.value > 0.5f) {
+        if (!embedded && courses.isEmpty() && !hasTriggeredAutoBack && morph.state.value.progress > 0.5f) {
             hasTriggeredAutoBack = true
             delay(400.milliseconds)
-            onBackStart()
-            coroutineScope {
-                launch {
-                    scaleProgress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(320, easing = morphExitEase)
-                    )
-                }
-                launch {
-                    animProgress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(320, easing = morphExitEase)
-                    )
-                }
-                launch {
-                    animTransY.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(transExitMillis, easing = transExitEase)
-                    )
-                }
-            }
-            onBack()
+            morph.close()
         }
     }
 
@@ -548,35 +303,26 @@ fun CourseEditScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (isDark) ComposeColor(0xFF2C2C2C).copy(alpha = animState.value.bgAlpha)
-                else ComposeColor.Black.copy(alpha = animState.value.bgAlpha)
+                if (isDark) ComposeColor(0xFF2C2C2C).copy(alpha = morph.state.value.bgAlpha)
+                else ComposeColor.Black.copy(alpha = morph.state.value.bgAlpha)
             )
             // 只挡下层穿透、不 consume，避免内部列表/控件滑不动
             .blockTouchPassThrough()
     ) {
-        val s = animState.value
-        // 宽度由 createOutline 取当次 size，这里不捕获 screenWidth：
-        // 平板右栏宽度会变，捕获会让裁切停在旧值
-        val clipShape = remember(screenCornerRadius, startCornerRadiusPx) {
-            EditAnimClipShape(
-                screenCornerRadius,
-                startCornerRadiusPx,
-                animState
-            )
-        }
+        val s = morph.state.value
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     clip = false
-                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    transformOrigin = TransformOrigin(s.anchorX, 0.5f)
                     scaleX = s.scale
                     scaleY = s.scale
                     translationX = s.translationX
                     translationY = s.translationY
                 }
-                .clip(clipShape)
+                .clip(morph.clipShape)
                 .background(MiuixTheme.colorScheme.surface)
                 .background(cardColor.copy(alpha = cardAlpha))
         ) {
@@ -617,41 +363,7 @@ fun CourseEditScreen(
                                 startAction = if (embedded || nativeChrome != null) null else {
                                     { backdropAlpha, shadowAlpha ->
                                     LiquidTopBarButton(
-                                        onClick = {
-                                            onBackStart()
-                                            scope.launch {
-                                                coroutineScope {
-                                                    launch {
-                                                        scaleProgress.animateTo(
-                                                            targetValue = 0f,
-                                                            animationSpec = tween(
-                                                                durationMillis = 320,
-                                                                easing = morphExitEase
-                                                            )
-                                                        )
-                                                    }
-                                                    launch {
-                                                        animProgress.animateTo(
-                                                            targetValue = 0f,
-                                                            animationSpec = tween(
-                                                                durationMillis = 320,
-                                                                easing = morphExitEase
-                                                            )
-                                                        )
-                                                    }
-                                                    launch {
-                                                        animTransY.animateTo(
-                                                            targetValue = 0f,
-                                                            animationSpec = tween(
-                                                                durationMillis = transExitMillis,
-                                                                easing = transExitEase
-                                                            )
-                                                        )
-                                                    }
-                                                }
-                                                onBack()
-                                            }
-                                        },
+                                        onClick = { morph.close() },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.ChevronBackward,
                                         contentDescription = "返回",
