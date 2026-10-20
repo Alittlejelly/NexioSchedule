@@ -11,16 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.SpecialBlock
-import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 
@@ -47,9 +43,6 @@ fun SectionColumn(
     showBreakDividers: Boolean = true,
     currentSection: Int = -1,
     isTablet: Boolean = false,
-    hasWallpaper: Boolean = false,
-    // 页面层统一读取；未传时列内自算
-    isDark: Boolean = isAppDarkTheme(),
     modifier: Modifier = Modifier
 ) {
     val timePairs = remember(sectionTimes, totalSections) {
@@ -85,21 +78,21 @@ fun SectionColumn(
     ) {
         (1..morningSections).forEach { section ->
             val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, hasWallpaper, sectionNames, isDark)
+            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
         }
 
         val afternoonStart = morningSections + 1
         val afternoonEnd = morningSections + afternoonSections
         (afternoonStart..afternoonEnd).forEach { section ->
             val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, hasWallpaper, sectionNames, isDark)
+            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
         }
 
         val eveningStart = morningSections + afternoonSections + 1
         val eveningEnd = morningSections + afternoonSections + eveningSections
         (eveningStart..eveningEnd).forEach { section ->
             val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, hasWallpaper, sectionNames, isDark)
+            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
         }
 
         effectiveGrid.specialBands.forEach { band ->
@@ -108,8 +101,6 @@ fun SectionColumn(
                 endTime = band.endTime,
                 top = band.top,
                 height = band.height,
-                hasWallpaper = hasWallpaper,
-                isDark = isDark,
                 sectionWidth = sectionWidth
             )
         }
@@ -117,7 +108,7 @@ fun SectionColumn(
 }
 
 @Composable
-private fun SectionItem(section: Int, startTime: String, endTime: String, yOffset: Int, cardHeightPerSection: Float = 54f, isCurrentSection: Boolean = false, hasWallpaper: Boolean = false, sectionNames: Map<Int, String> = emptyMap(), isDark: Boolean) {
+private fun SectionItem(section: Int, startTime: String, endTime: String, yOffset: Int, cardHeightPerSection: Float = 54f, isCurrentSection: Boolean = false, sectionNames: Map<Int, String> = emptyMap()) {
     val onSurfaceColor = MiuixTheme.colorScheme.onSurface
     val onSurfaceVariantColor = MiuixTheme.colorScheme.onSurfaceVariantActions
     val highlightColor = scheduleAccentColor()
@@ -150,9 +141,9 @@ private fun SectionItem(section: Int, startTime: String, endTime: String, yOffse
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            OutlinedText(displayText, nameStyle, sectionColor, hasWallpaper, isDark)
-            OutlinedText(startTime, timeStyle, timeColor, hasWallpaper, isDark)
-            OutlinedText(endTime, timeStyle, timeColor, hasWallpaper, isDark)
+            Text(text = displayText, style = nameStyle, color = sectionColor)
+            Text(text = startTime, style = timeStyle, color = timeColor)
+            Text(text = endTime, style = timeStyle, color = timeColor)
         }
     }
 }
@@ -163,8 +154,6 @@ private fun SpecialTimeLabel(
     endTime: String,
     top: Float,
     height: Float,
-    hasWallpaper: Boolean,
-    isDark: Boolean,
     sectionWidth: Dp
 ) {
     val baseFootnote2 = MiuixTheme.textStyles.footnote2
@@ -180,40 +169,8 @@ private fun SpecialTimeLabel(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            OutlinedText(startTime, timeStyle, timeColor, hasWallpaper, isDark)
-            OutlinedText(endTime, timeStyle, timeColor, hasWallpaper, isDark)
+            Text(text = startTime, style = timeStyle, color = timeColor)
+            Text(text = endTime, style = timeStyle, color = timeColor)
         }
-    }
-}
-
-@Composable
-private fun OutlinedText(
-    text: String,
-    style: TextStyle,
-    color: Color,
-    hasWallpaper: Boolean,
-    isDark: Boolean
-) {
-    if (hasWallpaper) {
-        val shadowColor = if (isDark) Color.Black else Color.White
-        val shadowStyle = remember(style, isDark) {
-            style.copy(
-                shadow = Shadow(
-                    color = shadowColor.copy(alpha = 0.92f),
-                    blurRadius = 12f
-                )
-            )
-        }
-        Text(
-            text = text,
-            style = shadowStyle,
-            color = color
-        )
-    } else {
-        Text(
-            text = text,
-            style = style,
-            color = color
-        )
     }
 }

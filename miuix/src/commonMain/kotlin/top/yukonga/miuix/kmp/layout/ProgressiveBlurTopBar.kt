@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.node.DrawModifierNode
@@ -251,7 +252,13 @@ fun ProgressiveBlurTopBar(
                             backdrop = backdrop,
                             shape = blurShapeBlock,
                             effects = {
-                                blur(BlurMaxRadius.toPx())
+                                // Mirror：`TileMode.Clamp`（blur 的默认）会把顶边的采样钳到第一行，
+                                // 12dp 半径下顶栏最上沿会被拉平成一条「没糊」的带子 —— 设置页最明显。
+                                // 镜像发生在节点边界内，和真模糊那套镜像采样同思路。
+                                blur(BlurMaxRadius.toPx(), TileMode.Mirror)
+                                // ⚠ Mirror 会让 blur() 把 padding 撑到 radius，而外扩的那圈缓冲
+                                // 录的是屏幕外（空），镜像过去仍是空 —— 压回 0，让镜像只发生在节点内。
+                                padding = 0f
                             },
                             highlight = null,
                             shadow = null,

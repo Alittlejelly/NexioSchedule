@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -220,7 +221,9 @@ fun LiquidBottomTabs(
         val panelEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
             {
                 vibrancy()
-                blur(glassBlur.dp.toPx())
+                // Mirror：Clamp（blur 默认）会把胶囊边缘的采样钳到最外一行，边缘一圈模糊退化
+                blur(glassBlur.dp.toPx(), TileMode.Mirror)
+                padding = 0f
                 // 均衡及以下：低栏背景板关闭折射
                 if (chromeLens) lens(12f.dp.toPx(), 48f.dp.toPx())
             }
@@ -271,7 +274,8 @@ fun LiquidBottomTabs(
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
                             // 捕获层与可见层用同一个模糊，否则滑块放大时玻璃底不一致
-                            blur(glassBlur.dp.toPx())
+                            blur(glassBlur.dp.toPx(), TileMode.Mirror)
+                            padding = 0f
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress

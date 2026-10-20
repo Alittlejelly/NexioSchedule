@@ -678,24 +678,11 @@ private fun PendingSectionBox(
                 }
             }
         } else {
-            val density = LocalDensity.current
-            val outlineColor = remember(isDark) { scheduleOutlineColor(pendingColor, isDark) }
-            val outlineWidthPx = remember(density) { with(density) { SCHEDULE_OUTLINE_WIDTH.toPx() } }
-            val outlineCache = remember { OutlineCache() }
+            // 纯色模式（无壁纸）不画描边，与课程卡一致
             Card(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 2.dp, vertical = 2.dp)
-                    .drawWithContent {
-                        drawContent()
-                        drawScheduleOutline(
-                            cache = outlineCache,
-                            cornerRadius = cardCornerRadius.dp,
-                            color = outlineColor,
-                            strokeWidthPx = outlineWidthPx,
-                            layoutDirection = layoutDirection,
-                        )
-                    },
+                    .padding(horizontal = 2.dp, vertical = 2.dp),
                 cornerRadius = cardCornerRadius.dp,
                 insideMargin = PaddingValues(0.dp),
                 pressFeedbackType = PressFeedbackType.Sink,
@@ -938,10 +925,7 @@ fun SpecialBandOverlay(
             }
         }
     } else {
-        val plainDensity = LocalDensity.current
-        val plainOutlineColor = remember(bgColor, isDark) { scheduleOutlineColor(bgColor, isDark) }
-        val plainOutlineWidthPx = remember(plainDensity) { with(plainDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() } }
-        val plainOutlineCache = remember { OutlineCache() }
+        // 纯色模式（无壁纸）不画描边，与课程卡一致
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -951,16 +935,6 @@ fun SpecialBandOverlay(
                     drawRoundRect(
                         color = bgColor,
                         cornerRadius = CornerRadius(cornerPx)
-                    )
-                }
-                .drawWithContent {
-                    drawContent()
-                    drawScheduleOutline(
-                        cache = plainOutlineCache,
-                        cornerRadius = effectiveCornerRadius.dp,
-                        color = plainOutlineColor,
-                        strokeWidthPx = plainOutlineWidthPx,
-                        layoutDirection = layoutDirection,
                     )
                 }
         ) {

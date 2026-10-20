@@ -437,13 +437,7 @@ fun CourseCard(
         // 静止卡不挂 graphicsLayer：几十张×两页的合成层是左右滑 draw 热点。
         // 仅按压/拖拽/落地涟漪动画时挂；松手即撤，缩放回弹让位给无层路径。
         val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
-        // 纯色模式同样要一圈淡描边：没有玻璃边缘，光靠底色和背景分不开
-        val plainDensity = LocalDensity.current
-        val plainOutlineColor = remember(cardColor, isDark) { scheduleOutlineColor(cardColor, isDark) }
-        val plainOutlineWidthPx = remember(plainDensity) {
-            with(plainDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
-        }
-        val plainOutlineCache = remember { OutlineCache() }
+        // 纯色模式（无壁纸）不画描边：底色本身就和页面背景分得开，那圈线只会显脏
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -474,16 +468,6 @@ fun CourseCard(
                     else Modifier
                 )
                 .background(cardColor, cardShape)
-                .drawWithContent {
-                    drawContent()
-                    drawScheduleOutline(
-                        cache = plainOutlineCache,
-                        cornerRadius = effectiveCornerRadius.dp,
-                        color = plainOutlineColor,
-                        strokeWidthPx = plainOutlineWidthPx,
-                        layoutDirection = layoutDirection,
-                    )
-                }
                 .onGloballyPositioned { coordinates ->
                     // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
                     cardCoords[0] = coordinates

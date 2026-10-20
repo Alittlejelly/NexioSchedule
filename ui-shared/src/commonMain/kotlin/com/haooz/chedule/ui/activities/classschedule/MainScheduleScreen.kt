@@ -1072,9 +1072,7 @@ fun MainScheduleScreen(
                             cardHeightPerSection = cardHeightPerSection,
                             showBreakDividers = showBreakDividers,
                             currentSection = if (week == currentWeek) currentSection else -1,
-                            isTablet = isTablet,
-                            hasWallpaper = wallpaperBitmap != null,
-                            isDark = scheduleIsDark
+                            isTablet = isTablet
                         )
 
                         pageDayRange.forEach { dayOfWeek ->
@@ -1327,7 +1325,7 @@ fun MainScheduleScreen(
                         } else {
                             Color.White.copy(alpha = surfaceAlpha)
                         }
-                        // 纯色描边：分界线本体是白/深灰，没有轮廓在玻璃和纯色模式都发虚
+                        // 描边只在有壁纸（玻璃）时画：纯色模式下分界线本身就是实色，加轮廓只会显脏
                         val dividerOutlineColor = remember(dividerFgSurface, dividerIsDark) {
                             scheduleOutlineColor(dividerFgSurface, dividerIsDark)
                         }
@@ -1368,16 +1366,20 @@ fun MainScheduleScreen(
                                         )
                                     } else Modifier
                                 )
-                                .drawWithContent {
-                                    drawContent()
-                                    drawScheduleOutline(
-                                        cache = dividerOutlineCache,
-                                        cornerRadius = 12.dp,
-                                        color = dividerOutlineColor,
-                                        strokeWidthPx = dividerOutlineWidthPx,
-                                        layoutDirection = layoutDirection,
-                                    )
-                                },
+                                .then(
+                                    if (hasWallpaperDivider) {
+                                        Modifier.drawWithContent {
+                                            drawContent()
+                                            drawScheduleOutline(
+                                                cache = dividerOutlineCache,
+                                                cornerRadius = 12.dp,
+                                                color = dividerOutlineColor,
+                                                strokeWidthPx = dividerOutlineWidthPx,
+                                                layoutDirection = layoutDirection,
+                                            )
+                                        }
+                                    } else Modifier
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
