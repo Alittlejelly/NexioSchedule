@@ -70,6 +70,7 @@ import com.kyant.backdrop.edgelight.isSystemLightTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -116,8 +117,10 @@ fun SearchBar(
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val currentOnExpandedChange by rememberUpdatedState(onExpandedChange)
-    // 折射随材质档位：最佳保留，均衡及更省档关闭（与液态玻璃按钮一致）
+    // 折射随材质档位：通透玻璃档保留，清透磨砂及更省档关闭（与液态玻璃按钮一致）
     val chromeLens = chromeLensEnabled
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    val glassBlur = LocalGlassBlurDp.current
 
     Column(
         modifier = modifier,
@@ -169,11 +172,11 @@ fun SearchBar(
                     ) {
                         if (backdrop != null) {
                             // 记得住引用：drawBackdrop 按引用比较 effects，每帧新建会导致重新录制采样层
-                            val actionEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens) {
+                            val actionEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
                                 {
                                     vibrancy()
-                                    blur(8f.dp.toPx())
-                                    if (chromeLens) lens(14f.dp.toPx(), 14f.dp.toPx())
+                                    blur(glassBlur.dp.toPx())
+                                    if (chromeLens) lens(8f.dp.toPx(), 32f.dp.toPx())
                                 }
                             }
                             Box(
@@ -290,8 +293,10 @@ fun InputField(
     val currentOnExpandedChange by rememberUpdatedState(onExpandedChange)
     val internalInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     val capsuleShape = ContinuousCapsule()
-    // 折射随材质档位：最佳保留，均衡及更省档关闭
+    // 折射随材质档位：通透玻璃档保留，清透磨砂及更省档关闭
     val chromeLens = chromeLensEnabled
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    val glassBlur = LocalGlassBlurDp.current
 
     val actualLeadingIcon = leadingIcon ?: {
         Box(
@@ -379,10 +384,10 @@ fun InputField(
             // 与原 android.graphics.Color.parseColor("#12000000"/"#20000000") 等价（同 ARGB 值）
             val shadowColor = if (isLightTheme) Color(0x12000000) else Color(0x20000000)
             // 记得住引用：drawBackdrop 按引用比较 effects，每帧新建会导致重新录制采样层
-            val containerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens) {
+            val containerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
                 {
                     vibrancy()
-                    blur(8f.dp.toPx())
+                    blur(glassBlur.dp.toPx())
                     if (chromeLens) lens(8f.dp.toPx(), 24f.dp.toPx())
                 }
             }

@@ -126,11 +126,11 @@ fun LiquidGlassDropdownMenu(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val isLightTheme = !isAppDarkTheme()
-    // 与顶栏液态玻璃按钮同色：收起态即那颗按钮，形变过程中玻璃不突变
+    // 与顶栏液态玻璃按钮同色（同一个 alpha 来源；浅深各一档）：收起态即那颗按钮，形变过程中玻璃不突变
     val containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
-        .copy(alpha = if (isLightTheme) 0.76f else 0.84f)
-    else if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
-        else Color(0xFF242424).copy(0.84f)
+        .copy(alpha = AppMaterialSettings.glassSurfaceAlpha(if (isLightTheme) 0.76f else 0.84f, isLightTheme))
+    else if (isLightTheme) Color(0xFFFAFAFA).copy(AppMaterialSettings.glassSurfaceAlpha(0.76f, isLight = true))
+        else Color(0xFF242424).copy(AppMaterialSettings.glassSurfaceAlpha(0.84f, isLight = false))
     val chromeLens = AppMaterialSettings.chromeLensEnabled()
     val triggerIconTint = if (isLightTheme) Color.Black.copy(0.85f) else Color.White.copy(0.85f)
     val hapticFeedback = LocalHapticFeedback.current
@@ -236,10 +236,21 @@ fun LiquidGlassDropdownMenu(
 
     // 读 fraction 驱动尺寸；不钳到 1，保留 spring 过冲（末尾回弹）
     val f = fraction.value
-    // 模糊随展开过渡（收起 8dp → 展开 24dp）。折射 lens(8, 24) 必须保持常量：它作用在边缘 SDF 上，
-    // 随面板变大反而会让边缘变形。effects lambda 换引用才重算，但每帧换会让节点每帧重建 RenderEffect，故量化成 8 档。
+    // 模糊与折射都随展开进度走，共用同一组 8 档量化：effects lambda 换引用才重算，
+    // 每帧换引用会让节点每帧重建 RenderEffect。
     val blurStep = (f.coerceIn(0f, 1f) * 8f).roundToInt()
-    val blurDp = 8f + 16f * (blurStep / 8f)
+    val expandStep = blurStep / 8f
+    // 通透玻璃档：面板模糊恒定，不随展开渐变（折射已经把「厚度」做出来了，再叠模糊只会糊掉边缘）。
+    // 其余档保持 8 → 24 的渐变。
+    val blurDp = if (AppMaterialSettings.isBestTier()) {
+        AppMaterialSettings.glassPanelBlurDp()
+    } else {
+        AppMaterialSettings.glassBlurDp() + 16f * expandStep
+    }
+    // 折射随展开连贯变大：折叠 (7, 28) → 展开 (12, 48)。折叠态是 42dp 小圆，折射带相对不能太厚；
+    // 长成面板后同步加厚，边缘的水灵感才跟得上尺寸。
+    val lensHeightDp = 7f + 5f * expandStep
+    val lensAmountDp = 28f + 20f * expandStep
     // 面板自然高度：由容器内的内容以全尺寸测量得到，作为高度插值终点
     var panelHeightPx by remember { mutableIntStateOf(0) }
     val targetHeight = if (panelHeightPx > 0) {
@@ -340,11 +351,12 @@ fun LiquidGlassDropdownMenu(
         ) {
             // 与顶栏液态玻璃按钮同一套采样效果；blur 随展开档位过渡（8dp → 24dp）
             val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
-                remember(chromeLens, blurStep) {
+                remember(chromeLens, blurStep, blurDp) {
                     {
                         vibrancy()
                         blur(blurDp.dp.toPx())
-                        if (chromeLens) lens(8.dp.toPx(), 24.dp.toPx())
+                        // 折射随展开步进（与 blur 同一组 8 档，不额外增加 effects 重建次数）
+                        if (chromeLens) lens(lensHeightDp.dp.toPx(), lensAmountDp.dp.toPx())
                     }
                 }
             // 玻璃单独一层：只有它跟材质 alpha（layerBlock 作用于整个节点，挂容器上会连图标一起透明）

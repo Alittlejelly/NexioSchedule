@@ -176,10 +176,12 @@ fun WebViewScreen(
     var showCourseTablePicker by remember { mutableStateOf(false) }
     val webDockShapeBlock: () -> Shape = remember { { ContinuousCapsule() } }
     // 与 LiquidBottomTabs 可见层同一套玻璃参数
-    val webDockEffects: BackdropEffectScope.() -> Unit = remember {
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    val webDockGlassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
+    val webDockEffects: BackdropEffectScope.() -> Unit = remember(webDockGlassBlur) {
         {
             vibrancy()
-            blur(8f.dp.toPx())
+            blur(webDockGlassBlur.dp.toPx())
             lens(24f.dp.toPx(), 24f.dp.toPx())
         }
     }

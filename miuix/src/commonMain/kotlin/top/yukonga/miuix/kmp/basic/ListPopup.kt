@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
@@ -82,9 +83,12 @@ import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import top.yukonga.miuix.kmp.interactive.InteractiveHighlight
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRenderEffectSupported
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
+import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.internal.drawBlurredRingShadow
 import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.anim.SinOutEasing
@@ -899,12 +903,17 @@ fun ListPopupContent(
     val overshootRoom = 14.dp
     val overshootRoomPx = with(localDensity) { overshootRoom.toPx() }
     val chromeLens = chromeLensEnabled
+    // 面板玻璃模糊随材质档位（通透玻璃档与其余档取值不同；弹窗跑在 root host，值来自主题快照）
+    val panelBlur = LocalGlassPanelBlurDp.current
 
     val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
-        remember(chromeLens) {
+        remember(chromeLens, panelBlur) {
             {
                 vibrancy()
-                blur(PopupBlurRadius.dp.toPx())
+                blur(panelBlur.dp.toPx())
+                // 与 LiquidGlassDropdownMenu 面板同一套折射：作用在边缘 SDF 上，
+                // 必须保持常量 —— 随面板变大反而会把边缘拉变形。
+                if (chromeLens) lens(12f.dp.toPx(), 48f.dp.toPx())
             }
         }
 
@@ -1048,8 +1057,8 @@ private const val PopupShadowAlphaGain = 3.2f
 /** SubcomposeLayout 的槽位标识。Content 必须先于 Glass 测量（后者尺寸依赖前者）。 */
 private enum class PopupSlot { Content, Glass }
 
-/** 背景模糊半径（面板尺寸，比收起态更强）。保持常量以便 effects 引用稳定、命中 RenderEffect 缓存。 */
-private const val PopupBlurRadius = 24f
+// 背景模糊半径已从常量迁到 LocalGlassPanelBlurDp（见 ListPopupContent），
+// 值只在换档时变，effects 引用依然稳定、命中 RenderEffect 缓存。
 
 // 进场/退场各走一档：单条曲线做不出「进场早淡入 + 退场晚淡出」这两个相反方向。
 // 「标准」= LiquidGlassDropdownMenu 原值。
@@ -1217,7 +1226,7 @@ private fun PopupGlassCanvas(
             spread = { style.containerAlpha(style.fractionProgress()) },
         )
     ) {
-        PopupMaterialLayer(style = style, shape = panelShape)
+        PopupMaterialLayer(style = style, canvasW = canvasW, canvasH = canvasH, rect = rect)
 
         // 按压高光：必须夹在材质层之上（否则被玻璃壳盖住）、内容层之下
         // （否则 Plus 加色会把菜单项的白底冲白）。
@@ -1257,40 +1266,59 @@ private fun PopupGlassCanvas(
 }
 
 /**
- * 材质层：撑满玻璃画布，自带淡入淡出。
- * `matchParentSize` 是必须的 —— drawBackdrop 按自身节点尺寸 clipPath + 申请离屏缓冲，
- * 只有撑满画布（自然 + 2×余量）才有空间容纳回弹。画布尺寸由外层 Constraints.fixed 定死。
+ * 材质层：**节点就是面板矩形**（不是整块画布），自带淡入淡出。
+ *
+ * 为什么不再 `matchParentSize`：`lens()` 的折射 SDF 只由「节点尺寸 + 圆角」决定，而且只支持
+ * `RoundedRectangularShape` / `CornerBasedShape`（两者都铺满节点）。画布比面板每边大
+ * [PopupPanelStyle.overshootRoomPx] + 阴影留白，撑满画布会让折射环落到面板外、自定义的
+ * `AnimatedPanelRectShape` 更是直接被 lens 抛 `UnsupportedOperationException`。
+ * 改成在布局期把这一层量成面板矩形，交给标准圆角矩形——折射才和面板边缘对齐。
+ * 回弹（spring 过冲）也由 rect 自己跟着涨，不需要靠画布兜。
+ *
  * 单独一层是为了让 alpha 只作用在这里，挂在玻璃盒上会把里面的内容一起罩住。
  */
 @Composable
 private fun BoxScope.PopupMaterialLayer(
     style: PopupPanelStyle,
-    shape: Shape,
+    canvasW: Float,
+    canvasH: Float,
+    rect: (Float, Float) -> FloatArray,
 ) {
+    // 底色 alpha 随材质档位：通透玻璃档压低一档，折射才透得出来（与顶栏按钮 / 顶栏下拉同源）
+    val alphaDrop = LocalGlassSurfaceAlphaDrop.current
+    val surfaceAlpha = (if (style.isDark) 0.8f - alphaDrop.dark else 0.72f - alphaDrop.light)
+        .coerceAtLeast(0f)
+    // 每帧换新实例：edgeLight 的 outline 缓存按引用比较，记住实例会让描边冻结在第一帧尺寸上
+    val panelShape: Shape = ContinuousRoundedRectangle(style.cornerRadius)
     Box(
         modifier = Modifier
-            .matchParentSize()
+            // 布局期把这一层量成当前面板矩形（只这一层，父级画布尺寸仍由外层 Constraints.fixed 定死）
+            .layout { measurable, _ ->
+                val r = rect(canvasW, canvasH)
+                val w = r[2].roundToInt().coerceAtLeast(0)
+                val h = r[3].roundToInt().coerceAtLeast(0)
+                val placeable = measurable.measure(Constraints.fixed(w, h))
+                layout(canvasW.roundToInt(), canvasH.roundToInt()) {
+                    placeable.place(r[0].roundToInt(), r[1].roundToInt())
+                }
+            }
             .graphicsLayer { alpha = style.containerAlpha(style.fractionProgress()) }
             .then(
                 if (style.liquidGlassBackdrop != null && isRenderEffectSupported()) {
                     Modifier.drawBackdrop(
                         backdrop = style.liquidGlassBackdrop,
-                        shape = { shape },
+                        shape = { panelShape },
                         effects = style.glassEffects,
                         highlight = null,
                         shadow = null,
                         onDrawSurface = {
-                            drawRect(
-                                color = style.backgroundColor.copy(
-                                    alpha = if (style.isDark) 0.8f else 0.72f,
-                                )
-                            )
+                            drawRect(color = style.backgroundColor.copy(alpha = surfaceAlpha))
                         }
                     )
                 } else Modifier
             )
             .edgeLight(
-                shape = shape,
+                shape = panelShape,
                 edgeLight = rememberDefaultEdgeLight(baseColor = style.backgroundColor)
             ),
     )

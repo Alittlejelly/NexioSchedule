@@ -293,7 +293,7 @@ fun PreferenceSettingsScreen(
                                     }
                             )
                             OverlayDropdownMenu(
-                                title = "应用材质等级",
+                                title = "应用材质效果",
                                 // summary 为空时自动显示当前选中档位
                                 summary = null,
                                 entry = appMaterialEntry,

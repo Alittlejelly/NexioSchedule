@@ -131,8 +131,8 @@ fun LiquidBottomTabs(
     // 胶囊底色：莫奈取色下跟随 surfaceContainer（与 DayColumn 待放格、教务导入胶囊同一套）；
     // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）
     val containerColor = if (MiuixTheme.isDynamicColor) {
-        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f)
-    } else if (isLightTheme) Color(0xFFFAFAFA).copy(0.6f)
+        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f)
+    } else if (isLightTheme) Color(0xFFFAFAFA).copy(0.5f)
     else Color(0xFF242424).copy(0.6f)
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
@@ -215,12 +215,14 @@ fun LiquidBottomTabs(
 
         // 可见层：不缩放（源库只缩放下面的捕获层，滑块外的放大不可见）
         val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
-        val panelEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens) {
+        // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+        val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
+        val panelEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
             {
                 vibrancy()
-                blur(8f.dp.toPx())
+                blur(glassBlur.dp.toPx())
                 // 均衡及以下：低栏背景板关闭折射
-                if (chromeLens) lens(24f.dp.toPx(), 24f.dp.toPx())
+                if (chromeLens) lens(12f.dp.toPx(), 48f.dp.toPx())
             }
         }
         val panelSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
@@ -268,7 +270,8 @@ fun LiquidBottomTabs(
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
-                            blur(8f.dp.toPx())
+                            // 捕获层与可见层用同一个模糊，否则滑块放大时玻璃底不一致
+                            blur(glassBlur.dp.toPx())
                             lens(
                                 24f.dp.toPx() * progress,
                                 24f.dp.toPx() * progress

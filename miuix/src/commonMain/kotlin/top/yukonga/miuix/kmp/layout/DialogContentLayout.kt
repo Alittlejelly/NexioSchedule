@@ -60,9 +60,12 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.DecelerateEasing
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -250,7 +253,7 @@ internal fun DialogContentLayout(
                 modifier = Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        drawRect(baseColor.copy(alpha = baseColor.alpha * dimAlpha.floatValue * dimProgress.value))
+                        drawRect(baseColor.copy(alpha = baseColor.alpha * dimAlpha.floatValue * dimProgress.value * 0.6f))
                     },
             )
         }
@@ -376,15 +379,19 @@ internal fun DialogContent(
         }
         .clip(ContinuousRoundedRectangle(bottomCornerRadius))
         .then(
-            // 液态玻璃：实时折射 + 24dp 模糊。原判断是 Build.VERSION.SDK_INT >= 33，
+            // 液态玻璃：实时折射 + 档位模糊（通透玻璃档更薄）。原判断是 Build.VERSION.SDK_INT >= 33，
             // 改用 backdrop 的能力探测 isRenderEffectSupported()（跨平台，含 skiko）。
             if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
+                val dialogBlur = LocalGlassDialogBlurDp.current
+                val chromeLens = LocalChromeLensEnabled.current
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     shape = { ContinuousRoundedRectangle(bottomCornerRadius) },
                     effects = {
                         vibrancy()
-                        blur(24.dp.toPx())
+                        blur(dialogBlur.dp.toPx())
+                        // 折射：参数与下拉面板展开态同档（面板类玻璃）
+                        if (chromeLens) lens(16f.dp.toPx(), 64f.dp.toPx())
                     },
                     highlight = null,
                 )
@@ -397,7 +404,7 @@ internal fun DialogContent(
         .background(
             color = if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
                 // 玻璃层之上再压一层半透明底色，保证文字对比度；深色下压得更暗
-                backgroundColor.copy(alpha = if (isDark) 0.87f else 0.82f)
+                backgroundColor.copy(alpha = if (isDark) 0.87f else 0.78f)
             } else {
                 backgroundColor
             },
