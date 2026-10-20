@@ -121,7 +121,7 @@ fun rememberDefaultEdgeLight(
         resolveMaterial(
             uniformHighlight(
                 baseColor = baseColor,
-                alpha = if (isLightTheme) 0.6f else 0.32f,
+                alpha = if (isLightTheme) HIGHLIGHT_ALPHA_LIGHT else HIGHLIGHT_ALPHA_DARK,
                 width = width,
                 blurRadius = blurRadius,
                 intensity = 1f,
@@ -134,15 +134,7 @@ fun rememberDefaultEdgeLight(
 }
 
 /**
- * 高光描边色 = 底色的「满饱和 + 明度封顶」版本。
- *
- * - 提饱和：保住最大通道（明度与色相不变），其余通道 `c' = V - (V - c) * BOOST`。
- *   比绕亮度外扩干净 —— 后者三通道一起冲出去，高倍会偏色。
- * - 明度归一到 [HIGHLIGHT_VALUE]：等比缩放不改饱和度，但**不能归到 1.0** ——
- *   `Screen` 下源色任一通道为 1，结果必然是 1，整圈会算成纯白。
- * - 近中性（S < [NEUTRAL_SATURATION_EPS]）直接给白：提饱和只会放大噪声。
- *
- * BOOST 超过 `1 / 底色的 S` 后只是把通道压到 0（更暗，不会更饱和）。
+ * 高光描边色 = 底色的「满饱和 + 明度封顶」版本
  */
 private fun highlightTint(baseColor: Color?, alpha: Float): Color {
     if (baseColor == null || baseColor.alpha <= 0f) return Color.White.copy(alpha = alpha)
@@ -164,6 +156,11 @@ private fun highlightTint(baseColor: Color?, alpha: Float): Color {
 
 /** 描边色相对底色的饱和度倍数（超过 `1/底色S` 后只变暗，不会更饱和） */
 private const val SATURATION_BOOST = 2.5f
+/**
+ * 默认高光描边 alpha（浅 / 深）
+ */
+private const val HIGHLIGHT_ALPHA_LIGHT = 0.24f
+private const val HIGHLIGHT_ALPHA_DARK = 0.2f
 /** 描边色的明度上限（0..1）：越低越浓越暗，越高越亮、越容易在 Screen 下算成白 */
 private const val HIGHLIGHT_VALUE = 0.4f
 /** 提饱和后向白回调的比例：0 = 完全不兑白（最浓） */
@@ -197,20 +194,6 @@ private fun uniformHighlight(
     ),
 )
 
-@Composable
-fun rememberCourseCardEdgeLight(
-    baseColor: Color? = null,
-    isLightTheme: Boolean = isSystemLightTheme(),
-    resolveMaterial: (EdgeLight, Boolean, Color?) -> EdgeLight = { base, _, _ -> base },
-): EdgeLight {
-    return remember(isLightTheme, baseColor) {
-        resolveMaterial(
-            uniformHighlight(baseColor, 0.12f, 0.36.dp, 1.26.dp, 0.52f, isLightTheme),
-            isLightTheme,
-            baseColor,
-        )
-    }
-}
 
 @Composable
 fun rememberCardEdgeLight(

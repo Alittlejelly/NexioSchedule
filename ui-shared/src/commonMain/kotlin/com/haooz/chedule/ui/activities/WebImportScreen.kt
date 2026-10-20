@@ -199,16 +199,13 @@ fun WebImportScreen(
             if (nativeChrome == null) ProgressiveBlurTopBar(
                 backdrop = webContentBackdrop,
                 height = blurHeight,
-                // 教务页多为白底：默认 surface 暗色 tint 会在顶上压一层黑罩
-                tintIntensity = 0f,
                 blurAlpha = 0f,
             ) {
                 CollapsibleTopAppBar(
                     title = webPageTitle,
                     showLargeTitle = false,
-                    // 教务页自带顶栏空白区色条，不需要 AppBar 再叠黑白渐变遮罩
+                    // 教务页自带顶栏空白区色条，AppBar 不再叠任何遮罩
                     showShadow = false,
-                    showGradientOverlay = false,
                     titleColor = webBarContentColor,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = webViewScrollBehavior,

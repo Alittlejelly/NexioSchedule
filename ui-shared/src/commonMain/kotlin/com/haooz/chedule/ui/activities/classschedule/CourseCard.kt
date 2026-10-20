@@ -50,6 +50,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -320,9 +321,9 @@ fun CourseCard(
                 remember(surfaceColor) {
                     { drawRect(surfaceColor) }
                 }
-            val outlineColor = remember(cardColor) { cardColor.copy(alpha = 0.05f) }
-            val outlineStroke = remember(localDensity) {
-                Stroke(with(localDensity) { 2.dp.toPx() })
+            val outlineColor = remember(cardColor, isDark) { scheduleOutlineColor(cardColor, isDark) }
+            val outlineWidthPx = remember(localDensity) {
+                with(localDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
             }
             val outlineCache = remember { OutlineCache() }
             // 静止卡不挂 graphicsLayer：几十张×两页的合成层是周滑 draw 热点
@@ -383,23 +384,12 @@ fun CourseCard(
                     )
                     .drawWithContent {
                         drawContent()
-                        val radiusDp = effectiveCornerRadius.dp
-                        if (outlineCache.width != size.width ||
-                            outlineCache.height != size.height ||
-                            outlineCache.radius != radiusDp.value ||
-                            outlineCache.layoutDirection != layoutDirection
-                        ) {
-                            outlineCache.outline = ContinuousRoundedRectangle(radiusDp)
-                                .createOutline(size, layoutDirection, this)
-                            outlineCache.width = size.width
-                            outlineCache.height = size.height
-                            outlineCache.radius = radiusDp.value
-                            outlineCache.layoutDirection = layoutDirection
-                        }
-                        drawOutline(
-                            outline = outlineCache.outline!!,
+                        drawScheduleOutline(
+                            cache = outlineCache,
+                            cornerRadius = effectiveCornerRadius.dp,
                             color = outlineColor,
-                            style = outlineStroke
+                            strokeWidthPx = outlineWidthPx,
+                            layoutDirection = layoutDirection,
                         )
                     }
                     .courseCardGesture(
@@ -447,6 +437,13 @@ fun CourseCard(
         // 静止卡不挂 graphicsLayer：几十张×两页的合成层是左右滑 draw 热点。
         // 仅按压/拖拽/落地涟漪动画时挂；松手即撤，缩放回弹让位给无层路径。
         val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
+        // 纯色模式同样要一圈淡描边：没有玻璃边缘，光靠底色和背景分不开
+        val plainDensity = LocalDensity.current
+        val plainOutlineColor = remember(cardColor, isDark) { scheduleOutlineColor(cardColor, isDark) }
+        val plainOutlineWidthPx = remember(plainDensity) {
+            with(plainDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
+        }
+        val plainOutlineCache = remember { OutlineCache() }
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -477,6 +474,16 @@ fun CourseCard(
                     else Modifier
                 )
                 .background(cardColor, cardShape)
+                .drawWithContent {
+                    drawContent()
+                    drawScheduleOutline(
+                        cache = plainOutlineCache,
+                        cornerRadius = effectiveCornerRadius.dp,
+                        color = plainOutlineColor,
+                        strokeWidthPx = plainOutlineWidthPx,
+                        layoutDirection = layoutDirection,
+                    )
+                }
                 .onGloballyPositioned { coordinates ->
                     // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
                     cardCoords[0] = coordinates
@@ -854,4 +861,56 @@ internal class OutlineCache {
     var layoutDirection: LayoutDirection =
         LayoutDirection.Ltr
     var outline: Outline? = null
+}
+
+/** 课表内元素（课程卡 / 午休晚休分界线 / 空槽加号卡）的纯色描边宽度 */
+internal val SCHEDULE_OUTLINE_WIDTH = 2.dp
+/** 纯色描边 alpha */
+private const val SCHEDULE_OUTLINE_ALPHA = 0.08f
+/** 底色饱和度低于此值视为中性（白 / 浅灰 / 深灰），描边改用黑或白 */
+private const val SCHEDULE_OUTLINE_NEUTRAL_S = 0.08f
+
+/**
+ * 课表内元素的纯色描边颜色。
+ *
+ * 有色底（课程色）→ 同色淡描边，保留课程色的体积感；中性底（分界线、加号卡、
+ * 非动态取色）→ 浅色黑、深色白，否则同色描边在白/灰底上完全看不见。
+ */
+internal fun scheduleOutlineColor(baseColor: Color, isDark: Boolean): Color {
+    val v = maxOf(baseColor.red, maxOf(baseColor.green, baseColor.blue))
+    val minC = minOf(baseColor.red, minOf(baseColor.green, baseColor.blue))
+    val saturation = if (v > 0f) (v - minC) / v else 0f
+    return when {
+        saturation > SCHEDULE_OUTLINE_NEUTRAL_S -> baseColor.copy(alpha = SCHEDULE_OUTLINE_ALPHA)
+        isDark -> Color.White.copy(alpha = SCHEDULE_OUTLINE_ALPHA)
+        else -> Color.Black.copy(alpha = SCHEDULE_OUTLINE_ALPHA)
+    }
+}
+
+/**
+ * 纯色描边（不发光、不采样，就是一次 [drawOutline]），复用 [OutlineCache] 避免每帧重建。
+ *
+ * 在 `drawWithContent { drawContent(); drawScheduleOutline(...) }` 里调用，描边压在内容之上。
+ * 注意 `drawBackdrop` 之后调用时外半圈会被它的 shape clip 裁掉，实际呈现为内描边。
+ */
+internal fun DrawScope.drawScheduleOutline(
+    cache: OutlineCache,
+    cornerRadius: Dp,
+    color: Color,
+    strokeWidthPx: Float,
+    layoutDirection: LayoutDirection,
+) {
+    if (cache.width != size.width ||
+        cache.height != size.height ||
+        cache.radius != cornerRadius.value ||
+        cache.layoutDirection != layoutDirection
+    ) {
+        cache.outline = ContinuousRoundedRectangle(cornerRadius)
+            .createOutline(size, layoutDirection, this)
+        cache.width = size.width
+        cache.height = size.height
+        cache.radius = cornerRadius.value
+        cache.layoutDirection = layoutDirection
+    }
+    drawOutline(outline = cache.outline!!, color = color, style = Stroke(strokeWidthPx))
 }

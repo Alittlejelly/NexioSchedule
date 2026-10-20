@@ -249,7 +249,6 @@ fun AboutScreen(
             // 内嵌到 pad 设置页右栏时，About 仍自绘顶栏糊层/遮罩/标题，仅隐藏返回按钮
             ProgressiveBlurTopBar(
                 backdrop = liquidGlassBackdrop,
-                tintIntensity = scrollProgress * 0.2f,
                 topInsetAdjustment = nativeBarInset,
                 noTopStatusBar = hostVerticalBarEdge(),
             ) {
@@ -259,8 +258,6 @@ fun AboutScreen(
                     showLargeTitle = false,
                     showSmallTitle = scrollProgress > 0.5f,
                     showShadow = scrollProgress >= 1f,
-                    // 关于页渐变遮罩保持随滚动显隐
-                    gradientOverlayScrollTriggered = true,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},

@@ -316,8 +316,6 @@ internal fun SettingsTopBar(
                 largeTitle = if (isTablet) "" else "我的",
                 showLargeTitle = if (isTablet) false else null,
                 showSmallTitle = if (isTablet) true else null,
-                showGradientOverlay = !isTablet,
-                gradientColorOverride = MiuixTheme.colorScheme.surface,
                 modifier = Modifier.zIndex(1f),
                 scrollBehavior = if (isTablet) null else scrollBehavior,
                 titleModifier = if (titleEndPadding > 0.dp) {
@@ -380,7 +378,6 @@ internal fun TodayTopBar(
             largeTitle = titleText,
             modifier = Modifier.zIndex(1f),
             scrollBehavior = scrollBehavior,
-            showGradientOverlay = false,
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
             titleStartAligned = isTabletLiquidGlass,
             titleModifier = titleRailPadding.then(

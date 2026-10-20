@@ -338,9 +338,6 @@ fun CollapsibleTopAppBar(
     showLargeTitle: Boolean? = null,
     showSmallTitle: Boolean? = null,
     showShadow: Boolean? = null,
-    showGradientOverlay: Boolean = true,
-    /** 渐变遮罩是否随滚动显隐；false（默认）= 常驻。仅今日/课程表页传 true */
-    gradientOverlayScrollTriggered: Boolean = false,
     /** 标题色；默认随主题。WebView 页可按页面顶色传黑白 */
     titleColor: Color = MiuixTheme.colorScheme.onSurface,
     /** 标题左对齐（默认居中）。平板端需要避让左侧侧栏并左对齐时传 true */
@@ -353,9 +350,6 @@ fun CollapsibleTopAppBar(
     startAction: @Composable ((backdropAlpha: Float, shadowAlpha: Float) -> Unit)? = null,
     // 右侧自定义 Composable（接收 backdropAlpha、shadowAlpha 用于液态玻璃按钮动画）
     endAction: @Composable ((backdropAlpha: Float, shadowAlpha: Float) -> Unit)? = null,
-    gradientMaskHeight: Dp = CollapsibleTopAppBarDefaults.CollapsedHeight + 60.dp,
-    /** 渐变遮罩色；null=取当前页 surface。设置页应传入锁应用主题的色 */
-    gradientColorOverride: Color? = null,
     // 暴露当前的 backdropAlpha/shadowAlpha，供外部组件（如搜索框）同步动画
     onAlphaChanged: (backdropAlpha: Float, shadowAlpha: Float) -> Unit = { _, _ -> },
 ) {
@@ -468,50 +462,12 @@ fun CollapsibleTopAppBar(
         }
     }
 
-    // 渐变遮罩动画：默认常驻（alpha=1）；仅今日/课程表页随滚动显隐
-    val gradientAlpha = remember(gradientOverlayScrollTriggered) {
-        Animatable(if (gradientOverlayScrollTriggered) 0f else 1f)
-    }
-    LaunchedEffect(showButtonShadow.value, gradientOverlayScrollTriggered) {
-        val target = if (!gradientOverlayScrollTriggered || showButtonShadow.value) 1f else 0f
-        val spec = if (target > 0f) {
-            folmeSpring(damping = 1.0f, response = 0.6f)
-        } else {
-            folmeSpring<Float>(damping = 1.0f, response = 0.4f)
-        }
-        gradientAlpha.animateTo(target, spec)
-    }
-    // 默认取当前页 surface 色（课程表/今日可跟壁纸锁色）；设置页由调用方传入锁应用主题的色
-    val gradientColor = gradientColorOverride ?: MiuixTheme.colorScheme.surface
-
     // 调用方首帧只能拿到兜底初值（表现为「更多」先亮一帧材质才正常）
     SideEffect {
         onAlphaChanged(backdropAlpha.value, shadowAlpha.value)
     }
 
     Box {
-        // 渐变遮罩（超出顶栏范围）
-        if (showGradientOverlay) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(gradientMaskHeight)
-                    .graphicsLayer { alpha = gradientAlpha.value }
-                    .drawBehind {
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                // 末端多档缓收：原先 0.9→0.15、1.0→0 最后一截太陡，会像一条硬边
-                                0f to gradientColor.copy(alpha = 0.85f),
-                                0.45f to gradientColor.copy(alpha = 0.55f),
-                                0.7f to gradientColor.copy(alpha = 0.32f),
-                                0.85f to gradientColor.copy(alpha = 0.14f),
-                                0.93f to gradientColor.copy(alpha = 0.05f),
-                                1f to Color.Transparent
-                            )
-                        )
-                    }
-            )
-        }
 
         Layout(
             {

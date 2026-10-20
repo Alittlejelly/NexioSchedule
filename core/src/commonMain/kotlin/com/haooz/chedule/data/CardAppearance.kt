@@ -34,9 +34,9 @@ enum class CardTextColor(val label: String) {
 /** 卡片玻璃对壁纸的透镜折射强度（需壁纸才生效） */
 enum class CardRefractionLevel(val label: String, val lensRadiusDp: Float, val lensStrengthDp: Float) {
     OFF("关闭", 0f, 0f),
-    WEAK("较弱", 5f, 9f),
-    DEFAULT("默认", 6f, 14f),
-    STRONG("较强", 8f, 22f);
+    WEAK("较弱", 4f, 16f),
+    DEFAULT("默认", 6f, 24f),
+    STRONG("较强", 8f, 32f);
 
     companion object {
         fun fromOrdinal(ordinal: Int): CardRefractionLevel =

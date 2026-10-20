@@ -142,7 +142,6 @@ fun ScheduleTopBar(
                 CollapsibleTopAppBar(
                     title = titleText,
                     showLargeTitle = false,
-                    showGradientOverlay = false,
                     titleStartAligned = isTablet,
                     titleModifier = titleRailPadding.then(titleEndModifier),
                     scrollBehavior = scrollBehavior,

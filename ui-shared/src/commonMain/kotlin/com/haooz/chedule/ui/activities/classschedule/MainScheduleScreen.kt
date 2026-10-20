@@ -112,7 +112,6 @@ import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import com.kyant.backdrop.edgelight.edgeLight
-import com.haooz.chedule.ui.utils.rememberCourseCardEdgeLight
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -1308,7 +1307,6 @@ fun MainScheduleScreen(
                     // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）
                     val dividerSurfaceAlphaAt15 = if (dividerIsDark) 0.64f else 0.50f
                     val dividerBlurShape = remember { ContinuousRoundedRectangle(12.dp) }
-                    val dividerEdgeLightShape = remember { ContinuousRoundedRectangle(12.dp) }
 
                     @Composable
                     fun BreakDivider(offsetY: Int, text: String) {
@@ -1329,6 +1327,14 @@ fun MainScheduleScreen(
                         } else {
                             Color.White.copy(alpha = surfaceAlpha)
                         }
+                        // 纯色描边：分界线本体是白/深灰，没有轮廓在玻璃和纯色模式都发虚
+                        val dividerOutlineColor = remember(dividerFgSurface, dividerIsDark) {
+                            scheduleOutlineColor(dividerFgSurface, dividerIsDark)
+                        }
+                        val dividerOutlineWidthPx = remember(dividerDensity) {
+                            with(dividerDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
+                        }
+                        val dividerOutlineCache = remember { OutlineCache() }
                         Box(
                             modifier = Modifier.fillMaxWidth().offset(y = offsetY.dp)
                                 .height(24.dp)
@@ -1359,9 +1365,19 @@ fun MainScheduleScreen(
                                                     drawRect(dividerFgSurface)
                                                 }
                                             }
-                                        ).edgeLight(shape = dividerEdgeLightShape, edgeLight = rememberCourseCardEdgeLight(baseColor = dividerFgSurface))
+                                        )
                                     } else Modifier
-                                ),
+                                )
+                                .drawWithContent {
+                                    drawContent()
+                                    drawScheduleOutline(
+                                        cache = dividerOutlineCache,
+                                        cornerRadius = 12.dp,
+                                        color = dividerOutlineColor,
+                                        strokeWidthPx = dividerOutlineWidthPx,
+                                        layoutDirection = layoutDirection,
+                                    )
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(

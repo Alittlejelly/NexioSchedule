@@ -270,15 +270,13 @@ private fun TabletPaneTopChrome(
     modifier: Modifier = Modifier,
 ) {
     val maskHeight = TabletPaneBlurHeight
-    // 取当前页 surface 色（设置页主题已锁应用主题，不随壁纸锁色/切页跳变）
-    val gradientColor = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(maskHeight)
     ) {
-        // 渐变模糊：常驻
+        // 渐变模糊：常驻。不再叠表面色遮罩（压暗层已全局移除）
         if (backdrop != null) {
             ProgressiveBlurTopBar(
                 backdrop = backdrop,
@@ -288,22 +286,6 @@ private fun TabletPaneTopChrome(
                 content = {},
             )
         }
-        // 表面色遮罩：常驻
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(1f)
-                .background(
-                    Brush.verticalGradient(
-                        0f to gradientColor.copy(alpha = 0.85f),
-                        0.45f to gradientColor.copy(alpha = 0.55f),
-                        0.7f to gradientColor.copy(alpha = 0.32f),
-                        0.85f to gradientColor.copy(alpha = 0.14f),
-                        0.93f to gradientColor.copy(alpha = 0.05f),
-                        1f to Color.Transparent,
-                    )
-                )
-        )
     }
 }
 

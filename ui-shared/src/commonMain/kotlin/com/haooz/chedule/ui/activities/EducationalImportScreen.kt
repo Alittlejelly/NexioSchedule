@@ -239,7 +239,6 @@ fun EducationalImportScreen(
                     modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},
-                    gradientMaskHeight = CollapsedHeight + 190.dp,
                     onAlphaChanged = { bd, sh ->
                         searchBackdropAlpha = bd
                         searchShadowAlpha = sh
