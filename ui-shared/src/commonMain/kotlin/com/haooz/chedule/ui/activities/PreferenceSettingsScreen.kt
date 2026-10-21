@@ -412,22 +412,6 @@ fun PreferenceSettingsScreen(
                                     onSetTaskExcludedFromRecents(it)
                                 }
                             )
-                            // 直接读全局单例：这是个 CompositionLocal 之外的全局开关，
-                            // 不需要本地 remember（那会在 item 复用时和真实值脱节）
-                            SwitchPreference(
-                                title = "文字变化动效",
-                                summary = "文字内容变化时，旧字模糊淡出、新字从模糊中聚焦",
-                                checked = com.haooz.chedule.ui.components.text.TextMotionSettings.enabled,
-                                onCheckedChange = {
-                                    com.haooz.chedule.ui.components.text.TextMotionSettings.apply(it)
-                                    appPrefs.edit {
-                                        putBoolean(
-                                            com.haooz.chedule.ui.components.text.TextMotionSettings.KEY_TEXT_MOTION,
-                                            it
-                                        )
-                                    }
-                                }
-                            )
                         }
                     }
                 }

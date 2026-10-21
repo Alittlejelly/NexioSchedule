@@ -94,8 +94,6 @@ fun main() {
     // 4. 材质档位：与 Android（NexioApplication）同步从 app_preferences 载入，
     //    不调的话玻璃/模糊材质永远停在默认档，桌面验证看到的材质效果会失真
     AppMaterialSettings.load()
-    // 5. 文字变化动效开关：与 Android 同步载入，否则桌面端永远停在默认值
-    com.haooz.chedule.ui.components.text.TextMotionSettings.load()
 
     application {
         Window(

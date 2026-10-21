@@ -144,3 +144,30 @@ internal fun <T : Any> TextMotionBox(
         }
     }
 }
+
+/**
+ * 同时进行中的文字动效配额。
+ *
+ * 除了「一个字变了」，还存在「整屏文字同帧全变」的场景（切周、换课表、切主题 / 语言）。
+ * 那种时候每个文字都要建一份离屏模糊层，几百个叠在一帧里必然掉帧。这里给一个硬上限：
+ * 超出配额的直接换字、不播动效 —— 宁可少几处动效，也不要卡一帧。
+ *
+ * 计数器只在主线程读写，不做并发保护。
+ */
+internal object TextMotionBudget {
+
+    /** 同一时刻最多允许多少处文字做动效。 */
+    private const val MAX_CONCURRENT = 48
+
+    private var active = 0
+
+    fun tryAcquire(): Boolean {
+        if (active >= MAX_CONCURRENT) return false
+        active += 1
+        return true
+    }
+
+    fun release() {
+        if (active > 0) active -= 1
+    }
+}

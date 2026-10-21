@@ -24,10 +24,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import com.haooz.chedule.ui.components.text.TextMotionBox
-import com.haooz.chedule.ui.components.text.TextMotionSettings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Miuix 文字 + 变化模糊过渡。开关关闭时直接返回官方组件，零额外节点。 */
+/** Miuix 文字 + 变化模糊过渡。 */
 @Composable
 fun Text(
     text: String,
@@ -49,17 +48,6 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    if (!TextMotionSettings.enabled) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = text, modifier = modifier, color = color, autoSize = autoSize,
-            fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
-            fontFamily = fontFamily, letterSpacing = letterSpacing,
-            textDecoration = textDecoration, textAlign = textAlign, lineHeight = lineHeight,
-            overflow = overflow, softWrap = softWrap, maxLines = maxLines,
-            minLines = minLines, onTextLayout = onTextLayout, style = style,
-        )
-        return
-    }
     TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
@@ -94,17 +82,6 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    if (!TextMotionSettings.enabled) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = text, color = color, modifier = modifier, autoSize = autoSize,
-            fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
-            fontFamily = fontFamily, letterSpacing = letterSpacing,
-            textDecoration = textDecoration, textAlign = textAlign, lineHeight = lineHeight,
-            overflow = overflow, softWrap = softWrap, maxLines = maxLines,
-            minLines = minLines, onTextLayout = onTextLayout, style = style,
-        )
-        return
-    }
     TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, color = color, modifier = layerModifier, autoSize = autoSize,
@@ -140,18 +117,6 @@ fun Text(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    if (!TextMotionSettings.enabled) {
-        top.yukonga.miuix.kmp.basic.Text(
-            text = text, modifier = modifier, color = color, autoSize = autoSize,
-            fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
-            fontFamily = fontFamily, letterSpacing = letterSpacing,
-            textDecoration = textDecoration, textAlign = textAlign, lineHeight = lineHeight,
-            overflow = overflow, softWrap = softWrap, maxLines = maxLines,
-            minLines = minLines, inlineContent = inlineContent,
-            onTextLayout = onTextLayout, style = style,
-        )
-        return
-    }
     TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
