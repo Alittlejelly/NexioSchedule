@@ -693,7 +693,7 @@ fun SwitchScheduleScreen(
                                     effects = {
                                         vibrancy()
                                         blur(4f.dp.toPx())
-                                        lens(10f.dp.toPx(), 32f.dp.toPx())
+                                        lens(12f.dp.toPx(), 48f.dp.toPx())
                                     },
                                     highlight = null,
                                     onDrawSurface = { drawRect(containerColor) }
