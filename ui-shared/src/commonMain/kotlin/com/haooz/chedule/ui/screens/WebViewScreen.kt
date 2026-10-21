@@ -182,7 +182,7 @@ fun WebViewScreen(
         {
             vibrancy()
             blur(webDockGlassBlur.dp.toPx())
-            lens(12f.dp.toPx(), 48f.dp.toPx())
+            lens(6f.dp.toPx(), 36f.dp.toPx())
         }
     }
     val isLightTheme = !isAppDarkTheme()

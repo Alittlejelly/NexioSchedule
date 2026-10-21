@@ -176,7 +176,7 @@ fun SearchBar(
                                 {
                                     vibrancy()
                                     blur(glassBlur.dp.toPx())
-                                    if (chromeLens) lens(8f.dp.toPx(), 32f.dp.toPx())
+                                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
                                 }
                             }
                             Box(
@@ -388,7 +388,7 @@ fun InputField(
                 {
                     vibrancy()
                     blur(glassBlur.dp.toPx())
-                    if (chromeLens) lens(8f.dp.toPx(), 24f.dp.toPx())
+                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
                 }
             }
 

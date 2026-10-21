@@ -119,11 +119,12 @@ fun DayColumn(
     showClassroom: Boolean = true,
     showTeacher: Boolean = true,
     cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
-    draggingCourseIds: Set<String> = emptySet(),
+    draggingCourseSlots: Set<Pair<String, Int>> = emptySet(),
     onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
     onCourseDragStart: (courseId: String) -> Unit = { _ -> },
     onCourseDrag: (courseId: String, offsetX: Float, offsetY: Float) -> Unit = { _, _, _ -> },
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
+    onCourseDragCancel: (courseId: String) -> Unit = { _ -> },
     onCourseMenuDismiss: () -> Unit = {},
     // 当前列需高亮的节次范围（含起止）
     dropHighlightSections: IntRange? = null,
@@ -319,7 +320,7 @@ fun DayColumn(
                 wallpaperBackdrop = wallpaperBackdrop,
                 solidBackingColor = solidBackingColor,
                 cardBlurRadius = cardBlurRadius,
-                draggingCourseIds = draggingCourseIds,
+                draggingCourseSlots = draggingCourseSlots,
                 touchState = touchState,
                 isDark = isDark,
 
@@ -328,6 +329,7 @@ fun DayColumn(
                 onCourseDragStart = onCourseDragStart,
                 onCourseDrag = onCourseDrag,
                 onCourseDragEnd = onCourseDragEnd,
+                onCourseDragCancel = onCourseDragCancel,
                 onCourseMenuDismiss = onCourseMenuDismiss,
                 onPendingChange = onPendingChange
             )
@@ -363,7 +365,7 @@ private fun CourseCardsLayer(
     wallpaperBackdrop: Backdrop?,
     solidBackingColor: Color? = null,
     cardBlurRadius: Float,
-    draggingCourseIds: Set<String>,
+    draggingCourseSlots: Set<Pair<String, Int>>,
     touchState: ScheduleTouchState? = null,
     isDark: Boolean,
     viewportTopDp: Float = 0f,
@@ -373,6 +375,7 @@ private fun CourseCardsLayer(
     onCourseDragStart: (String) -> Unit,
     onCourseDrag: (String, Float, Float) -> Unit,
     onCourseDragEnd: (String) -> Unit,
+    onCourseDragCancel: (String) -> Unit,
     onCourseMenuDismiss: () -> Unit,
     onPendingChange: (Int, Int) -> Unit
 ) {
@@ -449,7 +452,7 @@ private fun CourseCardsLayer(
     courseRenderDataList.forEach { renderData ->
         val course = renderData.course
         val isCurrentWeekCourse = renderData.isCurrentWeekCourse
-        val isDragging = course.id in draggingCourseIds && isCurrentWeekCourse
+        val isDragging = (course.id to currentWeek) in draggingCourseSlots && isCurrentWeekCourse
 
         // 自定义时间课按时间轴插值定位/定高，不按节次分段
         if (course.hasValidCustomTime()) {
@@ -569,6 +572,9 @@ private fun CourseCardsLayer(
                         },
                         onDragEnd = {
                             onCourseDragEnd(course.id)
+                        },
+                        onDragCancel = {
+                            onCourseDragCancel(course.id)
                         },
                         onMenuDismiss = {
                             onCourseMenuDismiss()

@@ -1,7 +1,10 @@
 package com.haooz.chedule.ui.activities.main
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,9 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -45,6 +52,8 @@ import com.haooz.chedule.ui.activities.SwitchScheduleScreen
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.activities.classschedule.CourseCard
+import com.haooz.chedule.ui.components.CrossWeekDropHint
+import com.haooz.chedule.ui.components.EdgeAutoPageIndicator
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
@@ -59,6 +68,7 @@ import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.LocalHostOverlays
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.addScreenCornerRect
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.loadScheduleThemeMode
@@ -133,6 +143,61 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             .fillMaxSize()
                             .then(dragCardHighlight.modifier)
                     )
+                    // 边缘自动翻周示意：放在浮层组（root），铺满整屏才能延伸到
+                    // 标题/状态栏区域；退出动画里方向不能归零，否则内容直接返回空、变成硬切。
+                    var lastEdgeDirection by remember { mutableIntStateOf(0) }
+                    val shownEdgeDirection =
+                        if (edgeAutoPageDirection != 0) {
+                            edgeAutoPageDirection
+                        } else {
+                            lastEdgeDirection
+                        }
+                    SideEffect {
+                        if (edgeAutoPageDirection != 0) {
+                            lastEdgeDirection = edgeAutoPageDirection
+                        }
+                    }
+                    AnimatedVisibility(
+                        visible = floatingCardVisible && isFloatingCardDragging &&
+                            edgeAutoPageDirection != 0,
+                        enter = fadeIn(tween(durationMillis = 180)),
+                        exit = fadeOut(tween(durationMillis = 180)),
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            EdgeAutoPageIndicator(
+                                direction = shownEdgeDirection,
+                                modifier = Modifier.align(
+                                    if (shownEdgeDirection < 0) {
+                                        Alignment.CenterStart
+                                    } else {
+                                        Alignment.CenterEnd
+                                    }
+                                ),
+                            )
+                        }
+                    }
+                    // 跨周调课提示：放在浮层组里（主内容录制层之外），和底栏一样
+                    // 从外部采样内容层。留在页面里会自己采自己的录制层，拖拽提饱和
+                    // 每帧重录时胶囊会闪没。
+                    val hintBottomPadding = if (nativeBottomBar) {
+                        (hostNavigation?.bottomBarInset?.toFloat() ?: 0f).dp + 8.dp
+                    } else {
+                        bottomFloatingPadding() + 64.dp
+                    }
+                    AnimatedVisibility(
+                        visible = floatingCardVisible && isFloatingCardDragging,
+                        enter = fadeIn(tween(durationMillis = 200)),
+                        exit = fadeOut(tween(durationMillis = 160)),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = hintBottomPadding),
+                    ) {
+                        CrossWeekDropHint(
+                            fromWeek = draggedWeek,
+                            toWeek = currentViewingWeek,
+                            backdrop = liquidGlassBackdrop,
+                        )
+                    }
                     if (floatingCardVisible) {
                         val course = draggedCardCourse
                         if (course != null) {
@@ -141,23 +206,13 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             val geom = gridGeometry
                             val sectionH = geom?.sectionHeightPx
                                 ?: with(density) { displayAppearance.cardHeight.dp.toPx() }
-                            // 高度含午休/晚修分界缝，与网格上分段卡片的视觉外接框一致
-                            //
-                            // ⚠ 两种高度的**语义不一样**，别混用：
-                            // - 普通课 = 外接框设定高度（不含卡片 2dp 外缝），浮层要再留一次缝才与网格对齐；
-                            // - 自定义时间课 = 长按实测高，而网格卡片本来就带 2dp 外缝，实测到的已经是
-                            //   **扣完缝的可见高度**，再留一次缝就上下各短 2dp。
-                            val heightPx = when {
-                                // 自定义时间课按时间轴定位/定高，节次几何算出来的高度对不上，用长按实测高
-                                course.hasValidCustomTime() && !isPasteFlight -> draggedCardSize.y
-                                geom != null -> courseVisualHeightPx(
-                                    geom,
-                                    course.startSection,
-                                    course.endSection,
-                                    dividerPxFor(geom)
-                                )
-
-                                else -> (course.endSection - course.startSection + 1) * sectionH
+                            val heightPx = if (isPasteFlight) {
+                                // 粘贴飞行用几何算高（源课可能不在当前周，draggedCardSize 不适用）
+                                geom?.let {
+                                    courseVisualHeightPx(it, course.startSection, course.endSection, dividerPxFor(it))
+                                } ?: (course.endSection - course.startSection + 1) * sectionH
+                            } else {
+                                draggedCardSize.y
                             }
                             val baseOffsetX = with(density) {
                                 (draggedCardPosition.x - widthPx / 2f).toDp()

@@ -249,8 +249,6 @@ fun LiquidGlassDropdownMenu(
     }
     // 折射随展开连贯变大：折叠 (7, 28) → 展开 (12, 48)。折叠态是 42dp 小圆，折射带相对不能太厚；
     // 长成面板后同步加厚，边缘的水灵感才跟得上尺寸。
-    val lensHeightDp = 7f + 5f * expandStep
-    val lensAmountDp = 28f + 20f * expandStep
     // 面板自然高度：由容器内的内容以全尺寸测量得到，作为高度插值终点
     var panelHeightPx by remember { mutableIntStateOf(0) }
     val targetHeight = if (panelHeightPx > 0) {
@@ -356,7 +354,7 @@ fun LiquidGlassDropdownMenu(
                         vibrancy()
                         blur(blurDp.dp.toPx())
                         // 折射随展开步进（与 blur 同一组 8 档，不额外增加 effects 重建次数）
-                        if (chromeLens) lens(lensHeightDp.dp.toPx(), lensAmountDp.dp.toPx())
+                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
                     }
                 }
             // 玻璃单独一层：只有它跟材质 alpha（layerBlock 作用于整个节点，挂容器上会连图标一起透明）
@@ -376,7 +374,7 @@ fun LiquidGlassDropdownMenu(
                     )
                     .edgeLight(
                         shape = ContinuousRoundedRectangle(PanelCornerRadius),
-                        edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+                        edgeLight = rememberDefaultEdgeLight(baseColor = containerColor),
                     )
             )
 

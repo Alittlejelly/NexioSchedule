@@ -693,14 +693,14 @@ fun SwitchScheduleScreen(
                                     effects = {
                                         vibrancy()
                                         blur(4f.dp.toPx())
-                                        lens(12f.dp.toPx(), 48f.dp.toPx())
+                                        lens(6f.dp.toPx(), 36f.dp.toPx())
                                     },
                                     highlight = null,
                                     onDrawSurface = { drawRect(containerColor) }
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor),
                                 )
                                 // 高光画在材质之上、条目之下（条目在 drawContent 里更靠内），
                                 // 且被 drawBackdrop 的 clipPath 裁进胶囊外形

@@ -138,6 +138,8 @@ fun CourseCard(
     onDragStart: () -> Unit = {},
     onDrag: (offsetX: Float, offsetY: Float) -> Unit = { _, _ -> },
     onDragEnd: () -> Unit = {},
+    /** 拖拽被系统/布局回收打断（不是用户松手）：只收浮层，不写库 */
+    onDragCancel: () -> Unit = {},
     onMenuDismiss: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -395,6 +397,7 @@ fun CourseCard(
                     .courseCardGesture(
                         course = course,
                         touchState = touchState,
+                        coordinates = cardCoords,
                         bounds = cardBoundsPx,
                         refreshBounds = refreshCardBounds,
                         scope = scope,
@@ -405,6 +408,7 @@ fun CourseCard(
                         onDragStart = onDragStart,
                         onDrag = onDrag,
                         onDragEnd = onDragEnd,
+                        onDragCancel = onDragCancel,
                         onMenuDismiss = onMenuDismiss,
                     ),
                 contentAlignment = Alignment.Center
@@ -486,6 +490,7 @@ fun CourseCard(
                 .courseCardGesture(
                     course = course,
                     touchState = touchState,
+                    coordinates = cardCoords,
                     bounds = cardBoundsPx,
                     refreshBounds = refreshCardBounds,
                     scope = scope,
@@ -496,6 +501,7 @@ fun CourseCard(
                     onDragStart = onDragStart,
                     onDrag = onDrag,
                     onDragEnd = onDragEnd,
+                    onDragCancel = onDragCancel,
                     onMenuDismiss = onMenuDismiss,
                 )
         ) {
@@ -537,6 +543,7 @@ fun CourseCard(
 private fun Modifier.courseCardGesture(
     course: Course,
     touchState: ScheduleTouchState?,
+    coordinates: Array<LayoutCoordinates?>,
     bounds: FloatArray,
     refreshBounds: () -> Unit,
     scope: CoroutineScope,
@@ -547,6 +554,7 @@ private fun Modifier.courseCardGesture(
     onDragStart: () -> Unit,
     onDrag: (offsetX: Float, offsetY: Float) -> Unit,
     onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
     onMenuDismiss: () -> Unit,
 ): Modifier = pointerInput(course, dragEnabled) {
     awaitEachGesture {
@@ -559,6 +567,24 @@ private fun Modifier.courseCardGesture(
         var isLongPress = false
         var isDragging = false
         var menuShown = false
+        // 拖拽已经接管 / 已经收过尾。节点被回收时 finally 只兜底一次，正常松手不重复收尾。
+        var dragOwned = false
+        var dragClosed = false
+
+        /**
+         * 指针位置换算到 root 坐标。
+         *
+         * ⚠ 浮层挂在 root 上、锚点 [bounds] 也是 root 坐标，而 [PointerInputChange.position]
+         * 是**课卡本地**坐标。课卡住在周 pager 的页里：翻周（页平移一屏）、页内上下滚，
+         * 手指不动本地坐标也会变 —— 直接拿本地差值会让浮层反向飞出一屏（翻页即「丢失」），
+         * 上下滚则越拖越偏（不跟手）。换算到 root 后只剩手指自身位移。
+         */
+        fun rootPosition(local: Offset): Offset {
+            val coords = coordinates[0]
+            return if (coords != null && coords.isAttached) coords.localToRoot(local) else local
+        }
+
+        val downRoot = rootPosition(downPosition)
         val longPressJob = scope.launch {
             delay(320.milliseconds)
             // 多指（三指截图等）不当成长按
@@ -575,44 +601,84 @@ private fun Modifier.courseCardGesture(
                 val pass =
                     if (menuShown || isDragging) PointerEventPass.Main else PointerEventPass.Final
                 val event = awaitPointerEvent(pass)
+                // 只认按下时那根指针：其余手指的事件不消费，留给页面翻周手势
+                // （跨周调课要一只手拖课、另一只手翻周）
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null) {
+                    // 指针不在事件里 = 被系统取消（翻页时合成 cancel / 手势被抢）。
+                    // 必须收尾，否则浮层 offset 冻在最后一帧、卡在屏幕外。
+                    if (dragOwned && !dragClosed) {
+                        dragClosed = true
+                        val st = touchState
+                        val trackerOwns = st != null &&
+                            (st.dragTrackerActive || st.dragEndHandled)
+                        if (!trackerOwns) onDragCancel()
+                    }
+                    break
+                }
 
-                if (event.changes.none { it.pressed }) {
+                if (!change.pressed) {
                     onSinkChange(false)
                     when {
-                        isDragging -> if (menuShown) onDrag(0f, 0f) else onDragEnd()
+                        isDragging -> {
+                            // 页面级 tracker 已接管 / 已收尾：位移与落点都归它，
+                            // 这里再调一次 onDragEnd 会把同一次拖拽写两遍
+                            val st = touchState
+                            val trackerOwns = st != null &&
+                                (st.dragTrackerActive || st.dragEndHandled)
+                            when {
+                                trackerOwns -> dragClosed = true
+                                menuShown -> {
+                                    // 菜单还在、还没到「真拖起来」：把抖动带出的偏移归零，菜单继续留着
+                                    onDrag(0f, 0f)
+                                    dragClosed = true
+                                }
+
+                                !dragClosed -> {
+                                    dragClosed = true
+                                    onDragEnd()
+                                }
+                            }
+                        }
+
                         menuShown -> Unit
                         else -> {
-                            val up = event.changes.firstOrNull()
-                            if (up != null) {
-                                up.consume()
-                                // 多指时不点击：系统手势（三指截图）拦截后 Compose 会补发一个
-                                // 合成的「全部抬起」事件，看起来和松手一样，只能靠页面级多指标记区分
-                                val multiTouch = touchState?.multiTouch == true
-                                if (!isLongPress && !multiTouch &&
-                                    (up.position - downPosition).getDistance() < slop
-                                ) onClick()
-                            }
+                            val up = change
+                            up.consume()
+                            // 多指时不点击：系统手势（三指截图）拦截后 Compose 会补发一个
+                            // 合成的「全部抬起」事件，看起来和松手一样，只能靠页面级多指标记区分
+                            val multiTouch = touchState?.multiTouch == true
+                            if (!isLongPress && !multiTouch &&
+                                (up.position - downPosition).getDistance() < slop
+                            ) onClick()
                         }
                     }
                     break
                 }
 
-                val pos = event.changes.firstOrNull()?.position ?: continue
-                val dx = pos.x - downPosition.x
-                val dy = pos.y - downPosition.y
-                val moved = pos.minus(downPosition).getDistance()
+                val pos = change.position
+                // 长按前用本地位移：页面惯性/另只手滚屏时内容在手指下跑，
+                // 本地坐标能如实反映「手指相对卡片动了」，避免把滚动当成长按/拖拽。
+                val localDx = pos.x - downPosition.x
+                val localDy = pos.y - downPosition.y
+                val localMoved = Offset(localDx, localDy).getDistance()
+                // 长按后（真拖拽）用 root 位移：翻周/滚动时本地坐标会被整页平移污染
+                val rootNow = rootPosition(pos)
+                val dx = rootNow.x - downRoot.x
+                val dy = rootNow.y - downRoot.y
+                val moved = Offset(dx, dy).getDistance()
 
                 // 长按前横滑主导 → 交给 Pager 翻页
                 if (!isLongPress && !isDragging && !menuShown &&
-                    abs(dx) > horizontalSlop && abs(dx) > abs(dy) * 1.2f
+                    abs(localDx) > horizontalSlop && abs(localDx) > abs(localDy) * 1.2f
                 ) {
                     onSinkChange(false)
                     break
                 }
                 // 长按前位移超容差 → 取消长按
-                if (!isLongPress && moved > slop) {
+                if (!isLongPress && localMoved > slop) {
                     onSinkChange(false)
-                    event.changes.forEach { it.consume() }
+                    change.consume()
                     break
                 }
                 // 菜单已弹出：手指一动就进「拖拽态」，浮层开始跟手。
@@ -621,19 +687,53 @@ private fun Modifier.courseCardGesture(
                 // ⚠ dragEnabled = false（自定义时间课）时整段跳过：菜单留在原地等用户点
                 if (dragEnabled && menuShown && !isDragging) {
                     isDragging = true
+                    dragOwned = true
                     onSinkChange(false)
+                    // 登记拖拽占用的指针：翻页手势只屏蔽这一根，另一只手仍能翻周
+                    val st = touchState
+                    if (st != null) {
+                        // 起拖前的根坐标：tracker 用它把位移算成「相对按下时」，
+                        // 这样交接触手时浮层不会跳。翻转/滚动都不影响 root 差值。
+                        st.draggingPointerId = down.id
+                        st.draggingCourseId = course.id
+                        st.draggingDownRoot = downRoot
+                        st.dragStarted = false
+                        st.dragTrackerActive = false
+                        st.dragEndHandled = false
+                    }
                 }
                 // 位移超容差 = 真的拖起来了：此刻收菜单，并点亮跟手高光
                 if (dragEnabled && menuShown && moved > slop) {
                     menuShown = false
+                    touchState?.dragStarted = true
                     onDragStart()
                     onMenuDismiss()
                 }
-                if (dragEnabled && isDragging) onDrag(dx, dy)
-                event.changes.forEach { it.consume() }
+                // 页面级 tracker 接管后，卡片不再上报位移（两边都算会翻倍）
+                if (dragEnabled && isDragging && touchState?.dragTrackerActive != true) {
+                    onDrag(dx, dy)
+                }
+                change.consume()
             }
         } finally {
             longPressJob.cancel()
+            // 课卡所在周页被 pager 回收时协程直接 cancel，走不到上面的抬起分支：
+            // 浮层不收尾会永远停在最后一帧。页面级 tracker 还活着时由它收尾（它能跨周跟手），
+            // 只有 tracker 没接管才在这里兜底；且只取消、不写库。
+            if (dragOwned && !dragClosed) {
+                dragClosed = true
+                val st = touchState
+                val trackerOwns = st != null &&
+                    (st.dragTrackerActive || st.dragEndHandled)
+                if (!trackerOwns) onDragCancel()
+            }
+            val state = touchState
+            if (state != null &&
+                !state.dragTrackerActive && !state.dragEndHandled &&
+                state.draggingPointerId == down.id
+            ) {
+                state.clearDragTracking()
+            }
         }
     }
 }

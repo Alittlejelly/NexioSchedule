@@ -96,7 +96,7 @@ fun LiquidTopBarButton(
             vibrancy()
             blur(glassBlur.dp.toPx())
             // 均衡及以下关闭折射
-            if (chromeLens) lens(7f.dp.toPx(), 28f.dp.toPx())
+            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
         }
     }
     val buttonOnDrawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =

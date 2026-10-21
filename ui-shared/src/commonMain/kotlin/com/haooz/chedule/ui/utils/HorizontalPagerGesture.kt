@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -197,16 +198,25 @@ private class PagerOverscrollOffsetNode(
 }
 
 /**
- * 挂在 HorizontalPager 的 modifier 上。`blockGesture()==true` 时不驱动 pager
- * （课表页：壁纸编辑 / 课卡拖拽独占）。
+ * 挂在 HorizontalPager 的 modifier 上。`blockGesture()==true` 时不驱动 pager（课表页：壁纸编辑）。
+ *
+ * [blockedPointer] 只屏蔽这一根指针（课卡拖拽中按住卡片的那个手指），其余指针照常翻页 ——
+ * 跨周调课要「一只手拖课、另一只手翻周」。
+ *
+ * [onVerticalScroll] 纵向主导时的滚动回调（dy 为手指位移，正=向下）。
+ * 只在 [isAlternativePointer]（第二只手）时调 —— 第一只手动时纵向归页内 verticalScroll。
  */
 @Composable
 fun Modifier.pagerAxisTakeoverGesture(
     pagerState: PagerState,
     gestureState: PagerTakeoverGestureState = rememberPagerTakeoverGestureState(),
     blockGesture: () -> Boolean = { false },
+    blockedPointer: () -> PointerId? = { null },
+    onVerticalScroll: ((dy: Float) -> Unit)? = null,
 ): Modifier {
     val latestBlock = rememberUpdatedState(blockGesture)
+    val latestBlockedPointer = rememberUpdatedState(blockedPointer)
+    val latestOnVerticalScroll = rememberUpdatedState(onVerticalScroll)
     val scope = gestureState.scope
     val settleJob = remember { mutableStateOf<Job?>(null) }
     val overscrollJob = remember { mutableStateOf<Job?>(null) }
@@ -220,14 +230,15 @@ fun Modifier.pagerAxisTakeoverGesture(
             val domRatio = 1.3f
             val density: Density = this
             awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
+                var down = awaitFirstDown(requireUnconsumed = false)
+                var isAltPointer = false
                 val tracker = VelocityTracker()
                 val dragState = PagerDragState()
                 dragState.startScrollOffset =
                     pagerState.currentPage + pagerState.currentPageOffsetFraction
                 var dragChannel: Channel<Float>? = null
                 var scrollWorker: Job? = null
-                val workerDone = CompletableDeferred<Unit>()
+                var workerDone = CompletableDeferred<Unit>()
                 var accX = 0f
                 var accY = 0f
                 var xDominant = false
@@ -239,14 +250,141 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var overscrollRaw = 0f
                 val viewportPx = size.width.toFloat().coerceAtLeast(1f)
                 tracker.addPosition(down.uptimeMillis, down.position)
+
+                /**
+                 * 结束当前这一「轮」横向拖动：关掉本轮的 delta 通道、按速度落页。
+                 * 不结束整个手势 —— 拖课卡那根手指还按着时，必须能再等来第二根、
+                 * 第三根手指继续翻周/滚屏（否则第一次滑完手势就卡死在 awaitAllPointersUp）。
+                 */
+                fun settleCurrentRound() {
+                    if (!xDominant) return
+                    val roundDownUptime = down.uptimeMillis
+                    val done = workerDone
+                    val trackedVelocity =
+                        runCatching { tracker.calculateVelocity() }.getOrNull() ?: Velocity(0f, 0f)
+                    val moveSpanMs =
+                        (lastMoveUptimeMillis - roundDownUptime).coerceAtLeast(16L)
+                    val moveAvgVelocity = Velocity(
+                        x = accX * 1000f / moveSpanMs,
+                        y = accY * 1000f / moveSpanMs,
+                    )
+                    val fingerVelocity = if (abs(moveAvgVelocity.x) > abs(trackedVelocity.x)) {
+                        moveAvgVelocity
+                    } else {
+                        trackedVelocity
+                    }
+                    val startOffset = dragState.startScrollOffset
+                    if (scrollWorker == null) done.complete(Unit)
+                    settleJob.value = scope.launch {
+                        done.await()
+                        settleHorizontalPager(
+                            pagerState,
+                            fingerVelocity.x,
+                            density,
+                            startOffset,
+                        )
+                    }
+                    // 松手弹簧归位；甩速给一点初速，回弹更跟手
+                    if (abs(overscrollX.floatValue) > 0.5f) {
+                        val start = overscrollX.floatValue
+                        val releaseVel = fingerVelocity.x
+                        overscrollJob.value = scope.launch {
+                            animate(
+                                initialValue = start,
+                                targetValue = 0f,
+                                // overscrollX 与 fingerVelocity 坐标系相反
+                                initialVelocity = -releaseVel * 0.22f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                ),
+                            ) { value, _ -> overscrollX.floatValue = value }
+                            overscrollX.floatValue = 0f
+                        }
+                    } else {
+                        overscrollX.floatValue = 0f
+                    }
+                }
+
+                /** 为下一根手指准备一轮干净的累积状态（速度、轴向、滚动基准）。 */
+                fun resetRound() {
+                    tracker.resetTracking()
+                    workerDone = CompletableDeferred()
+                    dragState.startScrollOffset =
+                        pagerState.currentPage + pagerState.currentPageOffsetFraction
+                    accX = 0f
+                    accY = 0f
+                    locked = false
+                    xDominant = false
+                    overscrollRaw = 0f
+                }
+
+                fun finishRound() {
+                    dragChannel?.close()
+                    dragChannel = null
+                    settleCurrentRound()
+                    scrollWorker = null
+                    resetRound()
+                }
+
                 // 手势主体必须整体包在 try 里，finally 关掉 dragChannel
                 try {
                     while (true) {
                         // Initial：在子级 verticalScroll 之前拿到事件，锁横后才能拦住纵向
                         val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        var change = event.changes.firstOrNull { it.id == down.id }
+
+                        if (change == null || latestBlockedPointer.value() == down.id) {
+                            val alt = event.changes.firstOrNull {
+                                it.pressed && it.id != down.id &&
+                                    it.id != latestBlockedPointer.value()
+                            }
+                            if (alt != null) {
+                                down = alt
+                                isAltPointer = true
+                                change = alt
+                                // 上一轮已由 finishRound 收掉；这里再兜底一次干净的累积状态
+                                resetRound()
+                                lastMoveUptimeMillis = alt.uptimeMillis
+                                tracker.addPosition(alt.uptimeMillis, alt.position)
+                                continue
+                            }
+                            if (change != null && !change.pressed) break // 手指抬起且无替代
+                            continue // 被屏蔽但暂无替代，等下一根
+                        }
+
                         tracker.addPosition(change.uptimeMillis, change.position)
-                        if (!change.pressed) break
+                        if (!change.pressed) {
+                            // 被追踪的手指抬起 → 看看有没有另一根可以继续
+                            val alt = event.changes.firstOrNull {
+                                it.pressed && it.id != latestBlockedPointer.value()
+                            }
+                            if (alt != null) {
+                                down = alt
+                                isAltPointer = true
+                                change = alt
+                                accX = 0f
+                                accY = 0f
+                                locked = false
+                                xDominant = false
+                                lastMoveUptimeMillis = alt.uptimeMillis
+                                tracker.addPosition(alt.uptimeMillis, alt.position)
+                                continue
+                            }
+                            // 没有可用手指了，但拖课卡那根还被屏蔽着：本轮先落页，
+                            // 手势本体继续等下一根手指 —— 否则整次 awaitEachGesture 会一直
+                            // 卡在 awaitAllPointersUp，第二次滑动完全没反应。
+                            val blockedId = latestBlockedPointer.value()
+                            val blockedStillDown = blockedId != null &&
+                                event.changes.any { it.id == blockedId && it.pressed }
+                            if (blockedStillDown) {
+                                finishRound()
+                                down = event.changes.first { it.id == blockedId }
+                                isAltPointer = false
+                                continue
+                            }
+                            break
+                        }
                         if (latestBlock.value()) break
                         val dx = change.positionChangeIgnoreConsumed().x
                         val dy = change.positionChangeIgnoreConsumed().y
@@ -278,6 +416,7 @@ fun Modifier.pagerAxisTakeoverGesture(
                                 overscrollJob.value = null
                                 val channel = Channel<Float>(Channel.UNLIMITED)
                                 dragChannel = channel
+                                val roundDone = workerDone
                                 scrollWorker = scope.launch {
                                     try {
                                         pagerState.scroll(MutatePriority.UserInput) {
@@ -318,12 +457,21 @@ fun Modifier.pagerAxisTakeoverGesture(
                                             }
                                         }
                                     } finally {
-                                        workerDone.complete(Unit)
+                                        roundDone.complete(Unit)
                                     }
                                 }
                             }
                         }
-                        if (!xDominant) continue
+                        if (!xDominant) {
+                            // 第二只手的纵向滑动：直接滚屏。
+                            // verticalScroll 在跟被屏蔽那根手指（拖课卡的），看不到这根。
+                            // isAltPointer 守护：第一只手动时纵向归 verticalScroll，避免双重滚。
+                            if (isAltPointer && locked && dy != 0f) {
+                                latestOnVerticalScroll.value?.invoke(dy)
+                                change.consume()
+                            }
+                            continue
+                        }
                         dragChannel?.trySend(-dx)
                         // Initial consume：子级（verticalScroll / 课卡手势）本帧不再看到位移
                         change.consume()
@@ -334,52 +482,8 @@ fun Modifier.pagerAxisTakeoverGesture(
                     dragChannel?.close()
                     dragChannel = null
                 }
-                // AwaitPointerEventScope 不能 join；回 scope 等 worker 放锁后再落页
-                if (xDominant) {
-                    val trackedVelocity =
-                        runCatching { tracker.calculateVelocity() }.getOrNull() ?: Velocity(0f, 0f)
-                    val moveSpanMs =
-                        (lastMoveUptimeMillis - down.uptimeMillis).coerceAtLeast(16L)
-                    val moveAvgVelocity = Velocity(
-                        x = accX * 1000f / moveSpanMs,
-                        y = accY * 1000f / moveSpanMs,
-                    )
-                    val fingerVelocity = if (abs(moveAvgVelocity.x) > abs(trackedVelocity.x)) {
-                        moveAvgVelocity
-                    } else {
-                        trackedVelocity
-                    }
-                    if (scrollWorker == null) workerDone.complete(Unit)
-                    settleJob.value = scope.launch {
-                        workerDone.await()
-                        settleHorizontalPager(
-                            pagerState,
-                            fingerVelocity.x,
-                            density,
-                            dragState.startScrollOffset,
-                        )
-                    }
-                    // 松手弹簧归位；甩速给一点初速，回弹更跟手
-                    if (abs(overscrollX.floatValue) > 0.5f) {
-                        val start = overscrollX.floatValue
-                        val releaseVel = fingerVelocity.x
-                        overscrollJob.value = scope.launch {
-                            animate(
-                                initialValue = start,
-                                targetValue = 0f,
-                                // overscrollX 与 fingerVelocity 坐标系相反
-                                initialVelocity = -releaseVel * 0.22f,
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
-                                ),
-                            ) { value, _ -> overscrollX.floatValue = value }
-                            overscrollX.floatValue = 0f
-                        }
-                    } else {
-                        overscrollX.floatValue = 0f
-                    }
-                }
+                // 手势真正结束（最后一根手指抬起/被 block）：落本轮、关通道
+                settleCurrentRound()
                 scrollWorker = null
             }
         }

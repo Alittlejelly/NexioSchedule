@@ -225,7 +225,7 @@ fun LiquidBottomTabs(
                 blur(glassBlur.dp.toPx(), TileMode.Mirror)
                 padding = 0f
                 // 均衡及以下：低栏背景板关闭折射
-                if (chromeLens) lens(12f.dp.toPx(), 48f.dp.toPx())
+                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
             }
         }
         val panelSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =

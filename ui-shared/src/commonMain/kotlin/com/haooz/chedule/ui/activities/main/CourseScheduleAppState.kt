@@ -73,8 +73,10 @@ import com.haooz.chedule.viewmodel.ShiftViewModel
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -96,6 +98,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * 3. `lateinit var xxx` —— 组合期创建的实例（PagerState / GraphicsLayer / Density…），
  *    注入一次后不变。
  */
+
+/** 拖到边缘后每一页之间的驻留时间：卡片停在热区里，每满 500ms 翻一页 */
+private const val EDGE_AUTO_PAGE_INTERVAL_MS = 500L
 
 @Stable
 class CourseScheduleAppState {
@@ -236,7 +241,9 @@ class CourseScheduleAppState {
     var detailTargetWeek by mutableIntStateOf(0)
     var hiddenCourseIds by mutableStateOf(setOf<String>())
     var isDraggingCard by mutableStateOf(false)
-    var draggingCourseIds by mutableStateOf(setOf<String>())
+    // 被浮层顶替的 (课程 id, 周次)。必须带周次：多周课在每一周都是同一条记录，
+    // 只按 id 隐藏会让所有周的原卡一起消失。只隐藏源周/落点周那一份。
+    var draggingCourseSlots by mutableStateOf(setOf<Pair<String, Int>>())
     var draggedCardCourse by mutableStateOf<Course?>(null)
     var draggedCardPosition by mutableStateOf(Offset.Zero)
     var draggedCardSize by mutableStateOf(Offset.Zero)
@@ -258,6 +265,10 @@ class CourseScheduleAppState {
     var animateInCourseIds by mutableStateOf(setOf<String>())
     var showRescheduleConflictDialog by mutableStateOf(false)
     var pendingConflictCourse by mutableStateOf<Course?>(null)
+    /** 第一步选了覆盖/交换：等选择弹窗退出动画结束再开第二步确认弹窗 */
+    var pendingConflictResolution by mutableStateOf<ConflictResolution?>(null)
+    /** 第二步确认弹窗展示的操作；null = 不显示 */
+    var conflictConfirmResolution by mutableStateOf<ConflictResolution?>(null)
 
     // 退出动画期间保持 true，结束后原卡片 alpha 恢复 1
     var floatingCardVisible by mutableStateOf(false)
@@ -690,11 +701,20 @@ class CourseScheduleAppState {
     val dismissFloatingCard: () -> Unit = {
         stopConflictHover()
         clearSwapFlight()
+        // 浮层可能不走 onCourseDragEnd 就被关掉（返回键/点空白等），自动翻周必须一起停
+        stopEdgeAutoPage()
+        // 高光/提示都看它：不在收尾路径里复位会一直亮着
+        isFloatingCardDragging = false
+        // 浮层都没了，冲突选择/二次确认不能留在屏幕上
+        showRescheduleConflictDialog = false
+        pendingConflictResolution = null
+        conflictConfirmResolution = null
+        pendingConflictCourse = null
         coroutineScope.launch {
             floatingScale.animateTo(1f, tween(durationMillis = 180))
             isDraggingCard = false
             floatingCardVisible = false
-            draggingCourseIds = emptySet()
+            draggingCourseSlots = emptySet()
             draggedCardCourse = null
             dragMotion.reset()
             pendingDropTarget = null
@@ -778,15 +798,160 @@ class CourseScheduleAppState {
 
     /**
      * 列星期 → 数据（星期, 周次）：调课日列渲染的是 followWeekday/followWeek 的课，
-     * 落点写库、冲突检测都要走这个映射，几何仍用列星期；映射缺失时退回列星期+浏览周。
+     * 落点写库、冲突检测都要走这个映射，几何仍用列星期。
+     *
+     * 认映射要过两关：几何得是当前页的（[ScheduleGridGeometry.pageWeek] == 浏览周），
+     * 且映射周次 ≠ 浏览周（那才是调休日列）。跨周调课翻页后上层可能还拿着上一页的几何，
+     * 少了第一条判据就会把课写进上一页那一周。
      */
-    fun dataPositionForColumn(columnDay: Int): Pair<Int, Int> =
-        gridGeometry?.columnDataPosition?.get(columnDay) ?: (columnDay to currentViewingWeek)
+    fun dataPositionForColumn(columnDay: Int): Pair<Int, Int> {
+        val geom = gridGeometry
+        val mapped = geom?.columnDataPosition?.get(columnDay)
+        if (mapped != null &&
+            geom.pageWeek == currentViewingWeek &&
+            mapped.second != currentViewingWeek
+        ) return mapped
+        return columnDay to currentViewingWeek
+    }
 
     /** 数据（星期, 周次）→ 列星期：几何反查（粘贴飞行起点、交换飞行原点），找不到退回数据星期 */
     fun columnForDataPosition(day: Int, week: Int): Int =
         gridGeometry?.columnDataPosition?.entries
             ?.firstOrNull { it.value.first == day && it.value.second == week }?.key ?: day
+
+    // ── 跨周调课：拖着课翻周 ────────────────────────────────────────────────
+    /** 手指停在屏幕左右边缘热区时持续翻页的 Job */
+    private var edgeAutoPageJob: Job? = null
+    /** 当前方向：-1 上一周 / 1 下一周 / 0 未触发。给边缘提示 UI 读 */
+    var edgeAutoPageDirection by mutableIntStateOf(0)
+        private set
+    /** 循环实际在翻的方向（Job 内部用）；与 UI 方向分开，避免收尾时互相覆盖 */
+    private var edgeAutoPageDir = 0
+    /** 最近一次按手指位置判定的方向（手指不动时循环靠它判断还在不在热区） */
+    private var edgeAutoPageLatestDir = 0
+    private var edgeAutoPageEnabled = false
+    /** 手指离开热区 / 到头：循环当前这次翻页结束后退出 */
+    private var edgeAutoPageStopRequested = false
+    /** 自动翻周的 pager 动画已开跑。取消它会停在半页，收尾时必须让它落页。 */
+    private var edgeAutoPageAnimating = false
+    /** Job 代号：旧 Job 的 finally 不能把新 Job 的状态清掉 */
+    private var edgeAutoPageGeneration = 0
+
+    /**
+     * 拖拽中按卡片中心维护持续翻周：卡片停在左/右边缘热区，每 [EDGE_AUTO_PAGE_INTERVAL_MS]
+     * 翻一页；**翻完还在热区就继续翻**，直到手指离开、到头或松手。
+     *
+     * [fingerX] 取窗口横坐标（当前用浮层卡片中心）；[enabled] 为 false（非拖拽、粘贴飞行）时立刻停。
+     * 拖拽逐帧都会调进来，方向没变时不会重启循环。
+     */
+    fun updateEdgeAutoPage(fingerX: Float, enabled: Boolean) {
+        val width = latestScreenWPx
+        val lastPage = (totalWeeks - 1).coerceAtLeast(0)
+        // 热区 32dp（约大半列）：拖到屏边即可触发，但也不必把卡片推出屏幕。
+        // 防止「想放最后一列却被翻周」靠的是 500ms 驻留，而不是把热区挤得太窄。
+        val zone = if (width <= 0f) {
+            0f
+        } else {
+            with(densityProvider) { 32.dp.toPx() }.coerceAtMost(width * 0.1f)
+        }
+        val dir = when {
+            !enabled || zone <= 0f -> 0
+            fingerX <= zone -> -1
+            fingerX >= width - zone -> 1
+            else -> 0
+        }
+        val exhausted = (dir == -1 && pagerState.currentPage <= 0) ||
+            (dir == 1 && pagerState.currentPage >= lastPage)
+        val nextDir = if (exhausted) 0 else dir
+        edgeAutoPageEnabled = enabled
+        edgeAutoPageLatestDir = nextDir
+
+        if (nextDir == 0) {
+            // 离开热区 / 到头：delay 阶段立即停；动画阶段让它落页，循环自己退出。
+            // 动画期间保留 edgeAutoPageDir，手指又回到同一侧时才能认出「还是这一轮」。
+            edgeAutoPageStopRequested = true
+            edgeAutoPageDirection = 0
+            if (!edgeAutoPageAnimating) {
+                edgeAutoPageDir = 0
+                edgeAutoPageJob?.cancel()
+                edgeAutoPageJob = null
+            }
+            return
+        }
+        // 已经在同方向循环里（delay 或动画中）：保持。手指短暂离开又回到同一侧时
+        // 把 stopRequested 清掉，让它继续翻，而不是等下一次事件重新起一轮。
+        if (edgeAutoPageJob?.isActive == true && edgeAutoPageDir == nextDir) {
+            edgeAutoPageStopRequested = false
+            edgeAutoPageDirection = nextDir
+            return
+        }
+        // 动画中方向变了：不能取消 pager，标记停止，下一次事件再开新方向
+        if (edgeAutoPageAnimating) {
+            edgeAutoPageStopRequested = true
+            edgeAutoPageDirection = 0
+            return
+        }
+        edgeAutoPageJob?.cancel()
+        edgeAutoPageJob = null
+        edgeAutoPageDir = nextDir
+        edgeAutoPageStopRequested = false
+        edgeAutoPageDirection = nextDir
+        val generation = ++edgeAutoPageGeneration
+        edgeAutoPageJob = coroutineScope.launch {
+            try {
+                while (true) {
+                    // 第一页也要先等满 500ms；翻完回到这里再等 500ms 翻下一页
+                    delay(EDGE_AUTO_PAGE_INTERVAL_MS)
+                    if (edgeAutoPageStopRequested || !edgeAutoPageEnabled ||
+                        edgeAutoPageLatestDir != nextDir
+                    ) break
+                    val current = pagerState.currentPage
+                    val target = (current + nextDir).coerceIn(0, lastPage)
+                    if (target == current) break
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    edgeAutoPageAnimating = true
+                    try {
+                        pagerState.animateScrollToPage(target)
+                    } catch (e: CancellationException) {
+                        // 第二根手指开始滑 pager（UserInput 优先级更高）会取消这次翻页；
+                        // 本 Job 自己没被取消就继续等下一轮，别把持续翻页整条打死。
+                        if (!isActive) break
+                    } finally {
+                        edgeAutoPageAnimating = false
+                    }
+                    // 动画期间手指可能已经离开/松手：立刻退出，别再等下一轮
+                    if (edgeAutoPageStopRequested || !edgeAutoPageEnabled ||
+                        edgeAutoPageLatestDir != nextDir
+                    ) break
+                    // 翻完还在热区 → 下一轮 delay 后再翻；离开/松手则退出
+                }
+            } finally {
+                // 只有「还属于自己这一代」时才清状态，避免旧 Job 收尾清掉新 Job 的方向
+                if (edgeAutoPageGeneration == generation) {
+                    edgeAutoPageDir = 0
+                    edgeAutoPageDirection = 0
+                    edgeAutoPageJob = null
+                }
+            }
+        }
+    }
+
+    /** 拖拽结束/取消：停掉边缘自动翻周 */
+    fun stopEdgeAutoPage() {
+        edgeAutoPageEnabled = false
+        edgeAutoPageLatestDir = 0
+        edgeAutoPageStopRequested = true
+        if (edgeAutoPageAnimating) {
+            // 动画已经开跑：取消会把 pager 停在半页。让它落页，循环看到
+            // stopRequested 会退出；落点由 onCourseDragEnd 的 isScrollInProgress 守卫拦下。
+            edgeAutoPageDirection = 0
+            return
+        }
+        edgeAutoPageJob?.cancel()
+        edgeAutoPageJob = null
+        edgeAutoPageDir = 0
+        edgeAutoPageDirection = 0
+    }
 
     // spring 带回弹吸进目标格，中段开涟漪
     val snapFloatingCardToTarget: (dayOfWeek: Int, startSection: Int, sectionSpan: Int) -> Unit =
@@ -832,7 +997,7 @@ class CourseScheduleAppState {
                     jobX.join(); jobY.join(); jobScale.join()
                     isDraggingCard = false
                     floatingCardVisible = false
-                    draggingCourseIds = emptySet()
+                    draggingCourseSlots = emptySet()
                     draggedCardCourse = null
                     dragMotion.reset()
                     pendingDropTarget = null
@@ -946,7 +1111,7 @@ class CourseScheduleAppState {
             jobX.join(); jobY.join(); jobScale.join()
             isDraggingCard = false
             floatingCardVisible = false
-            draggingCourseIds = emptySet()
+            draggingCourseSlots = emptySet()
             draggedCardCourse = null
             dragMotion.reset()
             pendingDropTarget = null
@@ -991,7 +1156,7 @@ class CourseScheduleAppState {
             }
             isDraggingCard = false
             floatingCardVisible = false
-            draggingCourseIds = emptySet()
+            draggingCourseSlots = emptySet()
             draggedCardCourse = null
             pendingDropTarget = null
             isSnapping = false
@@ -1003,9 +1168,41 @@ class CourseScheduleAppState {
         }
     }
 
-    // 冲突取消：粘贴节奏飞回原位
+    /**
+     * 源课的「回程锚点」：同一张卡的位置，但跨周时只取**相邻页**（偏一屏）。
+     *
+     * 第 7 周拖到第 10 周后取消/交换，真实源周在屏幕外三页远；飞那么远用户也看不见，
+     * 只要往源周方向飞出一屏（第 9 周同位置）就够了。同周时就是本页原格中心。
+     */
+    private fun sourceHomeCenter(source: Course): Offset {
+        val span = source.endSection - source.startSection
+        val base = computeTargetCenter(draggedColumnDay, source.startSection, span)
+            ?: computeTargetCenter(source.dayOfWeek, source.startSection, span)
+            ?: Offset(
+                draggedCardPosition.x + floatingOffsetX.floatValue,
+                draggedCardPosition.y + floatingOffsetY.floatValue
+            )
+        val pageDelta = when {
+            draggedWeek < currentViewingWeek -> -1
+            draggedWeek > currentViewingWeek -> 1
+            else -> 0
+        }
+        return if (pageDelta == 0) base
+        else Offset(base.x + pageDelta * latestScreenWPx, base.y)
+    }
+
+    // 冲突取消：飞到源周方向的相邻页（同周则回原格）
     val flyFloatingCardHome: () -> Unit = {
-        flyFloatingCardWithPasteMotion(0f, 0f)
+        val source = draggedCardCourse
+        if (source != null) {
+            val home = sourceHomeCenter(source)
+            flyFloatingCardWithPasteMotion(
+                home.x - draggedCardPosition.x,
+                home.y - draggedCardPosition.y
+            )
+        } else {
+            flyFloatingCardWithPasteMotion(0f, 0f)
+        }
     }
 
     // 覆盖确认：粘贴节奏飞到目标格
@@ -1076,8 +1273,11 @@ class CourseScheduleAppState {
                     val srcStartY = floatingOffsetY.floatValue
                     val srcEndX = targetCenter.x - draggedCardPosition.x
                     val srcEndY = targetCenter.y - draggedCardPosition.y
-                    val tgtEndX = draggedCardPosition.x - occupiedCenter.x
-                    val tgtEndY = draggedCardPosition.y - occupiedCenter.y
+                    // 冲突课飞向源周：跨周时只到相邻页同位置（屏幕外一屏），
+                    // 不飞回真实源周（可能隔好几页，用户也看不到）
+                    val sourceHome = sourceHomeCenter(source)
+                    val tgtEndX = sourceHome.x - occupiedCenter.x
+                    val tgtEndY = sourceHome.y - occupiedCenter.y
 
                     val peakScale = 1.4f
                     val durationNanos = 480_000_000L
@@ -1105,7 +1305,7 @@ class CourseScheduleAppState {
                     clearSwapFlight()
                     isDraggingCard = false
                     floatingCardVisible = false
-                    draggingCourseIds = emptySet()
+                    draggingCourseSlots = emptySet()
                     draggedCardCourse = null
                     pendingDropTarget = null
                     isSnapping = false
@@ -1170,6 +1370,37 @@ class CourseScheduleAppState {
             cursor += sectionH
         }
         return null
+    }
+
+    /**
+     * 用浮层当前中心重算落点。
+     *
+     * 拖拽回调只在手指动时来；翻周（pager 平移一整页）、页内滚动、第二只手滚屏都会让
+     * 网格在浮层底下换掉，手指不动时 [pendingDropTarget] 仍是上一页/上一屏算出来的格子。
+     * 松手直接用，课就落进错误的周/节次 —— 几何一更新、翻页停下、松手前都要重算。
+     */
+    fun refreshPendingDropTarget() {
+        val course = draggedCardCourse ?: return
+        if (!floatingCardVisible) return
+        val geom = gridGeometry ?: return
+        val sectionH = geom.sectionHeightPx
+        if (sectionH <= 0f) return
+        val sectionCount = course.endSection - course.startSection + 1
+        // 必须与浮层卡片用同一套高度（含分界缝与特殊块挤占）：写死
+        // sectionCount * sectionH 会让「起始节次中心」算偏，落点命中与高亮错开一节。
+        val cardHeightPx = if (course.hasValidCustomTime()) {
+            draggedCardSize.y
+        } else {
+            courseVisualHeightPx(geom, course.startSection, course.endSection, dividerPxFor(geom))
+        }
+        val centerX = draggedCardPosition.x + floatingOffsetX.floatValue
+        val cardTopY = draggedCardPosition.y + floatingOffsetY.floatValue - cardHeightPx / 2f
+        val firstSectionCenterY = cardTopY + sectionH / 2f
+        // 放不下的格子不给落点（与粘贴路径同款校验）：起始节次+跨度
+        // 超过总节次时松手会写出 endSection > totalSections 的课，渲染溢出/错位。
+        pendingDropTarget = computeDropTarget(centerX, firstSectionCenterY)?.takeIf {
+            it.second + sectionCount - 1 <= totalSections
+        }
     }
 
     fun openCourseDetail(

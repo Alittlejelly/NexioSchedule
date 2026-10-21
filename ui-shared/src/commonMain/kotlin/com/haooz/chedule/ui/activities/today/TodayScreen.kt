@@ -210,11 +210,13 @@ fun BlurCard(
                     if (showEdgeLight) {
                         Modifier.edgeLight(
                             shape = ContinuousRoundedRectangle(cornerRadius),
-                            edgeLight = defaultEdgeLight)
+                            edgeLight = defaultEdgeLight,
+                        )
                     } else
                         Modifier.edgeLight(
                             shape = ContinuousRoundedRectangle(cornerRadius),
-                            edgeLight = rememberCardEdgeLight(baseColor = if (isDark) Color.Black else Color.White))
+                            edgeLight = rememberCardEdgeLight(baseColor = if (isDark) Color.Black else Color.White),
+                        )
                 )
         ) {
             content()

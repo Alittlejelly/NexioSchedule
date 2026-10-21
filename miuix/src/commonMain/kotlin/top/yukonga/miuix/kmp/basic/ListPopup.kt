@@ -913,7 +913,7 @@ fun ListPopupContent(
                 blur(panelBlur.dp.toPx())
                 // 与 LiquidGlassDropdownMenu 面板同一套折射：作用在边缘 SDF 上，
                 // 必须保持常量 —— 随面板变大反而会把边缘拉变形。
-                if (chromeLens) lens(12f.dp.toPx(), 48f.dp.toPx())
+                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
             }
         }
 
@@ -1318,7 +1318,7 @@ private fun BoxScope.PopupMaterialLayer(
             )
             .edgeLight(
                 shape = panelShape,
-                edgeLight = rememberDefaultEdgeLight(baseColor = style.backgroundColor)
+                edgeLight = rememberDefaultEdgeLight(baseColor = style.backgroundColor),
             ),
     )
 }

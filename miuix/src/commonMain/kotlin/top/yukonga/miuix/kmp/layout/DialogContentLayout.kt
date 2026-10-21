@@ -394,7 +394,7 @@ internal fun DialogContent(
                         vibrancy()
                         blur(dialogBlur.dp.toPx())
                         // 折射：参数与下拉面板展开态同档（面板类玻璃）
-                        if (chromeLens) lens(16f.dp.toPx(), 64f.dp.toPx())
+                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
                     },
                     highlight = null,
                 )

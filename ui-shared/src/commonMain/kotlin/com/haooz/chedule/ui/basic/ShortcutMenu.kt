@@ -228,7 +228,7 @@ fun ShortcutMenu(
                     effects = {
                         vibrancy()
                         blur(4f.dp.toPx())
-                        lens(12f.dp.toPx(), 12f.dp.toPx())
+                        lens(6f.dp.toPx(), 36f.dp.toPx())
                     },
                     highlight = null,
                     shadow = null,
