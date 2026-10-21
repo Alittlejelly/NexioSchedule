@@ -72,6 +72,8 @@ class NexioApplication : Application() {
             .getBoolean(PredictiveBackSettings.KEY_PREDICTIVE_BACK_ANIMATION, true)
         // 应用材质档位：按钮/低栏等 chrome 折射随档降级
         com.haooz.chedule.ui.utils.AppMaterialSettings.load()
+        // 文字变化动效开关：必须在这里载入，否则首帧会按默认值渲染再跳变
+        com.haooz.chedule.ui.components.text.TextMotionSettings.load()
         com.haooz.chedule.ui.utils.CrashLogHelper.install(this)
         // 埋点入口：FeatureLog 已抽到 :core（供 viewmodel 等平台中立代码使用），
         // 真正的轨迹记录在这里接回 CrashLogHelper。必须在 install 之后 —— 未注入时
