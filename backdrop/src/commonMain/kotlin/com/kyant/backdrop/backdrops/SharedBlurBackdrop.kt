@@ -150,9 +150,7 @@ class SharedBlurBackdrop(
             translate(-offset.x, -offset.y)
             // 顺序：先平移到壁纸层原点，再按 1/n 放大回全屏坐标。
             // 矩阵右乘下点变换按「后调用的先作用」：T 在 S 左侧时 baked 坐标 d
-            // 落在窗口 W + d/n，与源层逐像素对齐；若 scale 提到 translate 之前，
-            // d 落在 (d - offset)/n，整层错位 offset*(1-1/n)。n=1 时两者等价，
-            // 所以这个顺序只有降采样能暴露。
+            // 落在窗口 W + d/n，与源层逐像素对齐；
             if (n != 1f) {
                 scale(1f / n, 1f / n, Offset.Zero)
             }

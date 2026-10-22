@@ -167,10 +167,13 @@ class IosWallpaperPicker {
         fun decodeBytes(bytes: ByteArray): ImageBitmap? = try {
             val src = Image.makeFromEncoded(bytes)
             val (targetW, targetH) = screenPixelSize()
+            // cover：只缩到刚好覆盖屏幕（>1 的小图不放大），与保存侧策略同口径
             val scale = minOf(
-                targetW.toFloat() / src.width.toFloat(),
-                targetH.toFloat() / src.height.toFloat(),
-                1f,
+                maxOf(
+                    targetW.toFloat() / src.width.toFloat(),
+                    targetH.toFloat() / src.height.toFloat()
+                ),
+                1f
             )
             if (scale >= 1f) {
                 src.toComposeImageBitmap()
@@ -205,7 +208,8 @@ class IosWallpaperPicker {
                 h = height
             }
             if (w <= 0.0 || h <= 0.0) return image
-            val ratio = minOf(maxW / w, maxH / h, 1.0)
+            // cover：只缩到刚好覆盖 maxW×maxH（>1 的小图不放大）
+            val ratio = minOf(maxOf(maxW / w, maxH / h), 1.0)
             if (ratio >= 1.0) return image
             val newW = w * ratio
             val newH = h * ratio
@@ -216,7 +220,9 @@ class IosWallpaperPicker {
             return scaled ?: image
         }
 
-        /** 屏幕像素尺寸（宽, 高），与 `IosWallpaperBackend.screenBoundsPx` 同一口径 */
+        /** 屏幕像素尺寸（宽, 高），与 `IosWallpaperBackend.screenBoundsPx` 同一口径。
+         *
+         * 方向感知：长短边口径会把横图高度砍到屏宽，竖屏 cover 显示时放大发虚。 */
         private fun screenPixelSize(): Pair<Int, Int> {
             val bounds = UIScreen.mainScreen.bounds
             val scale = UIScreen.mainScreen.scale
@@ -226,7 +232,7 @@ class IosWallpaperPicker {
                 w = (size.width * scale).toInt()
                 h = (size.height * scale).toInt()
             }
-            return maxOf(w, h) to minOf(w, h)
+            return w to h
         }
     }
 }

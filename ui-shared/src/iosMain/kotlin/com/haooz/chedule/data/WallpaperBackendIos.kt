@@ -78,7 +78,8 @@ internal class IosWallpaperBackend : WallpaperBackend {
             w = (size.width * scale).toInt()
             h = (size.height * scale).toInt()
         }
-        return maxOf(w, h) to minOf(w, h)
+        // 方向感知：与 Android 同口径，横图 cover 竖屏时不再砍高度
+        return w to h
     }
 
     /**

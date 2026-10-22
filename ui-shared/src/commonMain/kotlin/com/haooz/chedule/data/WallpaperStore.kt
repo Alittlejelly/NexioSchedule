@@ -22,8 +22,37 @@ interface WallpaperBackend {
     /** 缩放到指定像素尺寸（宽高比由调用方算好后传入）。 */
     suspend fun scale(image: ImageBitmap, width: Int, height: Int): ImageBitmap
 
-    /** 壁纸的目标存储/解码分辨率，返回 `(长边, 短边)` 单位 px，与横竖屏无关。 */
+    /** 壁纸的目标存储/解码分辨率，返回 `(宽, 高)` 单位 px，**当前屏幕方向**。 */
     fun screenBoundsPx(): Pair<Int, Int>
+
+    /**
+     * 保存尺寸策略：cover 到当前屏幕，只缩不扩，长边封顶 2×屏幕长边。
+     *
+     * 返回「源图按策略应保存的 (宽, 高)」；与原图相同即原样保存。
+     *
+     * ⚠ 这条策略曾经用「屏幕长短边」做目标，横图会被按短边对齐屏宽砍掉高度
+     * （4000×3000 → 1674×1256），竖屏 cover 显示时再放大 2.2 倍 —— 这就是
+     * 「选完壁纸很糊」的根因。短边方向不足屏幕的小图无解（源图没有那些像素），
+     * 原样保存、显示侧放大是唯一选择。
+     *
+     * 幂等：对已按本策略处理过的图再算一次返回原尺寸，多层链路重复应用安全。
+     */
+    fun saveTargetSize(width: Int, height: Int): Pair<Int, Int> {
+        if (width <= 0 || height <= 0) return width to height
+        val (targetW, targetH) = screenBoundsPx()
+        // cover：缩到刚好覆盖屏幕所需的倍率；>1 说明源图比屏幕小，不缩
+        val cover = maxOf(
+            targetW / width.toFloat(),
+            targetH / height.toFloat()
+        )
+        if (cover > 1f) return width to height
+        // 短边方向已覆盖屏幕；限制长边防极端大图（100MP 级）把显存撑爆
+        val maxLong = 2 * maxOf(targetW, targetH)
+        val longSide = maxOf(width, height)
+        if (longSide <= maxLong) return width to height
+        val s = maxLong / longSide.toFloat()
+        return (width * s).toInt().coerceAtLeast(1) to (height * s).toInt().coerceAtLeast(1)
+    }
 }
 
 /**
@@ -114,28 +143,19 @@ object WallpaperStore {
     }
 
     /**
-     * 保存壁纸（缩放到屏幕分辨率后编码落盘），成功返回 true。
+     * 保存壁纸（按 [WallpaperBackend.saveTargetSize] 策略缩放到 cover 屏幕后编码落盘），
+     * 成功返回 true。
      *
-     * @param image 原图；超过屏幕长短边时先等比缩小再编码
+     * @param image 原图；短边方向不足屏幕时原样保存（小图无解，显示侧只能放大）
      */
     suspend fun save(image: ImageBitmap): Boolean {
         val be = backend ?: return false
         return try {
-            val (targetLong, targetShort) = be.screenBoundsPx()
-            val longSide = maxOf(image.width, image.height)
-            val shortSide = minOf(image.width, image.height)
-            val scaled = if (longSide > targetLong || shortSide > targetShort) {
-                val scale = minOf(
-                    targetLong / longSide.toFloat(),
-                    targetShort / shortSide.toFloat(),
-                )
-                be.scale(
-                    image = image,
-                    width = (image.width * scale).toInt().coerceAtLeast(1),
-                    height = (image.height * scale).toInt().coerceAtLeast(1),
-                )
-            } else {
+            val (targetW, targetH) = be.saveTargetSize(image.width, image.height)
+            val scaled = if (targetW == image.width && targetH == image.height) {
                 image
+            } else {
+                be.scale(image = image, width = targetW, height = targetH)
             }
             val bytes = be.encode(scaled, quality = 80) ?: return false
             AppFiles.root.resolve(FILE_NAME).writeBytes(bytes)

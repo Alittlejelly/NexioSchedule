@@ -68,8 +68,8 @@ class AndroidWallpaperBackend : WallpaperBackend {
 
     override fun screenBoundsPx(): Pair<Int, Int> {
         val metrics: DisplayMetrics = ScheduleAppearance.displayMetrics()
-        return maxOf(metrics.widthPixels, metrics.heightPixels) to
-            minOf(metrics.widthPixels, metrics.heightPixels)
+        // 方向感知：横图在竖屏上要按 cover 保留高度，长短边口径会把高度砍到屏宽
+        return metrics.widthPixels to metrics.heightPixels
     }
 
     private fun readWallpaperBytes(): ByteArray? = try {
