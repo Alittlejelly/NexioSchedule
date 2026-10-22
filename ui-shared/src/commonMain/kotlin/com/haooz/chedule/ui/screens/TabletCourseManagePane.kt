@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -207,6 +208,7 @@ fun TabletCourseManagePane(
                             text = if (names.isEmpty()) "暂无课程" else "请选择左侧课程",
                             fontSize = 15.sp,
                             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            textAlign = TextAlign.Center,
                         )
                     }
                 } else {

@@ -1031,7 +1031,8 @@ private fun WeekdayCard(
                         Text(
                             text = dayLabels[day - 1],
                             fontSize = 14.sp,
-                            color = textColor
+                            color = textColor,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
@@ -1063,7 +1064,8 @@ private fun SectionTimeCard(
                     Text(
                         text = "${form.customStartTime} - ${form.customEndTime}",
                         fontSize = 14.5.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        textAlign = TextAlign.End,
                     )
                 },
                 onClick = onShowTimeDialog,
@@ -1075,7 +1077,8 @@ private fun SectionTimeCard(
                     Text(
                         text = "第${form.startSection} - ${form.endSection}节",
                         fontSize = 14.5.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        textAlign = TextAlign.End,
                     )
                 },
                 onClick = onShowSectionDialog,

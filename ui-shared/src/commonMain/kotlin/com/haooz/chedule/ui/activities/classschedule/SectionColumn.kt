@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -141,9 +142,9 @@ private fun SectionItem(section: Int, startTime: String, endTime: String, yOffse
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = displayText, style = nameStyle, color = sectionColor)
-            Text(text = startTime, style = timeStyle, color = timeColor)
-            Text(text = endTime, style = timeStyle, color = timeColor)
+            Text(text = displayText, style = nameStyle, color = sectionColor, textAlign = TextAlign.Center)
+            Text(text = startTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
+            Text(text = endTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
         }
     }
 }
@@ -169,8 +170,8 @@ private fun SpecialTimeLabel(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = startTime, style = timeStyle, color = timeColor)
-            Text(text = endTime, style = timeStyle, color = timeColor)
+            Text(text = startTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
+            Text(text = endTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
         }
     }
 }

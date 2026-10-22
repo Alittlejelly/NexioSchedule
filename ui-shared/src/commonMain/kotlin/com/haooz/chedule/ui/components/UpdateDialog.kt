@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.components
 
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
 import androidx.compose.foundation.layout.Arrangement
@@ -269,7 +270,8 @@ fun UpdateDialog(
                     Text(
                         text = "${(downloadProgress * 100).toInt()}%",
                         fontSize = 14.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        textAlign = TextAlign.Center,
                     )
                 }
             } else if (isInstalling) {
@@ -321,6 +323,8 @@ fun UpdateDialog(
                         text = primaryLabel,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
+                        // 按钮自己把内容居中：文案在「立即更新 / 下载中 / 安装」之间换字时按中心收放
+                        textAlign = TextAlign.Center,
                         color = if (isDownloading || isInstalling) {
                             MiuixTheme.colorScheme.onSurfaceVariantActions
                         } else {

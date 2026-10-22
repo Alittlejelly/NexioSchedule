@@ -48,7 +48,7 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
             fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
@@ -82,7 +82,7 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, color = color, modifier = layerModifier, autoSize = autoSize,
             fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
@@ -117,7 +117,7 @@ fun Text(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     style: TextStyle = MiuixTheme.textStyles.main,
 ) {
-    TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
         top.yukonga.miuix.kmp.basic.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
             fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,

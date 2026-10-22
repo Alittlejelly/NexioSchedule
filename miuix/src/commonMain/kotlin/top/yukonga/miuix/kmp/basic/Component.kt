@@ -87,18 +87,18 @@ fun BasicComponent(
         interactionSource = interactionSource,
     ) {
         if (title != null) {
-            Text(
+            MotionAwareText(
                 text = title,
+                color = titleColor.color(enabled),
                 fontSize = MiuixTheme.textStyles.headline1.fontSize,
                 fontWeight = FontWeight.Medium,
-                color = titleColor.color(enabled),
             )
         }
         if (summary != null) {
-            Text(
+            MotionAwareText(
                 text = summary,
-                fontSize = MiuixTheme.textStyles.body2.fontSize,
                 color = summaryColor.color(enabled),
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
             )
         }
     }

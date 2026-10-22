@@ -1,6 +1,7 @@
 /** 排班课表页面 */
 package com.haooz.chedule.ui.screens
 
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 
 import androidx.compose.foundation.background
@@ -215,7 +216,8 @@ fun ShiftScheduleScreen(
                         Text(
                             text = text,
                             style = MiuixTheme.textStyles.footnote2,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }

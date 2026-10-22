@@ -592,7 +592,8 @@ fun CourseReminderScreen(
                                         Text(
                                             text = "${preClassReminderMinutes}分钟",
                                             fontSize = 14.5.sp,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     holdDownState = showMinutesDialog,
@@ -633,7 +634,8 @@ fun CourseReminderScreen(
                                         Text(
                                             text = pad2(nextDayReminderHour, nextDayReminderMinute),
                                             fontSize = 14.5.sp,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     holdDownState = showTimeDialog,
@@ -673,7 +675,8 @@ fun CourseReminderScreen(
                                                 "距下课 ${inClassLeadMinutes} 分钟"
                                             },
                                             fontSize = 14.5.sp,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     holdDownState = showInClassTimingDialog,
@@ -828,7 +831,8 @@ fun CourseReminderScreen(
                                                     )
 
                                                     else -> ComposeColor(0xFF4CAF50)
-                                                }
+                                                },
+                                                textAlign = TextAlign.End,
                                             )
                                         }
                                         if (!shizukuRunning) {
@@ -1247,7 +1251,8 @@ fun CourseReminderScreen(
                                                 ComposeColor(0xFF4CAF50)
                                             } else {
                                                 MiuixTheme.colorScheme.onSurfaceVariantActions
-                                            }
+                                            },
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     onClick = {
@@ -1270,7 +1275,8 @@ fun CourseReminderScreen(
                                                     ComposeColor(0xFF4CAF50)
                                                 } else {
                                                     MiuixTheme.colorScheme.onSurfaceVariantActions
-                                                }
+                                                },
+                                                textAlign = TextAlign.End,
                                             )
                                         },
                                         onClick = {
@@ -1294,7 +1300,8 @@ fun CourseReminderScreen(
                                                 ComposeColor(0xFF4CAF50)
                                             } else {
                                                 MiuixTheme.colorScheme.onSurfaceVariantActions
-                                            }
+                                            },
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     onClick = {
@@ -1316,7 +1323,8 @@ fun CourseReminderScreen(
                                                 ComposeColor(0xFF4CAF50)
                                             } else {
                                                 MiuixTheme.colorScheme.onSurfaceVariantActions
-                                            }
+                                            },
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     onClick = {
@@ -1339,7 +1347,8 @@ fun CourseReminderScreen(
                                                 ComposeColor(0xFF4CAF50)
                                             } else {
                                                 MiuixTheme.colorScheme.onSurfaceVariantActions
-                                            }
+                                            },
+                                            textAlign = TextAlign.End,
                                         )
                                     },
                                     onClick = {
@@ -1533,7 +1542,8 @@ fun CourseReminderScreen(
                                 "$changedCount / ${previewItems.size}"
                             },
                             fontSize = 19.sp,
-                            color = MiuixTheme.colorScheme.primary
+                            color = MiuixTheme.colorScheme.primary,
+                            textAlign = TextAlign.End,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(

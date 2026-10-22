@@ -20,6 +20,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -393,7 +394,7 @@ private fun CourseCardPreview(
             }
             if (remaining != null) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(remaining, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nowColor)
+                Text(remaining, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nowColor, textAlign = TextAlign.End)
             }
         }
     }

@@ -19,7 +19,9 @@ import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalMiuixTextMotion
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
+import top.yukonga.miuix.kmp.material.MiuixTextMotion
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.LocalAppSettingDark
@@ -110,6 +112,11 @@ internal data class MiuixOverlayTheme(
     val glassDialogBlurDp: Float,
     /** 玻璃底色 alpha 降幅快照（通透玻璃档 >0，其余 0），同上。 */
     val glassSurfaceAlphaDrop: GlassSurfaceAlphaDrop,
+    /**
+     * 换字动效宿主快照，同上：弹窗在 root host 渲染，读不到声明页面的 CompositionLocal。
+     * 漏传的表现是「页面里的文字换字有模糊，弹窗标题 / 摘要却硬切」。
+     */
+    val textMotion: MiuixTextMotion?,
     val predictiveBackEnabled: Boolean,
 ) {
     @Composable
@@ -131,6 +138,7 @@ internal data class MiuixOverlayTheme(
             LocalGlassPanelBlurDp provides glassPanelBlurDp,
             LocalGlassDialogBlurDp provides glassDialogBlurDp,
             LocalGlassSurfaceAlphaDrop provides glassSurfaceAlphaDrop,
+            LocalMiuixTextMotion provides textMotion,
             LocalPredictiveBackEnabled provides predictiveBackEnabled,
             content = content,
         )
@@ -155,5 +163,6 @@ internal fun currentMiuixOverlayTheme(): MiuixOverlayTheme = MiuixOverlayTheme(
     glassPanelBlurDp = LocalGlassPanelBlurDp.current,
     glassDialogBlurDp = LocalGlassDialogBlurDp.current,
     glassSurfaceAlphaDrop = LocalGlassSurfaceAlphaDrop.current,
+    textMotion = LocalMiuixTextMotion.current,
     predictiveBackEnabled = LocalPredictiveBackEnabled.current,
 )

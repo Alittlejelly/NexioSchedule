@@ -213,6 +213,8 @@ fun TabletSwitchSchedulePane(
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier.align(Alignment.Center),
+                        // 标题由 Box 的 align(Center) 居中摆位，落位也按中心收放
+                        textAlign = TextAlign.Center,
                     )
                     if (!isEditMode.value) {
                     Row(
@@ -458,6 +460,7 @@ private fun SemesterSchedulePreview(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = headerText,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }
@@ -487,6 +490,7 @@ private fun SemesterSchedulePreview(
                             text = section.toString(),
                             fontSize = 12.sp,
                             color = headerText,
+                            textAlign = TextAlign.Center,
                         )
                     }
 

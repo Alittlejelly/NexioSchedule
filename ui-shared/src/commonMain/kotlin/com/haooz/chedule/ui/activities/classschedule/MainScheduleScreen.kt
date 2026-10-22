@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.activities.classschedule
 
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -1437,7 +1438,8 @@ fun MainScheduleScreen(
                             Text(
                                 text = text,
                                 style = MiuixTheme.textStyles.footnote2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.Center,
                             )
                         }
                     }

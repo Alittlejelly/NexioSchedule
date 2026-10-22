@@ -1,6 +1,7 @@
 /** 课程详情页面 */
 package com.haooz.chedule.ui.screens
 
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.data.formatMonthDayShort
 
 import com.haooz.chedule.data.todayLocalDate
@@ -411,7 +412,8 @@ fun CourseDetailScreen(
                                                                         Text(
                                                                             text = timeText,
                                                                             style = MiuixTheme.textStyles.footnote1.copy(fontSize = 15.sp),
-                                                                            color = MiuixTheme.colorScheme.primary
+                                                                            color = MiuixTheme.colorScheme.primary,
+                                                                            textAlign = TextAlign.End,
                                                                         )
                                                                     }
                                                                 }

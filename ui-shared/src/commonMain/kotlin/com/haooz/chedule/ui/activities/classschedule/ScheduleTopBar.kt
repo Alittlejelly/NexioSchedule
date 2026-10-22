@@ -25,8 +25,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.formatMonthDay
 import com.haooz.chedule.data.todayLocalDate
@@ -37,7 +39,7 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 import com.kyant.backdrop.Backdrop
-import top.yukonga.miuix.kmp.basic.Text
+import com.haooz.chedule.ui.components.text.miuix.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Background
@@ -270,7 +272,8 @@ private fun DayOfWeekRow(
                             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
                         ),
                         color = if (isToday) todayHighlightColor
-                        else MiuixTheme.colorScheme.onSurface
+                        else MiuixTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
                     )
                     if (weekDates.isNotEmpty() && index < weekDates.size) {
                         val dateText = remember(weekDates[index]) {
@@ -280,7 +283,8 @@ private fun DayOfWeekRow(
                             text = dateText,
                             style = MiuixTheme.textStyles.footnote2,
                             color = if (isToday) todayHighlightColor
-                            else MiuixTheme.colorScheme.onSurfaceVariantActions
+                            else MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }

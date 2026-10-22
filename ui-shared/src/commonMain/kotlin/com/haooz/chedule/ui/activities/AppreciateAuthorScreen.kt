@@ -351,7 +351,8 @@ private fun PodiumColumn(
                     fontSize = if (rank == 1) 30.sp else 24.sp,
                     fontWeight = FontWeight.Medium,
                     color = accent,
-                    lineHeight = if (rank == 1) 32.sp else 26.sp
+                    lineHeight = if (rank == 1) 32.sp else 26.sp,
+                    textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -561,7 +562,8 @@ private fun AppreciationListItem(item: AppreciationItem) {
             text = item.amount,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
-            color = MiuixTheme.colorScheme.primary
+            color = MiuixTheme.colorScheme.primary,
+            textAlign = TextAlign.End,
         )
     }
 }

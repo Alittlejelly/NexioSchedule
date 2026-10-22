@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -1259,7 +1260,9 @@ fun SwitchScheduleScreen(
                     Text(
                         text = deleteDialogText,
                         style = MiuixTheme.textStyles.body1,
-                        color = MiuixTheme.colorScheme.onSurface
+                        color = MiuixTheme.colorScheme.onSurface,
+                        // 父 Column 居中摆位：选定项变化会换整段文案，按中心收放才不会先贴左边
+                        textAlign = TextAlign.Center,
                     )
                     Row(
                         modifier = Modifier
@@ -1910,7 +1913,8 @@ private fun RowScope.BottomBarItem(
             fontSize = 11.sp,
             color = if (enabled) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurface.copy(
                 alpha = 0.38f
-            )
+            ),
+            textAlign = TextAlign.Center,
         )
     }
 }

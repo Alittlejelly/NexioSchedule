@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -239,7 +240,8 @@ private fun RowScope.WeekRangeCell(
         Text(
             text = "$weekNum",
             fontSize = 13.sp,
-            color = textColor
+            color = textColor,
+            textAlign = TextAlign.Center,
         )
     }
 }

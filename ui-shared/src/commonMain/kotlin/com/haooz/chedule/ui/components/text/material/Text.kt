@@ -47,7 +47,7 @@ fun Text(
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
     style: TextStyle = LocalTextStyle.current,
 ) {
-    TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
         androidx.compose.material3.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
             fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,
@@ -86,7 +86,7 @@ fun Text(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     style: TextStyle = LocalTextStyle.current,
 ) {
-    TextMotionBox(key = text, modifier = modifier) { shown, layerModifier ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
         androidx.compose.material3.Text(
             text = shown, modifier = layerModifier, color = color, autoSize = autoSize,
             fontSize = fontSize, fontStyle = fontStyle, fontWeight = fontWeight,

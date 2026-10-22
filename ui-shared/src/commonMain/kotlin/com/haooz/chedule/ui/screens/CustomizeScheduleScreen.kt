@@ -881,7 +881,8 @@ fun CustomizeScheduleScreen(
                                         Text(
                                             text = "搭配 ${combIdx + 1}",
                                             color = Color.White.copy(alpha = 0.6f),
-                                            fontSize = 16.sp
+                                            fontSize = 16.sp,
+                                            textAlign = TextAlign.Center,
                                         )
                                     }
                                 }
@@ -1847,7 +1848,8 @@ private fun SliderItem(
                         text = suffix,
                         fontWeight = FontWeight.Medium,
                         fontSize = 17.sp,
-                        color = textColor
+                        color = textColor,
+                        textAlign = TextAlign.End,
                     )
                 }
             } else {
@@ -1920,7 +1922,8 @@ private fun RefractionItem(
                     text = value.label,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
-                    color = textColor
+                    color = textColor,
+                    textAlign = TextAlign.End,
                 )
             } else {
                 Text(

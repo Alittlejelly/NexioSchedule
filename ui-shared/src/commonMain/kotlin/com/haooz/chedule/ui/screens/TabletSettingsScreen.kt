@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -1141,7 +1142,8 @@ private fun TabletSemesterPane(
                             Text(
                                 text = classStartTime,
                                 fontSize = 14.5.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.End,
                             )
                         },
                         onClick = {
@@ -1163,7 +1165,8 @@ private fun TabletSemesterPane(
                                     else -> "第${currentWeek}周"
                                 },
                                 fontSize = 14.5.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.End,
                             )
                         },
                         onClick = {
@@ -1178,7 +1181,8 @@ private fun TabletSemesterPane(
                             Text(
                                 text = "共${totalWeeks}周",
                                 fontSize = 14.5.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.End,
                             )
                         },
                         onClick = {

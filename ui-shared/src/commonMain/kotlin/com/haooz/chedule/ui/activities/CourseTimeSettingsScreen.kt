@@ -256,7 +256,8 @@ fun CourseTimeSettingsScreen(
                                                         "生效中",
                                                         fontSize = 12.sp,
                                                         fontWeight = FontWeight.Medium,
-                                                        color = MiuixTheme.colorScheme.primary
+                                                        color = MiuixTheme.colorScheme.primary,
+                                                        textAlign = TextAlign.End,
                                                     )
                                                 }
                                             }
@@ -378,7 +379,8 @@ fun CourseTimeSettingsScreen(
                             text = label,
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                            textAlign = TextAlign.Center,
                         )
                         NumberPicker(
                             value = current,

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -268,7 +269,8 @@ fun SettingsScreen(
                                     Text(
                                         text = classStartTime,
                                         fontSize = 14.5.sp,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        textAlign = TextAlign.End,
                                     )
                                 },
                                 onClick = {
@@ -292,7 +294,8 @@ fun SettingsScreen(
                                             else -> "第${currentWeek}周"
                                         },
                                         fontSize = 14.5.sp,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        textAlign = TextAlign.End,
                                     )
                                 },
                                 onClick = {
@@ -309,7 +312,8 @@ fun SettingsScreen(
                                     Text(
                                         text = "共${totalWeeks}周",
                                         fontSize = 14.5.sp,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                        textAlign = TextAlign.End,
                                     )
                                 },
                                 onClick = {

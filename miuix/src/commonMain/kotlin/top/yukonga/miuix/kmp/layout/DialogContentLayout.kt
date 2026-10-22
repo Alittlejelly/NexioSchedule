@@ -70,6 +70,7 @@ import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.DecelerateEasing
 import top.yukonga.miuix.kmp.anim.folmeSpring
+import top.yukonga.miuix.kmp.basic.MotionAwareText
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.squircle.squircleSurface
@@ -444,7 +445,7 @@ internal fun DialogContent(
             modifier = contentModifier.align(contentAlignment),
         ) {
             title?.let {
-                Text(
+                MotionAwareText(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     text = it,
                     fontSize = MiuixTheme.textStyles.title4.fontSize,
@@ -454,7 +455,7 @@ internal fun DialogContent(
                 )
             }
             summary?.let {
-                Text(
+                MotionAwareText(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     text = it,
                     fontSize = MiuixTheme.textStyles.body1.fontSize,

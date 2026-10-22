@@ -355,7 +355,8 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
             Text(
                 text = timeRange,
                 style = MiuixTheme.textStyles.footnote1.copy(fontSize = 15.sp),
-                color = MiuixTheme.colorScheme.primary
+                color = MiuixTheme.colorScheme.primary,
+                textAlign = TextAlign.End,
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
@@ -364,7 +365,8 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
                 color = when (courseStatus) {
                     "进行中" -> MiuixTheme.colorScheme.primary
                     else -> MiuixTheme.colorScheme.onSurfaceVariantActions
-                }
+                },
+                textAlign = TextAlign.End,
             )
         }
     }

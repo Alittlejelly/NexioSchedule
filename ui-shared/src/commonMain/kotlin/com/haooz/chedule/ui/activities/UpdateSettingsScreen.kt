@@ -2,6 +2,7 @@
 package com.haooz.chedule.ui.activities
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NoopUpdateController
 import com.haooz.chedule.data.UpdateController
@@ -503,7 +504,8 @@ fun UpdateSettingsScreen(
                         Text(
                             text = "${(downloadProgress * 100).toInt()}%",
                             fontSize = 14.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            textAlign = TextAlign.Center,
                         )
                     } else if (downloadComplete) {
                         Spacer(modifier = Modifier.height(0.dp))
@@ -617,6 +619,8 @@ fun UpdateSettingsScreen(
                                     text = if (isResolvingApk) "获取链接" else "正在下载",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Medium,
+                                    // 按钮自己居中内容，换字时按中心收放
+                                    textAlign = TextAlign.Center,
                                     color = if (isAppDarkTheme()) ComposeColor.White else ComposeColor.Black
                                 )
                             }

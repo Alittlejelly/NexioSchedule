@@ -23,9 +23,13 @@ import androidx.compose.ui.platform.LocalDensity
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.currentDeviceInfo
+import com.haooz.chedule.ui.components.text.TextMotionBox
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.material.LocalMiuixTextMotion
+import top.yukonga.miuix.kmp.material.MiuixTextMotion
 import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.theme.LocalScreenTopCornerRadii
 import top.yukonga.miuix.kmp.theme.ScreenTopCornerRadii
@@ -190,6 +194,10 @@ fun CourseScheduleTheme(
                     dark = AppMaterialSettings.glassSurfaceAlphaDrop(isLight = false),
                 ),
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
+                // :miuix 内部绘制的展示文字（偏好项标题/副标题、下拉菜单当前值、
+                // 弹窗标题/摘要）交给我们的换字动效：模块不能反向依赖 :ui-shared，
+                // 只能在这里注册实现。没注册时组件退回普通 Text。
+                LocalMiuixTextMotion provides AppTextMotion,
             ) {
                 MaterialTheme(colorScheme = materialColors) {
                     CompositionLocalProvider(
@@ -202,4 +210,25 @@ fun CourseScheduleTheme(
             }
         }
     )
+}
+
+/**
+ * :miuix 内部展示文字的换字动效实现。
+ *
+ * 只给「整段换掉」的展示文案用（偏好项标题/副标题、下拉菜单当前值、弹窗标题/摘要），
+ * 不接输入框 —— 那里的文字每敲一个字都会变，带动效会一直糊着。
+ *
+ * 顶层 val：身份稳定，`LocalMiuixTextMotion` 不会因为重组换实例而让整棵子树失效。
+ */
+private val AppTextMotion: MiuixTextMotion = { text, modifier, color, fontSize, fontWeight, textAlign ->
+    TextMotionBox(key = text, modifier = modifier, textAlign = textAlign) { shown, layerModifier ->
+        MiuixText(
+            text = shown,
+            modifier = layerModifier,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = textAlign,
+        )
+    }
 }

@@ -881,7 +881,8 @@ private fun CardContent(
                     .clip(RoundedCornerShape(4.dp))
                     .background(badgeBackground)
                     .padding(horizontal = 2.dp, vertical = 1.dp),
-                maxLines = 1
+                maxLines = 1,
+                textAlign = TextAlign.End,
             )
         }
 
@@ -896,7 +897,8 @@ private fun CardContent(
                     .clip(RoundedCornerShape(4.dp))
                     .background(textColor.copy(alpha = 0.1f))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
-                maxLines = 1
+                maxLines = 1,
+                textAlign = TextAlign.Center,
             )
             Text(
                 // 跨午夜标注「次日」，否则 23:00 / 00:30 两个角标看着像两节课
@@ -913,7 +915,8 @@ private fun CardContent(
                     .clip(RoundedCornerShape(4.dp))
                     .background(textColor.copy(alpha = 0.1f))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
-                maxLines = 1
+                maxLines = 1,
+                textAlign = TextAlign.Center,
             )
         }
     }

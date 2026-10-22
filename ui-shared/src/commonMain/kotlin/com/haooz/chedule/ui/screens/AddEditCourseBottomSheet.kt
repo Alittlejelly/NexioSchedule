@@ -448,7 +448,8 @@ fun AddEditCourseBottomSheet(
                                 Text(
                                     text = dayLabels[day - 1],
                                     fontSize = 14.sp,
-                                    color = textColor
+                                    color = textColor,
+                                    textAlign = TextAlign.Center,
                                 )
                             }
                         }
@@ -475,7 +476,8 @@ fun AddEditCourseBottomSheet(
                             Text(
                                 text = "$customStartTime - $customEndTime",
                                 fontSize = 14.5.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.End,
                             )
                         },
                         onClick = {
@@ -495,7 +497,8 @@ fun AddEditCourseBottomSheet(
                             Text(
                                 text = if (startSection > 0) "第${startSection} - ${endSection}节" else "未设置",
                                 fontSize = 14.5.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                textAlign = TextAlign.End,
                             )
                         },
                         onClick = {

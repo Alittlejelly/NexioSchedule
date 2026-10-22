@@ -1341,6 +1341,7 @@ private fun TeachingWeekRuleTimelineItem(
             fontSize = 12.sp,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
+            textAlign = TextAlign.End,
         )
     }
 }
@@ -1441,6 +1442,7 @@ private fun TeachingWeekdayRangeSelector(
                         text = WEEKDAYS[day - 1].removePrefix("星期"),
                         fontSize = 14.sp,
                         color = textColor,
+                        textAlign = TextAlign.Center,
                     )
                 }
             }
@@ -1519,6 +1521,8 @@ private fun TeachingWeekNumberPickerDialog(
                 text = dateRangeSummary,
                 fontSize = 14.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                // 父 Column 居中摆位：日期区间变长变短时要按中心收放，否则会先贴到左边
+                textAlign = TextAlign.Center,
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
