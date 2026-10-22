@@ -53,17 +53,28 @@ class AiClient(
     private val baseUrl: String = DEFAULT_BASE_URL,
 ) {
 
-    /** 上课地点精简：把一批地点交给云端 AI，拿回「原名=缩写」对照。 */
-    suspend fun shrinkClassrooms(classrooms: List<String>): AiResult<List<Pair<String, String>>> {
-        val cleaned = classrooms.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (cleaned.isEmpty()) return AiResult.Error("课表里还没有填上课地点")
+    /**
+     * 缩略态文案精简：把课程名和上课地点一起交给云端 AI，拿回一张「原名=缩写」对照。
+     *
+     * 两类条目混在一张表里：客户端做的是纯文本替换，键互不重叠，没必要分两张表。
+     */
+    suspend fun shrinkLabels(
+        classrooms: List<String>,
+        courses: List<String>,
+    ): AiResult<List<Pair<String, String>>> {
+        val cleanRooms = classrooms.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val cleanCourses = courses.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (cleanRooms.isEmpty() && cleanCourses.isEmpty()) {
+            return AiResult.Error("课表里还没有课程名和地点")
+        }
 
         val body = buildJsonObject {
             put("task", TASK_SHRINK_CLASSROOMS)
             // 服务端按这个 ID 算每天用量（与统计上报同一个 ID）
             put("device_id", StatsReporter.ensureDeviceId())
             put("args", buildJsonObject {
-                put("classrooms", buildJsonArray { cleaned.forEach { add(JsonPrimitive(it)) } })
+                put("courses", buildJsonArray { cleanCourses.forEach { add(JsonPrimitive(it)) } })
+                put("classrooms", buildJsonArray { cleanRooms.forEach { add(JsonPrimitive(it)) } })
             })
         }
 

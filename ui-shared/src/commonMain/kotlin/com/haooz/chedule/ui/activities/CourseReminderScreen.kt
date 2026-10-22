@@ -7,6 +7,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,11 +42,18 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,15 +127,33 @@ private val AI_TIMEOUTS = HttpTimeouts(connectSeconds = 10, readSeconds = 40, ca
 private val ClassroomPreviewShape = ContinuousRoundedRectangle(16.dp)
 
 /**
+ * 精简预览的一行。
+ *
+ * @param raw 课表原文（也是手动改写的键）
+ * @param shown 现在会显示的文本（含手动改写）
+ * @param auto 没有手动改写时会显示的文本 —— 编辑框里改回它就等于取消这一条改写
+ */
+private data class PreviewItem(val raw: String, val shown: String, val auto: String)
+
+/**
  * 精简预览里的一行：左边课表原文，右边通知里会显示的文本，两边等宽。
  *
  * 不管有没有被改写，左右都有内容 —— 少一边就看不出「这条被改成什么了」。
  * 有变化的右侧染主题色，扫一眼就知道哪几条动了。
+ *
+ * 右侧那串**点一下就能改**（[editing] 为 true 时换成输入框）：自动规则再细也有认不出的
+ * 楼名，让本人直接改比堆提示词划算。改完的值按原文整串存进 [ClassroomLabel.KEY_OVERRIDES]，
+ * 优先级压过正则与 AI。
  */
 @Composable
 private fun ClassroomPreviewRow(
     raw: String,
     shown: String,
+    editing: Boolean,
+    editText: String,
+    onEditTextChange: (String) -> Unit,
+    onStartEdit: () -> Unit,
+    onCommit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val changed = shown != raw
@@ -150,17 +180,51 @@ private fun ClassroomPreviewRow(
             },
             modifier = Modifier.size(14.dp),
         )
-        Text(
-            text = shown,
-            style = MiuixTheme.textStyles.body2,
-            color = if (changed) {
-                MiuixTheme.colorScheme.primary
-            } else {
-                MiuixTheme.colorScheme.onSurface
-            },
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.End,
-        )
+        if (editing) {
+            val focusRequester = remember { FocusRequester() }
+            val keyboard = LocalSoftwareKeyboardController.current
+            // 刚切进编辑态就聚焦并弹键盘，不用再点第二下
+            LaunchedEffect(Unit) {
+                focusRequester.requestFocus()
+                keyboard?.show()
+            }
+            // 首次组合时焦点回调可能先报「未聚焦」，不能据此直接提交，否则输入框刚出现就没了
+            var hadFocus by remember { mutableStateOf(false) }
+            BasicTextField(
+                value = editText,
+                onValueChange = onEditTextChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { state ->
+                        if (state.isFocused) hadFocus = true else if (hadFocus) onCommit()
+                    },
+                textStyle = MiuixTheme.textStyles.body2.copy(
+                    color = MiuixTheme.colorScheme.primary,
+                    textAlign = TextAlign.End,
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(MiuixTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onCommit() }),
+            )
+        } else {
+            Text(
+                text = shown,
+                style = MiuixTheme.textStyles.body2,
+                color = if (changed) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.onSurface
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onStartEdit() }
+                    .padding(horizontal = 2.dp, vertical = 2.dp),
+                textAlign = TextAlign.End,
+            )
+        }
     }
 }
 
@@ -221,10 +285,15 @@ fun CourseReminderScreen(
     var islandInClassRightMode by remember {
         mutableIntStateOf(reminderPrefs.getInt("island_in_class_right_mode", 0))
     }
-    // 缩略态地点精简：总开关 + 精简方式（正则 / AI）
-    var classroomLabelEnabled by remember {
-        mutableStateOf(reminderPrefs.getBoolean(ClassroomLabel.KEY_ENABLED, false))
+    // 缩略态精简：作用范围（原始 / 地点 / 课程 / 两者）+ 精简方式（正则 / AI）
+    var classroomLabelScope by remember {
+        mutableIntStateOf(
+            reminderPrefs.getInt(ClassroomLabel.KEY_SCOPE, ClassroomLabel.SCOPE_OFF)
+                .takeIf { it in ClassroomLabel.SCOPE_OFF..ClassroomLabel.SCOPE_BOTH }
+                ?: ClassroomLabel.SCOPE_OFF
+        )
     }
+    val classroomLabelEnabled = classroomLabelScope != ClassroomLabel.SCOPE_OFF
     var classroomLabelMethod by remember {
         mutableIntStateOf(
             reminderPrefs.getInt(ClassroomLabel.KEY_METHOD, ClassroomLabel.METHOD_REGEX)
@@ -234,15 +303,50 @@ fun CourseReminderScreen(
         mutableStateOf(reminderPrefs.getString(ClassroomLabel.KEY_ABBREVIATIONS, ""))
     }
     var showClassroomPreviewDialog by remember { mutableStateOf(false) }
+    // 手动改写：在精简预览里点右侧文字改的，按「课表原文=想显示的文本」存（见 ClassroomLabel.KEY_OVERRIDES）
+    var classroomLabelOverrides by remember {
+        mutableStateOf(reminderPrefs.getString(ClassroomLabel.KEY_OVERRIDES, ""))
+    }
+    // 正在手动修改的那一行：原文 / 自动结果 / 输入中的文本（raw 为 null 表示没有在改）
+    var previewEditRaw by remember { mutableStateOf<String?>(null) }
+    var previewEditAuto by remember { mutableStateOf("") }
+    var previewEditText by remember { mutableStateOf("") }
+
+    /**
+     * 提交预览里正在编辑的那一行。
+     *
+     * 「改回自动结果」和「清空」都当成取消这一条手动改写，把那一行从偏好里删掉 ——
+     * 留着一条和自动结果一模一样的条目，用户以后自己也分不清哪些是他改过的。
+     */
+    fun commitPreviewEdit() {
+        val raw = previewEditRaw ?: return
+        previewEditRaw = null
+        val typed = previewEditText.trim()
+        val value = typed.takeIf { it.isNotEmpty() && it != previewEditAuto }
+        val text = ClassroomLabel.putOverride(classroomLabelOverrides, raw, value)
+        if (text == classroomLabelOverrides) return
+        classroomLabelOverrides = text
+        reminderPrefs.edit { putString(ClassroomLabel.KEY_OVERRIDES, text) }
+        rlog("classroom_label_override", if (value == null) "clear" else "set")
+    }
+
     // AI 精简请求中：按钮换成转圈并禁用，避免连点重复计费
     var aiShrinking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // 预览用课表里全部的真实地点：能看出自己学校的地名会被改成什么样，比固定样例有用。
     // CourseRepository 是单例且带课程缓存，这里只在页面进入时取一次。
+    // 缩略态要精简两类东西：课程名与地点，预览也两者都列
     val previewClassrooms = remember {
         val repository = CourseRepository()
         repository.getCoursesForSchedule(repository.getCurrentScheduleId())
             .map { it.classroom.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+    val previewCourses = remember {
+        val repository = CourseRepository()
+        repository.getCoursesForSchedule(repository.getCurrentScheduleId())
+            .map { it.name.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
     }
@@ -957,6 +1061,24 @@ fun CourseReminderScreen(
                     // 上课地点精简：
                     if (!reminderController.supportsLiveActivity()) {
                         item {
+                            val scopeOptions = listOf(
+                                ClassroomLabel.SCOPE_OFF to "原始文本",
+                                ClassroomLabel.SCOPE_CLASSROOM to "精简地点",
+                                ClassroomLabel.SCOPE_COURSE to "精简课程",
+                                ClassroomLabel.SCOPE_BOTH to "精简地点与课程",
+                            ).map { (value, label) ->
+                                DropdownItem(
+                                    text = label,
+                                    selected = classroomLabelScope == value,
+                                    onClick = {
+                                        rlog("classroom_label_scope", "scope=$value")
+                                        classroomLabelScope = value
+                                        reminderPrefs.edit {
+                                            putInt(ClassroomLabel.KEY_SCOPE, value)
+                                        }
+                                    }
+                                )
+                            }
                             val methodOptions = listOf(
                                 DropdownItem(
                                     text = "正则精简",
@@ -993,21 +1115,12 @@ fun CourseReminderScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 insideMargin = PaddingValues(0.dp)
                             ) {
-                                SwitchPreference(
-                                    title = "上课地点精简",
-                                    summary = if (classroomLabelEnabled) {
-                                        "开启：通知里的地点按下面的方式改写"
-                                    } else {
-                                        "关闭：用课表原文，与升级前一致"
-                                    },
-                                    checked = classroomLabelEnabled,
-                                    onCheckedChange = {
-                                        rlog("classroom_label_enabled", "on=$it")
-                                        classroomLabelEnabled = it
-                                        reminderPrefs.edit {
-                                            putBoolean(ClassroomLabel.KEY_ENABLED, it)
-                                        }
-                                    }
+                                OverlayDropdownMenu(
+                                    title = "缩略态精简",
+                                    entry = DropdownEntry(items = scopeOptions),
+                                    collapseOnSelection = true,
+                                    liquidGlassBackdrop = liquidGlassBackdrop,
+                                    dropdownColors = liquidGlassDropdownColors,
                                 )
                                 if (classroomLabelEnabled) {
                                     OverlayDropdownMenu(
@@ -1036,7 +1149,10 @@ fun CourseReminderScreen(
                                                         scope.launch {
                                                             val outcome = runCatching {
                                                                 AiClient(createHttpService(AI_TIMEOUTS))
-                                                                    .shrinkClassrooms(previewClassrooms.take(60))
+                                                                    .shrinkLabels(
+                                                                        classrooms = previewClassrooms.take(60),
+                                                                        courses = previewCourses.take(60),
+                                                                    )
                                                             }.getOrElse { AiResult.Error(it.message ?: "未知错误") }
                                                             aiShrinking = false
                                                             // 失败必须把原因说出来：
@@ -1360,18 +1476,32 @@ fun CourseReminderScreen(
             // 地点精简预览：课表里每一个地点都按当前设置算一遍，改完立刻能看到差别
             OverlayDialog(
                 title = "精简预览",
+                summary = "点击右侧文字可手动修改",
                 show = showClassroomPreviewDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
-                onDismissRequest = { showClassroomPreviewDialog = false }
+                onDismissRequest = {
+                    // 顺手提交正在改的那一行：点遮罩/返回键不该悄悄丢掉刚打的字
+                    commitPreviewEdit()
+                    showClassroomPreviewDialog = false
+                }
             ) {
                 val rule = ClassroomLabelRule(
                     enabled = classroomLabelEnabled,
                     method = classroomLabelMethod,
                     abbreviations = classroomLabelAbbreviations,
+                    scope = classroomLabelScope,
+                    overrides = classroomLabelOverrides,
                 )
-                val changedCount = previewClassrooms.count { raw ->
-                    ClassroomLabel.apply(raw, rule) != raw
+                // 「没有手动改写时的结果」：编辑框里改回它就等于取消这一条手动改写
+                val autoRule = rule.copy(overrides = "")
+                // 课程名走 applyCourse，地点走 apply —— 两者共用同一张对照表，只是正则方式的表不同
+                val previewItems = previewCourses.map {
+                    PreviewItem(it, ClassroomLabel.applyCourse(it, rule), ClassroomLabel.applyCourse(it, autoRule))
+                } + previewClassrooms.map {
+                    PreviewItem(it, ClassroomLabel.apply(it, rule), ClassroomLabel.apply(it, autoRule))
                 }
+                val changedCount = previewItems.count { it.raw != it.shown }
+                val overriddenCount = previewItems.count { rule.overrideMap.containsKey(it.raw) }
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
@@ -1397,10 +1527,10 @@ fun CourseReminderScreen(
                             )
                         }
                         Text(
-                            text = if (previewClassrooms.isEmpty()) {
-                                "课表没有地点"
+                            text = if (previewItems.isEmpty()) {
+                                "课表没有内容"
                             } else {
-                                "$changedCount / ${previewClassrooms.size}"
+                                "$changedCount / ${previewItems.size}"
                             },
                             fontSize = 19.sp,
                             color = MiuixTheme.colorScheme.primary
@@ -1425,7 +1555,7 @@ fun CourseReminderScreen(
                         },
                         shadowElevation = 0.dp,
                     ) {
-                        if (previewClassrooms.isEmpty()) {
+                        if (previewItems.isEmpty()) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1433,7 +1563,7 @@ fun CourseReminderScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    text = "课表里还没有填上课地点",
+                                    text = "课表里还没有课程名和地点",
                                     style = MiuixTheme.textStyles.body2,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 )
@@ -1445,31 +1575,64 @@ fun CourseReminderScreen(
                                     .padding(horizontal = 14.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                itemsIndexed(previewClassrooms) { index, raw ->
+                                itemsIndexed(previewItems) { index, item ->
                                     ClassroomPreviewRow(
-                                        raw = raw,
-                                        shown = ClassroomLabel.apply(raw, rule),
+                                        raw = item.raw,
+                                        shown = item.shown,
+                                        editing = previewEditRaw == item.raw,
+                                        editText = previewEditText,
+                                        onEditTextChange = { previewEditText = it },
+                                        onStartEdit = {
+                                            // 换一行改时先把上一行提交掉，不然那几笔白打了
+                                            if (previewEditRaw != item.raw) commitPreviewEdit()
+                                            previewEditRaw = item.raw
+                                            previewEditAuto = item.auto
+                                            previewEditText = item.shown
+                                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        },
+                                        onCommit = { commitPreviewEdit() },
                                         // 首尾各再让 6，凑成上下各 12，别贴着圆角
                                         modifier = Modifier.padding(
                                             top = if (index == 0) 6.dp else 0.dp,
-                                            bottom = if (index == previewClassrooms.lastIndex) 6.dp else 0.dp,
+                                            bottom = if (index == previewItems.lastIndex) 6.dp else 0.dp,
                                         ),
                                     )
                                 }
                             }
                         }
                     }
-                    TextButton(
-                        text = "知道了",
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            showClassroomPreviewDialog = false
-                        },
-                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 12.dp),
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // 只改过才有「恢复自动」可点，没改过就别摆一个按不动的按钮
+                        if (overriddenCount > 0) {
+                            TextButton(
+                                text = "恢复自动（$overriddenCount）",
+                                onClick = {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    previewEditRaw = null
+                                    classroomLabelOverrides = ""
+                                    reminderPrefs.edit { putString(ClassroomLabel.KEY_OVERRIDES, "") }
+                                    rlog("classroom_label_override", "clear_all")
+                                    showToast("已全部恢复自动精简")
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        TextButton(
+                            text = "完成",
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                commitPreviewEdit()
+                                showClassroomPreviewDialog = false
+                            },
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
 

@@ -18,6 +18,10 @@ import com.haooz.chedule.data.asKeyValueStore
 internal fun SharedPreferences.classroomLabelRule(): ClassroomLabelRule =
     ClassroomLabel.read(asKeyValueStore())
 
-/** 缩略态用的地点文案。规则为「原样显示」且没开保留尾部时，与课表原文逐字相同。 */
+/** 缩略态用的地点文案。规则关闭时与课表原文逐字相同。 */
 internal fun SharedPreferences.shortClassroom(classroom: String): String =
     ClassroomLabel.apply(classroom, classroomLabelRule())
+
+/** 缩略态用的课程名文案。与地点共用同一套规则与对照表。 */
+internal fun SharedPreferences.shortCourse(course: String): String =
+    ClassroomLabel.applyCourse(course, classroomLabelRule())
