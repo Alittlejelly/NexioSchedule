@@ -1,6 +1,8 @@
 package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.components.cardRevealLayer
+import com.haooz.chedule.ui.components.rememberCardRevealState
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -1549,16 +1551,8 @@ fun MainScheduleScreen(
                             }
                     )
                 }
-            // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁
-            var revealCount by remember { mutableIntStateOf(0) }
-            LaunchedEffect(coursesToShow.size) {
-                revealCount = 0
-                delay(120.milliseconds)
-                for (i in 1..coursesToShow.size) {
-                    revealCount = i
-                    delay(56.milliseconds)
-                }
-            }
+            // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁；
+            // 逐张错开由 CardRevealSpec 的 index 负责
             Column(
                 modifier = Modifier
                     // overScroll 在 verticalScroll 外侧
@@ -1591,23 +1585,17 @@ fun MainScheduleScreen(
                     // 普通 holder 零重组；key 用 course.id 防列表重排错位
                     val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
                     // 动画结束后去掉离屏层
-                    val appear by animateFloatAsState(
-                        targetValue = if (index < revealCount) 1f else 0f,
-                        animationSpec = tween(220),
-                        label = "reveal$index",
-                    )
-                    val shown = appear
-                    val revealAnimating = shown < 1f
-                    val revealDensity = LocalDensity.current
+                    val cardReveal = rememberCardRevealState(index = index)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(
-                                if (isHidden || revealAnimating) Modifier.graphicsLayer {
-                                    alpha = (if (isHidden) 0f else 1f) * shown
-                                    translationY = (1f - shown) * revealDensity.run { 8.dp.toPx() }
-                                    scaleX = 0.97f + 0.03f * shown
-                                    scaleY = 0.97f + 0.03f * shown
+                                if (isHidden || cardReveal.isAnimating) {
+                                    Modifier.cardRevealLayer(
+                                        reveal = cardReveal,
+                                        // 隐藏的课程只留占位：透明度乘 0，图层照样要挂
+                                        alphaMultiplier = if (isHidden) 0f else 1f,
+                                    )
                                 } else Modifier
                             )
                     ) {

@@ -1,8 +1,9 @@
 /** 课程编辑页面 - 修改课程时段/周次 */
 package com.haooz.chedule.ui.screens
 
+import com.haooz.chedule.ui.components.CardExpandSpec
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
@@ -10,6 +11,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.consumeWindowInsets
+import com.haooz.chedule.ui.components.cardRevealLayer
+import com.haooz.chedule.ui.components.rememberCardRevealState
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.NativeDocumentAction
@@ -74,7 +77,6 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.blockTouchPassThrough
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -631,31 +633,19 @@ fun CourseEditScreen(
                                     val groupKey = group.key.uniqueKey()
                                     val isDeleting = deletingGroupId == groupKey
 
+                                    // 入场由 CardReveal 负责，这里只管删除时的收拢（同一条 spring）
                                     AnimatedVisibility(
                                         visible = !isDeleting,
-                                        exit = shrinkVertically(tween(300)) + fadeOut(tween(300))
+                                        enter = EnterTransition.None,
+                                        exit = shrinkVertically(CardExpandSpec.HeightSpring) +
+                                            fadeOut(tween(CardExpandSpec.FADE_MILLIS)),
                                     ) {
-                                        val cardAlpha = remember { Animatable(0f) }
-                                        val cardScale = remember { Animatable(0.8f) }
-                                        LaunchedEffect(Unit) {
-                                            launch {
-                                                cardAlpha.animateTo(1f, tween(400))
-                                            }
-                                            launch {
-                                                cardScale.animateTo(
-                                                    1f,
-                                                    tween(400, easing = OobeQuartOutEasing)
-                                                )
-                                            }
-                                        }
+                                        // 入场统一走 CardRevealSpec；收拢退场仍由外面的 AnimatedVisibility 负责
+                                        val cardReveal = rememberCardRevealState()
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .graphicsLayer {
-                                                    alpha = cardAlpha.value
-                                                    scaleX = cardScale.value
-                                                    scaleY = cardScale.value
-                                                }
+                                                .cardRevealLayer(cardReveal)
                                         ) {
                                             CourseGroupCard(
                                                 group = group,

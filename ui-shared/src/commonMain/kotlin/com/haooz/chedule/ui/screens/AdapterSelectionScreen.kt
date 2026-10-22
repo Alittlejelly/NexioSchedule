@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.haooz.chedule.ui.components.CardReveal
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -145,37 +146,9 @@ fun AdapterSelectionBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
-                    // 进入动画：逐行 reveal。所有行始终参与布局（占位），仅通过 graphicsLayer 做透明/位移/缩放，
-                    // 避免 AnimatedVisibility 移除节点导致 wrapContentHeight 高度逐帧变化而弹窗闪烁。
-                    var revealCount by remember { mutableIntStateOf(0) }
-                    LaunchedEffect(adapters.size) {
-                        revealCount = 0
-                        delay(120.milliseconds)
-                        for (i in 1..adapters.size) {
-                            revealCount = i
-                            delay(56.milliseconds)
-                        }
-                    }
+                    // 逐行入场由 CardReveal 的 index 错开，页面不再自己维护步进
                     adapters.forEachIndexed { index, adapter ->
-                        val appear by animateFloatAsState(
-                            targetValue = if (index < revealCount) 1f else 0f,
-                            animationSpec = tween(220),
-                            label = "adapterReveal$index",
-                        )
-                        // 动画期间建层做透明/位移/缩放；该行动画结束（appear==1）后撤层，避免长期保留离屏层
-                        val revealDensity = LocalDensity.current
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (appear < 1f) Modifier.graphicsLayer {
-                                        alpha = appear
-                                        translationY = (1f - appear) * revealDensity.run { 8.dp.toPx() }
-                                        scaleX = 0.97f + 0.03f * appear
-                                        scaleY = 0.97f + 0.03f * appear
-                                    } else Modifier
-                                )
-                        ) {
+                        CardReveal(index = index) {
                             AdapterRow(
                                 adapter = adapter,
                                 categoryName = when (adapter.category) {

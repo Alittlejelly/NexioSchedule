@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -45,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.CardReveal
 import com.haooz.chedule.ui.components.WeekRangeSelectGrid
 import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
@@ -62,7 +63,6 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.kyant.backdrop.Backdrop
-import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -89,7 +89,6 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.data.randomUuidV4
@@ -172,16 +171,7 @@ fun AddCourseDialog(
     // 二级弹窗在弹窗作用域外读不到 LocalSheetContentBackdrop，用非快照 holder 接收
     val sheetContentBackdropHolder = remember { BackdropHolder() }
 
-    // 卡片始终占位参与布局，仅 graphicsLayer 做透明/位移/缩放，避免外高闪烁
-    var revealStep by remember(show) { mutableIntStateOf(-1) }
-    LaunchedEffect(show) {
-        if (!show) return@LaunchedEffect
-        delay(120.milliseconds)
-        for (step in 0 until REVEAL_GROUP_COUNT) {
-            revealStep = step
-            delay(REVEAL_STEP_MS.milliseconds)
-        }
-    }
+    // 卡片入场错开交给 CardReveal 的 index，页面不再自己维护 reveal 步进。
 
     // 父级组合期不解引用 form 字段，读取下沉到各卡片内部
     val form = remember(show) {
@@ -351,7 +341,6 @@ fun AddCourseDialog(
             AddCourseDialogContent(
                 isEdit = isEdit,
                 isDark = isDark,
-                revealStep = revealStep,
                 form = form,
                 totalWeeks = totalWeeks,
                 currentOccupiedWeeks = currentOccupiedWeeks,
@@ -422,7 +411,6 @@ fun AddCourseDialog(
             AddCourseDialogContent(
                 isEdit = isEdit,
                 isDark = isDark,
-                revealStep = revealStep,
                 form = form,
                 totalWeeks = totalWeeks,
                 currentOccupiedWeeks = currentOccupiedWeeks,
@@ -714,7 +702,6 @@ fun AddCourseDialog(
 private fun AddCourseDialogContent(
     isEdit: Boolean,
     isDark: Boolean,
-    revealStep: Int,
     form: AddCourseFormState,
     totalWeeks: Int,
     currentOccupiedWeeks: Set<Int>,
@@ -751,21 +738,21 @@ private fun AddCourseDialogContent(
     ) {
         Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
 
-        CardReveal(visible = revealStep >= 0, index = 0) {
+        CardReveal(index = 0) {
             BasicInfoCard(
                 isDark = isDark,
                 form = form,
             )
         }
 
-        CardReveal(visible = revealStep >= 1, index = 1) {
+        CardReveal(index = 1) {
             WeekdayCard(
                 isDark = isDark,
                 form = form,
             )
         }
 
-        CardReveal(visible = revealStep >= 2, index = 2) {
+        CardReveal(index = 2) {
             SectionTimeCard(
                 isDark = isDark,
                 form = form,
@@ -774,7 +761,7 @@ private fun AddCourseDialogContent(
             )
         }
 
-        CardReveal(visible = revealStep >= 3, index = 3) {
+        CardReveal(index = 3) {
             WeekSettingCard(
                 isDark = isDark,
                 form = form,
@@ -788,7 +775,7 @@ private fun AddCourseDialogContent(
             )
         }
 
-        CardReveal(visible = revealStep >= 4, index = 4) {
+        CardReveal(index = 4) {
             ColorCard(
                 isDark = isDark,
                 form = form,
@@ -796,7 +783,7 @@ private fun AddCourseDialogContent(
             )
         }
 
-        CardReveal(visible = revealStep >= 5, index = 5) {
+        CardReveal(index = 5) {
             if (isEdit) {
                 Button(
                     modifier = Modifier
@@ -831,34 +818,6 @@ private fun AddCourseDialogContent(
     }
 }
 
-/** 入场 reveal：始终占位参与布局，仅 graphicsLayer 做透明/位移/缩放；结束即撤层 */
-@Composable
-private fun CardReveal(
-    visible: Boolean,
-    index: Int,
-    content: @Composable () -> Unit,
-) {
-    val appear by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(220),
-        label = "cardReveal$index",
-    )
-    val revealDensity = LocalDensity.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (appear < 1f) Modifier.graphicsLayer {
-                    alpha = appear
-                    translationY = (1f - appear) * revealDensity.run { 8.dp.toPx() }
-                    scaleX = 0.97f + 0.03f * appear
-                    scaleY = 0.97f + 0.03f * appear
-                } else Modifier
-            )
-    ) {
-        content()
-    }
-}
 
 /** 基本信息卡片：课程名称 / 地点 / 教师 文本框 */
 @Composable
@@ -1057,7 +1016,7 @@ private fun SectionTimeCard(
         )
     ) {
         // isCustomTime 只在 content lambda 内读：切换时不必重组 SectionTimeCard 本体
-        if (form.isCustomTime) {
+        CardExpand(visible = form.isCustomTime) {
             ArrowPreference(
                 title = "上课时间",
                 endActions = {
@@ -1070,7 +1029,8 @@ private fun SectionTimeCard(
                 },
                 onClick = onShowTimeDialog,
             )
-        } else {
+        }
+        CardExpand(visible = !form.isCustomTime) {
             ArrowPreference(
                 title = "上课节次",
                 endActions = {

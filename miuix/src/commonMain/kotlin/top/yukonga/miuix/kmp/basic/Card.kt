@@ -3,6 +3,11 @@
 
 package top.yukonga.miuix.kmp.basic
 
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -193,6 +198,21 @@ object CardDefaults {
      * The default margin inside the [Card].
      */
     val InsideMargin = PaddingValues(0.dp)
+
+    /**
+     * 卡片高度变化的补间曲线。
+     *
+     * 卡片内部直接写裸 `if (...) { }`、行数变化、文字换行导致的高度差，都由 [Card] 自己
+     * 用这条 spring 补间，调用方不必再包 `AnimatedVisibility`。首帧不播（首次测量直接定高）。
+     *
+     * 选 spring 不选 tween：高度是布局量，每帧都要重新测量；tween 两端有「停一下」感，
+     * 连续触发会被打断成阶梯。`dampingRatio = 0.9` 只有极轻微回弹。
+     */
+    val SizeAnimation: FiniteAnimationSpec<IntSize> = spring(
+        dampingRatio = 0.9f,
+        stiffness = Spring.StiffnessMediumLow,
+        visibilityThreshold = IntSize.VisibilityThreshold,
+    )
 
     /**
      * The default colors width of the [Card].

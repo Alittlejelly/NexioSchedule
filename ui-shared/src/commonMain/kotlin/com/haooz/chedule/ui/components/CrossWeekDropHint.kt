@@ -1,9 +1,7 @@
 package com.haooz.chedule.ui.components
 
+import com.haooz.chedule.ui.components.cardContentSize
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -28,7 +26,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.utils.AppMaterialSettings
@@ -91,13 +88,8 @@ fun CrossWeekDropHint(
                     onDrawSurface = onDrawSurface,
                 )
                 .edgeLight(shape = hintShape, edgeLight = edgeLight)
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = 0.9f,
-                        stiffness = Spring.StiffnessMediumLow,
-                        visibilityThreshold = IntSize.VisibilityThreshold,
-                    )
-                )
+                // 尺寸补间与 CardExpand 同一条 spring
+                .cardContentSize()
                 .padding(horizontal = 18.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),

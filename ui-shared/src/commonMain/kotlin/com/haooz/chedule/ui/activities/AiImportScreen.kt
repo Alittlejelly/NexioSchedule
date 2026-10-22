@@ -1,13 +1,8 @@
 /** AI 文本导入页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -253,11 +249,7 @@ fun AiImportScreen(
                         launch { previewAlpha.animateTo(0f, animationSpec = tween(300)) }
                     }
                 }
-                AnimatedVisibility(
-                    visible = previewVisible,
-                    enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(250)),
-                    exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(200))
-                ) {
+                CardExpand(visible = previewVisible) {
                     Column(
                         modifier = Modifier.graphicsLayer {
                             scaleX = previewScale.value
@@ -289,11 +281,7 @@ fun AiImportScreen(
                                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                                     )
                                 }
-                                AnimatedVisibility(
-                                    visible = parsedWarnings.isNotEmpty(),
-                                    enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
-                                    exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(100))
-                                ) {
+                                CardExpand(visible = parsedWarnings.isNotEmpty()) {
                                     Text(
                                         text = "提示 ${parsedWarnings.size} 条",
                                         style = MiuixTheme.textStyles.body2,
@@ -314,7 +302,7 @@ fun AiImportScreen(
                                         Spacer(modifier = Modifier.height(4.dp))
                                     }
                                 }
-                                if (parsedCourses.isNotEmpty()) {
+                                CardExpand(visible = parsedCourses.isNotEmpty()) {
                                     TextButton(
                                         text = "确定导入",
                                         onClick = {
@@ -329,11 +317,7 @@ fun AiImportScreen(
                                 }
                             }
                         }
-                        AnimatedVisibility(
-                            visible = parsedWarnings.isNotEmpty(),
-                            enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                        ) {
+                        CardExpand(visible = parsedWarnings.isNotEmpty()) {
                             Column {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Card(

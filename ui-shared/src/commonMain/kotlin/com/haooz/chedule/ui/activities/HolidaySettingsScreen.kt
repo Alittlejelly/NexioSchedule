@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.activities
 
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.data.HolidayEntry
 
 import com.haooz.chedule.data.lengthOfMonth
@@ -609,7 +610,7 @@ fun HolidaySettingsScreen(
                     description = "• 长假可能带来教学周的重组，并引发后续教学周的顺延更改\n• 可在此进行教学周重组，后续教学周将重新分配计算",
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
-                if (teachingWeekReorganizations.isNotEmpty()) {
+                CardExpand(visible = teachingWeekReorganizations.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp),

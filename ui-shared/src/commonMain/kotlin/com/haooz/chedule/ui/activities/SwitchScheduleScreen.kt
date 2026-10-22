@@ -12,10 +12,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -42,6 +38,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.cardRevealLayer
+import com.haooz.chedule.ui.components.rememberCardRevealState
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -84,7 +83,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -981,34 +979,8 @@ fun SwitchScheduleScreen(
                             item(key = "folder:${folder.id}#$folderIndex") {
                                 Column(modifier = Modifier.animateItem()) {
                                     FolderItem(folder = folder, itemModifier = Modifier)
-                                    AnimatedVisibility(
+                                    CardExpand(
                                         visible = folder.id in expandedFolderIds,
-                                        enter = expandVertically(
-                                            // 锚在底部：展开时内容跟着底边向下滑出，
-                                            // 收起时一起向上滑回文件夹卡片下面，而不是从底部被裁掉
-                                            expandFrom = Alignment.Bottom,
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        ) + fadeIn(
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        ),
-                                        exit = shrinkVertically(
-                                            shrinkTowards = Alignment.Bottom,
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        ) + fadeOut(
-                                            animationSpec = tween(
-                                                durationMillis = 300,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        )
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(top = 12.dp),
@@ -1016,7 +988,7 @@ fun SwitchScheduleScreen(
                                         ) {
                                             val children =
                                                 folder.schedules.filter { it in scheduleNames }
-                                            if (children.isEmpty()) {
+                                            CardExpand(visible = children.isEmpty()) {
                                                 Text(
                                                     text = "文件夹内暂无课表",
                                                     fontSize = 14.sp,
@@ -1026,13 +998,20 @@ fun SwitchScheduleScreen(
                                                         bottom = 4.dp
                                                     )
                                                 )
-                                            } else {
-                                                children.forEach { childName ->
-                                                    ScheduleItem(
-                                                        scheduleName = childName,
-                                                        indent = true,
-                                                        itemModifier = Modifier
-                                                    )
+                                            }
+                                            CardExpand(visible = children.isNotEmpty()) {
+                                                // 间距要落在内层 Column 上：外层 spacedBy 只作用于
+                                                // CardExpand 整体，管不到它内部的多张子卡
+                                                Column(
+                                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                                ) {
+                                                    children.forEach { childName ->
+                                                        ScheduleItem(
+                                                            scheduleName = childName,
+                                                            indent = true,
+                                                            itemModifier = Modifier
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1502,30 +1481,13 @@ private fun ScheduleCardRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    // 当前课表不参与入场动画，与进场形变锚点对齐
-    val cardScale = remember { Animatable(if (isCurrent) 1f else 0.8f) }
-    val cardAlpha = remember { Animatable(if (isCurrent) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (!isCurrent) {
-            launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
-            launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
-        }
-    }
-    LaunchedEffect(isDeleting) {
-        if (isDeleting) {
-            launch { cardScale.animateTo(0.8f, animationSpec = tween(300)) }
-            launch { cardAlpha.animateTo(0f, animationSpec = tween(300)) }
-        }
-    }
+    // 入场/退场统一走 CardRevealSpec；当前课表不参与入场动画，与进场形变锚点对齐
+    val cardReveal = rememberCardRevealState(visible = !isDeleting, animateEnter = !isCurrent)
     Card(
         modifier = itemModifier
             .fillMaxWidth()
             .then(if (indent) Modifier.padding(start = 14.dp) else Modifier)
-            .graphicsLayer {
-                scaleX = cardScale.value
-                scaleY = cardScale.value
-                alpha = cardAlpha.value
-            }
+            .cardRevealLayer(cardReveal)
             .onGloballyPositioned { coordinates ->
                 val position =
                     coordinates.localToRoot(androidx.compose.ui.geometry.Offset.Zero)
@@ -1607,12 +1569,7 @@ private fun FolderCardRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val cardScale = remember { Animatable(0.8f) }
-    val cardAlpha = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
-        launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
-    }
+    val cardReveal = rememberCardRevealState()
     // 与展开/收回的高度动画同一条曲线同一时长，箭头和列表移动才是连贯的
     val expandRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else -90f,
@@ -1622,11 +1579,7 @@ private fun FolderCardRow(
     Card(
         modifier = itemModifier
             .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = cardScale.value
-                scaleY = cardScale.value
-                alpha = cardAlpha.value
-            },
+            .cardRevealLayer(cardReveal),
         insideMargin = PaddingValues(0.dp)
     ) {
         if (isEditMode) {

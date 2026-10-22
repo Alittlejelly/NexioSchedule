@@ -48,10 +48,10 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.isRenderEffectSupported
 
 /** 交叉淡入总时长（ms）。 */
-private const val TEXT_MOTION_MILLIS = 370
+private const val TEXT_MOTION_MILLIS = 320
 
 /** 从 0 糊到满的时长（ms）。 */
-private const val TEXT_MOTION_BLUR_ATTACK_MILLIS = 150
+private const val TEXT_MOTION_BLUR_ATTACK_MILLIS = 140
 
 /** 从半路拉回满模糊的最短时长（ms），按剩余距离折算，别让它慢悠悠地爬。 */
 private const val TEXT_MOTION_BLUR_REATTACK_MIN_MILLIS = 40
@@ -62,7 +62,7 @@ private const val TEXT_MOTION_BLUR_REATTACK_MIN_MILLIS = 40
  * 单次换字总时长 = [TEXT_MOTION_BLUR_ATTACK_MILLIS] + 本值 = **450ms**，改一边记得补另一边。
  * 连续换字靠「散焦被新值 cancel → 重新攻击」维持模糊：在 8 和 6 之间来回，而不是停住。
  */
-private const val TEXT_MOTION_BLUR_RELEASE_MILLIS = 220
+private const val TEXT_MOTION_BLUR_RELEASE_MILLIS = 180
 
 /**
  * 模糊半径上限（dp）。

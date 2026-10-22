@@ -1,12 +1,7 @@
 /** 课程提醒设置页面 - Screen */
 package com.haooz.chedule.ui.activities
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -581,11 +577,7 @@ fun CourseReminderScreen(
                                     rlog("reminder_service", "start_after_preclass")
                                 }
                             )
-                            AnimatedVisibility(
-                                visible = preClassReminder,
-                                enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                            ) {
+                            CardExpand(visible = preClassReminder) {
                                 ArrowPreference(
                                     title = "提前提醒时间",
                                     endActions = {
@@ -623,11 +615,7 @@ fun CourseReminderScreen(
                                     rlog("reminder_service", "start_after_nextday")
                                 }
                             )
-                            AnimatedVisibility(
-                                visible = nextDayReminder,
-                                enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                            ) {
+                            CardExpand(visible = nextDayReminder) {
                                 ArrowPreference(
                                     title = "提醒时间",
                                     endActions = {
@@ -660,11 +648,7 @@ fun CourseReminderScreen(
                                     reminderPrefs.edit { putBoolean(ReminderController.KEY_IN_CLASS, it) }
                                 }
                             )
-                            AnimatedVisibility(
-                                visible = masterEnabled && inClassEnabled,
-                                enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                            ) {
+                            CardExpand(visible = masterEnabled && inClassEnabled) {
                                 ArrowPreference(
                                     title = "提醒时机",
                                     endActions = {
@@ -751,11 +735,7 @@ fun CourseReminderScreen(
                                     )
                                 )
                             }
-                            AnimatedVisibility(
-                                visible = masterEnabled,
-                                enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                            ) {
+                            CardExpand(visible = masterEnabled) {
                                 OverlayDropdownMenu(
                                     title = "勿扰模式档位",
                                     entry = modeEntry,
@@ -794,11 +774,7 @@ fun CourseReminderScreen(
                                         settingsViewModel.setIslandNotification(it)
                                     }
                                 )
-                                AnimatedVisibility(
-                                    visible = islandNotification,
-                                    enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
-                                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
-                                ) {
+                                CardExpand(visible = islandNotification) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -835,14 +811,15 @@ fun CourseReminderScreen(
                                                 textAlign = TextAlign.End,
                                             )
                                         }
-                                        if (!shizukuRunning) {
+                                        CardExpand(visible = !shizukuRunning) {
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
                                                 text = "请安装并启动 Shizuku 应用",
                                                 style = MiuixTheme.textStyles.body2,
                                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                             )
-                                        } else if (!shizukuAuthorized) {
+                                        }
+                                        CardExpand(visible = shizukuRunning && !shizukuAuthorized) {
                                             Spacer(modifier = Modifier.height(12.dp))
                                             TextButton(
                                                 text = "授权 Shizuku",
@@ -1005,12 +982,13 @@ fun CourseReminderScreen(
                             ),
                         )
 
-                        if (!showSlotCard) {
-                            // 无生效的 live container：普通通知槽位卡（live_right_mode 生效的地方）
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
+                        // 同一张 Card 里用 CardExpand 切换，别用 if/else 换两张卡 ——
+                        // 换卡是「新节点替换旧节点」，高度直接跳，没有任何动画可言。
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
-                            ) {
+                        ) {
+                            CardExpand(visible = !showSlotCard) {
                                 OverlayDropdownMenu(
                                     title = "实时动态右侧",
                                     entry = DropdownEntry(items = liveRightOptions),
@@ -1019,12 +997,8 @@ fun CourseReminderScreen(
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
                             }
-                        } else {
                             // Slot customization for both HyperOS and iOS Live Activity.
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                            insideMargin = PaddingValues(0.dp)
-                            ) {
+                            CardExpand(visible = showSlotCard) {
                                 OverlayDropdownMenu(
                                     title = if (isHyperIsland) "超级岛左侧" else "灵动岛左侧",
                                     entry = DropdownEntry(items = islandLeftOptions),
@@ -1039,7 +1013,7 @@ fun CourseReminderScreen(
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
-                                if (inClassEnabled || !isHyperIsland) {
+                                CardExpand(visible = inClassEnabled || !isHyperIsland) {
                                     OverlayDropdownMenu(
                                         title = if (isHyperIsland) "课中岛右侧" else "课中灵动岛右侧",
                                         entry = DropdownEntry(items = islandInClassRightOptions),
@@ -1048,7 +1022,7 @@ fun CourseReminderScreen(
                                         dropdownColors = liquidGlassDropdownColors,
                                     )
                                 }
-                                if (isHyperIsland) {
+                                CardExpand(visible = isHyperIsland) {
                                     OverlayDropdownMenu(
                                         title = "息屏显示",
                                         summary = "全天候显示时无效",
@@ -1126,7 +1100,7 @@ fun CourseReminderScreen(
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
-                                if (classroomLabelEnabled) {
+                                CardExpand(visible = classroomLabelEnabled) {
                                     OverlayDropdownMenu(
                                         title = "精简方式",
                                         entry = DropdownEntry(items = methodOptions),
@@ -1263,7 +1237,7 @@ fun CourseReminderScreen(
                                         }
                                     }
                                 )
-                                if (reminderController.supportsPromotedNotifications) {
+                                CardExpand(visible = reminderController.supportsPromotedNotifications) {
                                     ArrowPreference(
                                         title = "实况通知权限",
                                         summary = "在状态栏和锁屏实时显示课程倒计时",

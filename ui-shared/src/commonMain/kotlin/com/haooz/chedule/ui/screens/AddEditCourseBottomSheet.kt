@@ -1,7 +1,6 @@
 /** 添加课程底部弹窗 */
 package com.haooz.chedule.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +20,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.CardReveal
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,7 +37,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
@@ -50,7 +50,6 @@ import com.haooz.chedule.ui.components.WeekRangeSelectGrid
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
-import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -73,7 +72,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.time.Duration.Companion.milliseconds
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.data.randomUuidV4
 
@@ -297,17 +295,7 @@ fun AddEditCourseBottomSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
-            // 占位定型高度后逐卡 reveal，避免外高变化闪烁
-            var revealCount by remember { mutableIntStateOf(0) }
-            LaunchedEffect(Unit) {
-                revealCount = 0
-                delay(120.milliseconds)
-                for (i in 1..4) {
-                    revealCount = i
-                    delay(56.milliseconds)
-                }
-            }
-            RevealItem(visible = revealCount >= 1) {
+            CardReveal(index = 0) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
@@ -373,7 +361,7 @@ fun AddEditCourseBottomSheet(
             }
             }
 
-            RevealItem(visible = revealCount >= 2) {
+            CardReveal(index = 1) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
@@ -458,7 +446,7 @@ fun AddEditCourseBottomSheet(
             }
             }
 
-            RevealItem(visible = revealCount >= 3) {
+            CardReveal(index = 2) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.defaultColors(
@@ -469,7 +457,7 @@ fun AddEditCourseBottomSheet(
                     contentColor = MiuixTheme.colorScheme.onSurface
                 ),
             ) {
-                if (isCustomTime) {
+                CardExpand(visible = isCustomTime) {
                     ArrowPreference(
                         title = "上课时间",
                         endActions = {
@@ -490,7 +478,8 @@ fun AddEditCourseBottomSheet(
                         },
                         holdDownState = showTimeDialog
                     )
-                } else {
+                }
+                CardExpand(visible = !isCustomTime) {
                     ArrowPreference(
                         title = "上课节次",
                         endActions = {
@@ -513,7 +502,7 @@ fun AddEditCourseBottomSheet(
             }
 
             val noDaySelected = dayOfWeek == 0
-            RevealItem(visible = revealCount >= 4) {
+            CardReveal(index = 3) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -852,33 +841,6 @@ fun AddEditCourseBottomSheet(
     }
 }
 
-/** 入场 reveal：始终占位参与布局，仅 graphicsLayer 做透明/位移/缩放；结束即撤层 */
-@Composable
-private fun RevealItem(
-    visible: Boolean,
-    content: @Composable () -> Unit,
-) {
-    val appear by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(220),
-        label = "courseSheetReveal",
-    )
-    val revealDensity = LocalDensity.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (appear < 1f) Modifier.graphicsLayer {
-                    alpha = appear
-                    translationY = (1f - appear) * revealDensity.run { 8.dp.toPx() }
-                    scaleX = 0.97f + 0.03f * appear
-                    scaleY = 0.97f + 0.03f * appear
-                } else Modifier
-            )
-    ) {
-        content()
-    }
-}
 
 /** 时间段 时:分 双滚轮选择器 */
 @Composable

@@ -1,10 +1,7 @@
 /** 时间配置编辑页面 - Screen */
 package com.haooz.chedule.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -733,11 +731,7 @@ fun TimeConfigEditScreen(
                                                     checked = quickExpanded,
                                                     onCheckedChange = { quickExpanded = it })
                                             }
-                                            AnimatedVisibility(
-                                                visible = quickExpanded,
-                                                enter = expandVertically(),
-                                                exit = shrinkVertically()
-                                            ) {
+                                            CardExpand(visible = quickExpanded) {
                                                 Column(modifier = Modifier.fillMaxWidth()) {
                                                     ArrowPreference(
                                                         title = "每节课时长",
@@ -797,11 +791,7 @@ fun TimeConfigEditScreen(
                                                                 longBreakEnabled = it
                                                             })
                                                     }
-                                                    AnimatedVisibility(
-                                                        visible = longBreakEnabled,
-                                                        enter = expandVertically(),
-                                                        exit = shrinkVertically()
-                                                    ) {
+                                                    CardExpand(visible = longBreakEnabled) {
                                                         Column {
                                                             ArrowPreference(
                                                                 title = "上午大课间休息",
@@ -1122,7 +1112,7 @@ fun TimeConfigEditScreen(
                                         insideMargin = PaddingValues(0.dp)
                                     ) {
                                         Column(modifier = Modifier.fillMaxWidth()) {
-                                            if (specialBlocks.isEmpty()) {
+                                            CardExpand(visible = specialBlocks.isEmpty()) {
                                                 ArrowPreference(
                                                     title = "暂无特殊课程",
                                                     summary = "点击添加早读、眼保健操等无编号时段",
@@ -1133,7 +1123,8 @@ fun TimeConfigEditScreen(
                                                         showSpecialDialog = true
                                                     }
                                                 )
-                                            } else {
+                                            }
+                                            CardExpand(visible = specialBlocks.isNotEmpty()) {
                                                 // 始终按开始时间排序展示
                                                 sortSpecialBlocksByTime(specialBlocks).forEachIndexed { index, block ->
                                                     ArrowPreference(

@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.activities
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NoopUpdateController
 import com.haooz.chedule.data.UpdateController
@@ -264,7 +265,7 @@ fun UpdateSettingsScreen(
                                 )
                             }
 
-                            if (hasUpdate && latestRelease != null) {
+                            CardExpand(visible = hasUpdate && latestRelease != null) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -276,10 +277,10 @@ fun UpdateSettingsScreen(
                                         fontSize = 14.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                     )
-                                    if (latestRelease!!.body.isNotBlank()) {
+                                    CardExpand(visible = latestRelease?.body?.isNotBlank() == true) {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = latestRelease!!.body.take(200),
+                                            text = latestRelease?.body?.take(200).orEmpty(),
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )

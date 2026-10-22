@@ -1,11 +1,8 @@
 /** 更新日志页 - Screen */
 package com.haooz.chedule.ui.activities
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -163,11 +161,7 @@ fun ChangelogScreen(
                                             tint = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                     }
-                                    AnimatedVisibility(
-                                        visible = expandedStates[index],
-                                        enter = expandVertically(),
-                                        exit = shrinkVertically()
-                                    ) {
+                                    CardExpand(visible = expandedStates[index]) {
                                         Column(
                                             modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp)
                                         ) {

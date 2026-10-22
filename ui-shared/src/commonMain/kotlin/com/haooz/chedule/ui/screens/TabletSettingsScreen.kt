@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -492,7 +493,7 @@ fun TabletSettingsScreen(
                                                 )
                                             }
                                         // 排班模式入口：并入「特色功能」分类，非排班模式时显示
-                                        if (group == TabletSettingsDest.Reminder.group && !isShiftMode) {
+                                        CardExpand(visible = group == TabletSettingsDest.Reminder.group && !isShiftMode) {
                                             ArrowPreference(
                                                 title = "排班模式",
                                                 summary = "同时对比多个课表的排班情况",
@@ -1197,7 +1198,7 @@ private fun TabletSemesterPane(
                         checked = smartWeekend,
                         onCheckedChange = { settingsViewModel.setSmartWeekend(it) }
                     )
-                    if (!isShiftMode) {
+                    CardExpand(visible = !isShiftMode) {
                         SwitchPreference(
                             title = "显示非本周课程",
                             checked = showNonCurrentWeek,

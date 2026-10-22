@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -301,7 +302,7 @@ fun PreferenceSettingsScreen(
                                 liquidGlassBackdrop = liquidGlassBackdrop,
                                 dropdownColors = liquidGlassDropdownColors,
                             )
-                            if (islandNotification) {
+                            CardExpand(visible = islandNotification) {
                                 SwitchPreference(
                                     title = "小米超级岛光效",
                                     summary = "在小米超级岛展开态显示流动光效",

@@ -1,10 +1,7 @@
 package com.haooz.chedule.ui.activities
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +30,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -579,11 +577,7 @@ fun AboutScreen(
                                                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions
                                             )
                                         }
-                                        AnimatedVisibility(
-                                            visible = expandedStates[index].value,
-                                            enter = expandVertically(),
-                                            exit = shrinkVertically()
-                                        ) {
+                                        CardExpand(visible = expandedStates[index].value) {
                                             Column(
                                                 modifier = Modifier.padding(
                                                     start = 18.dp,
@@ -702,11 +696,7 @@ fun AboutScreen(
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    AnimatedVisibility(
-                                        visible = expanded,
-                                        enter = expandVertically(),
-                                        exit = shrinkVertically()
-                                    ) {
+                                    CardExpand(visible = expanded) {
                                         Column {
                                             Spacer(modifier = Modifier.height(16.dp))
                                             Row(

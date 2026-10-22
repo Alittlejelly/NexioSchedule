@@ -1,7 +1,6 @@
 /** 本地备份页面 - Screen（文件 I/O 走 BackupFileController） */
 package com.haooz.chedule.ui.activities
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.haooz.chedule.ui.components.cardRevealLayer
+import com.haooz.chedule.ui.components.rememberCardRevealState
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -454,27 +455,12 @@ fun LocalBackupScreen(
             }
             itemsIndexed(backupHistory, key = { _, item -> item.fileName }) { _, info ->
                 val isDeleting = deletingFileName == info.fileName
-                val cardScale = remember { Animatable(0.8f) }
-                val cardAlpha = remember { Animatable(0f) }
-                LaunchedEffect(Unit) {
-                    launch { cardScale.animateTo(1f, animationSpec = tween(400)) }
-                    launch { cardAlpha.animateTo(1f, animationSpec = tween(400)) }
-                }
-                LaunchedEffect(isDeleting) {
-                    if (isDeleting) {
-                        launch { cardScale.animateTo(0.8f, animationSpec = tween(300)) }
-                        launch { cardAlpha.animateTo(0f, animationSpec = tween(300)) }
-                    }
-                }
+                val cardReveal = rememberCardRevealState(visible = !isDeleting)
                 Card(
                     modifier = Modifier.fillMaxWidth()
                         .padding(bottom = 12.dp)
                         .animateItem()
-                        .graphicsLayer {
-                            scaleX = cardScale.value
-                            scaleY = cardScale.value
-                            alpha = cardAlpha.value
-                        },
+                        .cardRevealLayer(cardReveal),
                     insideMargin = PaddingValues(0.dp)
                 ) {
                         Column(

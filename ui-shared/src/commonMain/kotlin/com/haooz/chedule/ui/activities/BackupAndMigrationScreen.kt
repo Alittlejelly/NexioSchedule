@@ -29,6 +29,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
@@ -402,7 +403,7 @@ fun BackupAndMigrationScreen(
                         insideMargin = PaddingValues(0.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            if (scheduleNames.isNotEmpty()) {
+                            CardExpand(visible = scheduleNames.isNotEmpty()) {
                                 OverlayDropdownMenu(
                                     title = "选择课表",
                                     entries = listOf(
@@ -420,7 +421,8 @@ fun BackupAndMigrationScreen(
                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                     dropdownColors = liquidGlassDropdownColors,
                                 )
-                            } else {
+                            }
+                            CardExpand(visible = scheduleNames.isEmpty()) {
                                 Text(
                                     text = "暂无课表，请先创建或导入后再导出",
                                     modifier = Modifier.padding(16.dp),
