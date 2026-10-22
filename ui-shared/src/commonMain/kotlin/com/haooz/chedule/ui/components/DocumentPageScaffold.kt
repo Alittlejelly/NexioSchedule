@@ -18,6 +18,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -36,27 +37,7 @@ import top.yukonga.miuix.kmp.utils.OverScrollState
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 /**
- * 「全屏文档页」的统一脚手架：折叠大标题顶栏 + 玻璃返回按钮 + 内容采样层。
- *
- * ## 为什么抽这个
- *
- * 原来十几个 Activity 壳的 `setContent` **逐字相同**，只差标题、Screen 函数、
- * 以及个别页面的额外元素（顶栏右侧按钮 / 底部悬浮按钮 / 弹窗）。抽出来之后，
- * 路由侧每页只剩「标题 + 内容」两个变量。
- *
- * ## 玻璃采样的层级（改之前先看这段）
- *
- * `backdrop` 是**内容层**的采样源，只包 [content]；顶栏的玻璃按钮必须放在**层外**，
- * 否则会自己采样自己形成循环。底部按钮/弹窗同理走 [overlay]（也在层外）。
- *
- * @param title 顶栏标题（折叠前的大标题同字）
- * @param onBack 返回回调。路由化之后传 `router::popBack`
- * @param endAction 顶栏右侧按钮（如节假日页的「从网络更新」、WebDAV 页的「测试连接」）。
- *   签名与 `CollapsibleTopAppBar.endAction` 一致
- * @param overlay 叠加在采样层**之外**的内容（底部玻璃按钮、弹窗等）。
- *   必须放层外 —— 玻璃控件被采样层包住会自己采自己
- * @param content 内容区。**必须把 [SharedScrollBehavior] 透给 Screen**，否则折叠标题不联动；
- *   需要玻璃采样的 Screen 也拿得到 `liquidGlassBackdrop`
+ * 「全屏文档页」的统一脚手架：折叠大标题顶栏 + 玻璃返回按钮 + 内容采样层
  */
 @Composable
 fun DocumentPageScaffold(
@@ -103,6 +84,7 @@ fun DocumentPageScaffold(
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
                     topInsetAdjustment = nativeBarInset,
+                    noTopStatusBar = hostVerticalBarEdge(),
                 ) {
                     CollapsibleTopAppBar(
                         title = title,

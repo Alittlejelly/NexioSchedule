@@ -51,18 +51,23 @@ private final class NativeSessionController: UIViewController {
     private let rootController: AppHostController
     private let documentNavigation: NativeDocumentNavigationController
     private let floatingContainer = FloatingOverlayPassthroughView()
-    /// 全屏背景模糊层：详情页之下、其余一切之上
+    /// 全屏背景模糊层：详情页之下、其余一切之上。
+    /// iOS 没有可设的模糊半径，只能让材质从 nil 渐变到满、强度逐帧写 `fractionComplete`。
+    /// ⚠ 起始 effect 必须是 nil，animator 的动画才是「无 → 有」。
     private let detailBackdropBlur: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        let view = UIVisualEffectView(effect: nil)
         view.isUserInteractionEnabled = false
         view.isHidden = true
-        view.alpha = 0
         return view
     }()
     /// 详情页容器：唯一盖在 `detailBackdropBlur` 之上的 Compose 容器
     private let detailContainer = FloatingOverlayPassthroughView()
-    private var detailBlurDp: CGFloat = 0
-    private var detailBlurProgress: CGFloat = 0
+    /// Compose 推来的目标强度（0…1）
+    private var detailBlurTarget: CGFloat = 0
+    /// 已写入 animator 的强度（-1 = 还没写过）
+    private var detailBlurApplied: CGFloat = -1
+    /// 强度插值器；须在视图进 window 后创建
+    private var detailBlurAnimator: UIViewPropertyAnimator?
 
     init(host: IosAppHost) {
         self.host = host
@@ -90,9 +95,9 @@ private final class NativeSessionController: UIViewController {
         detailContainer.backgroundColor = .clear
         pin(detailContainer, to: view)
         embed(host.abovePopupsController, in: detailContainer)
-        // Compose 绘制阶段直推模糊半径，与主内容同帧
-        host.onDetailChromeBlur = { [weak self] blurDp in
-            self?.applyDetailBlur(blurDp)
+        // Compose 绘制阶段直推模糊强度（0…1），与主内容同帧
+        host.onDetailBackdropBlurProgress = { [weak self] progress in
+            self?.applyDetailBlurProgress(progress)
         }
         host.onStateChanged = { [weak self] in
             if Thread.isMainThread {
@@ -133,26 +138,39 @@ private final class NativeSessionController: UIViewController {
         refreshDetailBlur()
     }
 
-    /// Compose 侧 morph 的目标半径（`managePageBlurRadius` = 16f），用于把半径换算成 0…1 强度
-    private let detailBlurReferenceDp: CGFloat = 16
-
-    /// Compose 侧每帧推来的模糊半径（dp）；0 = 动画结束，隐藏模糊层。
-    /// `UIVisualEffectView` 只糊它身后的内容，所以这层压在「除详情页外的一切」之上。
-    /// 只由页面级模糊驱动；课程长按菜单在弹窗层内，不进来。
-    private func applyDetailBlur(_ blurDp: KotlinDouble) {
-        detailBlurDp = CGFloat(blurDp.doubleValue)
+    /// Compose 每帧推来的强度（0…1，dp→强度已在 Kotlin 侧归一化）；0 = 结束、隐藏本层。
+    /// 只驱动页面级模糊，长按菜单在弹窗层内，不走这里。
+    private func applyDetailBlurProgress(_ progress: KotlinDouble) {
+        detailBlurTarget = CGFloat(progress.doubleValue)
         refreshDetailBlur()
     }
 
     /// 压着上层原生文档页时整块不能糊：那一页不属于背景
     private func refreshDetailBlur() {
-        let target = host.nativePageActive
-            ? 0
-            : max(0, min(1, detailBlurDp / detailBlurReferenceDp))
-        guard abs(target - detailBlurProgress) > 0.001 else { return }
-        detailBlurProgress = target
-        detailBackdropBlur.alpha = target
+        guard isViewLoaded else { return }
+        let target = host.nativePageActive ? 0 : max(0, min(1, detailBlurTarget))
+        guard let animator = detailBlurAnimatorIfReady() else { return }
+        guard abs(target - detailBlurApplied) > 0.001 else { return }
+        detailBlurApplied = target
+        // 0/1 端点会让 animator 判为「已结束」，之后写进度失效 → 夹住，端点交给 isHidden
+        animator.fractionComplete = min(max(target, 0.001), 0.999)
         detailBackdropBlur.isHidden = target <= 0.001
+    }
+
+    /// animator 的闭包会改 `effect`，须等视图进 window 再建；新建时是 inactive，
+    /// 要先 `startAnimation()` 再 `pauseAnimation()` 把强度停在 0。
+    /// `curve` 不参与输出（只赋 `fractionComplete`），别在这里再套缓动 → 双重缓动。
+    private func detailBlurAnimatorIfReady() -> UIViewPropertyAnimator? {
+        if let animator = detailBlurAnimator { return animator }
+        guard view.window != nil else { return nil }
+        let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
+            self?.detailBackdropBlur.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+        }
+        animator.pausesOnCompletion = true
+        animator.startAnimation()
+        animator.pauseAnimation()
+        detailBlurAnimator = animator
+        return animator
     }
 
     private func embed(_ controller: UIViewController, in container: UIView) {
@@ -277,6 +295,11 @@ private final class AppHostController: UIViewController {
         }
         chromeController.onTransitionDirectionChange = { [weak self] vertical in
             self?.host.updateTabTransitionDirection(vertical: vertical)
+        }
+        // 屏幕形态：折叠屏折叠态（tab bar 竖排、状态栏跑到右侧、顶部没有状态栏）
+        // 顶栏糊带与星期行据此换一套几何
+        chromeController.onVerticalBarEdgeChange = { [weak self] vertical in
+            self?.host.updateVerticalBarEdge(active: vertical)
         }
         chromeController.updateTransitionDirection()
         // Compose 绘制阶段直推的位移：同步落到 UIKit，与内容同帧（详见 applyPushedChromeOffset）
@@ -544,18 +567,29 @@ private final class AppHostController: UIViewController {
         if target.transform != transform { target.transform = transform }
     }
 
-    /// 开洞（课表外观）时把原生 chrome（底栏容器 + 导航栏）跟着主内容一起移动缩小。
+    /// 开洞（课表外观）时把原生 chrome（tab bar + 导航栏）跟着主内容一起移动缩小。
     /// 两者都不在 Compose 的缩放层里，得自己施加同一套变换（scale + 洞心原点）。
+    ///
+    /// ⚠ 不能直接缩 `chromeContainer`：容器带非单位 transform 后 UIKit 会重新解析
+    /// `verticalBarEdge`，折叠屏 iPhone 的侧边竖排 tab bar 会从 (397,0,69,678) 掉回底部
+    /// (0,595,466,83)。所以只能逐个缩「真正的 chrome 视图」，且每个都必须单独确认，见下。
     private func updateCutoutTransform() {
         let screenW = view.bounds.width
         let screenH = view.bounds.height
         guard screenW > 0, screenH > 0 else { return }
         let raw = CGFloat(min(1, max(0.65, host.cutoutScale)))
         let scale = raw < 0.999 ? raw : 1
-        let pivot = CGPoint(x: screenW * 0.5, y: screenH * CGFloat(host.cutoutCenterYRatio))
+        let pivot = CGPoint(
+            x: screenW * CGFloat(host.cutoutCenterXRatio),
+            y: screenH * CGFloat(host.cutoutCenterYRatio)
+        )
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
-        applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: chromeContainer, pivot: pivot)
+        // 竖排 tab bar 本体。`chromeController.view` 子树里若有 SwiftUI 托管的
+        // `FloatingBarHostingView`（其他 iOS 版本/布局下图标在那里）优先缩它，否则缩 `UITabBar`。
+        let barHost = findView(chromeController.view, className: "FloatingBarHostingView")
+            ?? chromeController.tabBar
+        applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: barHost, pivot: pivot)
         if let bar = navigationController?.navigationBar {
             applyCutoutScale(
                 scale,
@@ -564,10 +598,34 @@ private final class AppHostController: UIViewController {
                 pivot: pivot
             )
         }
+        // 折叠屏竖排模式：顶栏的「更多 / 切换课表」不在 `UINavigationBar`（它高度为 0），
+        // 而被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` →
+        // `FloatingBarHostingView<FloatingBarContainer>`（与 chromeController.view 是兄弟）。
+        //
+        // ⚠ 这一层缩不动：只要祖先带缩放，它就按 1/scale 反向撑大自己的 bounds
+        // （实测 scale 0.75 → bounds 621×904），内容视觉尺寸恒不变，只会错位（偏上）。
+        // UIView.transform / layer.transform / anchorPoint / sublayerTransform / 逐个缩子视图
+        // 全都试过，结果不是偏上就是图标与玻璃分离。开洞期间直接淡出：
+        // 这一页的头部本来就由 Compose 的「取消 / 应用」承担。
+        if let navView = navigationController?.view,
+           let floatingBar = findView(navView, className: "_UIFloatingBarContainerView"),
+           let host = findView(floatingBar, className: "FloatingBarHostingView") {
+            let fade = max(0, min(1, (scale - 0.72) / 0.28))
+            if abs(host.alpha - fade) > 0.01 { host.alpha = fade }
+        }
     }
 
     /// 外观页弹窗让位时主内容的纵向位移（pt，负值=上移；0 = 当前无位移）
     private var cachedChromeOffsetY: CGFloat = 0
+
+    private func findView(_ root: UIView, className: String, _ depth: Int = 0) -> UIView? {
+        if depth > 6 { return nil }
+        if String(describing: type(of: root)).hasPrefix(className) { return root }
+        for sub in root.subviews {
+            if let hit = findView(sub, className: className, depth + 1) { return hit }
+        }
+        return nil
+    }
 
     private func applyPushedChromeOffset(_ offsetY: KotlinDouble) {
         cachedChromeOffsetY = CGFloat(offsetY.doubleValue)
@@ -697,6 +755,8 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
     var onUserSelection: ((Int) -> Void)?
     var onLayout: (() -> Void)?
     var onTransitionDirectionChange: ((Bool) -> Void)?
+    /// tab bar 是否竖排到屏幕一侧 = 折叠屏 iPhone 折叠态（状态栏跑到右侧、顶部没有状态栏）
+    var onVerticalBarEdgeChange: ((Bool) -> Void)?
     private var configuredShiftMode: Bool?
     private var configuredTabCount = 0
 
@@ -713,19 +773,23 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
         }
     }
 
+    /// `verticalBarEdge`（leading/trailing）= 折叠屏 iPhone 折叠态：tab bar 竖排到侧边，
+    /// 状态栏跟着移到右侧、屏幕顶部没有状态栏。形态只认这个 trait ——
+    /// 高度算出来是 0 分不出「顶部没有」和「被导航栏吃光」。
     func updateTransitionDirection() {
-        guard #available(iOS 27.1, *) else {
-            onTransitionDirectionChange?(false)
-            return
+        let vertical: Bool
+        if #available(iOS 27.1, *) {
+            switch traitCollection.verticalBarEdge {
+            case .leading, .trailing: vertical = true
+            case .unspecified: vertical = false
+            @unknown default: vertical = false
+            }
+        } else {
+            vertical = false
         }
-        switch traitCollection.verticalBarEdge {
-        case .leading, .trailing:
-            onTransitionDirectionChange?(true)
-        case .unspecified:
-            onTransitionDirectionChange?(false)
-        @unknown default:
-            onTransitionDirectionChange?(false)
-        }
+        onTransitionDirectionChange?(vertical)
+        // 排除 iPad：它把 tab bar 挪到侧边时同样报 verticalBarEdge，但顶部一直有状态栏
+        onVerticalBarEdgeChange?(vertical && traitCollection.userInterfaceIdiom == .phone)
     }
 
     func configure(tabCount: Int, shiftMode: Bool, selectedIndex: Int) {

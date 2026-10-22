@@ -41,7 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
 import com.haooz.chedule.ui.utils.NativeDocumentLeadingActionEffect
@@ -523,6 +524,7 @@ fun SwitchScheduleScreen(
                 ProgressiveBlurTopBar(
                     backdrop = liquidGlassBackdrop,
                     topInsetAdjustment = nativeBarInset,
+                    noTopStatusBar = hostVerticalBarEdge(),
                 ) {
                     CollapsibleTopAppBar(
                         title = displayTitle,
@@ -691,14 +693,14 @@ fun SwitchScheduleScreen(
                                     effects = {
                                         vibrancy()
                                         blur(4f.dp.toPx())
-                                        lens(10f.dp.toPx(), 32f.dp.toPx())
+                                        lens(6f.dp.toPx(), 36f.dp.toPx())
                                     },
                                     highlight = null,
                                     onDrawSurface = { drawRect(containerColor) }
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = containerColor),
                                 )
                                 // 高光画在材质之上、条目之下（条目在 drawContent 里更靠内），
                                 // 且被 drawBackdrop 的 clipPath 裁进胶囊外形

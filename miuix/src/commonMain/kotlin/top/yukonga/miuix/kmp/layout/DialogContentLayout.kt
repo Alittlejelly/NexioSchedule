@@ -11,14 +11,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
@@ -60,9 +61,12 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
+import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.DecelerateEasing
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -75,8 +79,6 @@ import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import top.yukonga.miuix.kmp.utils.LocalPredictiveBackEnabled
 import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.utils.getRoundedCorner
-import top.yukonga.miuix.kmp.utils.Platform
-import top.yukonga.miuix.kmp.utils.platform
 import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
@@ -250,7 +252,7 @@ internal fun DialogContentLayout(
                 modifier = Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        drawRect(baseColor.copy(alpha = baseColor.alpha * dimAlpha.floatValue * dimProgress.value))
+                        drawRect(baseColor.copy(alpha = baseColor.alpha * dimAlpha.floatValue * dimProgress.value * 0.6f))
                     },
             )
         }
@@ -329,24 +331,28 @@ internal fun DialogContent(
     val currentOnDismiss by rememberUpdatedState(onDismissRequest)
 
     val safeDrawingInsets = WindowInsets.safeDrawing
+    // 底部 inset 不在这里吃：贴底弹窗的底部间距统一交给下面的 bottomOutsideMargin 算，
+    // 否则导航栏高度会被 windowInsetsPadding 和它各加一次。
     val dialogInsets = if (topInset != null) {
-        safeDrawingInsets.union(WindowInsets(top = topInset))
+        safeDrawingInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            .union(WindowInsets(top = topInset))
     } else {
-        safeDrawingInsets
+        safeDrawingInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
     }
 
-    // Predictive-back translation pad (small-screen only). Pre-converted to px so the per-frame
-    // graphicsLayer block does not call asPaddingValues() / toPx() each invalidation.
-    val bottomPadding = if (isLargeScreen) {
-        0.dp
+    // 贴底弹窗的底部间距，与底部浮动导航栏同一套算法
+    val bottomOutsideMargin = if (isLargeScreen) {
+        outsideMargin.height
     } else {
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
-            WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
+        maxOf(
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 2.dp,
+            22.dp,
+        )
     }
-    // iOS：贴底弹窗距屏幕底**只留安全区**
-    val bottomOutsideMargin = if (platform() == Platform.IOS && !isLargeScreen) 0.dp else outsideMargin.height
-    val extraBottomPaddingPx = remember(density, bottomPadding, bottomOutsideMargin, isLargeScreen) {
-        if (isLargeScreen) 0f else with(density) { (bottomPadding + bottomOutsideMargin).toPx() }
+    // 预测返回时把弹窗推出屏幕的额外位移 = 它到屏幕底的距离（dialogInsets 已不吃底部）。
+    // 预转成 px，避免 graphicsLayer block 每帧调 toPx()。
+    val extraBottomPaddingPx = remember(density, bottomOutsideMargin, isLargeScreen) {
+        if (isLargeScreen) 0f else with(density) { bottomOutsideMargin.toPx() }
     }
 
     val contentModifier = modifier
@@ -376,15 +382,19 @@ internal fun DialogContent(
         }
         .clip(ContinuousRoundedRectangle(bottomCornerRadius))
         .then(
-            // 液态玻璃：实时折射 + 24dp 模糊。原判断是 Build.VERSION.SDK_INT >= 33，
+            // 液态玻璃：实时折射 + 档位模糊（通透玻璃档更薄）。原判断是 Build.VERSION.SDK_INT >= 33，
             // 改用 backdrop 的能力探测 isRenderEffectSupported()（跨平台，含 skiko）。
             if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
+                val dialogBlur = LocalGlassDialogBlurDp.current
+                val chromeLens = LocalChromeLensEnabled.current
                 Modifier.drawBackdrop(
                     backdrop = liquidGlassBackdrop,
                     shape = { ContinuousRoundedRectangle(bottomCornerRadius) },
                     effects = {
                         vibrancy()
-                        blur(24.dp.toPx())
+                        blur(dialogBlur.dp.toPx())
+                        // 折射：参数与下拉面板展开态同档（面板类玻璃）
+                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
                     },
                     highlight = null,
                 )
@@ -397,7 +407,7 @@ internal fun DialogContent(
         .background(
             color = if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
                 // 玻璃层之上再压一层半透明底色，保证文字对比度；深色下压得更暗
-                backgroundColor.copy(alpha = if (isDark) 0.87f else 0.82f)
+                backgroundColor.copy(alpha = if (isDark) 0.87f else 0.78f)
             } else {
                 backgroundColor
             },

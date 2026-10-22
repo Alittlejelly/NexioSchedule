@@ -100,7 +100,7 @@ sealed interface AppRoute {
         override val id: String get() = "webdav_settings"
     }
 
-    /** 课表节数与时间（「课表节数与时间」）。 */
+    /** 课程时间管理（「课程时间管理」）。 */
     data object CourseTimeSettings : AppRoute {
         override val id: String get() = "course_time_settings"
     }

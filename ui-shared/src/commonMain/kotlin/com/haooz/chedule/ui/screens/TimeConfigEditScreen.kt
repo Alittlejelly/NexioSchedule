@@ -2,9 +2,7 @@
 package com.haooz.chedule.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
@@ -31,26 +29,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Shape
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.TransitionLayerImage
 import androidx.compose.ui.graphics.TransformOrigin
@@ -65,11 +57,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
@@ -79,22 +70,13 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.components.SpecialItemsEditorSection
-import com.haooz.chedule.ui.components.describeSpecialDays
-import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeFifthpowerOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeQuadraticOutEasing
-import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
-import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import com.haooz.chedule.ui.activities.classschedule.SpecialItemsEditorSection
+import com.haooz.chedule.ui.activities.classschedule.describeSpecialDays
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
-import com.haooz.chedule.ui.utils.toShape
 import com.kyant.capsule.ContinuousRoundedRectangle
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -118,59 +100,11 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
-
-// ===================== Morph Animation Foundation =====================
-
-private data class ConfigAnimState(
-    val bgAlpha: Float,
-    val snapshotAlpha: Float,
-    val contentAlpha: Float,
-    val translationX: Float,
-    val translationY: Float,
-    val scale: Float,
-    val clipBottom: Float,
-    val progress: Float,
-    val gesture: Float
-)
-
-/**
- * 裁切形状。宽度取当次回调的 size，别在构造时捕获外部宽度：clipShape 是 remember 单例，
- * 折叠屏展开 / 分屏 / 横竖切换时宽度会变，捕获旧宽度会让裁切停在旧值（平板右侧被裁掉）。
- */
-private class ConfigAnimClipShape(
-    private val screenCornerRadiusPx: ScreenCornerRadiiPx,
-    private val startCornerRadiusPx: Float,
-    private val animState: State<ConfigAnimState>
-) : Shape {
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density
-    ): Outline {
-        val s = animState.value
-        // 预测性返回：裁切圆角固定为屏幕圆角（不除以 scale，随页面缩放一起缩放）；
-        // 其余按 morph 进度插值
-        val radiusPx = when {
-            s.gesture > 0f -> screenCornerRadiusPx
-            s.progress >= 1f -> ScreenCornerRadiiPx.Zero
-            s.progress <= 0.7f -> screenCornerRadiusPx.interpolateFrom(startCornerRadiusPx, s.progress / 0.7f)
-            else -> screenCornerRadiusPx
-        }
-        // 补偿在"预测返回不补偿（×1）"与"正常 morph 除以 scale"之间按 gesture 平滑插值，
-        // 避免松手瞬间圆角跳变大
-        val compensate = (1f - s.gesture) / s.scale + s.gesture
-        return radiusPx.scaled(compensate).toShape(density).createOutline(
-            Size(size.width, s.clipBottom),
-            layoutDirection,
-            density
-        )
-    }
-}
+import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 
 private fun parseTimeRange(timeStr: String): Pair<Pair<Int, Int>, Pair<Int, Int>> {
     return try {
@@ -362,221 +296,25 @@ fun TimeConfigEditScreen(
 
     // ===================== Morph Animation =====================
     val density = LocalDensity.current
-    val animProgress = remember { Animatable(0f) }
-    val animTransY = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    val startCornerRadiusPx = cardStartCornerRadius * density.density
-    val morphOpenEase = OobeQuartOutEasing
-    val morphExitEase = OobeCubicOutEasing
-    val isUpperHalf = cardTop < screenHeight / 2f
-    val transOpenEase = OobeFifthpowerOutEasing
-    val transExitEase = OobeQuadraticOutEasing
-    val transOpenMillis = if (isUpperHalf) 500 else 500
-    val transExitMillis = if (isUpperHalf) 320 else 320
-    val hasCardBounds = cardWidth > 0f && cardHeight > 0f && screenWidth > 0f
-
-    var animating by remember { mutableStateOf(false) }
-
-    // 预测性返回：手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，可退到 -1 即 200% 行程），
-    // 期间围绕屏幕中心缩放、位移/裁切保持全屏不动。⚠️ handler 与进度读取须绑定同一份状态，拆开会导致跟手动画失效且编译无报错。
-    val navigationBackState = rememberNavigationBack()
-    // 手势进度（0..1）：>0 表示预测性返回进行中，用于切换"中心缩放"
-    val gestureBackProgress = remember { Animatable(0f) }
-    val scaleProgress = remember { Animatable(0f) }
-    // 手势是否正在推进：进行中裁切完全跟随页面缩放，松手/取消后进入平滑过渡
-    var isGestureActive by remember { mutableStateOf(false) }
-
-    navigationBackState.handler(
-        enabled = true,
-        onBackCancelled = {
-            isGestureActive = false
-            scope.launch {
-                if (gestureBackProgress.value > 0f) {
-                    // 手势取消：缩放回弹恢复全屏
-                    gestureBackProgress.animateTo(0f, animationSpec = tween(180))
-                    scaleProgress.animateTo(1f, animationSpec = tween(180))
-                }
-            }
-        },
-        onBackCompleted = {
-            when {
-                animating -> Unit
-                showTimeDialog || showQuickItemDialog -> {
-                    // 对话框打开时：手势回弹恢复页面，不关闭
-                    isGestureActive = false
-                    scope.launch {
-                        coroutineScope {
-                            launch { gestureBackProgress.animateTo(0f, animationSpec = tween(180)) }
-                            launch { scaleProgress.animateTo(1f, animationSpec = tween(180)) }
-                        }
-                    }
-                }
-                !hasCardBounds -> {
-                    onBackStart()
-                    onBack()
-                }
-                else -> {
-                    isGestureActive = false
-                    keyboardController?.hide()
-                    focusManager.clearFocus()
-                    animating = true
-                    onBackStart()
-                    scope.launch {
-                        coroutineScope {
-                            // 缩放中心从屏幕中心平滑过渡回左上角锚点（140ms），morph 位移随之接管
-                            launch { gestureBackProgress.animateTo(0f, animationSpec = tween(140)) }
-                            launch {
-                                scaleProgress.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(durationMillis = 320, easing = morphExitEase)
-                                )
-                            }
-                            launch {
-                                animProgress.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(durationMillis = 320, easing = morphExitEase)
-                                )
-                            }
-                            launch {
-                                animTransY.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(
-                                        durationMillis = transExitMillis,
-                                        easing = transExitEase
-                                    )
-                                )
-                            }
-                        }
-                        onBack()
-                    }
-                }
-            }
-        },
+    val morph = rememberMorphTransition(
+        cardLeft = cardLeft,
+        cardTop = cardTop,
+        cardWidth = cardWidth,
+        cardHeight = cardHeight,
+        screenWidth = screenWidth,
+        screenHeight = screenHeight,
+        screenCornerRadius = screenCornerRadius,
+        startCornerRadiusDp = cardStartCornerRadius,
+        onBackStart = onBackStart,
+        onBack = onBack,
+        // 对话框开着时返回只回弹页面，不关页
+        interceptBack = { showTimeDialog || showQuickItemDialog },
     )
-
-    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；缩放跟随行程为
-    // "卡片→全屏"全程的 200%（滑到底 scaleProgress=-1），松手后由 onBackCompleted 按关闭动画回卡片。
-    LaunchedEffect(Unit) {
-        // backProgress() 已内含「转场进行中且方向为后退」判定，非手势期间为 null —— 保持静止。
-        snapshotFlow { navigationBackState.backProgress() }
-            .collect { progress ->
-                if (progress != null) {
-                    // 关闭动画进行中或无卡片边界时不驱动页面变形
-                    if (!animating && hasCardBounds) {
-                        // 预测性返回动画开关：关闭时不驱动跟随动画（返回仍被拦截，直接关闭）
-                        if (PredictiveBackSettings.enabled) {
-                            isGestureActive = true
-                            gestureBackProgress.snapTo(progress)
-                            // 添加时间配置（右下角加号进入）退出时行程 20%，编辑模式为 200%
-                            scaleProgress.snapTo(1f - progress * if (isFabCreation) 0.2f else 2f)
-                        }
-                    }
-                }
-            }
-    }
-
-    LaunchedEffect(Unit) {
-        if (hasCardBounds) {
-            // A native cancel/save can arrive before the opening starts.
-            if (animating) return@LaunchedEffect
-            launch {
-                scaleProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 540, easing = morphOpenEase)
-                )
-            }
-            launch {
-                animProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 540, easing = morphOpenEase)
-                )
-            }
-            launch {
-                animTransY.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = transOpenMillis, easing = transOpenEase)
-                )
-            }
-        }
-    }
-
-    val animState = remember {
-        derivedStateOf {
-            if (!hasCardBounds) {
-                ConfigAnimState(0f, 0f, 1f, 0f, 0f, 1f, screenHeight, 1f, 0f)
-            } else {
-                val p = animProgress.value
-                val ty = animTransY.value
-                val bgAlpha = (p * 0.5f).coerceIn(0f, 0.5f)
-                val snapAlpha = (1f - p * 3f).coerceIn(0f, 1f)
-                val contAlpha = ((p - 0.1f) / 0.5f).coerceIn(0f, 1f)
-                // 预测性返回手势只驱动缩放位置 scaleProgress（1=全屏，0=卡片，手势可退到 -1 即 200% 行程），
-                // 位移与裁切保持全屏（p 不变）不随手势变化；coerceAtLeast 防止窄卡片时 scale 变负翻转
-                val scale = (cardWidth / screenWidth + (1f - cardWidth / screenWidth) * scaleProgress.value).coerceAtLeast(0.05f)
-
-                // 预测返回期间围绕屏幕中心缩放（gesture=1 时 translation=0），
-                // 松手后 gesture 平滑归 0，translation 平滑过渡回正常 morph（卡片中心位移）
-                val gesture = gestureBackProgress.value
-                val normalX = (cardLeft + cardWidth / 2f - screenWidth / 2f) * (1f - p)
-                val translationX = normalX * (1f - gesture)
-
-                // ★ 可见区域中心 Y 直接沿抛物线插值，不再依赖 p 和 ty 的时间差
-                val cardCenterY = cardTop + cardHeight / 2f
-                val screenCenterY = screenHeight / 2f
-                val targetCenterY = cardCenterY + (screenCenterY - cardCenterY) * ty
-                val normalY = targetCenterY - screenHeight / 2f * (1f - scale) - (cardHeight + (screenHeight - cardHeight) * p) / 2f
-                val translationY = normalY * (1f - gesture)
-
-                // 手势推进期间裁切跟随"当前展开高度×缩放"（打开未完成时也连续，底部不瞬间归位）；
-                // 松手/取消过渡期按 gesture 平滑插值衔接 morph 的底部收缩动画
-                val morphClip = cardHeight + (screenHeight - cardHeight) * p
-                val predictiveClip = morphClip * scale
-                val rawClipBottom = if (isGestureActive) predictiveClip else predictiveClip * gesture + morphClip * (1f - gesture)
-                val clipBottom = rawClipBottom / scale
-                ConfigAnimState(bgAlpha, snapAlpha, contAlpha, translationX, translationY, scale, clipBottom, p, gesture)
-            }
-        }
-    }
 
     fun triggerExitAndBack(onSavePending: (() -> Unit)? = null) {
         keyboardController?.hide()
         focusManager.clearFocus()
-        if (!hasCardBounds) {
-            onSavePending?.invoke()
-            onBackStart()
-            onBack()
-            return
-        }
-        if (animating) return
-        animating = true
-        onBackStart()
-        scope.launch {
-            coroutineScope {
-                launch {
-                    scaleProgress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(durationMillis = 320, easing = morphExitEase)
-                    )
-                }
-                launch {
-                    animProgress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(durationMillis = 320, easing = morphExitEase)
-                    )
-                }
-                launch {
-                    animTransY.animateTo(
-                        targetValue = 0f,
-                        animationSpec = tween(
-                            durationMillis = transExitMillis,
-                            easing = transExitEase
-                        )
-                    )
-                }
-            }
-            onSavePending?.invoke()
-            onBack()
-        }
+        morph.close(onSavePending)
     }
 
     val minuteValues = listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
@@ -734,7 +472,7 @@ fun TimeConfigEditScreen(
     }
 
     fun requestSave() {
-        if (animating) return
+        if (morph.animating.value) return
         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
         val check = checkTimeOverlap()
         when {
@@ -753,7 +491,7 @@ fun TimeConfigEditScreen(
     // Chrome follows destination intent, not animation completion. Opening remains
     // interruptible; closing restores the parent controls on its very first frame.
     NativeDocumentEditorEffect(
-        if (animating) null else NativeDocumentEditorChrome(
+        if (morph.animating.value) null else NativeDocumentEditorChrome(
             title = screenTitle,
             cancel = NativeDocumentAction("xmark", "取消") {
                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -775,14 +513,7 @@ fun TimeConfigEditScreen(
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
-    val s = animState.value
-    val clipShape = remember(screenCornerRadius, startCornerRadiusPx) {
-        ConfigAnimClipShape(
-            screenCornerRadius,
-            startCornerRadiusPx,
-            animState
-        )
-    }
+    val s = morph.state.value
 
     Box(
         modifier = Modifier
@@ -798,13 +529,13 @@ fun TimeConfigEditScreen(
                 .fillMaxSize()
                 .graphicsLayer {
                     clip = false
-                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    transformOrigin = TransformOrigin(s.anchorX, 0.5f)
                     scaleX = s.scale
                     scaleY = s.scale
                     translationX = s.translationX
                     translationY = s.translationY
                 }
-                .clip(clipShape)
+                .clip(morph.clipShape)
                 .background(
                     if (isFabCreation) MiuixTheme.colorScheme.primary
                     else MiuixTheme.colorScheme.background
@@ -833,6 +564,7 @@ fun TimeConfigEditScreen(
                             backdrop = liquidGlassBackdrop!!,
                             // Native controls stay above the morph; preserve the existing inset contract.
                             topInsetAdjustment = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp,
+                            noTopStatusBar = hostVerticalBarEdge(),
                         ) {
                             CollapsibleTopAppBar(
                                 title = screenTitle,

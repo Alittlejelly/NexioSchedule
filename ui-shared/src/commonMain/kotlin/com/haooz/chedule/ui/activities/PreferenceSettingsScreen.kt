@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,7 +41,7 @@ import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import com.haooz.chedule.ui.screens.ClassEndEffectSettings
+import com.haooz.chedule.ui.activities.today.ClassEndEffectSettings
 import com.haooz.chedule.ui.theme.LocalSystemDarkTheme
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.theme_preview_light
@@ -293,7 +293,7 @@ fun PreferenceSettingsScreen(
                                     }
                             )
                             OverlayDropdownMenu(
-                                title = "应用材质等级",
+                                title = "应用材质效果",
                                 // summary 为空时自动显示当前选中档位
                                 summary = null,
                                 entry = appMaterialEntry,

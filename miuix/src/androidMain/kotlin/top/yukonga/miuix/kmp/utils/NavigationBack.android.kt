@@ -2,6 +2,7 @@ package top.yukonga.miuix.kmp.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -40,6 +41,13 @@ actual fun rememberNavigationBack(): NavigationBackState {
                 if (t is NavigationEventTransitionState.InProgress &&
                     t.direction == NavigationEventTransitionState.TRANSITIONING_BACK
                 ) t.latestEvent.progress else null
+            },
+            // 手势从哪条边进来：驱动缩放锚点左右偏移（右侧返回 → 锚点偏左）
+            backSwipeEdge = {
+                val t = navigationEventState.transitionState
+                if (t is NavigationEventTransitionState.InProgress &&
+                    t.direction == NavigationEventTransitionState.TRANSITIONING_BACK
+                ) t.latestEvent.swipeEdge else NavigationEvent.EDGE_NONE
             },
             onHandler = {
                 NavigationBackHandler(

@@ -4,6 +4,7 @@ import com.haooz.chedule.ui.navigation.AppRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
@@ -13,61 +14,77 @@ import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 import com.haooz.chedule.ui.utils.HostOverlayEntry
 
 class NativeDocumentHostTest {
+    /** 二级/三级页全部由 UIKit 栈承载：Compose 的 AppRouter 栈在 iOS 上不接任何路由。 */
     @Test
-    fun legacyPageRemainsRetainedBehindTheNativeDocumentStack() {
+    fun documentNavigationStaysInsideTheNativeStack() {
         val host = IosAppHost()
         host.router.navigate(AppRoute.EducationalImport)
         host.router.navigate(AppRoute.Changelog)
-        assertSame(AppRoute.EducationalImport, host.router.current)
-        assertEquals(1, host.router.depth)
-        assertEquals(1, host.nativeRouteIds.size)
-        assertEquals("更新日志", host.nativeRouteTitle(host.nativeRouteIds.single()))
+        assertEquals(2, host.nativeRouteIds.size)
+        assertEquals(0, host.router.depth)
+        assertEquals("选择学校", host.nativeRouteTitle(host.nativeRouteIds.first()))
+        assertEquals("更新日志", host.nativeRouteTitle(host.nativeRouteIds.last()))
     }
 
+    /** 连点同一入口只压一层（与 AppRouter.navigate 同一规则）：否则要按多次返回才回得去。 */
     @Test
-    fun repeatedDocumentsHaveIndependentInstanceIdentities() {
+    fun repeatedNavigationToTheSameDocumentKeepsASingleLayer() {
         val host = IosAppHost()
         host.navigateNativeDocument("license")
+        val id = host.nativeRouteIds.single()
+        host.navigateNativeDocument("license")
+        host.navigateNativeDocument("license")
+        assertEquals(listOf(id), host.nativeRouteIds)
+        assertEquals("开源协议", host.nativeRouteTitle(id))
+    }
+
+    /** 只挡「已在栈顶」：A → B → A 仍是合法路径，栈内同名页照旧顺延 `#2`、各有独立状态。 */
+    @Test
+    fun sameDocumentCanStillBePushedAgainOnceItLeftTheTop() {
+        val host = IosAppHost()
+        host.navigateNativeDocument("license")
+        host.navigateNativeDocument("changelog")
         host.navigateNativeDocument("license")
         val ids = host.nativeRouteIds
-        assertEquals(2, ids.size)
-        assertNotEquals(ids[0], ids[1])
-        assertEquals("开源协议", host.nativeRouteTitle(ids[1]))
+        assertEquals(3, ids.size)
+        assertNotEquals(ids[0], ids[2])
+        assertEquals("license", host.nativePage(ids[0]).stateKey)
+        assertEquals("license#2", host.nativePage(ids[2]).stateKey)
     }
 
     @Test
     fun completedPopOnlyRemovesNativePagesAboveTheConfirmedDepth() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.EducationalImport)
         host.navigateNativeDocument("changelog")
         host.navigateNativeDocument("privacy_policy")
         val first = host.nativeRouteIds.first()
         host.completeNativePop(1)
         assertEquals(listOf(first), host.nativeRouteIds)
-        assertSame(AppRoute.EducationalImport, host.router.current)
         host.completeNativePop(0)
         assertEquals(emptyList(), host.nativeRouteIds)
-        assertSame(AppRoute.EducationalImport, host.router.current)
     }
 
     @Test
-    fun programmaticCompletionRetainsStateUntilUIKitConfirmsThePop() {
+    fun pageStateStaysLiveUntilUIKitConfirmsThePopThenIsDestroyed() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.EducationalImport)
         host.navigateNativeDocument("changelog")
         val id = host.nativeRouteIds.single()
         val page = host.nativePage(id)
         var value = "original"
         page.registry.registerProvider("form") { value }
+
+        // 只是「请求出栈」：UIKit 还没确认，退出动画要画完，这一层与它的状态都还活着
         assertTrue(host.router.popBack())
         assertEquals(emptyList(), host.nativeRouteIds)
         assertSame(page, host.nativePage(id))
-        assertSame(AppRoute.EducationalImport, host.router.current)
         value = "saved after completion request"
+
+        // 确认即销毁（同 AppNavHost 的 stateHolder.removeState）：重进是全新初始状态
         host.completeNativePop(0)
         host.navigateNativeDocument("changelog")
         val reopened = host.nativePage(host.nativeRouteIds.single())
-        assertEquals(value, reopened.registry.consumeRestored("form"))
+        assertNotSame(page, reopened)
+        assertNull(reopened.registry.consumeRestored("form"))
         assertNull(reopened.controller)
     }
 
@@ -86,30 +103,31 @@ class NativeDocumentHostTest {
         assertEquals(1, host.nativeRouteIds.size)
     }
 
+    /** 出栈即销毁；栈里的下层仍是同一个实例，registry 与组合都还在。 */
     @Test
-    fun duplicateDocumentsHaveIndependentSaveableKeysAndRestoration() {
+    fun poppedPageStateIsDestroyedWhilePagesBelowThePopSurvive() {
         val host = IosAppHost()
+        host.navigateNativeDocument("changelog")
+        val parent = host.nativePage(host.nativeRouteIds.single())
         host.navigateNativeDocument("license")
-        host.navigateNativeDocument("license")
-        val first = host.nativePage(host.nativeRouteIds[0])
-        val second = host.nativePage(host.nativeRouteIds[1])
-        assertNotEquals(first.stateKey, second.stateKey)
-        first.registry.registerProvider("scroll") { listOf(3, 12) }
-        second.registry.registerProvider("scroll") { listOf(7, 40) }
+        val child = host.nativePage(host.nativeRouteIds.last())
+        child.registry.registerProvider("scroll") { listOf(7, 40) }
+
+        // 3 级 → 2 级：只销毁被弹出的那层
         host.completeNativePop(1)
+        assertSame(parent, host.nativePage(host.nativeRouteIds.single()))
+
+        // 重进二级页：状态已随出栈销毁，重新给初始值
         host.navigateNativeDocument("license")
-        val restoredSecond = host.nativePage(host.nativeRouteIds[1])
-        assertEquals(listOf(7, 40), restoredSecond.registry.consumeRestored("scroll"))
-        assertSame(first, host.nativePage(host.nativeRouteIds[0]))
-        host.completeNativePop(0)
-        host.navigateNativeDocument("license")
-        assertEquals(listOf(3, 12), host.nativePage(host.nativeRouteIds.single()).registry.consumeRestored("scroll"))
+        val reopened = host.nativePage(host.nativeRouteIds.last())
+        assertNotSame(child, reopened)
+        assertEquals("license", reopened.stateKey)
+        assertNull(reopened.registry.consumeRestored("scroll"))
     }
 
     @Test
-    fun inFlightAndCancelledTransitionsDoNotChangeNativeOrLegacyState() {
+    fun inFlightAndCancelledTransitionsDoNotChangeTheNativeStack() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.EducationalImport)
         host.navigateNativeDocument("privacy_policy")
         val ids = host.nativeRouteIds
         host.setNativeTransitionInFlight(true)
@@ -118,10 +136,11 @@ class NativeDocumentHostTest {
         assertEquals(ids, host.nativeRouteIds)
         host.setNativeTransitionInFlight(false)
         assertEquals(ids, host.nativeRouteIds)
-        assertSame(AppRoute.EducationalImport, host.router.current)
-        host.completeNativePop(-1)
         host.completeNativePop(100)
         assertEquals(ids, host.nativeRouteIds)
+        // 负数夹到 0：UIKit 报来的深度越界时也要收敛，不能把旧 page 留在栈里（否则重进会复用它的 controller）
+        host.completeNativePop(-1)
+        assertFalse(host.nativePageActive)
     }
 
     @Test
@@ -143,7 +162,7 @@ class NativeDocumentHostTest {
     }
 
     @Test
-    fun allEligibleDocumentsKeepTheirOriginalLegacyParent() {
+    fun allDocumentsEnterTheNativeStackWithTheirTitles() {
         val documents = listOf(
             AppRoute.Changelog to "更新日志",
             AppRoute.License to "开源协议",
@@ -162,25 +181,22 @@ class NativeDocumentHostTest {
             AppRoute.ScheduleBackup to "课表备份",
             AppRoute.ScheduleImport to "课表导入",
             AppRoute.About to "关于应用",
-            AppRoute.CourseTimeSettings to "课表节数与时间",
+            AppRoute.CourseTimeSettings to "课程时间管理",
         )
         for ((route, title) in documents) {
             val host = IosAppHost()
-            host.router.navigate(AppRoute.EducationalImport)
             host.router.navigate(route)
-            assertSame(AppRoute.EducationalImport, host.router.current)
-            assertEquals(1, host.router.depth)
             assertEquals(title, host.nativeRouteTitle(host.nativeRouteIds.single()))
-            host.completeNativePop(0)
+            assertEquals(0, host.router.depth)
             assertTrue(host.router.popBack())
-            assertFalse(host.router.hasOverlay)
+            host.completeNativePop(0)
+            assertFalse(host.nativePageActive)
         }
     }
 
     @Test
     fun backupChildPagesShareOnlyTheNativeStack() {
         val host = IosAppHost()
-        host.router.navigate(AppRoute.EducationalImport)
         host.router.navigate(AppRoute.ScheduleBackup)
         val backup = host.nativeRouteIds.single()
         host.router.navigate(AppRoute.WebDavSettings)
@@ -190,17 +206,18 @@ class NativeDocumentHostTest {
         host.completeNativePop(1)
         host.router.navigate(AppRoute.LocalBackup)
         assertEquals(2, host.nativeRouteIds.size)
-        assertSame(AppRoute.EducationalImport, host.router.current)
-        assertEquals(1, host.router.depth)
+        assertEquals(0, host.router.depth)
     }
 
+    /** 教务导入也是原生文档：从「课表导入/导出/备份」这些原生页跳进来才不会被上层挡住。 */
     @Test
-    fun educationalImportRemainsComposeOwned() {
+    fun educationalImportIsNativeSoNestedPagesAreReachable() {
         val host = IosAppHost()
-        assertFalse(AppRoute.EducationalImport.isNativeDocument())
+        assertTrue(AppRoute.EducationalImport.isNativeDocument())
         host.router.navigate(AppRoute.EducationalImport)
-        assertEquals(emptyList(), host.nativeRouteIds)
-        assertSame(AppRoute.EducationalImport, host.router.current)
+        assertEquals(1, host.nativeRouteIds.size)
+        assertEquals("选择学校", host.nativeRouteTitle(host.nativeRouteIds.single()))
+        assertEquals(0, host.router.depth)
     }
 
     @Test
@@ -275,7 +292,7 @@ class NativeDocumentHostTest {
         var cancelled = 0
         var saved = 0
         var parentClicks = 0
-        chrome.title = "课表节数与时间"
+        chrome.title = "课程时间管理"
         chrome.contentOverlayActive = true
         chrome.editor = NativeDocumentEditorChrome(
             "编辑作息",
@@ -301,7 +318,7 @@ class NativeDocumentHostTest {
         chrome.contentOverlayActive = false
         assertTrue(host.nativeContentOverlayActive)
         chrome.editor = null
-        assertEquals("课表节数与时间", host.nativeRouteTitle(id))
+        assertEquals("课程时间管理", host.nativeRouteTitle(id))
         assertEquals("chevron.backward", host.nativePageLeadingSymbol(id))
         assertEquals("arrow.clockwise", host.nativePageActionSymbol(id))
         host.performNativePageLeadingAction(id)

@@ -30,6 +30,11 @@ import top.yukonga.miuix.kmp.theme.LocalScreenCornerRadius
 import top.yukonga.miuix.kmp.theme.LocalScreenTopCornerRadii
 import top.yukonga.miuix.kmp.theme.ScreenTopCornerRadii
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
+import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
+import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
+import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -177,6 +182,13 @@ fun CourseScheduleTheme(
                 // 效果与迁移前一致，调用点无需逐个改。
                 LocalChromeLensEnabled provides AppMaterialSettings.chromeLensEnabled(),
                 LocalUseFakeProgressiveBlur provides AppMaterialSettings.progressiveBlurUseFake(),
+                LocalGlassBlurDp provides AppMaterialSettings.glassBlurDp(),
+                LocalGlassPanelBlurDp provides AppMaterialSettings.glassPanelBlurDp(),
+                LocalGlassDialogBlurDp provides AppMaterialSettings.glassDialogBlurDp(),
+                LocalGlassSurfaceAlphaDrop provides GlassSurfaceAlphaDrop(
+                    light = AppMaterialSettings.glassSurfaceAlphaDrop(isLight = true),
+                    dark = AppMaterialSettings.glassSurfaceAlphaDrop(isLight = false),
+                ),
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
             ) {
                 MaterialTheme(colorScheme = materialColors) {

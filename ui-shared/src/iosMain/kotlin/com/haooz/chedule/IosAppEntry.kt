@@ -32,10 +32,10 @@ import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toByteArray
-import com.haooz.chedule.ui.activities.CourseScheduleApp
+import com.haooz.chedule.ui.activities.main.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
-import com.haooz.chedule.ui.screens.TodayAssistantCard
+import com.haooz.chedule.ui.activities.today.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeatherIos
 import com.haooz.chedule.ui.utils.IosSharedFileReceiver
 import com.haooz.chedule.ui.utils.IosShareImport
@@ -266,6 +266,11 @@ internal fun NexioIosNavigation(host: IosAppHost) {
     val router = host.router
     val mainTransition = host.mainTransition
     val consented by PrivacyConsent.consented.collectAsState()
+    // 与 Android MainActivity 对齐：隐私弹窗挂在 AppNavHost 之上，
+    // 全文页在栈上时撤掉弹窗遮罩，否则全文页读不了也滑不动。
+    // ⚠ iOS 的「隐私政策」是**原生文档页**（isNativeDocument），被 nativeRouteHandler 吃掉了、
+    // 不进 router.routes —— 只能问 nativePageIds。
+    val policyPageVisible = host.nativeRouteIds.any { it == AppRoute.PrivacyPolicy.id }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
             AppNavHost(
@@ -293,6 +298,7 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                         platform.posix.exit(0)
                     },
                     onOpenPolicy = { router.navigate(AppRoute.PrivacyPolicy) },
+                    policyPageVisible = policyPageVisible,
                 )
             }
         }
@@ -403,7 +409,7 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             onFetchShareCode = { code -> IosShareImport.fetchShareCode(code) },
             onImportThirdParty = { source, code -> IosShareImport.importThirdParty(source, code) },
         )
-        // 课表节数与时间 / 课程管理：iOS 没有自由小窗，传 false
+        // 课程时间管理 / 课程管理：iOS 没有自由小窗，传 false
         AppRoute.CourseTimeSettings -> CourseTimeSettingsRoute(router)
         AppRoute.CourseManage -> CourseManageRoute(router)
         // 教务导入（学校选择）：外壳全在 :ui-shared，无需平台能力（索引更新走共享 HttpService）。

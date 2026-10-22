@@ -1,5 +1,6 @@
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities.classschedule
 
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 
@@ -18,6 +19,8 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -43,8 +46,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -72,9 +76,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -82,8 +88,10 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -95,26 +103,17 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.SpecialItem
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import com.haooz.chedule.ui.components.DayColumn
-import com.haooz.chedule.ui.components.SectionColumn
-import com.haooz.chedule.ui.components.SpecialBandClickLayer
-import com.haooz.chedule.ui.components.SpecialBandOverlay
-import com.haooz.chedule.ui.components.SpecialItemEditDialog
-import com.haooz.chedule.ui.components.computeSpecialGridLayout
-import com.haooz.chedule.ui.components.mergeConsecutiveDays
-import com.haooz.chedule.ui.components.nextSpecialItemIds
-import com.haooz.chedule.ui.components.scheduleSectionColumnWidth
-import com.haooz.chedule.ui.components.scheduleContentTopPadding
 import com.kyant.backdrop.edgelight.edgeLight
-import com.haooz.chedule.ui.utils.rememberCourseCardEdgeLight
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -130,18 +129,14 @@ import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -154,6 +149,11 @@ import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.utils.screenHeightDp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.BackdropViewport
+import com.kyant.backdrop.LocalBackdropViewport
+import com.kyant.backdrop.backdrops.LayerBackdrop
 
 // 普通 holder 而非 state：避免 onGloballyPositioned 每次写入触发卡片重组
 private class CardBoundsHolder {
@@ -172,6 +172,11 @@ data class ScheduleGridGeometry(
      * 落点/冲突检测/写库必须映射回数据坐标，否则写进去的课在本页任何列都不渲染。
      */
     val columnDataPosition: Map<Int, Pair<Int, Int>> = emptyMap(),
+    /**
+     * 这份几何属于第几周（= 上报页的周次）。跨周调课翻页后上层拿到的可能还是上一页的
+     * 几何，落点周次必须靠它判断能否信任 [columnDataPosition]。
+     */
+    val pageWeek: Int = 0,
     /** 教学周重组的休课日列：该列永远渲染为空，落进去的课会静默消失，必须拦掉 */
     val blockedColumns: Set<Int> = emptySet(),
     /**
@@ -189,7 +194,7 @@ fun MainScheduleScreen(
     settingsViewModel: SettingsViewModel,
     pagerState: PagerState,
     hiddenCourseIds: Set<String> = emptySet(),
-    draggingCourseIds: Set<String> = emptySet(),
+    draggingCourseSlots: Set<Pair<String, Int>> = emptySet(),
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onPopupStateChange: (Boolean) -> Unit = {},
     // 空白格长按：返回 Root 绝对坐标供上层定位快捷菜单
@@ -204,10 +209,11 @@ fun MainScheduleScreen(
         addDay: Int,
         addWeek: Int,
     ) -> Unit = { _, _, _, _, _, _, _, _ -> },
-    onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: com.kyant.backdrop.Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
+    onCourseLongPress: (course: Course, cardLeft: Float, cardTop: Float, width: Float, height: Float, backdrop: Backdrop?, currentWeek: Int) -> Unit = { _, _, _, _, _, _, _ -> },
     onCourseDragStart: (courseId: String) -> Unit = { _ -> },
     onCourseDrag: (courseId: String, offsetX: Float, offsetY: Float) -> Unit = { _, _, _ -> },
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
+    onCourseDragCancel: (courseId: String) -> Unit = { _ -> },
     onCourseMenuDismiss: () -> Unit = {},
     wallpaperBitmap: ImageBitmap? = null,
     wallpaperOffset: Offset = Offset.Zero,
@@ -215,12 +221,12 @@ fun MainScheduleScreen(
     // true：壁纸由主 pager 后共享层绘制，本页透明叠上，切 tab 时不随页平移
     useSharedWallpaper: Boolean = false,
     // 共享壁纸层 backdrop，供卡片玻璃采样（useSharedWallpaper 时必传 LayerBackdrop）
-    sharedWallpaperBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop? = null,
+    sharedWallpaperBackdrop: LayerBackdrop? = null,
     isWallpaperEditing: Boolean = false,
     onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
-    appearance: com.haooz.chedule.data.AppearanceConfig = com.haooz.chedule.data.AppearanceConfig(),
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    appearance: AppearanceConfig = AppearanceConfig(),
+    liquidGlassBackdrop: Backdrop? = null,
     // 拖拽落点高亮：Pair(dayOfWeek, sectionRange)，sectionRange 为落点覆盖的节次区间
     dropHighlight: Pair<Int, IntRange>? = null,
     // 落点遮罩出现动画的起点（通常是源课格），避免首次直接闪现在落点
@@ -228,7 +234,7 @@ fun MainScheduleScreen(
     onGridGeometryChange: (ScheduleGridGeometry) -> Unit = {},
     scheduleScrollBehavior: SharedScrollBehavior? = null,
     // 由 Activity 层传入：不是防销毁，是液态玻璃重录要在外层读滚动状态 / 弹窗开合
-    externalScrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    externalScrollState: ScrollState = rememberScrollState(),
     externalShowCourseDetail: MutableState<Boolean> = mutableStateOf(false),
     externalSelectedCourse: MutableState<Course?> = mutableStateOf(null),
     externalSelectedCourses: MutableState<List<Course>> = mutableStateOf(emptyList()),
@@ -283,6 +289,27 @@ fun MainScheduleScreen(
     val scrollState = externalScrollState
     // 非 state 版本：卡片 onGloballyPositioned 读取不触发重组
     val touchState = remember { ScheduleTouchState() }
+    // 跨周调课 tracker 的坐标（挂在 pager 上，跨周不重建）
+    val dragOwnerCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    // 指针协程的 key 只有 touchState：回调一律经 rememberUpdatedState 取最新，
+    // 否则每次重组都重启手势，拖到一半直接断
+    val latestOnCourseDrag = rememberUpdatedState(onCourseDrag)
+    val latestOnCourseDragEnd = rememberUpdatedState(onCourseDragEnd)
+    val latestOnCourseDragCancel = rememberUpdatedState(onCourseDragCancel)
+    // 整页被销毁（切 tab 且主 pager 回收本页）时 tracker 协程也一起没了：
+    // 手指还没抬就没人收尾，浮层会留到别的页面上去。这里兜底取消。
+    DisposableEffect(touchState) {
+        onDispose {
+            val activeDragId = touchState.draggingCourseId
+            val hadDrag = touchState.draggingPointerId != null || touchState.dragTrackerActive
+            // endDragTracking 会留下 dragEndHandled：课卡侧的 finally 同帧收尾时
+            // 看到它就不会再 cancel 一次
+            touchState.endDragTracking()
+            if (hadDrag && activeDragId != null) {
+                latestOnCourseDragCancel.value(activeDragId)
+            }
+        }
+    }
     // 供停滑后冲刷 dayBounds 版本号；仅滑动起停各写一次
     val scheduleScrollInProgress = remember { mutableStateOf(false) }
     LaunchedEffect(pagerState, scrollState) {
@@ -296,11 +323,16 @@ fun MainScheduleScreen(
     }
     // 横纵双轴手势：横向由 pagerAxisTakeoverGesture 接管，纵向仍归页内 verticalScroll
     val latestIsWallpaperEditing by rememberUpdatedState(isWallpaperEditing)
-    val latestDraggingCourseIds by rememberUpdatedState(draggingCourseIds)
     // 由顶栏自身几何纯计算（切页不变），避免 paddingValues 随 tab 变化导致位移
     val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
-    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
-    val contentTopPaddingDp = remember(statusBarHeight) { scheduleContentTopPadding(statusBarHeight) }
+    // 竖排 tab bar 形态（折叠屏折叠态，屏幕顶部没有状态栏）：内容顶不按 160.dp 那套撑，
+    // 详见 scheduleContentTopPadding
+    val verticalBarEdge = hostVerticalBarEdge()
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
+        nativeBarInset).coerceAtLeast(0.dp)
+    val contentTopPaddingDp = remember(statusBarHeight, verticalBarEdge) {
+        scheduleContentTopPadding(statusBarHeight, verticalBarEdge)
+    }
 
     // 填满短边不露底；最小缩放 = cover/fit
     val minWallpaperScale = remember(wallpaperBitmap, screenWidthPx, screenHeightPx) {
@@ -713,7 +745,7 @@ fun MainScheduleScreen(
 
     // onDraw 必须稳定：每次新建会换掉 LayerBackdrop 实例，SharedBlur 与全部课卡采样跟着重建
     val wallpaperBackColorState = rememberUpdatedState(wallpaperBackdropColor)
-    val wallpaperOnDraw: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit =
+    val wallpaperOnDraw: ContentDrawScope.() -> Unit =
         remember {
             {
                 drawRect(wallpaperBackColorState.value)
@@ -726,7 +758,7 @@ fun MainScheduleScreen(
     val localCourseCardBackdrop = key(wallpaperBitmap) {
         rememberKyantLayerBackdrop(onDraw = wallpaperOnDraw)
     }
-    val courseCardBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop =
+    val courseCardBackdrop: LayerBackdrop =
         if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
         else localCourseCardBackdrop
 
@@ -736,7 +768,7 @@ fun MainScheduleScreen(
     } else null
     // blur=0 也走共享层：省掉每卡独立重录；滚动 LOD 时可直接 blit 共享采样
     val hasSharedBlur = sharedBlurManager != null && isRenderEffectSupported()
-    val activeCardBackdrop: com.kyant.backdrop.Backdrop? = when {
+    val activeCardBackdrop: Backdrop? = when {
         wallpaperBitmap == null -> null
         hasSharedBlur -> sharedBlurManager
         else -> courseCardBackdrop
@@ -747,7 +779,7 @@ fun MainScheduleScreen(
     }
 
     // 非 state：滚动不触发重组
-    val scheduleViewport = remember { com.kyant.backdrop.BackdropViewport() }
+    val scheduleViewport = remember { BackdropViewport() }
 
     // 这些量不变时跳过壁纸录制与共享模糊；必须覆盖所有影响壁纸层内容的因素
     val wallpaperRecordKey = listOf(
@@ -764,8 +796,8 @@ fun MainScheduleScreen(
     // 根 Box 滚动时**不移动**，所以 onGloballyPositioned 只在旋转/分屏/边距变化等
     // 布局改动时触发，边界天然不会在滚动中过期；挂滚动容器则要靠 touchState 去
     // 猜「Y 没变」，边界一旦算错就会误剔可见卡片（出空洞）。
-    androidx.compose.runtime.CompositionLocalProvider(
-        com.kyant.backdrop.LocalBackdropViewport provides scheduleViewport
+    CompositionLocalProvider(
+        LocalBackdropViewport provides scheduleViewport
     ) {
     Box(
         modifier = Modifier
@@ -793,8 +825,8 @@ fun MainScheduleScreen(
                 val brightnessFilter = remember(wallpaperBrightness) {
                     if (wallpaperBrightness != 0f) {
                         val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
-                            androidx.compose.ui.graphics.ColorMatrix(
+                        ColorFilter.colorMatrix(
+                            ColorMatrix(
                                 floatArrayOf(
                                     b, 0f, 0f, 0f, 0f,
                                     0f, b, 0f, 0f, 0f,
@@ -814,7 +846,7 @@ fun MainScheduleScreen(
                         BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
                     } else null
                 }
-                androidx.compose.foundation.Image(
+                Image(
                     bitmap = wallpaperBitmap,
                     contentDescription = null,
                     modifier = Modifier
@@ -910,9 +942,21 @@ fun MainScheduleScreen(
             // 横竖主导手势（与今日页共用）：横向接管 pager，纵向仍归页内滚动
             .pagerAxisTakeoverGesture(
                 pagerState = pagerState,
-                blockGesture = {
-                    latestIsWallpaperEditing || latestDraggingCourseIds.isNotEmpty()
-                },
+                // 拖课卡那根手指由 blockedPointer 屏蔽；整页禁用会连「另一只手翻周」一起挡掉
+                blockGesture = { latestIsWallpaperEditing },
+                blockedPointer = { touchState.draggingPointerId },
+                // 第二只手纵向滑动直接滚屏（verticalScroll 在跟被屏蔽那根手指）
+                onVerticalScroll = { dy -> scrollState.dispatchRawDelta(-dy) },
+            )
+            // 跨周调课：跟手位移与收尾放在 pager 上。课卡所在周页翻过去会被回收，
+            // 卡片自己的 pointerInput 跟着取消；pager 不重建，拖到第几周都能继续跟手。
+            .onGloballyPositioned { dragOwnerCoords[0] = it }
+            .courseDragOwnerGesture(
+                touchState = touchState,
+                coordinates = dragOwnerCoords,
+                onDrag = { id, dx, dy -> latestOnCourseDrag.value(id, dx, dy) },
+                onDragEnd = { id -> latestOnCourseDragEnd.value(id) },
+                onDragCancel = { id -> latestOnCourseDragCancel.value(id) },
             ),
         beyondViewportPageCount = 1,
         // 横向触摸改由 pagerAxisTakeoverGesture 驱动；纵滑主导时交给 verticalScroll
@@ -980,6 +1024,7 @@ fun MainScheduleScreen(
                             eveningSections = eveningSections,
                             showBreakDividers = showBreakDividers,
                             columnDataPosition = dataMap,
+                            pageWeek = week,
                             blockedColumns = blocked,
                             // 节次顶的权威来源：含特殊块挤占，浮层/落点定位都依赖它
                             sectionTopDp = specialGrid.sectionTop,
@@ -1068,9 +1113,7 @@ fun MainScheduleScreen(
                             cardHeightPerSection = cardHeightPerSection,
                             showBreakDividers = showBreakDividers,
                             currentSection = if (week == currentWeek) currentSection else -1,
-                            isTablet = isTablet,
-                            hasWallpaper = wallpaperBitmap != null,
-                            isDark = scheduleIsDark
+                            isTablet = isTablet
                         )
 
                         pageDayRange.forEach { dayOfWeek ->
@@ -1138,7 +1181,7 @@ fun MainScheduleScreen(
                                         }
                                     }
                                 }
-                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, com.kyant.backdrop.Backdrop?, Int) -> Unit =
+                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, Backdrop?, Int) -> Unit =
                                 remember(page, dayOfWeek) {
                                     { course, left, top, width, height, _, cWeek ->
                                         // 同步补一次最新几何，保证上层锚点用当前页 dayBounds
@@ -1183,11 +1226,12 @@ fun MainScheduleScreen(
                                 showClassroom = showClassroom,
                                 showTeacher = showTeacher,
                                 cardRefraction = cardRefraction,
-                                draggingCourseIds = draggingCourseIds,
+                                draggingCourseSlots = draggingCourseSlots,
                                 onCourseLongPress = stableOnCourseLongPress,
                                 onCourseDragStart = onCourseDragStart,
                                 onCourseDrag = onCourseDrag,
                                 onCourseDragEnd = onCourseDragEnd,
+                                onCourseDragCancel = onCourseDragCancel,
                                 onCourseMenuDismiss = onCourseMenuDismiss,
                                 dropHighlightSections = if (dropHighlight?.first == dayOfWeek) dropHighlight.second else null,
                                 isDark = scheduleIsDark,
@@ -1276,6 +1320,16 @@ fun MainScheduleScreen(
                             }
                         }
                     }
+                    // 跨周调课：翻周停下后补推一次几何。上面的 SideEffect 只在组合重跑时才推，
+                    // 而翻页停下不一定伴随重组 —— 落点会一直用上一页的周次映射，课写进错的周。
+                    LaunchedEffect(Unit) {
+                        snapshotFlow { pagerState.isScrollInProgress }
+                            .collect { scrolling ->
+                                if (!scrolling && page == pagerState.currentPage) {
+                                    onGridGeometryChange(buildGridGeometry())
+                                }
+                            }
+                    }
 
                     val morningHeight = specialGrid.dividerY.getOrNull(0)?.toInt() ?: (morningSections * cardHeightPerSection).toInt()
                     val afternoonHeight = (afternoonSections * cardHeightPerSection).toInt()
@@ -1303,7 +1357,6 @@ fun MainScheduleScreen(
                     // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）
                     val dividerSurfaceAlphaAt15 = if (dividerIsDark) 0.64f else 0.50f
                     val dividerBlurShape = remember { ContinuousRoundedRectangle(12.dp) }
-                    val dividerEdgeLightShape = remember { ContinuousRoundedRectangle(12.dp) }
 
                     @Composable
                     fun BreakDivider(offsetY: Int, text: String) {
@@ -1324,6 +1377,14 @@ fun MainScheduleScreen(
                         } else {
                             Color.White.copy(alpha = surfaceAlpha)
                         }
+                        // 描边只在有壁纸（玻璃）时画：纯色模式下分界线本身就是实色，加轮廓只会显脏
+                        val dividerOutlineColor = remember(dividerFgSurface, dividerIsDark) {
+                            scheduleOutlineColor(dividerFgSurface, dividerIsDark)
+                        }
+                        val dividerOutlineWidthPx = remember(dividerDensity) {
+                            with(dividerDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
+                        }
+                        val dividerOutlineCache = remember { OutlineCache() }
                         Box(
                             modifier = Modifier.fillMaxWidth().offset(y = offsetY.dp)
                                 .height(24.dp)
@@ -1333,7 +1394,7 @@ fun MainScheduleScreen(
                                 .then(
                                     if (hasWallpaperDivider) {
                                         val dividerBackdrop = activeCardBackdrop ?: courseCardBackdrop
-                                        val dividerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+                                        val dividerEffects: BackdropEffectScope.() -> Unit =
                                             remember(dividerBackdrop, dividerBlurPx, dividerLensRadiusPx, dividerLensStrengthPx) {
                                                 {
                                                     if (dividerBackdrop !is SharedBlurBackdrop) {
@@ -1348,13 +1409,27 @@ fun MainScheduleScreen(
                                             effects = dividerEffects,
                                             highlight = null,
                                             shadow = null,
-                                            viewport = com.kyant.backdrop.LocalBackdropViewport.current,
+                                            viewport = LocalBackdropViewport.current,
                                             onDrawSurface = remember(dividerFgSurface) {
                                                 {
                                                     drawRect(dividerFgSurface)
                                                 }
                                             }
-                                        ).edgeLight(shape = dividerEdgeLightShape, edgeLight = rememberCourseCardEdgeLight(baseColor = dividerFgSurface))
+                                        )
+                                    } else Modifier
+                                )
+                                .then(
+                                    if (hasWallpaperDivider) {
+                                        Modifier.drawWithContent {
+                                            drawContent()
+                                            drawScheduleOutline(
+                                                cache = dividerOutlineCache,
+                                                cornerRadius = 12.dp,
+                                                color = dividerOutlineColor,
+                                                strokeWidthPx = dividerOutlineWidthPx,
+                                                layoutDirection = layoutDirection,
+                                            )
+                                        }
                                     } else Modifier
                                 ),
                             contentAlignment = Alignment.Center
@@ -1690,7 +1765,7 @@ fun MainScheduleScreen(
                             val base = block.safeItems.filter { it.id != specialItemEditingId }
                             val ids = nextSpecialItemIds(base, ranges.size)
                             val newItems = ranges.mapIndexed { i, (s, e) ->
-                                com.haooz.chedule.data.SpecialItem(
+                                SpecialItem(
                                     id = ids[i],
                                     name = trimmedName,
                                     startDay = s,
@@ -1730,7 +1805,7 @@ fun MainScheduleScreen(
 private fun CourseDetailSheet(
     showState: MutableState<Boolean>,
     isTablet: Boolean,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     onDismiss: () -> Unit,
     endAction: @Composable () -> Unit,
     content: @Composable () -> Unit,
@@ -1776,13 +1851,13 @@ private fun AnimatedDropTargetMask(
     dropHighlight: Pair<Int, IntRange>?,
     dropHighlightOrigin: Pair<Int, IntRange>?,
     pageDayRange: List<Int>,
-    grid: com.haooz.chedule.ui.components.SpecialGridLayout,
+    grid: SpecialGridLayout,
     cardHeightPerSection: Float,
     cardCornerRadius: Float,
     isTablet: Boolean,
     isDark: Boolean,
     hasWallpaper: Boolean,
-    wallpaperBackdrop: com.kyant.backdrop.Backdrop?,
+    wallpaperBackdrop: Backdrop?,
     cardBlurRadius: Float,
 ) {
     val density = LocalDensity.current
@@ -1891,7 +1966,7 @@ private fun AnimatedDropTargetMask(
         val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
         val maskShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
         // 稳定引用：内联 lambda 会让 drawBackdrop 每次重组重建 RenderEffect
-        val maskEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
+        val maskEffects: BackdropEffectScope.() -> Unit =
             remember(wallpaperBackdrop, blurPx) {
                 {
                     if (wallpaperBackdrop !is SharedBlurBackdrop) blur(blurPx)
@@ -1947,4 +2022,83 @@ private fun AnimatedDropTargetMask(
             )
         }
     }
+}
+
+/**
+ * 跨周调课：拖拽跟手与收尾的页面级归属。
+ *
+ * 为什么不能留在课卡上：
+ *  - 课卡住在周 pager 的页里，翻周时整页平移，卡片本地坐标跟着变一屏 → 浮层飞走；
+ *  - 页内滚动同理 → 浮层越拖越偏；
+ *  - 翻到隔周后源页会被 pager 回收，卡片上的 pointerInput 被取消 → 跟手直接断。
+ *
+ * 这里挂在 pager 上（跨周不重建），用 root 坐标算「相对按下时」的位移。
+ * 指针由课卡在起拖时登记（[ScheduleTouchState.draggingPointerId]），tracker 只认这一根；
+ * 接管后 consume 掉它的位移，避免源页被回收后 verticalScroll 把拖动当滚动。
+ * 收尾也归这里：真拖起来过 → [onDragEnd] 按落点写库；只是菜单上的手抖 →
+ * 偏移归零、菜单留着（[onDrag] 传 0）。
+ */
+private fun Modifier.courseDragOwnerGesture(
+    touchState: ScheduleTouchState,
+    coordinates: Array<LayoutCoordinates?>,
+    onDrag: (courseId: String, offsetX: Float, offsetY: Float) -> Unit,
+    onDragEnd: (courseId: String) -> Unit,
+    onDragCancel: (courseId: String) -> Unit,
+): Modifier = pointerInput(touchState) {
+    awaitPointerEventScope {
+        var trackedId: PointerId? = null
+        var startRoot = Offset.Zero
+        while (true) {
+            // Initial：课卡在 Main 处理，这里先拿到本帧事件
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val dragId = touchState.draggingPointerId
+            if (dragId == null) {
+                trackedId = null
+                continue
+            }
+            val change = event.changes.firstOrNull { it.id == dragId }
+            if (change == null) {
+                // 指针从事件流里消失（系统取消）：已接管的必须收尾，别把浮层冻在屏上
+                if (trackedId == dragId) {
+                    val id = touchState.draggingCourseId
+                    if (id != null) {
+                        if (touchState.dragStarted) onDragCancel(id)
+                        else onDrag(id, 0f, 0f)
+                    }
+                    touchState.endDragTracking()
+                    trackedId = null
+                }
+                continue
+            }
+            if (trackedId != dragId) {
+                trackedId = dragId
+                // 用按下时的 root 位置当零点：课卡在 E0 上报过的位移与这里同源，交接不跳
+                startRoot = touchState.draggingDownRoot
+                    ?: dragOwnerRoot(coordinates, change.position)
+                touchState.dragTrackerActive = true
+            }
+            if (!change.pressed) {
+                // 先回调（要读最后的 offset/落点）再清状态，否则课卡侧看不出已收尾
+                val id = touchState.draggingCourseId
+                if (id != null) {
+                    if (touchState.dragStarted) onDragEnd(id) else onDrag(id, 0f, 0f)
+                }
+                touchState.endDragTracking()
+                trackedId = null
+                change.consume()
+                continue
+            }
+            val id = touchState.draggingCourseId
+            if (id != null) {
+                val rootNow = dragOwnerRoot(coordinates, change.position)
+                onDrag(id, rootNow.x - startRoot.x, rootNow.y - startRoot.y)
+            }
+            change.consume()
+        }
+    }
+}
+
+private fun dragOwnerRoot(coordinates: Array<LayoutCoordinates?>, local: Offset): Offset {
+    val coords = coordinates[0]
+    return if (coords != null && coords.isAttached) coords.localToRoot(local) else local
 }

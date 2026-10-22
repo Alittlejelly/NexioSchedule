@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.screens
+package com.haooz.chedule.ui.activities.today
 
 // 今日助手卡（纯展示与纯逻辑）。
 // 天气拉取与定位在平台侧（LocationManager vs CoreLocation），算好后按参数传入；
@@ -6,7 +6,6 @@ package com.haooz.chedule.ui.screens
 // ⚠ 文件名必须与 androidApp 的 `TodayAssistant.kt` 不同：同包同名 .kt 会让 Kotlin
 //   生成同名 facade 类，dex 只留一个 → 运行期 NoSuchMethodError。
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +56,7 @@ import com.haooz.chedule.uishared.resources.icon_overcast
 import com.haooz.chedule.uishared.resources.icon_sunny
 import com.haooz.chedule.uishared.resources.icon_sunny_night
 import com.haooz.chedule.uishared.resources.icon_t_storm
+import com.kyant.backdrop.Backdrop
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalTime
@@ -507,7 +507,7 @@ fun TodayAssistantCard(
     afternoonSections: Int,
     showClassroom: Boolean = true,
     showTeacher: Boolean = true,
-    wallpaperBackdrop: com.kyant.backdrop.Backdrop? = null,
+    wallpaperBackdrop: Backdrop? = null,
     blurRadius: Float = 0f,
     surfaceOpacity: Float,
     /** 下课烟花（Android = FireworksOverlay，依赖 LocalContext/nanoTime）；null = 该端无此效果 */
@@ -664,10 +664,10 @@ fun TodayAssistantCard(
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
                     } else if (weather.needsLocation) {
-                        androidx.compose.foundation.layout.Box(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Box(modifier = Modifier.padding(vertical = 4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.foundation.Image(
-                                    painter = org.jetbrains.compose.resources.painterResource(
+                                Image(
+                                    painter = painterResource(
                                         Res.drawable.ic_widget_location
                                     ),
                                     contentDescription = null,
@@ -683,10 +683,10 @@ fun TodayAssistantCard(
                             }
                         }
                     } else if (weather.apiError) {
-                        androidx.compose.foundation.layout.Box(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Box(modifier = Modifier.padding(vertical = 4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.foundation.Image(
-                                    painter = org.jetbrains.compose.resources.painterResource(
+                                Image(
+                                    painter = painterResource(
                                         Res.drawable.ic_widget_location
                                     ),
                                     contentDescription = null,

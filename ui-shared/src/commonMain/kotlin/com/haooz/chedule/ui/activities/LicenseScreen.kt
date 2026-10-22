@@ -33,7 +33,7 @@ import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.ui.utils.screenWidthDp
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults

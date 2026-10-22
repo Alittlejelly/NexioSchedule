@@ -24,17 +24,6 @@ import kotlinx.datetime.isoDayNumber
 
 // ════════════════════════════════════════════════════════════════════════
 //  导入结果**落库**：把解析好的课表 Map / 第三方 payload 写进新建课表
-//
-//  2026-10-11 自 `:androidApp` 的 `SettingsScreen.kt` + `BackupAndMigrationScreen.kt`
-//  迁入 `:ui-shared`（第二十三批）。
-//
-//  迁移动机：这两个函数都带一个 `context: Context` 形参，但**函数体一次都没用到**
-//  （原签名上还挂着 `@Suppress("UNUSED_PARAMETER")`）—— 它们实质是纯逻辑，
-//  靠 VM + `CourseRepository` 落库。留在 Android 模块里，「课表导入」页就迁不进
-//  commonMain，iOS / 桌面要各写一遍。
-//
-//  依赖的 `parseShare*` 解析族已一并迁到 `:ui-shared` 的
-//  `ui/utils/ShareScheduleCodec.kt`（同样是纯 `Map<String, Any>` 处理）。
 // ════════════════════════════════════════════════════════════════════════
 
 fun applyScheduleData(

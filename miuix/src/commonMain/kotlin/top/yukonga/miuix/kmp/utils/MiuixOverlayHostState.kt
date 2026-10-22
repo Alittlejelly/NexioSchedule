@@ -14,6 +14,11 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
+import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
+import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
+import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.Colors
@@ -97,6 +102,14 @@ internal data class MiuixOverlayTheme(
     val dismiss: (() -> Unit)?,
     val chromeLensEnabled: Boolean,
     val useFakeProgressiveBlur: Boolean,
+    /** 玻璃件模糊半径（dp）快照：root host 读不到声明页面的 CompositionLocal。 */
+    val glassBlurDp: Float,
+    /** 下拉面板模糊半径（dp）快照，同上。 */
+    val glassPanelBlurDp: Float,
+    /** 对话框 / 贴底弹窗模糊半径（dp）快照，同上。 */
+    val glassDialogBlurDp: Float,
+    /** 玻璃底色 alpha 降幅快照（通透玻璃档 >0，其余 0），同上。 */
+    val glassSurfaceAlphaDrop: GlassSurfaceAlphaDrop,
     val predictiveBackEnabled: Boolean,
 ) {
     @Composable
@@ -114,6 +127,10 @@ internal data class MiuixOverlayTheme(
             LocalDismissState provides dismiss,
             LocalChromeLensEnabled provides chromeLensEnabled,
             LocalUseFakeProgressiveBlur provides useFakeProgressiveBlur,
+            LocalGlassBlurDp provides glassBlurDp,
+            LocalGlassPanelBlurDp provides glassPanelBlurDp,
+            LocalGlassDialogBlurDp provides glassDialogBlurDp,
+            LocalGlassSurfaceAlphaDrop provides glassSurfaceAlphaDrop,
             LocalPredictiveBackEnabled provides predictiveBackEnabled,
             content = content,
         )
@@ -134,5 +151,9 @@ internal fun currentMiuixOverlayTheme(): MiuixOverlayTheme = MiuixOverlayTheme(
     dismiss = LocalDismissState.current,
     chromeLensEnabled = LocalChromeLensEnabled.current,
     useFakeProgressiveBlur = LocalUseFakeProgressiveBlur.current,
+    glassBlurDp = LocalGlassBlurDp.current,
+    glassPanelBlurDp = LocalGlassPanelBlurDp.current,
+    glassDialogBlurDp = LocalGlassDialogBlurDp.current,
+    glassSurfaceAlphaDrop = LocalGlassSurfaceAlphaDrop.current,
     predictiveBackEnabled = LocalPredictiveBackEnabled.current,
 )

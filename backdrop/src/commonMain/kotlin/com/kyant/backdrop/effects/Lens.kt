@@ -26,55 +26,52 @@ fun BackdropEffectScope.lens(
         padding = (padding - refractionHeight).fastCoerceAtLeast(0f)
     }
 
-    val cornerRadii = cornerRadii
-    val effect =
-        if (cornerRadii != null) {
-            val shader =
-                if (!chromaticAberration) {
-                    obtainRuntimeShader(
-                        "Refraction",
-                        RoundedRectRefractionShaderString
-                    )
-                } else {
-                    obtainRuntimeShader(
-                        "RefractionWithDispersion",
-                        RoundedRectRefractionWithDispersionShaderString
-                    )
-                }
-            // 折射 shader 在降采样缓冲上执行，所有像素空间 uniform 需同步 ×scale，
-            // 等比例缩放可保持 SDF 比例与折射位移在放大回原尺寸后与未降采样一致。
-            // scale 取当前缓冲的实际降采样比例（非固定常量），与 DrawBackdropNode 的 n 对齐。
-            val scale = this.downsampleScale
-            shader.apply {
-                setFloatUniform("size", size.width * scale, size.height * scale)
-                setFloatUniform("offset", -padding * scale, -padding * scale)
-                setFloatUniform(
-                    "cornerRadii",
-                    cornerRadii[0] * scale,
-                    cornerRadii[1] * scale,
-                    cornerRadii[2] * scale,
-                    cornerRadii[3] * scale
-                )
-                setFloatUniform("refractionHeight", refractionHeight * scale)
-                setFloatUniform("refractionAmount", -refractionAmount * scale)
-                setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
-                if (chromaticAberration) {
-                    setFloatUniform("chromaticAberration", 1f)
-                }
-            }
-            RuntimeShaderEffect(shader, "content").also {
-                lensShader = shader
-                // 供全分辨率 ImageShader 直采路径重写 uniform（屏幕像素，未乘 downsample）
-                lensRefractionHeight = refractionHeight
-                lensRefractionAmount = refractionAmount
-                lensCornerRadii = floatArrayOf(
-                    cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3]
-                )
-            }
+    // 不支持的 shape（自定义 Shape / 非圆角矩形）直接跳过折射，**不能抛** ——
+    // 这里跑在 draw/measure 链路里，抛出去就是整个应用崩溃（曾因弹窗面板用了
+    // 自定义 AnimatedPanelRectShape 一开菜单就 FATAL）。
+    val cornerRadii = cornerRadii ?: return
+    val shader =
+        if (!chromaticAberration) {
+            obtainRuntimeShader(
+                "Refraction",
+                RoundedRectRefractionShaderString
+            )
         } else {
-            throwUnsupportedSDFException()
+            obtainRuntimeShader(
+                "RefractionWithDispersion",
+                RoundedRectRefractionWithDispersionShaderString
+            )
         }
-    effect(effect)
+    // 折射 shader 在降采样缓冲上执行，所有像素空间 uniform 需同步 ×scale，
+    // 等比例缩放可保持 SDF 比例与折射位移在放大回原尺寸后与未降采样一致。
+    // scale 取当前缓冲的实际降采样比例（非固定常量），与 DrawBackdropNode 的 n 对齐。
+    val scale = this.downsampleScale
+    shader.apply {
+        setFloatUniform("size", size.width * scale, size.height * scale)
+        setFloatUniform("offset", -padding * scale, -padding * scale)
+        setFloatUniform(
+            "cornerRadii",
+            cornerRadii[0] * scale,
+            cornerRadii[1] * scale,
+            cornerRadii[2] * scale,
+            cornerRadii[3] * scale
+        )
+        setFloatUniform("refractionHeight", refractionHeight * scale)
+        setFloatUniform("refractionAmount", -refractionAmount * scale)
+        setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
+        if (chromaticAberration) {
+            setFloatUniform("chromaticAberration", 1f)
+        }
+    }
+    effect(RuntimeShaderEffect(shader, "content").also {
+        lensShader = shader
+        // 供全分辨率 ImageShader 直采路径重写 uniform（屏幕像素，未乘 downsample）
+        lensRefractionHeight = refractionHeight
+        lensRefractionAmount = refractionAmount
+        lensCornerRadii = floatArrayOf(
+            cornerRadii[0], cornerRadii[1], cornerRadii[2], cornerRadii[3]
+        )
+    })
 }
 
 private val BackdropEffectScope.cornerRadii: FloatArray?
@@ -130,9 +127,3 @@ private val BackdropEffectScope.cornerRadii: FloatArray?
 
         else -> null
     }
-
-private fun throwUnsupportedSDFException(): Nothing {
-    throw UnsupportedOperationException(
-        "Only RoundedRectangularShape or CornerBasedShape is supported in lens effects."
-    )
-}

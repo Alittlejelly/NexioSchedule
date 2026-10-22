@@ -21,6 +21,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.haooz.chedule.ui.activities.today.ClassEndEffectSettings
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random

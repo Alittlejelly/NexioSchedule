@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,7 +40,7 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.TeachingWeekPosition
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import com.haooz.chedule.ui.components.SectionColumn
+import com.haooz.chedule.ui.activities.classschedule.SectionColumn
 import com.haooz.chedule.ui.components.ShiftDayColumn
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical

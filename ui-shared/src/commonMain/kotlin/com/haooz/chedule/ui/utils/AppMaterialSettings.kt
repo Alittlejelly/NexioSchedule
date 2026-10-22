@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
 
 /**
- * 应用材质质量档（最佳 / 均衡 / 性能，供玻璃模糊、折射、边光等读取），默认均衡。
+ * 应用材质质量档（通透玻璃 / 清透磨砂 / 性能优先），玻璃模糊、折射、边光都读它；默认清透磨砂。
  */
 object AppMaterialSettings {
 
@@ -20,30 +20,86 @@ object AppMaterialSettings {
     const val BALANCED = "balanced"
     const val PERFORMANCE = "performance"
 
-    /** 性能档描边同色系提亮幅度（向白混合比例） */
+    /** 性能优先档描边同色系提亮幅度（向白混合比例） */
     private const val STROKE_LIGHTEN = 0.2f
 
+    /** 通透玻璃档玻璃模糊（dp）：折射接管通透感，模糊只留一点点 */
+    private const val GLASS_BLUR_BEST = 4f
+    /** 清透磨砂 / 性能优先档玻璃模糊（dp）：无折射，需要磨砂 */
+    private const val GLASS_BLUR_MILLED = 8f
+    /** 通透玻璃档下拉面板模糊（dp）：恒定值，不随展开渐变 */
+    private const val GLASS_PANEL_BLUR_BEST = 4f
+    /** 下拉面板比小玻璃件多出来的模糊量（dp）：8 → 24 的原始跨度（仅非通透玻璃档用） */
+    private const val GLASS_PANEL_BLUR_SPAN = 16f
+    /** 通透玻璃档玻璃底色 alpha 降幅：深色降得多一点，浅色降少一点（浅底本身已亮） */
+    private const val GLASS_SURFACE_ALPHA_DROP_DARK = 0.32f
+    private const val GLASS_SURFACE_ALPHA_DROP_LIGHT = 0.2f
+    /** 通透玻璃档对话框模糊（dp） */
+    private const val GLASS_DIALOG_BLUR_BEST = 6f
+    /** 其余档对话框模糊（dp） */
+    private const val GLASS_DIALOG_BLUR_MILLED = 24f
+
     val entries: List<Pair<String, String>> = listOf(
-        BEST to "最佳",
-        BALANCED to "均衡",
-        PERFORMANCE to "性能",
+        BEST to "通透玻璃",
+        BALANCED to "清透磨砂",
+        PERFORMANCE to "性能优先",
     )
 
     /** 当前档位；组合期可读，写入走 [apply]。 */
     var level: String by mutableStateOf(BALANCED)
 
     fun labelOf(level: String): String =
-        entries.firstOrNull { it.first == level }?.second ?: "均衡"
+        entries.firstOrNull { it.first == level }?.second ?: "清透磨砂"
 
-    /** 按钮 / 低栏背景板折射：仅最佳档保留，均衡及更省档关闭。 */
+    /** 按钮 / 低栏背景板折射：仅通透玻璃档保留，清透磨砂及更省档关闭。 */
     fun chromeLensEnabled(): Boolean = level == BEST
 
-    /** 性能档用假渐进模糊（等值 blur + alpha 淡出）替代真渐进（AGSL 多重采样）；最佳 / 均衡保留真模糊。 */
+    /** 是否通透玻璃档（折射 + 低模糊那一档）。 */
+    fun isBestTier(): Boolean = level == BEST
+
+    /**
+     * 玻璃件采样模糊半径（dp）。通透玻璃档有折射（[chromeLensEnabled]）撑着玻璃的「厚度」，
+     * 模糊压得很低让折射纹理透出来；清透磨砂 / 性能优先没有折射，靠 8 的磨砂顶住质感。
+     */
+    fun glassBlurDp(): Float = if (level == BEST) GLASS_BLUR_BEST else GLASS_BLUR_MILLED
+
+    /**
+     * 弹出面板（下拉菜单）采样模糊半径（dp）。
+     * 通透玻璃档取恒定值、**不随展开渐变**（折射已经做出「厚度」，再叠模糊只会糊掉边缘）；
+     * 其余档取展开态的 24（小玻璃件 8 + 16 跨度）。
+     */
+    fun glassPanelBlurDp(): Float =
+        if (level == BEST) GLASS_PANEL_BLUR_BEST else glassBlurDp() + GLASS_PANEL_BLUR_SPAN
+
+    /** 对话框 / 贴底弹窗玻璃的采样模糊半径（dp）：通透玻璃档更薄，其余档维持 24。 */
+    fun glassDialogBlurDp(): Float =
+        if (level == BEST) GLASS_DIALOG_BLUR_BEST else GLASS_DIALOG_BLUR_MILLED
+
+    /**
+     * 玻璃底色 alpha：通透玻璃档比常态低一档，让折射和背后的内容透出来（折射要「看进去」才像玻璃，
+     * 底色太实会把它盖成一层膜）；清透磨砂 / 性能优先档原值返回。
+     *
+     * @param milledAlpha 清透磨砂 / 性能优先档原本使用的 alpha
+     */
+    fun glassSurfaceAlpha(milledAlpha: Float, isLight: Boolean): Float =
+        (milledAlpha - glassSurfaceAlphaDrop(isLight)).coerceAtLeast(0f)
+
+    /**
+     * 通透玻璃档的底色 alpha 降幅（浅色 / 深色各一档）；清透磨砂 / 性能优先档 0。
+     * [glassSurfaceAlpha] 与 :miuix 下发都用它。
+     */
+    fun glassSurfaceAlphaDrop(isLight: Boolean): Float = when {
+        level != BEST -> 0f
+        isLight -> GLASS_SURFACE_ALPHA_DROP_LIGHT
+        else -> GLASS_SURFACE_ALPHA_DROP_DARK
+    }
+
+    /** 性能优先档用假渐进模糊（等值 blur + alpha 淡出）替代真渐进（AGSL 多重采样）；通透玻璃 / 清透磨砂保留真模糊。 */
     fun progressiveBlurUseFake(): Boolean = level == PERFORMANCE
 
     /**
-     * 性能档把高光描边降级为普通纯色描边（无模糊、SrcOver）；[baseColor] 非空时按同色系
-     * 提亮一档作描边，否则按主题回退（浅色白 / 深色灰）。最佳 / 均衡保留原高光。
+     * 性能优先档把高光描边降级为普通纯色描边（无模糊、SrcOver）；[baseColor] 非空时按同色系
+     * 提亮一档作描边，否则按主题回退（浅色白 / 深色灰）。通透玻璃 / 清透磨砂保留原高光。
      */
     fun resolveEdgeLight(
         source: com.kyant.backdrop.edgelight.EdgeLight,
@@ -87,7 +143,7 @@ object AppMaterialSettings {
         level = normalize(AppStorage.store(PREFS_NAME).getString(KEY_APP_MATERIAL, BALANCED))
     }
 
-    /** 旧值 / 非法值落到均衡档。 */
+    /** 旧值 / 非法值落到清透磨砂档。 */
     private fun normalize(level: String): String = when (level) {
         BEST, BALANCED, PERFORMANCE -> level
         else -> BALANCED

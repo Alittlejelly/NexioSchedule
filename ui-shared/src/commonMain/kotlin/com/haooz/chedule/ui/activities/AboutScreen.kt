@@ -33,7 +33,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -70,6 +70,7 @@ import com.haooz.chedule.ui.data.changelogData
 import com.haooz.chedule.ui.effects.background.BgEffectBackground
 import com.haooz.chedule.ui.effects.miuix.rememberBlurBackdrop
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
@@ -248,8 +249,8 @@ fun AboutScreen(
             // 内嵌到 pad 设置页右栏时，About 仍自绘顶栏糊层/遮罩/标题，仅隐藏返回按钮
             ProgressiveBlurTopBar(
                 backdrop = liquidGlassBackdrop,
-                tintIntensity = scrollProgress * 0.2f,
                 topInsetAdjustment = nativeBarInset,
+                noTopStatusBar = hostVerticalBarEdge(),
             ) {
                 CollapsibleTopAppBar(
                     title = "关于应用",
@@ -257,8 +258,6 @@ fun AboutScreen(
                     showLargeTitle = false,
                     showSmallTitle = scrollProgress > 0.5f,
                     showShadow = scrollProgress >= 1f,
-                    // 关于页渐变遮罩保持随滚动显隐
-                    gradientOverlayScrollTriggered = true,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
                     contentPadding = {},

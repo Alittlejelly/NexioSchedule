@@ -31,6 +31,14 @@ class HostNavigationState {
     var leftSafeAreaInset by mutableStateOf(0.0)
     var rightSafeAreaInset by mutableStateOf(0.0)
     var topBarInset by mutableStateOf(0.0)
+    /**
+     * 竖排 tab bar 形态（iOS 的 `traitCollection.verticalBarEdge` 为 leading/trailing）：
+     * 折叠屏 iPhone 折叠态，tab bar 竖排到侧边、状态栏跟着移到右侧，**屏幕顶部没有状态栏**，
+     * 顶栏糊带与星期行走另一套几何。
+     *
+     * 形态只认这个 trait：状态栏高度算出来是 0 有两种可能（顶部没有 / 被 `topBarInset` 吃光）。
+     */
+    var verticalBarEdgeActive by mutableStateOf(false)
     var onTabSelected: ((Int) -> Unit)? = null
     /**
      * 开洞缩放进度，1f=正常。宿主（当前只有 iOS）据此对原生 chrome 施加同样缩放——
@@ -42,6 +50,11 @@ class HostNavigationState {
      * CustomizeScheduleScreen 回传，不是常量，故一并上报供原生 chrome 对齐。
      */
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)
+    /**
+     * 开洞缩放的变换原点横比。折叠屏上开洞要求整体左移（右侧被竖排底栏占掉一条），
+     * 洞心不在屏幕中心，故与纵比一样由 CustomizeScheduleScreen 回传。
+     */
+    var cutoutCenterXRatio by mutableFloatStateOf(0.5f)
     /**
      * 开洞期间主内容整体上移的纵向位移（pt）。与主内容 graphicsLayer 的 translationY 同源同值
      */
@@ -55,12 +68,20 @@ class HostNavigationState {
      */
     var detailBackgroundBlur by mutableFloatStateOf(0f)
         private set
-    var onDetailChromeBlur: ((Double) -> Unit)? = null
+    /** 下层背景模糊强度（0…1，不是 dp）：iOS 没有可设的半径，宿主只能按强度插值。 */
+    var onDetailBackdropBlurProgress: ((Double) -> Unit)? = null
+
+    companion object {
+        /** 详情 morph 的目标模糊半径（dp）；也是换算成 0…1 强度的基准，两处必须同源。 */
+        const val DETAIL_BACKDROP_BLUR_DP = 16f
+    }
 
     fun updateDetailBackgroundBlur(blurDp: Float) {
         if (detailBackgroundBlur == blurDp) return
         detailBackgroundBlur = blurDp
-        onDetailChromeBlur?.invoke(blurDp.toDouble())
+        onDetailBackdropBlurProgress?.invoke(
+            (blurDp / DETAIL_BACKDROP_BLUR_DP).coerceIn(0f, 1f).toDouble()
+        )
     }
     /** Whether the main screen top bar header controls are owned by native host chrome. */
     var showsNativeHeader by mutableStateOf(false)
@@ -174,3 +195,11 @@ fun HostOverlayContent(
         }
     }
 }
+
+/**
+ * 是否竖排 tab bar 形态（折叠屏 iPhone 折叠态，屏幕顶部没有状态栏）：糊带收窄
+ * [top.yukonga.miuix.kmp.layout.NoStatusBarBlurReduction]、星期行不再补那 40dp。
+ * 无宿主（Android/桌面）恒为 false，走常规几何。
+ */
+@Composable
+fun hostVerticalBarEdge(): Boolean = LocalHostNavigation.current?.verticalBarEdgeActive == true

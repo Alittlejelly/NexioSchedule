@@ -20,10 +20,20 @@ import kotlinx.datetime.toLocalDateTime
 //  两者共用 [CourseRepository.exportAllPreferences] / `importAllPreferences` 全量
 //  序列化入口，备份格式由它们决定；格式改动只需看那两处。
 //
-//  ⚠ 数据兼容红线：prefs 文件名 `webdav_config` 与 4 个键名、备份 JSON 字段名逐字未变；
-//  请求方法 / `Authorization` / `Depth` 头 / 状态码分支（2xx / 401 / 404 / 405）/
-//  `ensureDir` 重试次数（2 次）与退避（1s、2s）全部照抄，超时 connect 10s / read 30s。
+//  ⚠ 数据兼容红线：prefs 文件名 `webdav_config` 与原 4 个键名、备份 JSON 字段名逐字未变；
+//  请求方法 / `Authorization` / `Depth` 头 / 状态码分支（2xx / 401 / 403 / 404 / 405）/
+//  `MKCOL` 重试次数（2 次）与退避（1s、2s）全部照抄，超时 connect 10s / read 30s。
 //  唯一可观测差异：失败文案不含 reason phrase，为「服务器返回: <code>」。
+//
+//  ## 自定义远端路径（2026-10-17）
+//  备份目录不再是写死的 `NexioSchedule/backups`，而是用户可填的 [WebDavManager.remotePath]：
+//  - 新增键 `remote_path`；该键不存在时回落到默认两级目录（老用户的云端备份照旧能读到），
+//    键存在但为空串 = 直接放服务器根目录。
+//  - 部分网盘不允许在根目录建文件夹 → 让用户填一个已存在的子目录，文件直接落在那。
+//  - **目录名只是「放在哪」，不构成约束**：备份只按文件名 `backup_<时间戳>.json` 识别，
+//    目录随便叫什么、层级多深都能读回来。
+//  - 目录创建改为自顶向下逐级 MKCOL（WebDAV 的 MKCOL 不递归），且失败不再直接判死 ——
+//    禁 MKCOL 但允许 PUT 的网盘照样能写，最终由 PUT 结果决定成败。
 // ════════════════════════════════════════════════════════════════════════
 
 // ── 1. 同步管理器 ───────────────────────────────────────────
@@ -161,11 +171,14 @@ class WebDavManager(
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
+        /** 新增键（2026-10-17 自定义路径）；老用户没这个键 → 走 [DEFAULT_REMOTE_PATH]。 */
+        private const val KEY_REMOTE_PATH = "remote_path"
         private const val KEY_LAST_SYNC_TIME = "last_sync_time"
-        private const val BACKUP_DIR = "NexioSchedule"
-        private const val BACKUPS_DIR = "backups"
         private const val BACKUP_FILE_PREFIX = "backup_"
         private const val BACKUP_FILE_SUFFIX = ".json"
+
+        /** 从未设置过路径时的兜底值：迁移前的两级目录，保证老用户的云端备份还能读到。 */
+        const val DEFAULT_REMOTE_PATH = "NexioSchedule/backups"
     }
 
     var serverUrl: String
@@ -180,6 +193,23 @@ class WebDavManager(
         get() = configPrefs.getString(KEY_PASSWORD, "")
         set(value) = configPrefs.edit { putString(KEY_PASSWORD, value) }
 
+    /**
+     * 远端备份目录，相对 [serverUrl]，可任意层级、任意名字，例如 `我的网盘/课表备份`。
+     *
+     * - 空串 = 直接放在服务器根目录（部分网盘不允许，此时填一个已存在的子目录即可）。
+     * - 从未设置过 → [DEFAULT_REMOTE_PATH]，老用户的备份位置不变。
+     *
+     * ⚠ 目录名只是「放在哪」，**不构成任何约束**：备份一律只按文件名
+     *   `backup_<时间戳>.json` 识别（见 [listBackups]），目录叫什么都能读回来。
+     */
+    var remotePath: String
+        get() = if (configPrefs.contains(KEY_REMOTE_PATH)) {
+            configPrefs.getString(KEY_REMOTE_PATH, "")
+        } else {
+            DEFAULT_REMOTE_PATH
+        }
+        set(value) = configPrefs.edit { putString(KEY_REMOTE_PATH, normalizeRemotePath(value)) }
+
     var lastSyncTime: Long
         get() = configPrefs.getLong(KEY_LAST_SYNC_TIME, 0L)
         set(value) = configPrefs.edit { putLong(KEY_LAST_SYNC_TIME, value) }
@@ -189,26 +219,51 @@ class WebDavManager(
     /** Basic 认证头：`Basic ` + base64("user:pass")。 */
     private fun authHeader(): String = basicAuthHeader(username, password)
 
-    private fun baseUrl() = "$serverUrl/$BACKUP_DIR"
-    private fun backupsDirUrl() = "${baseUrl()}/$BACKUPS_DIR"
-    private fun backupFileUrl(backupId: String) = "${backupsDirUrl()}/$backupId$BACKUP_FILE_SUFFIX"
+    /** 备份目录的完整 URL（逐段百分号编码，中文路径可用）。 */
+    fun backupDirUrl(): String = resolveWebDavDirUrl(serverUrl, remotePath)
+
+    private fun backupFileUrl(backupId: String) = "${backupDirUrl()}/$backupId$BACKUP_FILE_SUFFIX"
 
     private fun authHeaders(extra: Map<String, String> = emptyMap()): Map<String, String> =
         mapOf("Authorization" to authHeader()) + extra
 
     // ============ WebDAV 基础操作 ============
 
+    /**
+     * 探测**备份目录本身**（不只是服务器根）——自定义路径填错时，这里就要报错，
+     * 而不是等到备份时才炸。
+     */
     suspend fun testConnection(): Result<String> = withContext(ioDispatcher) {
         try {
+            val authFail = Result.failure<String>(Exception("认证失败，请检查用户名和密码"))
+            val dir = backupDirUrl()
             val response = http.request(
                 method = "PROPFIND",
-                url = serverUrl,
+                url = dir,
                 headers = authHeaders(mapOf("Depth" to "0")),
             )
             when {
                 response.isSuccessful -> Result.success("连接成功")
-                response.code == 401 -> Result.failure(Exception("认证失败，请检查用户名和密码"))
-                response.code == 404 -> Result.success("连接成功（目录将自动创建）")
+                response.code == 401 -> authFail
+                response.code == 403 -> Result.failure(Exception("无访问权限，请检查账号权限或备份路径"))
+                // 路径留空（= 直接放根目录）时两者是同一个 URL，没必要再探一次
+                response.code == 404 && dir == serverUrl -> Result.success("连接成功（目录将自动创建）")
+                response.code == 404 -> {
+                    // 404 可能是「路径还没建」，也可能是「服务器地址根本不对」——
+                    // 再探一次根目录把两者分开，否则地址错了也会报「连接成功」。
+                    val root = http.request(
+                        method = "PROPFIND",
+                        url = serverUrl,
+                        headers = authHeaders(mapOf("Depth" to "0")),
+                    )
+                    when {
+                        root.isSuccessful || root.code == 404 || root.code == 405 ->
+                            Result.success("连接成功（目录将自动创建）")
+                        root.code == 401 -> authFail
+                        // ⚠ reason phrase 在 HttpResult 里没有对应物，故省略
+                        else -> Result.failure(Exception("服务器返回: ${root.code}"))
+                    }
+                }
                 // ⚠ reason phrase 在 HttpResult 里没有对应物，故省略
                 else -> Result.failure(Exception("服务器返回: ${response.code}"))
             }
@@ -217,51 +272,74 @@ class WebDavManager(
         }
     }
 
-    private suspend fun ensureDir(dirUrl: String, retries: Int = 2): Result<Boolean> {
-        val checkResponse = http.request(
+    private suspend fun dirExists(url: String): Boolean {
+        val response = http.request(
             method = "PROPFIND",
-            url = dirUrl,
+            url = url,
             headers = authHeaders(mapOf("Depth" to "0")),
         )
-        if (checkResponse.isSuccessful) return Result.success(true)
+        return response.isSuccessful
+    }
 
-        var lastError: String? = null
+    /** @param retries 与迁移前一致（共 3 次尝试，退避 1s、2s）。 */
+    private suspend fun mkcol(url: String, retries: Int = 2): Boolean {
+        var lastCode = -1
         for (attempt in 0..retries) {
             if (attempt > 0) {
                 // 已在协程内，用 delay 而非阻塞 sleep
                 delay(1000L * attempt)
             }
-            val mkcolResponse = http.request(
+            val response = http.request(
                 method = "MKCOL",
-                url = dirUrl,
+                url = url,
                 headers = authHeaders(),
             )
-            if (mkcolResponse.isSuccessful || mkcolResponse.code == 405) {
-                return Result.success(true)
-            }
-            lastError = "${mkcolResponse.code}"
+            // 405 = 已存在（WebDAV 规范要求 MKCOL 对已存在资源返回 405）
+            if (response.isSuccessful || response.code == 405) return true
+            lastCode = response.code
         }
-        return Result.failure(Exception("创建目录失败: $lastError"))
+        NexioLog.w(TAG, "MKCOL 失败: $url -> $lastCode")
+        return false
     }
 
-    private suspend fun ensureBackupDirs(): Result<Boolean> {
-        val baseResult = ensureDir(baseUrl())
-        if (baseResult.isFailure) return baseResult
+    /**
+     * 自顶向下逐级确保备份目录存在。
+     *
+     * ⚠ 必须逐级：WebDAV 的 MKCOL **不递归**，父目录不存在时返回 409。迁移前只建两级
+     * 固定目录，自定义路径可以有任意层数，所以这里按段依次建。
+     *
+     * @return 目录是否确认存在。**false 不是致命错误**：部分网盘禁 MKCOL 但允许 PUT，
+     *   调用方仍应尝试写入，由写入结果决定成败。
+     */
+    private suspend fun ensureBackupDir(): Boolean {
+        for (url in remoteUrlChain()) {
+            if (dirExists(url)) continue
+            if (mkcol(url)) continue
+            return false
+        }
+        return true
+    }
 
-        val backupsResult = ensureDir(backupsDirUrl())
-        if (backupsResult.isFailure) return backupsResult
-
-        return Result.success(true)
+    /** [serverUrl] 及其下每一级子目录的 URL，由浅到深。 */
+    private fun remoteUrlChain(): List<String> {
+        val base = serverUrl.trimEnd('/')
+        val segments = normalizeRemotePath(remotePath).split('/').filter { it.isNotEmpty() }
+        val chain = ArrayList<String>(segments.size + 1)
+        var current = base
+        chain.add(current)
+        for (segment in segments) {
+            current = "$current/${encodePathSegment(segment)}"
+            chain.add(current)
+        }
+        return chain
     }
 
     // ============ 备份操作 ============
 
     suspend fun backupAllData(repository: CourseRepository): BackupResult = withContext(ioDispatcher) {
         try {
-            val dirResult = ensureBackupDirs()
-            if (dirResult.isFailure) {
-                return@withContext BackupResult.Error("创建目录失败: ${dirResult.exceptionOrNull()?.message}")
-            }
+            // 目录建不出来不算致命：部分网盘禁 MKCOL 但允许直接 PUT，照样写一次再判成败。
+            val dirReady = ensureBackupDir()
 
             val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
             val backupId = "$BACKUP_FILE_PREFIX${now.formatCompactStamp()}"
@@ -289,7 +367,10 @@ class WebDavManager(
                 NexioLog.d(TAG, "Backup succeeded: $backupId")
                 BackupResult.Success(backupId)
             } else {
-                BackupResult.Error("上传备份失败: ${response.code}")
+                BackupResult.Error(
+                    if (dirReady) "上传备份失败: ${response.code}"
+                    else "上传备份失败: ${response.code}，请确认备份路径存在且有写入权限"
+                )
             }
         } catch (e: Exception) {
             NexioLog.e(TAG, "Backup exception", e)
@@ -351,7 +432,7 @@ class WebDavManager(
         try {
             val response = http.request(
                 method = "PROPFIND",
-                url = backupsDirUrl(),
+                url = backupDirUrl(),
                 headers = authHeaders(mapOf("Depth" to "1")),
             )
             if (!response.isSuccessful) return@withContext emptyList()
@@ -405,6 +486,79 @@ class WebDavManager(
 /** Basic 认证头：`Basic ` + base64("user:pass")，用 stdlib 的 [kotlin.io.encoding.Base64]。 */
 internal fun basicAuthHeader(username: String, password: String): String =
     "Basic " + kotlin.io.encoding.Base64.Default.encode("$username:$password".encodeToByteArray())
+
+/**
+ * 归一化用户填写的远端路径：去首尾斜杠、合并重复斜杠、顺手剥掉误粘贴的完整 URL。
+ *
+ * ⚠ 空串是**合法值**（= 服务器根目录），所以这里不把空串兜底成默认路径 ——
+ * 兜底放在 [WebDavManager.remotePath] 的读取侧按「键是否存在」判断，
+ * 否则用户就永远没法选「直接放根目录」了。
+ */
+fun normalizeRemotePath(raw: String): String {
+    var value = raw.trim()
+    val lower = value.lowercase()
+    for (scheme in arrayOf("https://", "http://")) {
+        if (lower.startsWith(scheme)) {
+            // 用户整段 WebDAV 地址粘进来了 → 只留路径部分（`substringAfter` 无斜杠时返回空串）
+            value = value.substring(scheme.length).substringAfter('/', "")
+            break
+        }
+    }
+    return value.split('/').filter { it.isNotBlank() }.joinToString("/") { it.trim() }
+}
+
+/** 把 [serverUrl] 与 [remotePath] 拼成备份目录 URL：路径逐段百分号编码，中文目录名可用。 */
+fun resolveWebDavDirUrl(serverUrl: String, remotePath: String): String {
+    val base = serverUrl.trim().trimEnd('/')
+    val segments = normalizeRemotePath(remotePath).split('/').filter { it.isNotEmpty() }
+    if (segments.isEmpty()) return base
+    return buildString {
+        append(base)
+        for (segment in segments) {
+            append('/')
+            append(encodePathSegment(segment))
+        }
+    }
+}
+
+private const val HEX_DIGITS = "0123456789ABCDEF"
+
+/**
+ * 对单个路径段做百分号编码，保留 RFC 3986 的 unreserved 字符。
+ *
+ * ⚠ 不能直接用平台 API：`java.net.URLEncoder` 是 JVM 专有，iOS 侧没有对应物，
+ * 而 Kotlin 的 String 在 Native 上也不暴露 `stringByAddingPercentEncoding…`。
+ *
+ * 已是合法 `%XX` 的三字符序列**不二次编码**（用户可能自己粘了编码后的路径）。
+ */
+internal fun encodePathSegment(segment: String): String {
+    val bytes = segment.encodeToByteArray()
+    val out = StringBuilder(bytes.size)
+    var i = 0
+    while (i < bytes.size) {
+        val b = bytes[i].toInt() and 0xFF
+        val c = b.toChar()
+        when {
+            c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' ||
+                c == '-' || c == '.' || c == '_' || c == '~' -> out.append(c)
+            c == '%' && i + 2 < bytes.size &&
+                isHexByte(bytes[i + 1]) && isHexByte(bytes[i + 2]) -> {
+                out.append(c)
+                    .append((bytes[i + 1].toInt() and 0xFF).toChar())
+                    .append((bytes[i + 2].toInt() and 0xFF).toChar())
+                i += 2
+            }
+            else -> out.append('%').append(HEX_DIGITS[b shr 4]).append(HEX_DIGITS[b and 0x0F])
+        }
+        i++
+    }
+    return out.toString()
+}
+
+private fun isHexByte(byte: Byte): Boolean {
+    val v = byte.toInt() and 0xFF
+    return v in '0'.code..'9'.code || v in 'A'.code..'F'.code || v in 'a'.code..'f'.code
+}
 
 data class BackupInfo(
     val backupId: String,

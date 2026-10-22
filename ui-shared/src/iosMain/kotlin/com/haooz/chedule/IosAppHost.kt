@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
+import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.utils.NativeDocumentAction
@@ -60,8 +61,6 @@ class IosAppHost {
     private val popupHost = MiuixOverlayHostState()
     private val nativePages = mutableStateListOf<NativeDocumentPage>()
     private var nextNativePageId = 0L
-    // Mirror AppNavHost's route/occurrence saveable keys without retaining popped controllers.
-    private val savedDocumentStates = mutableMapOf<String, Map<String, List<Any?>>>()
     private var requestedPopDepth by mutableStateOf<Int?>(null)
     private var nativeTransitionInFlight by mutableStateOf(false)
     private var deferredEditorPopRouteId: String? = null
@@ -114,6 +113,8 @@ class IosAppHost {
         if (!route.isNativeDocument() || nativeContentOverlayActive ||
             nativeTransitionInFlight || requestedPopDepth != null
         ) return
+        // 与 AppRouter.navigate 同一规则：挡「已在栈顶」，连点只压一层；A → B → A 仍合法
+        if (nativePages.lastOrNull()?.route == route) return
         val usedKeys = nativePages.map { it.stateKey }.toSet()
         var stateKey = route.id
         var occurrence = 2
@@ -126,7 +127,6 @@ class IosAppHost {
             id = "native-document-${++nextNativePageId}",
             route = route,
             stateKey = stateKey,
-            restoredValues = savedDocumentStates[stateKey],
         ))
     }
 
@@ -145,13 +145,15 @@ class IosAppHost {
         nativeTransitionInFlight = inFlight
     }
 
-    /** UIKit calls this only after a successful pop; an interactive cancellation changes nothing. */
+    /** UIKit reports the depth it actually displays after every settled transition (cancelled gestures included). */
     fun completeNativePop(depth: Int) {
-        if (depth !in 0..nativePages.size) return
-        while (nativePages.size > depth) {
+        // 出栈 = 销毁：**不缓存**它的 saveable 状态（同 AppNavHost 的 stateHolder.removeState），
+        // 否则重进这一页永远是上次的滚动位置；只放掉组合控制器。
+        // ⚠ 越界不 return：UIKit 报来的深度与这里对不上时也要收敛到「屏幕上还剩几层」，
+        // 否则旧 page 会永久留在栈里，重进时它的 controller 被原样复用 = 状态还在。
+        val target = depth.coerceIn(0, nativePages.size)
+        while (nativePages.size > target) {
             val page = nativePages.removeAt(nativePages.lastIndex)
-            savedDocumentStates[page.stateKey] = page.registry.performSave()
-            // Do not cache live compositions: page disposal retains its original exit semantics.
             page.controller = null
         }
         requestedPopDepth = null
@@ -282,6 +284,9 @@ class IosAppHost {
 
     fun makeNativePageController(routeId: String): UIViewController {
         val page = nativePage(routeId)
+        // 命中复用 = 这次 push 拿回的是上一次的组合控制器。同一页还没出栈时是正常的；
+        // 页面关掉后再进还走到这里，说明出栈那一步漏清了这个 page（栈里/UIKit 里对不齐）。
+        page.controller?.let { NexioLog.d("IosNativePage", "reuse ${page.route.id} -> $routeId") }
         return page.controller ?: ComposeUIViewController {
             HostEnvironment {
                 CompositionLocalProvider(
@@ -360,6 +365,7 @@ class IosAppHost {
     val mainProgress: Double get() = mainTransition.value.toDouble()
     val cutoutScale: Float get() = navigation.cutoutScale
     val cutoutCenterYRatio: Float get() = navigation.cutoutCenterYRatio
+    val cutoutCenterXRatio: Float get() = navigation.cutoutCenterXRatio
 
     /**
      * Per-frame push of the main content's vertical offset while the customize page's sheet is
@@ -369,12 +375,12 @@ class IosAppHost {
      * it a frame or two behind.
      */
     var onCutoutChromeOffset: ((Double) -> Unit)? = null
-    /** 连贯动画期间下层的模糊半径（dp）；宿主据此在「详情页之下、其余一切之上」压一层背景模糊 */
-    var onDetailChromeBlur: ((Double) -> Unit)? = null
+    /** 下层背景模糊强度（0…1，换算在 commonMain 完成）；宿主据此在「详情页之下、其余一切之上」压一层 */
+    var onDetailBackdropBlurProgress: ((Double) -> Unit)? = null
 
     init {
         navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
-        navigation.onDetailChromeBlur = { blurDp -> onDetailChromeBlur?.invoke(blurDp) }
+        navigation.onDetailBackdropBlurProgress = { onDetailBackdropBlurProgress?.invoke(it) }
     }
 
     val mainController: UIViewController by lazy {
@@ -425,6 +431,7 @@ class IosAppHost {
                         NativeHostSnapshot(
                             selectedTab, tabCount, shiftMode, showsNativeTabBar,
                             isDark, overlayActive, mainProgress, cutoutScale, cutoutCenterYRatio,
+                            cutoutCenterXRatio,
                             nativeRouteIds, floatingOverlayActive, detailOverlayActive,
                             // 逐字段快照（含底栏与系统标题开关）—— 见 NativeDocumentChrome.snapshot
                             nativePages.map { it.chrome.snapshot() },
@@ -484,6 +491,11 @@ class IosAppHost {
         if (kotlin.math.abs(navigation.bottomBarInset - inset) > 0.5) {
             navigation.bottomBarInset = inset
         }
+    }
+
+    /** 屏幕形态：tab bar 是否竖排到屏幕一侧（`traitCollection.verticalBarEdge`）。 */
+    fun updateVerticalBarEdge(active: Boolean) {
+        navigation.verticalBarEdgeActive = active
     }
 
     fun updateTopBarInset(points: Double) {
@@ -548,6 +560,7 @@ private data class NativeHostSnapshot(
     val mainProgress: Double,
     val cutoutScale: Float,
     val cutoutCenterYRatio: Float,
+    val cutoutCenterXRatio: Float,
     val nativeRouteIds: List<String>,
     val floatingOverlayActive: Boolean,
     val detailOverlayActive: Boolean,
@@ -614,7 +627,6 @@ internal class NativeDocumentPage(
     val id: String,
     val route: AppRoute,
     val stateKey: String,
-    restoredValues: Map<String, List<Any?>>?,
 ) {
     val chrome = NativeDocumentChrome().apply {
         if (route == AppRoute.EducationalImport) {
@@ -639,8 +651,8 @@ internal class NativeDocumentPage(
             )
         }
     }
-    // Values remain in memory, just like AppNavHost's SaveableStateHolder on iOS.
-    val registry = SaveableStateRegistry(restoredValues = restoredValues, canBeSaved = { true })
+    // 随页存活：栈里这层不销毁，值就一直留着（出栈即整页丢弃，不做跨次恢复）
+    val registry = SaveableStateRegistry(restoredValues = null, canBeSaved = { true })
     var controller: UIViewController? = null
 }
 
@@ -664,7 +676,7 @@ internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
     AppRoute.ScheduleBackup -> "课表备份"
     AppRoute.ScheduleImport -> "课表导入"
     AppRoute.About -> "关于应用"
-    AppRoute.CourseTimeSettings -> "课表节数与时间"
+    AppRoute.CourseTimeSettings -> "课程时间管理"
     // 网页导入页与选择页同级：必须是原生文档（走 Compose 栈会被原生文档挡住）
     AppRoute.WebImport -> "网页导入"
     // ⚠ 必须是原生文档：从「课表导出/导入/备份」这些原生文档页跳进来，

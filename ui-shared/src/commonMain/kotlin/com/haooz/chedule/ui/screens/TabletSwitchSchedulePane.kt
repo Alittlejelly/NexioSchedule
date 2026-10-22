@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -330,13 +330,12 @@ private fun TabletPaneTopChrome(
     maskHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val gradientColor = MiuixTheme.colorScheme.surface
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(maskHeight)
     ) {
+        // 只保留渐变模糊，不再叠表面色遮罩（压暗层已全局移除）
         if (backdrop != null) {
             ProgressiveBlurTopBar(
                 backdrop = backdrop,
@@ -346,21 +345,6 @@ private fun TabletPaneTopChrome(
                 content = {},
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(1f)
-                .background(
-                    Brush.verticalGradient(
-                        0f to gradientColor.copy(alpha = 0.85f),
-                        0.45f to gradientColor.copy(alpha = 0.55f),
-                        0.7f to gradientColor.copy(alpha = 0.32f),
-                        0.85f to gradientColor.copy(alpha = 0.14f),
-                        0.93f to gradientColor.copy(alpha = 0.05f),
-                        1f to Color.Transparent,
-                    )
-                )
-        )
     }
 }
 

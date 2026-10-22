@@ -169,15 +169,15 @@ final class NativeDocumentNavigationController: UINavigationController,
         didShow viewController: UIViewController, animated: Bool
     ) {
         let actual = displayedRouteIds
-        let completedPop = transitionOperation == .pop && actual.count < transitionStartDepth
         settledRouteIds = actual
         transitionOperation = .none
         transitionInFlight = false
         interactiveBack = nil
-        if completedPop {
-            // UIKit is authoritative only after successful completion, never at gesture begin.
-            host.completeNativePop(depth: Int32(actual.count))
-        }
+        // UIKit 是唯一权威：每次转场落定都按「屏幕上真实存在的页」对齐 Kotlin 侧的原生栈。
+        // ⚠ 不能只在 pop 时对齐。漏对齐一次，旧 page 会连同它的 controller 一起留在栈里，
+        // 下次进来 makeNativePageController 直接把那个 controller 复用 —— 组合没重建，
+        // 表现就是「退出再进，状态还在」。
+        host.completeNativePop(depth: Int32(actual.count))
         host.setNativeTransitionInFlight(inFlight: false)
         updateChromeState()
         synchronizeStack()

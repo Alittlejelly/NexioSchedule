@@ -44,6 +44,13 @@ class NavigationBackState(
      * 所以这里必须给出连续值，而不只是布尔 —— 布尔只能支持「禁止中途关闭」。
      */
     val backProgress: () -> Float?,
+    /**
+     * 手势起始边缘：0 = 左边缘，1 = 右边缘，2 = 非边缘滑动（返回键 / 无手势）。
+     *
+     * 数值与 `androidx.navigationevent.NavigationEvent.EDGE_*` 一致；commonMain 不引 AndroidX，
+     * 所以这里只声明语义，不引用常量。
+     */
+    val backSwipeEdge: () -> Int,
     private val onHandler: @Composable BackHandlerScope.() -> Unit,
 ) {
     /**

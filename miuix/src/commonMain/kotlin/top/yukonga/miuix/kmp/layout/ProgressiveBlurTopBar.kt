@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.node.DrawModifierNode
@@ -48,6 +49,15 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 private val progressiveBlurShaderSeq = AtomicInt(0)
 private val NoSampleTrack: () -> Float = { 0f }
+
+/** 顶部最大模糊半径（dp）：糊带的半径从这里随 Y 收到 0 */
+private val BlurMaxRadius = 12.dp
+
+/**
+ * 顶部没有状态栏时糊带额外收窄的量：80.dp 那档是按「有状态栏」的观感定的，
+ * 顶部空出来后显得偏高，统一再收 8dp。课表顶栏自己算高度（传 `height`），共用这一个值。
+ */
+val NoStatusBarBlurReduction: Dp = 8.dp
 
 /**
  * 读取任意状态并仅失效 draw，不进组合。
@@ -102,22 +112,22 @@ private class InvalidateDrawOnStateNode(
 }
 
 /**
- * 顶部栏渐进模糊：模糊半径随 Y 从顶部最大连续收到 0。
+ * 顶部栏渐进模糊：模糊半径随 Y 从顶部最大（[BlurMaxRadius]）连续收到 0。
  *
- * 管线（API 33+）：AGSL 32 点抖动多重采样 → 轻量空间去噪。
- * 不用 Compose BlurEffect——在每帧重录的 GraphicsLayer 上滚动会闪。
- * downsampleScale = 1，避免默认 0.42 降采样在慢滑时跳格抖动。
- * Shader：黄金角递推、单次 hash；padding 区不上屏直接直通（AGSL 不支持 const 数组表）。
- *
- * 性能档：假渐进模糊 = 等值 blur + alpha 渐变淡出（DstIn 遮罩），不跑 AGSL 多重采样。
- * API < 33：仅表面色 alpha 渐变。
+ * 三条渲染路径，按能力从高到低：
+ * 1. **AGSL 两趟**（`isRenderEffectSupported()` 且非性能档）：抖动采样 + 环形去噪，
+ *    shader 与参数说明见 `ProgressiveBlurShaders.kt`。
+ * 2. **假渐进**（性能档）：等值 `blur` + alpha 纵向淡出，观感接近、成本低一截。
+ * 3. **纯色渐变**（无 RenderEffect）：只有表面色 alpha 渐变，没有模糊。
  */
 @Composable
 fun ProgressiveBlurTopBar(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     height: Dp = Dp.Unspecified,
+    /** 叠在模糊层上的表面色浓度（0 = 纯模糊）。只作用于糊层，不盖 [content] */
     tintIntensity: Float = 0.2f,
+    /** 表面色，默认取主题 surface */
     tintColor: Color = MiuixTheme.colorScheme.surface,
     blurAlpha: Float = 1f,
     /**
@@ -139,6 +149,12 @@ fun ProgressiveBlurTopBar(
     sampleTrack: () -> Float = NoSampleTrack,
     /** An overlaid native toolbar inset already consumed by the surrounding scaffold. */
     topInsetAdjustment: Dp = 0.dp,
+    /**
+     * true = 屏幕顶部没有状态栏（折叠屏 iPhone 折叠态，状态栏随竖排 tab bar 移到右侧）。
+     * 形态由宿主按 `traitCollection.verticalBarEdge` 判定：算出来的高度是 0 分不出
+     * 「顶部没有」和「被 `topInsetAdjustment` 吃光」，只有 trait 能区分。
+     */
+    noTopStatusBar: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
     val density = LocalDensity.current
@@ -147,7 +163,12 @@ fun ProgressiveBlurTopBar(
     } else {
         val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
             topInsetAdjustment).coerceAtLeast(0.dp)
-        if (statusBarHeight > 0.dp) 80.dp + statusBarHeight else 120.dp
+        when {
+            // 顶部压根没有状态栏（折叠屏折叠态）：别按「被导航栏吃完」那套撑到 120.dp
+            noTopStatusBar -> 80.dp - NoStatusBarBlurReduction
+            statusBarHeight > 0.dp -> 80.dp + statusBarHeight
+            else -> 120.dp
+        }
     }
 
     val blurShapeBlock: () -> androidx.compose.ui.graphics.Shape = remember { { RectangleShape } }
@@ -159,28 +180,23 @@ fun ProgressiveBlurTopBar(
     val blurEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
         remember(shaderKey, denoiseKey, tintColor, tintIntensity, edgeFadeStart) {
             {
-                val maxRadiusPx = 12f.dp.toPx()
-                // 录制缓冲向外扩一圈，边缘采样可摸到框外真实内容
-                padding = maxRadiusPx
-                val pad = padding * downsampleScale
+                val maxRadiusPx = BlurMaxRadius.toPx()
+                // padding = 0：shader 的采样全部镜像折回 content 区（见 ProgressiveBlurShaders）
+                padding = 0f
                 val contentW = size.width * downsampleScale
                 val contentH = size.height * downsampleScale
-                val bufferW = contentW + 2f * pad
-                val bufferH = contentH + 2f * pad
 
                 runtimeShaderEffect(shaderKey, PROGRESSIVE_BLUR_SHADER, "content") {
-                    setFloatUniform("contentOrigin", pad, pad)
+                    setFloatUniform("contentOrigin", 0f, 0f)
                     setFloatUniform("contentSize", contentW, contentH)
-                    setFloatUniform("bufferSize", bufferW, bufferH)
                     setFloatUniform("maxRadius", maxRadiusPx * downsampleScale)
                     setFloatUniform("edgeFadeStart", edgeFadeStart)
                     setColorUniform("tint", tintColor)
                     setFloatUniform("tintIntensity", tintIntensity)
                 }
                 runtimeShaderEffect(denoiseKey, PROGRESSIVE_DENOISE_SHADER, "content") {
-                    setFloatUniform("contentOrigin", pad, pad)
+                    setFloatUniform("contentOrigin", 0f, 0f)
                     setFloatUniform("contentSize", contentW, contentH)
-                    setFloatUniform("bufferSize", bufferW, bufferH)
                     setFloatUniform("maxRadius", maxRadiusPx * downsampleScale)
                 }
             }
@@ -188,8 +204,6 @@ fun ProgressiveBlurTopBar(
 
     Box(modifier = modifier) {
         // 只重建糊层，不 remount content
-        // key 里用 useFakeProgressiveBlur 而非 materialLevel：前者才是真正影响糊层结构的开关，
-        // 分档的其余部分不改变渲染结果，不需要额外触发重建。
         key(resampleKey, useFakeProgressiveBlur) {
             if (isRenderEffectSupported() && !useFakeProgressiveBlur) {
                 Box(
@@ -238,7 +252,13 @@ fun ProgressiveBlurTopBar(
                             backdrop = backdrop,
                             shape = blurShapeBlock,
                             effects = {
-                                blur(12f.dp.toPx())
+                                // Mirror：`TileMode.Clamp`（blur 的默认）会把顶边的采样钳到第一行，
+                                // 12dp 半径下顶栏最上沿会被拉平成一条「没糊」的带子 —— 设置页最明显。
+                                // 镜像发生在节点边界内，和真模糊那套镜像采样同思路。
+                                blur(BlurMaxRadius.toPx(), TileMode.Mirror)
+                                // ⚠ Mirror 会让 blur() 把 padding 撑到 radius，而外扩的那圈缓冲
+                                // 录的是屏幕外（空），镜像过去仍是空 —— 压回 0，让镜像只发生在节点内。
+                                padding = 0f
                             },
                             highlight = null,
                             shadow = null,
@@ -274,115 +294,3 @@ fun ProgressiveBlurTopBar(
         content()
     }
 }
-
-// 两端导数为 0 的 S 曲线，收尾比 smoothstep 更绵
-private const val SOFTER_STEP = """
-float softerstep(float a, float b, float x) {
-    float s = clamp((x - a) / max(b - a, 0.0001), 0.0, 1.0);
-    return s * s * s * (s * (s * 6.0 - 15.0) + 10.0);
-}
-"""
-
-private const val PROGRESSIVE_BLUR_SHADER = """
-uniform shader content;
-uniform float2 contentOrigin;
-uniform float2 contentSize;
-uniform float2 bufferSize;
-uniform float maxRadius;
-uniform float edgeFadeStart;
-layout(color) uniform half4 tint;
-uniform float tintIntensity;
-
-$SOFTER_STEP
-
-float hash12(float2 p) {
-    float3 p3 = fract(float3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-half4 progressiveBlur(float2 coord, float radius) {
-    if (radius < 0.5) {
-        return content.eval(coord);
-    }
-    float h = hash12(coord);
-    float2 dir = float2(cos(h * 6.2831853), sin(h * 6.2831853));
-    float2 g = float2(cos(2.39996323), sin(2.39996323));
-    half4 sum = half4(0.0);
-    float wsum = 0.0;
-    for (int i = 0; i < 32; i++) {
-        float fi = float(i);
-        float ff = (fi + 0.5) / 32.0;
-        float r = radius * sqrt(ff);
-        r *= 0.90 + 0.20 * fract(h * 93.9898 + fi * 0.7548776662);
-        float2 o = dir * r;
-        float w = exp(-ff / 0.85);
-        float2 sc = clamp(coord + o, float2(0.0), max(bufferSize - 1.0, float2(0.0)));
-        half4 c = content.eval(sc);
-        if (c.a > 0.02) {
-            sum += c * w;
-            wsum += w;
-        }
-        dir = float2(dir.x * g.x - dir.y * g.y, dir.x * g.y + dir.y * g.x);
-    }
-    if (wsum < 0.0001) {
-        return content.eval(coord);
-    }
-    return sum / wsum;
-}
-
-half4 main(float2 coord) {
-    // padding 边距不上屏：直接直通
-    float2 local = coord - contentOrigin;
-    if (local.x < 0.0 || local.y < 0.0 ||
-        local.x >= contentSize.x || local.y >= contentSize.y) {
-        return content.eval(coord);
-    }
-    float t = clamp(local.y / max(contentSize.y, 1.0), 0.0, 1.0);
-    float u = 1.0 - smoothstep(0.0, 1.0, t);
-    float radius = maxRadius * u;
-    half4 color = progressiveBlur(coord, radius);
-    float edge = softerstep(edgeFadeStart, 1.0, t);
-    color *= (1.0 - edge);
-    if (tintIntensity > 0.0) {
-        color = mix(color, tint * (1.0 - edge), tintIntensity * u);
-    }
-    return color;
-}
-"""
-
-/** 小半径盒式平均，压掉上一阶段抖动细噪；半径与模糊强度成正比。 */
-private const val PROGRESSIVE_DENOISE_SHADER = """
-uniform shader content;
-uniform float2 contentOrigin;
-uniform float2 contentSize;
-uniform float2 bufferSize;
-uniform float maxRadius;
-
-half4 main(float2 coord) {
-    float2 local = coord - contentOrigin;
-    if (local.x < 0.0 || local.y < 0.0 ||
-        local.x >= contentSize.x || local.y >= contentSize.y) {
-        return content.eval(coord);
-    }
-    float t = clamp(local.y / max(contentSize.y, 1.0), 0.0, 1.0);
-    float r = maxRadius * (1.0 - smoothstep(0.0, 1.0, t)) * 0.18;
-    if (r < 0.4) {
-        return content.eval(coord);
-    }
-    half4 sum = content.eval(coord);
-    float wsum = 1.0;
-    float2 dir = float2(1.0, 0.0);
-    float2 g = float2(cos(0.7853981634), sin(0.7853981634));
-    for (int i = 0; i < 8; i++) {
-        float2 sc = clamp(coord + dir * r, float2(0.0), max(bufferSize - 1.0, float2(0.0)));
-        half4 c = content.eval(sc);
-        if (c.a > 0.02) {
-            sum += c;
-            wsum += 1.0;
-        }
-        dir = float2(dir.x * g.x - dir.y * g.y, dir.x * g.y + dir.y * g.x);
-    }
-    return sum / wsum;
-}
-"""

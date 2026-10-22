@@ -1,9 +1,5 @@
 package com.haooz.chedule.ui.screens
 
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.lengthOfMonth
-import com.haooz.chedule.data.todayLocalDate
-
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -32,7 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -65,8 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.ui.navigation.AppRoute
-import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
@@ -76,12 +73,9 @@ import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavChromeTitleSlot
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import top.yukonga.miuix.kmp.utils.LocalOverScrollState
-import top.yukonga.miuix.kmp.utils.OverScrollState
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.ui.navigation.AppRoute
+import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -102,17 +96,19 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Update
+import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxLocation
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlinx.datetime.LocalDate
+import top.yukonga.miuix.kmp.utils.LocalOverScrollState
+import top.yukonga.miuix.kmp.utils.OverScrollState
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.time.Duration.Companion.milliseconds
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.ui.utils.screenWidthDp
 
 /**
  * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。
@@ -120,7 +116,7 @@ import com.haooz.chedule.ui.utils.screenWidthDp
  */
 enum class TabletSettingsDest(val title: String, val group: String) {
     Semester("学期与周次", "基本设置"),
-    CourseTime("课表节数与时间", "基本设置"),
+    CourseTime("课程时间管理", "基本设置"),
     Reminder("课程提醒", "特色功能"),
     Holiday("节假日与调休", "特色功能"),
     Widget("桌面小部件", "特色功能"),
@@ -141,7 +137,7 @@ enum class TabletSettingsDest(val title: String, val group: String) {
 object TabletSettingsUiState {
     var selected by mutableStateOf(TabletSettingsDest.Semester)
 
-    /** 课表节数与时间的编辑屏是否打开：打开时叠层不画右栏标题，避免与编辑屏标题重合 */
+    /** 课程时间管理的编辑屏是否打开：打开时叠层不画右栏标题，避免与编辑屏标题重合 */
     var timeEditorOpen by mutableStateOf(false)
 }
 
@@ -274,15 +270,13 @@ private fun TabletPaneTopChrome(
     modifier: Modifier = Modifier,
 ) {
     val maskHeight = TabletPaneBlurHeight
-    // 取当前页 surface 色（设置页主题已锁应用主题，不随壁纸锁色/切页跳变）
-    val gradientColor = MiuixTheme.colorScheme.surface
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(maskHeight)
     ) {
-        // 渐变模糊：常驻
+        // 渐变模糊：常驻。不再叠表面色遮罩（压暗层已全局移除）
         if (backdrop != null) {
             ProgressiveBlurTopBar(
                 backdrop = backdrop,
@@ -292,22 +286,6 @@ private fun TabletPaneTopChrome(
                 content = {},
             )
         }
-        // 表面色遮罩：常驻
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(1f)
-                .background(
-                    Brush.verticalGradient(
-                        0f to gradientColor.copy(alpha = 0.85f),
-                        0.45f to gradientColor.copy(alpha = 0.55f),
-                        0.7f to gradientColor.copy(alpha = 0.32f),
-                        0.85f to gradientColor.copy(alpha = 0.14f),
-                        0.93f to gradientColor.copy(alpha = 0.05f),
-                        1f to Color.Transparent,
-                    )
-                )
-        )
     }
 }
 
@@ -403,7 +381,7 @@ fun TabletSettingsScreen(
     var onWebDavTestConnection by remember { mutableStateOf({}) }
     var holidayLoading by remember { mutableStateOf(false) }
     var onHolidayUpdate by remember { mutableStateOf({}) }
-    // 课表节数与时间：右栏叠编辑屏
+    // 课程时间管理：右栏叠编辑屏
     val courseRepository = remember { com.haooz.chedule.data.CourseRepository() }
     var editingTimeConfig by remember { mutableStateOf<com.haooz.chedule.data.TimeConfig?>(null) }
     var editingTimeRoutineId by remember { mutableStateOf<Long?>(null) }
@@ -924,7 +902,7 @@ fun TabletSettingsScreen(
                         else -> {}
                     }
 
-                    // 课表节数与时间：右栏叠编辑屏，从底部滑入/滑出（对齐 BlurBottomSheet 曲线时长，无透明度变化）
+                    // 课程时间管理：右栏叠编辑屏，从底部滑入/滑出（对齐 BlurBottomSheet 曲线时长，无透明度变化）
                     if (editingTimeConfig != null) {
                         Box(
                             modifier = Modifier

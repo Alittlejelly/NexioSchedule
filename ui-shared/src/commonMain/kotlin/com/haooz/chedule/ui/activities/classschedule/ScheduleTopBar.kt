@@ -1,4 +1,4 @@
-package com.haooz.chedule.ui.components
+package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -32,16 +31,20 @@ import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.formatMonthDay
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.tabletNavRailStartPadding
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
-import top.yukonga.miuix.kmp.basic.Text
+import com.kyant.backdrop.Backdrop
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight
+import top.yukonga.miuix.kmp.layout.NoStatusBarBlurReduction
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -52,13 +55,20 @@ private val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五",
 // 不用 Scaffold paddingValues：随当前 tab 顶栏高度变化，切页时内容位移，
 // 叠加 SharedBlur 层 draw 阶段写入滞后一帧，表现为顶部慢一帧就位
 // （原为 internal；MainScheduleScreen 在 :androidApp 引用，跨模块必须 public）
-fun scheduleContentTopPadding(statusBarHeight: Dp): Dp {
+fun scheduleContentTopPadding(statusBarHeight: Dp, verticalBarEdge: Boolean): Dp {
     val appBar = CollapsedHeight
-    val blurHeight = if (statusBarHeight > 0.dp) 120.dp + statusBarHeight else 160.dp
+    // 折叠屏折叠态屏幕顶部没有状态栏，糊带按 112dp 算（与 ScheduleTopBar 的 topBarHeight 同源）
+    val noTopStatusBar = verticalBarEdge
+    val blurHeight = when {
+        noTopStatusBar -> 120.dp - NoStatusBarBlurReduction
+        statusBarHeight > 0.dp -> 120.dp + statusBarHeight
+        else -> 160.dp
+    }
     val weekRowBottom = statusBarHeight + appBar +
-            (if (statusBarHeight > 0.dp) 0.dp else 40.dp) + 40.dp
+            (if (noTopStatusBar || statusBarHeight > 0.dp) 0.dp else 40.dp) + 40.dp
     val topBar = maxOf(blurHeight, appBar + statusBarHeight, weekRowBottom)
-    return (appBar + topBar - 78.dp).coerceAtLeast(0.dp)
+    // 内容顶恒为「星期行底 + 2dp」：糊带只是装饰，折叠屏上收窄 8dp 不该把内容一起拽上去
+    return maxOf(weekRowBottom + 2.dp, appBar + topBar - 78.dp).coerceAtLeast(0.dp)
 }
 
 @Composable
@@ -77,10 +87,12 @@ fun ScheduleTopBar(
     onEnterCustomize: () -> Unit = {},
     isTablet: Boolean = false,
     isShiftMode: Boolean = false,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop?,
+    liquidGlassBackdrop: Backdrop?,
     scrollBehavior: SharedScrollBehavior? = null,
     blurResampleKey: Int = 0,
     blurSampleTrack: () -> Float = { 0f },
+    // 标题/星期行的右侧额外内边距：避开右下角竖排的原生 tab bar（折叠屏 iPhone 折叠态）
+    titleEndPadding: Dp = 0.dp,
     // 布局期上报「更多」占位槽的真实位置，供下拉菜单按实际位置定位（避免首帧 inset 未到导致偏位）
     onMoreSlotTop: (Float) -> Unit = {},
     // 上报顶栏滚动材质透明度，供「更多」控件收起态同步渐显渐隐
@@ -100,8 +112,15 @@ fun ScheduleTopBar(
         else -> "第${pagerCurrentPage + 1}周"
     }
 
-    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - nativeBarInset).coerceAtLeast(0.dp)
-    val topBarHeight = if (statusBarHeight > 0.dp) 120.dp + statusBarHeight else 160.dp
+    // 竖排 tab bar 形态（折叠屏折叠态）：屏幕顶部没有状态栏，走另一套几何
+    val noTopStatusBar = hostVerticalBarEdge()
+    val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
+        nativeBarInset).coerceAtLeast(0.dp)
+    val topBarHeight = when {
+        noTopStatusBar -> 120.dp - NoStatusBarBlurReduction
+        statusBarHeight > 0.dp -> 120.dp + statusBarHeight
+        else -> 160.dp
+    }
     // 组合期读 currentHeightPx 会拿到未测量的值，星期行会慢一帧就位；改布局期读
     ProgressiveBlurTopBar(
         backdrop = liquidGlassBackdrop,
@@ -114,6 +133,8 @@ fun ScheduleTopBar(
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）
             val titleRailPadding =
                 if (isTablet) tabletNavRailStartPadding().padding(start = 12.dp) else Modifier
+            val titleEndModifier =
+                if (titleEndPadding > 0.dp) Modifier.padding(end = titleEndPadding) else Modifier
             // zIndex 必须挂在这层 Box 上，不能直接传给 CollapsibleTopAppBar：
             // 它的 modifier 参数只应用在内部那层 Layout 上（见 CollapsibleTopAppBar 末尾），
             // 挂到孙节点对它与 DayOfWeekRow 的排序无效 —— zIndex 只在同一父节点的兄弟间比较。
@@ -121,9 +142,8 @@ fun ScheduleTopBar(
                 CollapsibleTopAppBar(
                     title = titleText,
                     showLargeTitle = false,
-                    showGradientOverlay = false,
                     titleStartAligned = isTablet,
-                    titleModifier = titleRailPadding,
+                    titleModifier = titleRailPadding.then(titleEndModifier),
                     scrollBehavior = scrollBehavior,
                     // 平板左上角不放返回按钮
                     startAction = null,
@@ -195,7 +215,8 @@ fun ScheduleTopBar(
                 weekDates = weekDates,
                 isReorganized = isReorganized,
                 isTablet = isTablet,
-                modifier = Modifier.dayOfWeekTopPadding(statusBarHeight, scrollBehavior)
+                contentEndPadding = titleEndPadding,
+                modifier = Modifier.dayOfWeekTopPadding(statusBarHeight, noTopStatusBar, scrollBehavior)
             )
         }
     }
@@ -209,6 +230,8 @@ private fun DayOfWeekRow(
     weekDates: List<LocalDate>,
     isReorganized: Boolean,
     isTablet: Boolean,
+    /** 星期行右侧额外内边距：避开右下角竖排的原生 tab bar（折叠屏 iPhone 折叠态）。 */
+    contentEndPadding: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -222,7 +245,7 @@ private fun DayOfWeekRow(
                         .then(tabletNavRailStartPadding())
                         .padding(horizontal = 24.dp)
                 } else {
-                    Modifier.padding(end = 2.dp)
+                    Modifier.padding(end = 2.dp + contentEndPadding)
                 }
             )
     ) {
@@ -270,6 +293,7 @@ private fun DayOfWeekRow(
 // 未测量时用 CollapsedHeight+状态栏兜底（本顶栏 showLargeTitle=false，实测恒为该值）
 private fun Modifier.dayOfWeekTopPadding(
     statusBarHeight: Dp,
+    verticalBarEdge: Boolean,
     scrollBehavior: SharedScrollBehavior?,
 ): Modifier = layout { measurable, constraints ->
     val statusBarPx = statusBarHeight.roundToPx()
@@ -279,7 +303,11 @@ private fun Modifier.dayOfWeekTopPadding(
     } else {
         CollapsedHeight.roundToPx() + statusBarPx
     }
-    val top = statusBarPx + measuredBarPx + if (statusBarPx > 0) 0 else 40.dp.roundToPx()
+    // 与 scheduleContentTopPadding 同源（内容顶 = 星期行底 + 2dp）；
+    // 顶部没有状态栏的折叠态不补这 40dp，否则星期行整体压低
+    val noTopStatusBar = verticalBarEdge
+    val gapPx = if (noTopStatusBar || statusBarPx > 0) 0 else 40.dp.roundToPx()
+    val top = statusBarPx + measuredBarPx + gapPx
     val placeable = measurable.measure(constraints)
     layout(placeable.width, placeable.height + top) {
         placeable.place(0, top)

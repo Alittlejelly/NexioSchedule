@@ -23,9 +23,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,17 +30,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,7 +55,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -65,6 +64,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.TransformOrigin
@@ -90,22 +90,19 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.formatOneDecimal
-import androidx.compose.ui.graphics.ImageBitmap
-import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import com.kyant.backdrop.edgelight.edgeLight
+import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
+import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.addScreenCornerRect
-import com.haooz.chedule.ui.utils.toShape
-import com.haooz.chedule.ui.utils.LocalHostNavigation
-import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
-import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
-import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_WINDOW_MILLIS
-import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.isAppDarkTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.screenHeightDp
+import com.haooz.chedule.ui.utils.screenWidthDp
+import com.haooz.chedule.ui.utils.toShape
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.capsule.ContinuousCapsule
@@ -133,19 +130,19 @@ import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Image
 import top.yukonga.miuix.kmp.icon.extended.Months
+import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
 import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import top.yukonga.miuix.kmp.layout.isTabletWidth
-import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.utils.screenHeightDp
 
 /** 挖洞遮罩路径缓存：尺寸/圆角不变时只 translate，避免每帧重建 squircle */
 private class CutoutPathCache {
@@ -200,7 +197,13 @@ fun CustomizeScheduleScreen(
     wallpaperScale: Float = 1f,
     onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
-    onCutoutCenterChange: (Float) -> Unit = {},
+    /** 开洞中心回传（屏幕比例）：x 供宿主对齐横向缩放原点，y 同原有的竖向原点 */
+    onCutoutCenterChange: (xRatio: Float, yRatio: Float) -> Unit = { _, _ -> },
+    /**
+     * 右侧是否有一条原生 chrome 占位（折叠屏 iPhone 竖排底栏，约 84pt）。
+     * 这类机型内容实际中心比屏幕中心偏左，开洞要整体让开 —— 见下面的两个微调旋钮。
+     */
+    rightChromeReserved: Boolean = false,
     // 弹窗开合时开洞与主界面共用的位移驱动器：两边直接读同一 Animatable.value，保证同帧同步
     sheetOffsetShared: Animatable<Float, androidx.compose.animation.core.AnimationVector1D> = Animatable(
         0f
@@ -221,8 +224,12 @@ fun CustomizeScheduleScreen(
     onThemeModePersist: (ThemeMode) -> Unit = {},
 ) {
     val densityObj = LocalDensity.current
-    // 开洞到位后，洞心相对屏幕中心的竖向微调
-    val cutoutOffsetTargetPx = with(densityObj) { 0.dp.toPx() }
+    // ── 开洞微调旋钮 ────────────────────────────────────────────────────────
+    // 竖向：正值=下移；横向：负值=左移
+    val cutoutOffsetDp = if (rightChromeReserved) (-16).dp else 0.dp
+    val cutoutOffsetXDp = if (rightChromeReserved) (-56).dp else 0.dp
+    val cutoutOffsetTargetPx = with(densityObj) { cutoutOffsetDp.toPx() }
+    val cutoutOffsetXTargetPx = with(densityObj) { cutoutOffsetXDp.toPx() }
     val sheetOffsetTargetPx = with(densityObj) { 90.dp.toPx() }
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val isTablet = isTabletWidth()
@@ -401,6 +408,7 @@ fun CustomizeScheduleScreen(
     val cardScaleAnim = remember { Animatable(0.65f) }
     val buttonAlphaAnim = remember { Animatable(1f) }
     val cutoutOffsetY = remember { Animatable(0f) }
+    val cutoutOffsetX = remember { Animatable(0f) }
     // 与 MainActivity 共享同一 Animatable，弹窗开合时两边同帧同步位移
     val sheetOffsetY = sheetOffsetShared
     val cutoutEnterProgress = remember { Animatable(0f) }
@@ -416,7 +424,6 @@ fun CustomizeScheduleScreen(
     // 新建搭配后自动进入编辑模式
     LaunchedEffect(pendingEnterCutout) {
         if (pendingEnterCutout && !isCutoutActive) {
-            delay(100.milliseconds)
             isCutoutActive = true
             onCutoutEntered()
         }
@@ -546,6 +553,12 @@ fun CustomizeScheduleScreen(
                     )
                 }
                 launch {
+                    cutoutOffsetX.animateTo(
+                        cutoutOffsetXTargetPx,
+                        tween(400, easing = CustomizePageEasing)
+                    )
+                }
+                launch {
                     cutoutEnterProgress.animateTo(
                         1f,
                         tween(400, easing = CustomizePageEasing)
@@ -568,6 +581,12 @@ fun CustomizeScheduleScreen(
                 launch { buttonAlphaAnim.animateTo(1f, tween(250)) }
                 launch {
                     cutoutOffsetY.animateTo(
+                        0f,
+                        tween(400, easing = CustomizePageEasing)
+                    )
+                }
+                launch {
+                    cutoutOffsetX.animateTo(
                         0f,
                         tween(400, easing = CustomizePageEasing)
                     )
@@ -600,10 +619,15 @@ fun CustomizeScheduleScreen(
 
     // snapshotFlow 订阅，避免把 Animatable.value 当 LaunchedEffect key 导致重启
     val latestScreenHPx by rememberUpdatedState(screenHPx)
+    val latestScreenWPx by rememberUpdatedState(screenWPx)
     val latestOnCutoutCenterChange by rememberUpdatedState(onCutoutCenterChange)
     LaunchedEffect(Unit) {
-        snapshotFlow { cutoutOffsetY.value }.collect { offsetY ->
-            latestOnCutoutCenterChange(0.58f + offsetY / (latestScreenHPx * 0.35f))
+        snapshotFlow { cutoutOffsetX.value to cutoutOffsetY.value }.collect { (offsetX, offsetY) ->
+            // 与主内容缩放同源：1 - prog == (1 - scale) / 0.35，故原点比值 = 0.5 + o / (0.35 * 屏边)
+            latestOnCutoutCenterChange(
+                0.5f + offsetX / (latestScreenWPx * 0.35f),
+                0.58f + offsetY / (latestScreenHPx * 0.35f)
+            )
         }
     }
 
@@ -664,8 +688,9 @@ fun CustomizeScheduleScreen(
                     val snapshotW = snapshot?.width?.toFloat() ?: size.width
                     val snapshotH = snapshot?.height?.toFloat() ?: size.height
                     val aspect = snapshotH / snapshotW
-                    val cardCenterX = size.width / 2f
                     val scaleProg = ((cardScaleAnim.value - 0.65f) / (1f - 0.65f)).coerceIn(0f, 1f)
+                    // 横向微调与竖向同一套「按缩放进度淡出」的算法：落地时归零，洞整体回屏幕中心
+                    val cardCenterX = size.width / 2f + cutoutOffsetX.value * (1f - scaleProg)
                     val baseOffsetY =
                         size.height * 0.028f + cutoutOffsetY.value + sheetOffsetY.value
                     val cardCenterY = size.height / 2f + baseOffsetY * (1f - scaleProg)
@@ -734,6 +759,8 @@ fun CustomizeScheduleScreen(
             // 观感就是开洞区域底部往上跳一下。
             val currentTranslationY =
                 (cutoutOffsetY.value + sheetOffsetY.value) * (1f - cutoutScaleProg)
+            // 横向同理：横向微调也不在 0.5 这个缩放原点里（弹窗没有横向让位，故不含 sheetOffset）
+            val currentTranslationX = cutoutOffsetX.value * (1f - cutoutScaleProg)
 
             Box(
                 modifier = Modifier
@@ -791,6 +818,8 @@ fun CustomizeScheduleScreen(
                         val cardBaseOffsetY =
                             screenH * 0.028f + cutoutOffsetY.value + sheetOffsetY.value
                         val cardOffsetY = cardBaseOffsetY * (1f - cardScaleProg)
+                        // 与 drawBehind 里洞的横向位移逐项一致（含 (1 - prog) 淡出），否则洞与卡片错位
+                        val cardOffsetX = cutoutOffsetX.value * (1f - cardScaleProg)
                         val comb = combinations.getOrNull(page)
                         val isCurrentComb = page == currentCombinationIndex
                         // 缩放中心固定为屏幕中心，稳态与动画终点一致，无跳变
@@ -804,7 +833,10 @@ fun CustomizeScheduleScreen(
                             modifier = Modifier
                                 .width(cardWidthDp)
                                 .height(cardHeightDp)
-                                .offset(y = with(densityObj) { cardOffsetY.toDp() })
+                                .offset(
+                                    x = with(densityObj) { cardOffsetX.toDp() },
+                                    y = with(densityObj) { cardOffsetY.toDp() }
+                                )
                                 .graphicsLayer {
                                     scaleX = cardScale
                                     scaleY = cardScale
@@ -1009,7 +1041,7 @@ fun CustomizeScheduleScreen(
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight(baseColor = exitContainerColor)
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = exitContainerColor),
                                 )
                                 .clickable(
                                     interactionSource = null,
@@ -1141,7 +1173,7 @@ fun CustomizeScheduleScreen(
                                 )
                                 .edgeLight(
                                     shape = ContinuousCapsule(),
-                                    edgeLight = rememberDefaultEdgeLight(baseColor = primaryColor)
+                                    edgeLight = rememberDefaultEdgeLight(baseColor = primaryColor),
                                 )
                                 .clickable(
                                     interactionSource = null,
@@ -1334,6 +1366,7 @@ fun CustomizeScheduleScreen(
                                     scaleX = currentScale
                                     scaleY = currentScale
                                     transformOrigin = TransformOrigin(0.5f, 0.58f)
+                                    translationX = currentTranslationX
                                     translationY = currentTranslationY
                                     clip = true
                                     shape = screenCornerRadius.toShape(densityObj)

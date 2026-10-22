@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.kyant.backdrop.edgelight.EdgeLight
 import com.kyant.backdrop.edgelight.rememberCardEdgeLight as backdropRememberCardEdgeLight
-import com.kyant.backdrop.edgelight.rememberCourseCardEdgeLight as backdropRememberCourseCardEdgeLight
 import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight as backdropRememberDefaultEdgeLight
 
 /**
@@ -20,13 +19,6 @@ fun rememberDefaultEdgeLight(baseColor: Color? = null): EdgeLight =
         resolveMaterial = AppMaterialSettings::resolveEdgeLight,
     )
 
-@Composable
-fun rememberCourseCardEdgeLight(baseColor: Color? = null): EdgeLight =
-    backdropRememberCourseCardEdgeLight(
-        baseColor = baseColor,
-        isLightTheme = !isAppDarkTheme(),
-        resolveMaterial = AppMaterialSettings::resolveEdgeLight,
-    )
 
 @Composable
 fun rememberCardEdgeLight(baseColor: Color? = null): EdgeLight =

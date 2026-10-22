@@ -75,11 +75,12 @@ fun LiquidTopBarButton(
     }
     val hapticFeedback = LocalHapticFeedback.current
     val isLightTheme = !isAppDarkTheme()
+    // 底色 alpha 随材质档位：通透玻璃档压低一档，让折射透出来（与下拉菜单同源；浅深各一档）
     val resolvedContainerColor = if (containerColor != Color.Unspecified) containerColor
         else if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
-            .copy(alpha = if (isLightTheme) 0.76f else 0.84f)
-        else if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
-        else Color(0xFF242424).copy(0.84f)
+            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.glassSurfaceAlpha(if (isLightTheme) 0.76f else 0.84f, isLightTheme))
+        else if (isLightTheme) Color(0xFFFAFAFA).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.glassSurfaceAlpha(0.76f, isLight = true))
+        else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.glassSurfaceAlpha(0.84f, isLight = false))
 
     val shadowColor = if (isLightTheme) Color(0x12000000) else Color(0x20000000)
     val interactionSource = remember { MutableInteractionSource() }
@@ -87,13 +88,15 @@ fun LiquidTopBarButton(
     // drawBackdrop 的 element 用引用比较 shape / effects / onDrawSurface
     // 若 lambda 每次都新建，节点就会每帧 update → invalidateDraw → 每帧重新录制采样层并重新跑一次
     val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
     val buttonShapeBlock: () -> androidx.compose.ui.graphics.Shape = remember { { CircleShape } }
-    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens) {
+    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
         {
             vibrancy()
-            blur(8.dp.toPx())
+            blur(glassBlur.dp.toPx())
             // 均衡及以下关闭折射
-            if (chromeLens) lens(8f.dp.toPx(), 24f.dp.toPx())
+            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
         }
     }
     val buttonOnDrawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =

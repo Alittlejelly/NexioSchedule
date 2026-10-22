@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Text
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -52,12 +52,18 @@ import com.haooz.chedule.data.todayLocalDate
 fun UpdateDialog(
     updateController: UpdateController = NoopUpdateController,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /**
+     * 显隐回传：主界面据此决定要不要挂顶栏/底栏那两层采样层（本弹窗自己管 show，
+     * 外面读不到）。晚一帧无所谓——弹窗是淡入的，第一帧采样层还没就位看不出来。
+     */
+    onShowChanged: ((Boolean) -> Unit)? = null,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
 
     val updatePrefs = remember { AppStorage.store("update_settings") }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(showUpdateDialog) { onShowChanged?.invoke(showUpdateDialog) }
     var updateTagName by remember { mutableStateOf("") }
     var updateBody by remember { mutableStateOf("") }
     var hasDownloadedApk by remember { mutableStateOf(false) }

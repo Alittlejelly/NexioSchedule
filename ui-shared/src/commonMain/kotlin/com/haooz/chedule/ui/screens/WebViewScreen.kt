@@ -9,7 +9,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,21 +18,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.Text
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,12 +49,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,33 +59,36 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.haooz.chedule.uishared.resources.Res
-import com.haooz.chedule.uishared.resources.ic_phone_pc
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.school.SchoolData
+import com.haooz.chedule.data.school.ScriptRepository
+import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.utils.NativeDocumentBottomBar
+import com.haooz.chedule.ui.utils.NativeDocumentBottomBarEffect
+import com.haooz.chedule.ui.utils.bottomFloatingPadding
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.ui.web.NoopWebHost
 import com.haooz.chedule.ui.web.WebHost
 import com.haooz.chedule.ui.web.WebHostConfig
 import com.haooz.chedule.ui.web.WebHostEvents
-import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
-import com.haooz.chedule.data.school.ScriptRepository
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import com.kyant.backdrop.edgelight.edgeLight
-import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
-import com.haooz.chedule.ui.utils.bottomFloatingPadding
-import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_phone_pc
 import com.kyant.backdrop.BackdropEffectScope
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.launch
-import kotlin.math.abs
+import kotlinx.serialization.json.Json
+import org.jetbrains.compose.resources.painterResource
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -100,13 +97,9 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
-import com.haooz.chedule.ui.utils.NativeDocumentBottomBar
-import com.haooz.chedule.ui.utils.NativeDocumentBottomBarEffect
 import top.yukonga.miuix.kmp.layout.isTabletWidth
-import com.haooz.chedule.ui.utils.screenWidthDp
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 
 
 private data class AlertData(
@@ -183,11 +176,13 @@ fun WebViewScreen(
     var showCourseTablePicker by remember { mutableStateOf(false) }
     val webDockShapeBlock: () -> Shape = remember { { ContinuousCapsule() } }
     // 与 LiquidBottomTabs 可见层同一套玻璃参数
-    val webDockEffects: BackdropEffectScope.() -> Unit = remember {
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    val webDockGlassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
+    val webDockEffects: BackdropEffectScope.() -> Unit = remember(webDockGlassBlur) {
         {
             vibrancy()
-            blur(8f.dp.toPx())
-            lens(24f.dp.toPx(), 24f.dp.toPx())
+            blur(webDockGlassBlur.dp.toPx())
+            lens(6f.dp.toPx(), 36f.dp.toPx())
         }
     }
     val isLightTheme = !isAppDarkTheme()
