@@ -52,8 +52,13 @@ object StatsReporter {
         deviceId = null
     }
 
-    /** 读取（或首次生成并落盘）设备标识。 */
-    private fun ensureDeviceId(): String {
+    /**
+     * 读取（或首次生成并落盘）设备标识。
+     *
+     * 与统计上报是同一个 ID —— 服务端按它算每台设备每天的 AI 用量，
+     * 两边各生成一份的话限额就形同虚设。
+     */
+    internal fun ensureDeviceId(): String {
         deviceId?.let { return it }
         val prefs = AppStorage.store(PREFS)
         val id = prefs.getString(KEY_DEVICE_ID, "").ifBlank {

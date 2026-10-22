@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
@@ -29,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,25 +46,43 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.ClassroomLabel
+import com.haooz.chedule.data.HttpTimeouts
+import com.haooz.chedule.data.ai.AiClient
+import com.haooz.chedule.data.ai.AiResult
+import com.haooz.chedule.data.createHttpService
+import com.haooz.chedule.data.ClassroomLabelRule
+import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.NoopReminderController
 import com.haooz.chedule.data.ReminderController
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.ui.basic.AiSparkleIcon
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
+import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NumberPicker
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -68,6 +90,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.kyant.capsule.ContinuousRoundedRectangle
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 /** 课程提醒页详细流程日志：仅「开始录制」后写入 */
@@ -83,6 +106,62 @@ private fun rlog(event: String, detail: String = "") {
  */
 private fun rlog(event: String, detail: () -> String) {
     com.haooz.chedule.ui.utils.FeatureLog.reminderFlow(event, detail)
+}
+
+/** AI 请求超时。服务端自己上限 30s，客户端留宽一点，别先于服务端放弃。 */
+private val AI_TIMEOUTS = HttpTimeouts(connectSeconds = 10, readSeconds = 40, callSeconds = 40)
+
+/** 预览那一整块的圆角 */
+private val ClassroomPreviewShape = ContinuousRoundedRectangle(16.dp)
+
+/**
+ * 精简预览里的一行：左边课表原文，右边通知里会显示的文本，两边等宽。
+ *
+ * 不管有没有被改写，左右都有内容 —— 少一边就看不出「这条被改成什么了」。
+ * 有变化的右侧染主题色，扫一眼就知道哪几条动了。
+ */
+@Composable
+private fun ClassroomPreviewRow(
+    raw: String,
+    shown: String,
+    modifier: Modifier = Modifier,
+) {
+    val changed = shown != raw
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = raw,
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = MiuixIcons.Basic.ArrowRight,
+            contentDescription = null,
+            tint = if (changed) {
+                MiuixTheme.colorScheme.primary
+            } else {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            },
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = shown,
+            style = MiuixTheme.textStyles.body2,
+            color = if (changed) {
+                MiuixTheme.colorScheme.primary
+            } else {
+                MiuixTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End,
+        )
+    }
 }
 
 /** 两位补零（原 `%02d`；commonMain 没有字符串格式化器，用 padStart 等价实现） */
@@ -141,6 +220,31 @@ fun CourseReminderScreen(
     // 课中岛缩略态右侧：0=正在上课，1=距下课倒计时（仅超级岛生效）
     var islandInClassRightMode by remember {
         mutableIntStateOf(reminderPrefs.getInt("island_in_class_right_mode", 0))
+    }
+    // 缩略态地点精简：总开关 + 精简方式（正则 / AI）
+    var classroomLabelEnabled by remember {
+        mutableStateOf(reminderPrefs.getBoolean(ClassroomLabel.KEY_ENABLED, false))
+    }
+    var classroomLabelMethod by remember {
+        mutableIntStateOf(
+            reminderPrefs.getInt(ClassroomLabel.KEY_METHOD, ClassroomLabel.METHOD_REGEX)
+        )
+    }
+    var classroomLabelAbbreviations by remember {
+        mutableStateOf(reminderPrefs.getString(ClassroomLabel.KEY_ABBREVIATIONS, ""))
+    }
+    var showClassroomPreviewDialog by remember { mutableStateOf(false) }
+    // AI 精简请求中：按钮换成转圈并禁用，避免连点重复计费
+    var aiShrinking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // 预览用课表里全部的真实地点：能看出自己学校的地名会被改成什么样，比固定样例有用。
+    // CourseRepository 是单例且带课程缓存，这里只在页面进入时取一次。
+    val previewClassrooms = remember {
+        val repository = CourseRepository()
+        repository.getCoursesForSchedule(repository.getCurrentScheduleId())
+            .map { it.classroom.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
     }
     // 课中提醒：超级岛 / 原生实况共用同一开关
     var inClassEnabled by remember {
@@ -849,6 +953,162 @@ fun CourseReminderScreen(
                             }
                         }
                     }
+
+                    // 上课地点精简：
+                    if (!reminderController.supportsLiveActivity()) {
+                        item {
+                            val methodOptions = listOf(
+                                DropdownItem(
+                                    text = "正则精简",
+                                    summary = "按预设规则对地点进行精简",
+                                    selected = classroomLabelMethod == ClassroomLabel.METHOD_REGEX,
+                                    onClick = {
+                                        rlog("classroom_label_method", "method=0 正则")
+                                        classroomLabelMethod = ClassroomLabel.METHOD_REGEX
+                                        reminderPrefs.edit {
+                                            putInt(
+                                                ClassroomLabel.KEY_METHOD,
+                                                ClassroomLabel.METHOD_REGEX
+                                            )
+                                        }
+                                    }
+                                ),
+                                DropdownItem(
+                                    text = "AI 精简",
+                                    summary = "一键按课表生成精简结果",
+                                    selected = classroomLabelMethod == ClassroomLabel.METHOD_AI,
+                                    onClick = {
+                                        rlog("classroom_label_method", "method=1 AI")
+                                        classroomLabelMethod = ClassroomLabel.METHOD_AI
+                                        reminderPrefs.edit {
+                                            putInt(
+                                                ClassroomLabel.KEY_METHOD,
+                                                ClassroomLabel.METHOD_AI
+                                            )
+                                        }
+                                    }
+                                ),
+                            )
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                insideMargin = PaddingValues(0.dp)
+                            ) {
+                                SwitchPreference(
+                                    title = "上课地点精简",
+                                    summary = if (classroomLabelEnabled) {
+                                        "开启：通知里的地点按下面的方式改写"
+                                    } else {
+                                        "关闭：用课表原文，与升级前一致"
+                                    },
+                                    checked = classroomLabelEnabled,
+                                    onCheckedChange = {
+                                        rlog("classroom_label_enabled", "on=$it")
+                                        classroomLabelEnabled = it
+                                        reminderPrefs.edit {
+                                            putBoolean(ClassroomLabel.KEY_ENABLED, it)
+                                        }
+                                    }
+                                )
+                                if (classroomLabelEnabled) {
+                                    OverlayDropdownMenu(
+                                        title = "精简方式",
+                                        entry = DropdownEntry(items = methodOptions),
+                                        collapseOnSelection = true,
+                                        liquidGlassBackdrop = liquidGlassBackdrop,
+                                        dropdownColors = liquidGlassDropdownColors,
+                                    )
+                                    ArrowPreference(
+                                        title = "查看精简预览",
+                                        summary = "预览精简后的课程地点",
+                                        endActions = {
+                                            if (classroomLabelMethod == ClassroomLabel.METHOD_AI) {
+                                                IconButton(
+                                                    onClick = {
+                                                        if (aiShrinking) return@IconButton
+                                                        hapticFeedback.performHapticFeedback(
+                                                            HapticFeedbackType.Confirm
+                                                        )
+                                                        rlog(
+                                                            "classroom_label_ai_shrink",
+                                                            "count=${previewClassrooms.size}"
+                                                        )
+                                                        aiShrinking = true
+                                                        scope.launch {
+                                                            val outcome = runCatching {
+                                                                AiClient(createHttpService(AI_TIMEOUTS))
+                                                                    .shrinkClassrooms(previewClassrooms.take(60))
+                                                            }.getOrElse { AiResult.Error(it.message ?: "未知错误") }
+                                                            aiShrinking = false
+                                                            // 失败必须把原因说出来：
+                                                            if (outcome is AiResult.Error) {
+                                                                rlog("classroom_label_ai_shrink_fail", outcome.message)
+                                                                showToast("AI 精简失败：${outcome.message}")
+                                                                return@launch
+                                                            }
+                                                            val ok = outcome as AiResult.Ok
+                                                            val lines = ok.value
+                                                            // 空结果是正常的：楼名本来就短（「博105」「安503」），
+                                                            // 没什么可缩。这时别把已有偏好覆盖成空。
+                                                            if (lines.isEmpty()) {
+                                                                rlog("classroom_label_ai_shrink_noop")
+                                                                showToast("这些地点已经很短了，没有可精简的")
+                                                                return@launch
+                                                            }
+                                                            val text = lines.joinToString("\n") { (from, to) -> "$from=$to" }
+                                                            classroomLabelAbbreviations = text
+                                                            reminderPrefs.edit {
+                                                                putString(ClassroomLabel.KEY_ABBREVIATIONS, text)
+                                                            }
+                                                            rlog(
+                                                                "classroom_label_ai_shrink_ok",
+                                                                "lines=${lines.size} remaining=${ok.remaining}"
+                                                            )
+                                                            // 每天有次数上限，把剩多少顺带说清楚，免得用户点着点着突然被拦
+                                                            showToast(
+                                                                if (ok.remaining != null) {
+                                                                    "已精简 ${lines.size} 条，今天还能用 ${ok.remaining} 次"
+                                                                } else {
+                                                                    "已精简 ${lines.size} 条"
+                                                                }
+                                                            )
+                                                        }
+                                                    },
+                                                    enabled = !aiShrinking,
+                                                    backgroundColor = MiuixTheme.colorScheme.primary.copy(0.8f),
+                                                    modifier = Modifier.size(36.dp),
+                                                ) {
+                                                    if (aiShrinking) {
+                                                        CircularProgressIndicator(
+                                                            size = 20.dp,
+                                                            strokeWidth = 2.dp,
+                                                            // 底色是主题色，转圈要跟着变白才看得见
+                                                            colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                                                                foregroundColor = Color.White,
+                                                                backgroundColor = Color.Transparent,
+                                                            ),
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = AiSparkleIcon,
+                                                            contentDescription = "一键精简",
+                                                            modifier = Modifier
+                                                                .size(24.dp)
+                                                                .offset(x = 1.dp),
+                                                            tint = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            rlog("classroom_label_preview_open")
+                                            showClassroomPreviewDialog = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     }
 
                     // 权限设置
@@ -1094,6 +1354,122 @@ fun CourseReminderScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+            }
+
+            // 地点精简预览：课表里每一个地点都按当前设置算一遍，改完立刻能看到差别
+            OverlayDialog(
+                title = "精简预览",
+                show = showClassroomPreviewDialog,
+                liquidGlassBackdrop = liquidGlassBackdrop,
+                onDismissRequest = { showClassroomPreviewDialog = false }
+            ) {
+                val rule = ClassroomLabelRule(
+                    enabled = classroomLabelEnabled,
+                    method = classroomLabelMethod,
+                    abbreviations = classroomLabelAbbreviations,
+                )
+                val changedCount = previewClassrooms.count { raw ->
+                    ClassroomLabel.apply(raw, rule) != raw
+                }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, end= 8.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (classroomLabelMethod == ClassroomLabel.METHOD_AI) {
+                                    "AI 精简"
+                                } else {
+                                    "正则精简"
+                                },
+                                style = MiuixTheme.textStyles.body1,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "当前方式",
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        Text(
+                            text = if (previewClassrooms.isEmpty()) {
+                                "课表没有地点"
+                            } else {
+                                "$changedCount / ${previewClassrooms.size}"
+                            },
+                            fontSize = 19.sp,
+                            color = MiuixTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "个会被改写",
+                            fontSize = 15.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    // 整块一个圆角矩形，里面滚动
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        shape = ClassroomPreviewShape,
+                        color = if (isAppDarkTheme()) {
+                            Color.White.copy(alpha = 0.1f)
+                        } else {
+                            Color.Black.copy(alpha = 0.06f)
+                        },
+                        shadowElevation = 0.dp,
+                    ) {
+                        if (previewClassrooms.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(120.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "课表里还没有填上课地点",
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                itemsIndexed(previewClassrooms) { index, raw ->
+                                    ClassroomPreviewRow(
+                                        raw = raw,
+                                        shown = ClassroomLabel.apply(raw, rule),
+                                        // 首尾各再让 6，凑成上下各 12，别贴着圆角
+                                        modifier = Modifier.padding(
+                                            top = if (index == 0) 6.dp else 0.dp,
+                                            bottom = if (index == previewClassrooms.lastIndex) 6.dp else 0.dp,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    TextButton(
+                        text = "知道了",
+                        onClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                            showClassroomPreviewDialog = false
+                        },
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                    )
                 }
             }
 

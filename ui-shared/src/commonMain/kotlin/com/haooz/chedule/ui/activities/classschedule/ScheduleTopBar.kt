@@ -37,7 +37,7 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 import com.kyant.backdrop.Backdrop
-import com.haooz.chedule.ui.components.text.miuix.Text as Text
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
 import top.yukonga.miuix.kmp.icon.extended.Background
