@@ -35,20 +35,12 @@ import kotlin.math.roundToInt
  * 带 RenderEffect 的中间层 blurLayer，再把结果烘进 `renderEffect = null` 的
  * bakedLayer。采样侧 `drawLayer(baked)` 是一次纯纹理 blit，不重跑高斯模糊。
  *
- * ⚠ 早期版本踩过的坑：那会儿 RenderEffect 直接挂在共享层上，而 RenderEffect 是
- * **每次 draw 都重算**的 —— 几十张课卡每帧各 drawLayer 同一张层，等于全屏模糊
- * 每帧跑几十次，降采样省下的采样成本全被吃光，看起来"降采样没用"。
- * 现架构已拆开两层，改这个常量前请先确认那条性质还成立。
- *
- * 0.5f 下 1080×2400 的纹理从 10.4MB 降到 2.6MB，能进 GPU 的 L2；源图本就是
- * 模糊过的壁纸，放大回来看不出差别。
- *
- * ⚠ **当前保持 1f，不要直接调小。** n≠1 的采样变换还没在真机上验证通过
- * （见 [SharedBlurBackdrop.drawBackdrop] 里那段关于 pivot 与拼接顺序的注释），
- * 两处默认值陷阱都是静默的：n=1 时整条分支是死代码，怎么改都看不出症状，
- * 一旦 n≠1 就同时引爆。降采样要重新上，必须先在真机量出对齐结果。
+ * **变换顺序**：采样侧必须**先 translate(-offset) 再 scale(1/n)**。
+ * 矩阵右乘下调用顺序即右乘顺序：M = M0·T·S 时 baked 坐标 d 落在窗口
+ * W + d/n（W = 壁纸层窗口原点）；顺序反过来 M = M0·S·T 会落在
+ * C + (d−offset)/n，整体错位 offset·(1−1/n)。n=1 时 S 是恒等、两种顺序等价
  */
-const val BLUR_BAKE_SCALE = 1f
+const val BLUR_BAKE_SCALE = 0.5f
 
 /**
  * 共享预模糊 Backdrop。
@@ -112,8 +104,9 @@ class SharedBlurBackdrop(
      * 该 Modifier 应附加到壁纸 Box 之后的不可见 Box 上，
      * 确保 source.graphicsLayer 已被录制。
      *
-     * @param blurRadiusPx 模糊半径（px）
-     * @param downsampleScale 烘焙分辨率比例，默认 1f（全分辨率）
+     * @param blurRadiusPx 模糊半径（px，作用在源层全分辨率空间；
+     *   烘焙时自动 ×downsampleScale 适配降采样缓冲，放大回原尺寸后扩散范围不变）
+     * @param downsampleScale 烘焙分辨率比例，默认 [BLUR_BAKE_SCALE]
      */
     /**
      * @param sourceKey 源内容指纹（壁纸 bitmap / 缩放 / 偏移 / 亮度 / 主题色等）。
@@ -149,15 +142,20 @@ class SharedBlurBackdrop(
             if (layerBlock != null) {
                 with(obtainInverseLayerScope()) { inverseTransform(density, layerBlock) }
             }
-            if (n != 1f) {
-                scale(1f / n, 1f / n, Offset.Zero)
-            }
             val offset = try {
                 layerCoordinates.localPositionOf(coordinates)
             } catch (_: Exception) {
                 coordinates.positionInWindow() - layerCoordinates.positionInWindow()
             }
             translate(-offset.x, -offset.y)
+            // 顺序：先平移到壁纸层原点，再按 1/n 放大回全屏坐标。
+            // 矩阵右乘下点变换按「后调用的先作用」：T 在 S 左侧时 baked 坐标 d
+            // 落在窗口 W + d/n，与源层逐像素对齐；若 scale 提到 translate 之前，
+            // d 落在 (d - offset)/n，整层错位 offset*(1-1/n)。n=1 时两者等价，
+            // 所以这个顺序只有降采样能暴露。
+            if (n != 1f) {
+                scale(1f / n, 1f / n, Offset.Zero)
+            }
         }) {
             drawLayer(baked ?: source.graphicsLayer)
         }
