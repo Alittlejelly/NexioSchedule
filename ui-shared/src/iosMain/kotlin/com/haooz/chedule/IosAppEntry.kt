@@ -351,7 +351,6 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         AppRoute.WidgetIntro -> WidgetIntroRoute(
             router,
             onRequestWidgetRefresh = { IosWidgetSnapshot.refresh() },
-            isIos = true,
         )
         // Course reminders: local notifications for pre-class and tomorrow's summary.
         // Gaps vs Android (docs/KMP_IOS_MIGRATION_PLAN.md §7):

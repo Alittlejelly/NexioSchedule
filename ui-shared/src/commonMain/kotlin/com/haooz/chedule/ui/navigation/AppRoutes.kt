@@ -113,6 +113,7 @@ import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.isIosPlatform
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.addScreenCornerRect
 import com.haooz.chedule.ui.web.WebHost
@@ -474,7 +475,6 @@ fun HolidaySettingsRoute(
 fun WidgetIntroRoute(
     router: AppRouter,
     onRequestWidgetRefresh: () -> Unit = {},
-    isIos: Boolean = false,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = isTabletWidth()
@@ -513,7 +513,7 @@ fun WidgetIntroRoute(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = if (isIos) {
+                        text = if (isIosPlatform) {
                             "1. 长按主屏幕空白处\n2. 点击「编辑」→「添加小组件」\n3. 搜索「Nexio课程表」\n4. 添加「课程表」，调整大小切换课程视图"
                         } else {
                             "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加"
@@ -539,7 +539,6 @@ fun WidgetIntroRoute(
             scrollBehavior = scrollBehavior,
             liquidGlassBackdrop = backdrop,
             onRequestWidgetRefresh = onRequestWidgetRefresh,
-            isIos = isIos,
         )
     }
 }
