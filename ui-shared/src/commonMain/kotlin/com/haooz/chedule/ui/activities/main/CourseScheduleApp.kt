@@ -554,6 +554,14 @@ fun CourseScheduleApp(
         // 今日页默认选中今天：等价于原来的 remember { mutableIntStateOf(currentDayOfWeek) }
         remember { if (todaySelectedDayOfWeek == 0) todaySelectedDayOfWeek = currentDayOfWeek }
 
+        // 跳周落到目标页后撤掉标题覆盖：currentPage 已被 scrollToPage 定在目标，
+        // 此时覆盖值与真实值相同，撤掉画面不跳；被打断的情况由 jumpToWeek 自己清。
+        LaunchedEffect(pagerState.currentPage, pendingViewingWeek) {
+            if (pendingViewingWeek >= 1 && pagerState.currentPage + 1 == pendingViewingWeek) {
+                pendingViewingWeek = 0
+            }
+        }
+
         courses = viewModel.courses.collectAsState().value
         // dataVersion + courses 引用都进 key：调课 size 可能不变，只靠 size 会让智能周末星期行停在旧值
         dayRange = remember(
@@ -795,16 +803,16 @@ fun CourseScheduleApp(
             val latestIsWindowCutout by rememberUpdatedState(isWindowCutoutActive)
             val latestShowCustomize by rememberUpdatedState(showCustomizePage)
             val latestIsCustomizeExiting by rememberUpdatedState(isCustomizeExiting)
-            val latestDraggingCard by rememberUpdatedState(isDraggingCard)
             val latestRailBlurEpoch by rememberUpdatedState(railBlurResampleEpoch.intValue)
             // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都新建包装对象，每帧新建会让
             // Image 的位图纹理反复重建。Bitmap 生命周期管理里的 `===` 身份比较一律不动。
             val wallpaperImage = remember(wallpaperBitmap) { wallpaperBitmap }
             val originalWallpaperImage = originalWallpaperBitmap
             // 课表/今日/设置滚动时主内容像素在变，必须重录，否则顶栏/底栏玻璃冻结。
-            // 周左右滑**不**重录，有无壁纸一视同仁：落页靠 recordKey 里的
-            // pagerState.currentPage 补一帧，玻璃不会永久停在旧帧。
-            // 「冻结采样、滚动时玻璃滞后」的既有取舍一致，不是新引入的行为。
+            // ⚠ 周左右滑（pagerState）与**今日页左右翻日（todayPagerState）**刻意不在此列：
+            //   一次翻页动画期间每帧重录 = 整棵内容树在 300ms 里重画 60 遍，帧预算直接吃满，
+            //   这才是程序化滚动（返回今日 / 调课翻周）发卡的来源。内容整页平移时玻璃滞后的
+            //   观感与周左右滑同一取舍，用户已接受。落页靠下面 draw 期比较 settledPage 补一帧。
             val liquidGlassMustRecord = remember(
                 scheduleScrollState,
                 todayListScrollInProgress,
@@ -814,6 +822,12 @@ fun CourseScheduleApp(
             ) {
                 var lastRailExpand = Float.NaN
                 var lastBlurEpoch = -1
+                // 今日页上一次落定的页号：只在落页后补录一次。
+                // 用 settledPage 而不是 currentPage —— currentPage 在翻到一半就变了，
+                // 那一帧补录下来的仍是「半页」内容，剩下半段动画玻璃照样滞后。
+                // ⚠ 初值给 -1 而不是读 settledPage —— 在 remember 块里读会订阅组合，
+                //   每翻一页白白重组整个外壳。
+                var lastTodayPage = -1
                 {
                     // 侧栏进度只在 draw 阶段读，不进组合
                     val expand = TabletNavSideState.expandProgress.floatValue
@@ -823,11 +837,14 @@ fun CourseScheduleApp(
                     lastBlurEpoch = latestRailBlurEpoch
                     val forceRail = railForceRecordFrames[0] > 0
                     if (forceRail) railForceRecordFrames[0] = railForceRecordFrames[0] - 1
+                    // 今日页落页：draw 期读，不触发组合，也不逐帧重录
+                    val todayPage = todayPagerState.settledPage
+                    val todayPageChanged = todayPage != lastTodayPage
+                    if (todayPageChanged) lastTodayPage = todayPage
                     scheduleScrollState.isScrollInProgress ||
                             todayListScrollInProgress.value ||
-                            // ⚠ 周左右滑（pagerState）刻意不在此列 —— 与无壁纸时行为一致。
-                            // 落页由 recordKey 里的 pagerState.currentPage 补一帧。
-                            todayPagerState.isScrollInProgress ||
+                            // ⚠ 周左右滑（pagerState）与今日页左右翻日（todayPagerState）不在此列
+                            todayPageChanged ||
                             mainPagerState.isScrollInProgress ||
                             expandMoving ||
                             forceRail ||
@@ -843,9 +860,10 @@ fun CourseScheduleApp(
                             latestSheetOffset != 0f ||
                             latestCustomizeExitScale != 1f ||
                             latestCustomizeCoverScale != 1f ||
-                            latestCustomizeCoverAlpha != 1f ||
-                            // 拖拽课程卡片时像素每帧变
-                            latestDraggingCard
+                            latestCustomizeCoverAlpha != 1f
+                    // ⚠ 拖课卡（isDraggingCard）也刻意不在此列：浮动卡片画在录制层**之上**，
+                    //   根本不进 backdrop 像素；原卡隐藏/落点高亮由 recordKey 里的
+                    //   isDraggingCard 在起手、收手各补一帧。
                 }
             }
             // 主内容（带模糊/裁切）与浮层组各拆一个文件，外壳只做局部值派生

@@ -5,6 +5,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import com.haooz.chedule.data.AppearanceConfig
@@ -186,6 +190,83 @@ private val MainTabPagerCrossPageAnimSpec = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 240f,
 )
+
+/** 长距跳转 / 落页的滑入曲线：落得稳、看得出方向 */
+private val JumpLandingSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = 380f,
+)
+
+/**
+ * 长距跳转的**借位页**
+ */
+class PagerJumpNeighbor {
+    var index by mutableIntStateOf(-1)
+        private set
+    var displayPage by mutableIntStateOf(-1)
+        private set
+
+    /** 页号映射：被借位的那一页显示成目标页，其余原样 */
+    fun resolve(page: Int): Int = if (page == index) displayPage else page
+
+    /** 这一页此刻是不是借位页：内容是「借来」的另一周/另一天，不是它自己的数据 */
+    fun isBorrowed(page: Int): Boolean = page == index && displayPage >= 0
+
+    internal fun borrow(index: Int, displayPage: Int) {
+        this.index = index
+        this.displayPage = displayPage
+    }
+
+    internal fun clear() {
+        index = -1
+        displayPage = -1
+    }
+}
+
+/**
+ * 跨周 / 跨日跳到目标页：**永远有动画，且永远只滑一页**。
+ *
+ * - 相邻一页：直接滑（[JumpLandingSpec]）
+ * - 跨多页且给了 [neighbor]：借位后滑一页（见 [PagerJumpNeighbor]）
+ * - 跨多页但没给 [neighbor]：退化成「预跳到目标隔壁 + 滑最后一页」
+ */
+internal suspend fun PagerState.jumpToPageSmoothly(
+    target: Int,
+    neighbor: PagerJumpNeighbor? = null,
+) {
+    val lastPage = (pageCount - 1).coerceAtLeast(0)
+    if (lastPage <= 0) return
+    val dest = target.coerceIn(0, lastPage)
+    val delta = dest - currentPage
+
+    if (abs(delta) <= 1) {
+        if (delta != 0 || abs(currentPageOffsetFraction) > 0.001f) {
+            animateScrollToPage(dest, animationSpec = JumpLandingSpec)
+        }
+        return
+    }
+
+    // 先掐掉可能在跑的 settle / 边缘翻周，再动位置
+    runCatching { cancelScroll() }
+
+    if (neighbor == null) {
+        scrollToPage(if (delta > 0) dest - 1 else dest + 1)
+        animateScrollToPage(dest, animationSpec = JumpLandingSpec)
+        return
+    }
+
+    // 借位：相邻那页先变成目标页并组合出来（空等一帧），再滑一页过去
+    val virtualPage = (currentPage + if (delta > 0) 1 else -1).coerceIn(0, lastPage)
+    neighbor.borrow(virtualPage, dest)
+    runCatching { withFrameNanos { } }
+    try {
+        animateScrollToPage(virtualPage, animationSpec = JumpLandingSpec)
+    } finally {
+        // 落点换成真身：借位期间显示的内容与真身逐像素相同，这一下看不出切换
+        runCatching { scrollToPage(dest) }
+        neighbor.clear()
+    }
+}
 
 /** 动画切到目标主 tab；正常结束后若未精确落页则强制吸附 */
 internal suspend fun PagerState.animateMainTabTo(target: Int) {

@@ -141,6 +141,12 @@ class CourseScheduleAppState {
     lateinit var pagerState: PagerState
     lateinit var todayPagerState: PagerState
     lateinit var mainPagerState: PagerState
+
+    /** 长距跳转的借位页：让相邻页临时显示目标周，滑一页就到位（见 [PagerJumpNeighbor]） */
+    val weekJumpNeighbor = PagerJumpNeighbor()
+
+    /** 同上，今日页按天 */
+    val todayJumpNeighbor = PagerJumpNeighbor()
     var hostNavigation: HostNavigationState? = null
     var settingsScrollBehavior: SharedScrollBehavior? = null
     var todayScrollBehavior: SharedScrollBehavior? = null
@@ -620,7 +626,19 @@ class CourseScheduleAppState {
     var todaySelectedDayOfWeek by mutableIntStateOf(0)
     var todayIsToday by mutableStateOf(true)
     var scrollToTodayTrigger by mutableIntStateOf(0)
-    val currentViewingWeek get() = pagerState.currentPage + 1
+
+    /**
+     * 程序化跳周的目标周（0 = 无覆盖）
+     */
+    var pendingViewingWeek by mutableIntStateOf(0)
+
+    // 基线必须用 currentPage：手动翻页过半页标题/日期行就该跟着换
+    val currentViewingWeek: Int
+        get() {
+            val live = pagerState.currentPage + 1
+            val target = pendingViewingWeek
+            return if (target >= 1 && target != live) target else live
+        }
 
     // dataVersion + courses 引用都进 key：调课 size 可能不变，只靠 size 会让智能周末星期行停在旧值
     val viewingIsHoliday get() = viewModel.isWeekHoliday(currentViewingWeek)
@@ -911,7 +929,8 @@ class CourseScheduleAppState {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     edgeAutoPageAnimating = true
                     try {
-                        pagerState.animateScrollToPage(target)
+                        // 与「返回本周」同一根滑入曲线（±1 页，走 JumpLandingSpec）
+                        pagerState.jumpToPageSmoothly(target)
                     } catch (e: CancellationException) {
                         // 第二根手指开始滑 pager（UserInput 优先级更高）会取消这次翻页；
                         // 本 Job 自己没被取消就继续等下一轮，别把持续翻页整条打死。
@@ -933,6 +952,27 @@ class CourseScheduleAppState {
                     edgeAutoPageJob = null
                 }
             }
+        }
+    }
+
+    /**
+     * 程序化跳周（回本周 / 跳周对话框）：**立刻**把「当前周」指向目标周，再滑过去
+     *
+     * 正常结束保持覆盖，等 `settledPage` 追上后由外壳的 LaunchedEffect 撤掉；
+     * 被打断（用户反向滑 / 抢占）立即撤掉，标题回到真实页。
+     */
+    suspend fun jumpToWeek(targetWeek: Int) {
+        val lastPage = (pagerState.pageCount - 1).coerceAtLeast(0)
+        val dest = (targetWeek - 1).coerceIn(0, lastPage)
+        // 目标周按落点页算，避免「总周数」与 pageCount 不一致时标题落到界外
+        pendingViewingWeek = dest + 1
+        try {
+            pagerState.jumpToPageSmoothly(dest, weekJumpNeighbor)
+        } catch (e: CancellationException) {
+            pendingViewingWeek = 0
+            throw e
+        } finally {
+            if (pagerState.currentPage != dest) pendingViewingWeek = 0
         }
     }
 

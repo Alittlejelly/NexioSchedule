@@ -135,25 +135,29 @@ private fun rememberCourseStatus(
     courses: List<Course>,
     sectionTimes: Map<Int, String>
 ): CourseStatus {
-    var status by remember { mutableStateOf(CourseStatus()) }
     // 时间区间只随 courses/sectionTimes 重算，循环内复用；保持原顺序以兼容 first-match
     val ranges = remember(courses, sectionTimes) {
         buildCourseTimeRanges(courses, sectionTimes, sortByStart = false)
     }
+    fun statusAt(now: LocalTime): CourseStatus {
+        // 与 generateSmartTip 同一判定：开始含、结束不含，避免整点卡在「正在上课」。
+        // 跨午夜课（23:00-00:30）由 coursePeriodOngoing 按「start→午夜」段判定
+        val current = ranges.find { coursePeriodOngoing(it.start, it.end, now) }
+        val next = ranges.find { now < it.start }
+        val message = when {
+            current != null -> formatRemainingUntil(now, current.end, isCountdownToStart = false)
+            next != null -> formatRemainingUntil(now, next.start, isCountdownToStart = true)
+            courses.isEmpty() -> ""
+            else -> ""
+        }
+        return CourseStatus(current?.course, next?.course, message, current?.end)
+    }
+    // 初值必须当场算出来：留空会让新组合的助手卡先闪一帧「当前没有课程」，
+    // 一秒后才跳回真实课程（借位页 / 首次进今日页都踩得到）。
+    var status by remember(courses, sectionTimes) { mutableStateOf(statusAt(nowLocalTime())) }
     LaunchedEffect(ranges) {
         while (true) {
-            val now = nowLocalTime()
-            // 与 generateSmartTip 同一判定：开始含、结束不含，避免整点卡在「正在上课」。
-            // 跨午夜课（23:00-00:30）由 coursePeriodOngoing 按「start→午夜」段判定
-            val current = ranges.find { coursePeriodOngoing(it.start, it.end, now) }
-            val next = ranges.find { now < it.start }
-            val message = when {
-                current != null -> formatRemainingUntil(now, current.end, isCountdownToStart = false)
-                next != null -> formatRemainingUntil(now, next.start, isCountdownToStart = true)
-                courses.isEmpty() -> ""
-                else -> ""
-            }
-            val newStatus = CourseStatus(current?.course, next?.course, message, current?.end)
+            val newStatus = statusAt(nowLocalTime())
             // 文案未变化时不写状态，避免每秒重组
             if (newStatus != status) status = newStatus
             delay(1000L.milliseconds)

@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
@@ -70,6 +71,11 @@ private const val TEXT_MOTION_BLUR_RELEASE_MILLIS = 180
  * 只糊到这个量级有原因：`renderEffect` 每处都要建一份离屏缓冲，半径越大离屏面积越大。
  */
 private val TEXT_MOTION_BLUR = 8.dp
+
+/**
+ * 让范围内所有文字**直接换**、不走交叉模糊
+ */
+val LocalTextMotionInstant = staticCompositionLocalOf { false }
 
 /**
  * 把文字包成「变化时有交叉模糊过渡」的容器，[key] 是判断「文字是否变了」的依据。
@@ -108,6 +114,8 @@ internal fun <T : Any> TextMotionBox(
     val supported = remember { isRenderEffectSupported() }
     // 用 State 承接最新的 key，动画循环只起一次，新值由 snapshotFlow 送进来。
     val latestKey by rememberUpdatedState(key)
+    // 借位页整页换数据：文字直接换，不播交叉模糊
+    val latestInstant by rememberUpdatedState(LocalTextMotionInstant.current)
 
     // 动画循环只起一次（单位是 Unit）
     // 单循环 + collectLatest：新值到达时掐掉上一段，模糊停在当前值，再由下一段接住。
@@ -122,8 +130,8 @@ internal fun <T : Any> TextMotionBox(
                 return@collectLatest
             }
             if (newKey == displayed) return@collectLatest
-            // 不支持模糊、或并发配额已满：直接换字，不播动效（批量降级）。
-            if (!supported || !TextMotionBudget.tryAcquire()) {
+            // 不支持模糊、借位页整页换数据、或并发配额已满：直接换字，不播动效（批量降级）。
+            if (latestInstant || !supported || !TextMotionBudget.tryAcquire()) {
                 displayed = newKey
                 outgoing = null
                 blurActive = false

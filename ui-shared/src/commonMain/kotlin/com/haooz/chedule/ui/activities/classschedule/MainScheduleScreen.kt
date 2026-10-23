@@ -1,8 +1,10 @@
 package com.haooz.chedule.ui.activities.classschedule
 
 import androidx.compose.ui.text.style.TextAlign
+import com.haooz.chedule.ui.activities.main.PagerJumpNeighbor
 import com.haooz.chedule.ui.components.cardRevealLayer
 import com.haooz.chedule.ui.components.rememberCardRevealState
+import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -196,6 +198,8 @@ fun MainScheduleScreen(
     viewModel: CourseViewModel,
     settingsViewModel: SettingsViewModel,
     pagerState: PagerState,
+    /** 长距跳转借位页：让相邻页临时显示目标周（见 PagerJumpNeighbor） */
+    jumpNeighbor: PagerJumpNeighbor? = null,
     hiddenCourseIds: Set<String> = emptySet(),
     draggingCourseSlots: Set<Pair<String, Int>> = emptySet(),
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
@@ -964,8 +968,14 @@ fun MainScheduleScreen(
         beyondViewportPageCount = 1,
         // 横向触摸改由 pagerAxisTakeoverGesture 驱动；纵滑主导时交给 verticalScroll
         userScrollEnabled = false
-    ) { page ->
+    ) { physicalPage ->
+            // 借位页：长距跳转期间这一页临时按目标周出内容
+            val page = jumpNeighbor?.resolve(physicalPage) ?: physicalPage
             val week = page + 1
+            // 借位页是「同一页换数据」而不是值更新：整屏文字直接换，不播交叉模糊。
+            // 否则一屏卡片的字各糊一遍 460ms，看起来像整页重播入场动画。
+            val borrowedPage = jumpNeighbor?.isBorrowed(physicalPage) == true
+            CompositionLocalProvider(LocalTextMotionInstant provides borrowedPage) {
 
 
 
@@ -1449,6 +1459,7 @@ fun MainScheduleScreen(
                     BreakDivider(dinnerBreakY, "晚休")
                     }
                 }
+            }
             }
 
             if (isWallpaperEditing && wallpaperBitmap != null) {

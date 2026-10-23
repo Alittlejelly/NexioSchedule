@@ -35,6 +35,9 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
+import com.haooz.chedule.ui.activities.main.PagerJumpNeighbor
+import com.haooz.chedule.ui.activities.main.jumpToPageSmoothly
+import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -113,8 +116,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -379,6 +380,8 @@ fun TodayScreen(
     hiddenCourseIds: Set<String> = emptySet(),
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     pagerState: PagerState,
+    /** 长距跳日的借位页：让相邻页临时显示目标日期（见 PagerJumpNeighbor） */
+    jumpNeighbor: PagerJumpNeighbor? = null,
     navBarStyle: String = "standard",
     onScrollYChanged: (Int) -> Unit = {},
     onListScrollInProgress: (Boolean) -> Unit = {},
@@ -444,7 +447,7 @@ fun TodayScreen(
     var selectedDate by remember { mutableStateOf(initialDate) }
     var isToday by remember { mutableStateOf(initialDaysOffset == 0) }
     val scope = rememberCoroutineScope()
-
+    var pendingDatePage by remember { mutableIntStateOf(-1) }
     var showDatePicker by remember { mutableStateOf(false) }
     var datePickerYear by remember { mutableIntStateOf(todayLocalDate().year) }
     var datePickerMonth by remember { mutableIntStateOf(todayLocalDate().monthNumber - 1) }
@@ -452,7 +455,14 @@ fun TodayScreen(
 
     LaunchedEffect(scrollToTodayTrigger) {
         if (scrollToTodayTrigger > 0 && pagerState.currentPage != MAX_DATE_OFFSET) {
-            pagerState.animateScrollToPage(MAX_DATE_OFFSET)
+            // 相邻一天直接滑；跨多天借位后也只滑一页，全程连续
+            pendingDatePage = MAX_DATE_OFFSET
+            try {
+                pagerState.jumpToPageSmoothly(MAX_DATE_OFFSET, jumpNeighbor)
+            } finally {
+                // 落点不是目标（被打断）就立刻撤掉覆盖，别让标题卡在今天
+                if (pagerState.currentPage != MAX_DATE_OFFSET) pendingDatePage = -1
+            }
         }
     }
 
@@ -467,14 +477,26 @@ fun TodayScreen(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage, holidayDataTick) {
+    // 落页后撤掉「立刻切日期」的覆盖
+    LaunchedEffect(pagerState.currentPage, pendingDatePage) {
+        if (pendingDatePage >= 0 && pagerState.currentPage == pendingDatePage) {
+            pendingDatePage = -1
+        }
+    }
+
+    // 跟手换日期：过半页就换（settledPage 要等 fling 停稳，翻起来标题会看着卡住）。
+    // 程序化跳日期间由 [pendingDatePage] 提前钉住目标，借位也不会闪到中间那天。
+    LaunchedEffect(pagerState.currentPage, pendingDatePage, holidayDataTick) {
         var lastReportedDate: LocalDate? = null
         while (true) {
             val sampledAtMillis = Clock.System.now().toEpochMilliseconds()
             val sampledNow = localDateTimeAt(sampledAtMillis)
             val today = sampledNow.date
             currentLocalDateTime = sampledNow
-            val daysOffset = pagerState.currentPage - MAX_DATE_OFFSET
+            // 程序化跳日期间用目标页，点「今」的那一帧日期就切过去
+            val anchorPage =
+                if (pendingDatePage >= 0) pendingDatePage else pagerState.currentPage
+            val daysOffset = anchorPage - MAX_DATE_OFFSET
             val newDate = today.plusDays(daysOffset.toLong())
             if (newDate != lastReportedDate) {
                 val dateChanged = newDate != selectedDate
@@ -500,10 +522,6 @@ fun TodayScreen(
     val hapticFeedback = LocalHapticFeedback.current
 
     val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
     // 供今日页卡片 drawBackdrop 采样壁纸：共享层时直接用主层 backdrop，否则录本页壁纸
     val localCardBackdrop = rememberKyantLayerBackdrop {
         drawRect(backgroundColor)
@@ -544,7 +562,6 @@ fun TodayScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             if (wallpaperBitmap != null) {
                 Box(
@@ -601,12 +618,21 @@ fun TodayScreen(
 
             HorizontalPager(
                 state = pagerState,
+                // 与课表周 pager 同款预组合：翻日/返回今日时下一日页面在第一帧就要露出，
+                // 现组一整页（resolveDaySchedule + 假期/调休查询 + 卡片）会把那一帧顶爆。
+                beyondViewportPageCount = 1,
                 modifier = Modifier
                     .fillMaxSize()
                     // 与课表周 pager 共用的横竖主导翻页手势；纵向仍归页内 LazyColumn
                     .pagerAxisTakeoverGesture(pagerState = pagerState),
                 userScrollEnabled = false,
-            ) { page ->
+            ) { physicalPage ->
+                // 借位页：长距跳日期间这一页按目标日期出内容，于是跨 N 天也只是一页连续位移
+                val page = jumpNeighbor?.resolve(physicalPage) ?: physicalPage
+                // 借位页是「同一页换数据」，整屏文字直接换，不播交叉模糊
+                CompositionLocalProvider(
+                    LocalTextMotionInstant provides (jumpNeighbor?.isBorrowed(physicalPage) == true)
+                ) {
                 val pageListState = remember(page) { LazyListState() }
                 // 只把当前页的滚动状态报给 Activity（顶栏折叠 / 液态玻璃重录）
                 LaunchedEffect(pageListState, page) {
@@ -958,6 +984,7 @@ fun TodayScreen(
                     }
                 }
             }
+            }
         }
     }
 
@@ -1038,7 +1065,17 @@ fun TodayScreen(
                             val days = now.daysUntil(target)
                             val targetPage = MAX_DATE_OFFSET + days.toInt()
                             scope.launch {
-                                pagerState.animateScrollToPage(targetPage)
+                                // 选日期可能跨几十上百天：借位后只滑一页，不逐页组合中间每一天
+                                val dest = targetPage.coerceIn(
+                                    0, (pagerState.pageCount - 1).coerceAtLeast(0)
+                                )
+                                // 标题日期立刻切到目标日
+                                pendingDatePage = dest
+                                try {
+                                    pagerState.jumpToPageSmoothly(dest, jumpNeighbor)
+                                } finally {
+                                    if (pagerState.currentPage != dest) pendingDatePage = -1
+                                }
                             }
                             showDatePicker = false
                         },

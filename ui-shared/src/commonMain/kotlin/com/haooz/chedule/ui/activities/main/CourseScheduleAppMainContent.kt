@@ -472,12 +472,14 @@ internal fun CourseScheduleAppMainContent(
                                     ) {
                                         ScheduleTopBar(
                                             visible = true,
-                                            pagerCurrentPage = pagerState.currentPage,
+                                            // 标题跟着 currentViewingWeek 走：程序化跳周的那一帧就切成目标周，
+                                            // 不会再有一段「点完还停在第 10 周」的空窗
+                                            pagerCurrentPage = currentViewingWeek - 1,
                                             currentWeek = currentWeek,
                                             isHoliday = viewingIsHoliday,
                                             dayRange = dayRange,
                                             currentDayOfWeek = currentDayOfWeek,
-                                            isCurrentWeek = pagerState.currentPage + 1 == currentWeek && currentWeek in 1..totalWeeks,
+                                            isCurrentWeek = currentViewingWeek == currentWeek && currentWeek in 1..totalWeeks,
                                             weekDates = weekDates,
                                             isReorganized = teachingWeekRules.isNotEmpty(),
                                             onOpenSwitchSchedule = { openScheduleLibrary() },
@@ -850,6 +852,7 @@ internal fun CourseScheduleAppMainContent(
                                                                 )
                                                             },
                                                             pagerState = todayPagerState,
+                                                            jumpNeighbor = todayJumpNeighbor,
                                                             navBarStyle = navBarStyle,
                                                             onScrollYChanged = { _ -> },
                                                             settingsScrollBehavior = todayScrollBehavior,
@@ -908,6 +911,7 @@ internal fun CourseScheduleAppMainContent(
                                                                 viewModel = viewModel,
                                                                 settingsViewModel = settingsViewModel,
                                                                 pagerState = pagerState,
+                                                                jumpNeighbor = weekJumpNeighbor,
                                                                 hiddenCourseIds = hiddenCourseIds,
                                                                 draggingCourseSlots = draggingCourseSlots,
                                                                 onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->
@@ -946,10 +950,7 @@ internal fun CourseScheduleAppMainContent(
                                                                     hapticFeedback.performHapticFeedback(
                                                                         HapticFeedbackType.LongPress
                                                                     )
-                                                                    // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样。
-                                                                    // 「不能拖动」由卡片侧保证：DayColumn 给这类课传 dragEnabled=false，
-                                                                    // 手指怎么动都不会 onDragStart/onDrag，浮层停在原位、也没有调课落点。
-                                                                    // ⚠ draggedWeek 必须同步：删除确认弹窗按「本周」删时读的就是它。
+                                                                    // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样
                                                                     isDraggingCard = true
                                                                     floatingCardVisible = true
                                                                     // 新一轮长按：还没开始拖，高光先关
@@ -1604,14 +1605,8 @@ internal fun CourseScheduleAppMainContent(
                                     if (selectedTab == 0) {
                                         scrollToTodayTrigger++
                                     } else {
-                                        coroutineScope.launch {
-                                            val targetPage =
-                                                (currentWeek - 1).coerceIn(
-                                                    0,
-                                                    (totalWeeks - 1).coerceAtLeast(0)
-                                                )
-                                            pagerState.animateScrollToPage(targetPage)
-                                        }
+                                        // 标题立刻切到本周，再滑一页过去
+                                        coroutineScope.launch { jumpToWeek(currentWeek) }
                                     }
                                 },
                             )
@@ -1684,7 +1679,8 @@ internal fun CourseScheduleAppMainContent(
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         viewModel.hideJumpWeekDialog()
                                         coroutineScope.launch {
-                                            pagerState.animateScrollToPage(jumpWeekTemp - 1)
+                                            // 跳周同样立刻切标题，不等落页
+                                            jumpToWeek(jumpWeekTemp)
                                         }
                                     },
                                     colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -2083,14 +2079,7 @@ internal fun CourseScheduleAppMainContent(
                                 if (selectedTab == 0) {
                                     scrollToTodayTrigger++
                                 } else {
-                                    coroutineScope.launch {
-                                        val targetPage =
-                                            (currentWeek - 1).coerceIn(
-                                                0,
-                                                (totalWeeks - 1).coerceAtLeast(0)
-                                            )
-                                        pagerState.animateScrollToPage(targetPage)
-                                    }
+                                    coroutineScope.launch { jumpToWeek(currentWeek) }
                                 }
                             },
                             modifier = Modifier.fillMaxSize().zIndex(22f),
