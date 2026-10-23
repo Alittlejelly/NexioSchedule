@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -65,6 +67,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.AppearanceConfig
@@ -120,6 +123,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
@@ -1987,10 +1991,38 @@ internal fun CourseScheduleAppMainContent(
                         }
                     }
                     // 提饱和：与玻璃面板同源，采样主内容 export。
-                    // 光晕半径取 min(短边, 250dp) × 0.5。
+                    //
+                    // 半径取 min(短边, 250dp) × 0.5（与 InteractiveHighlight 同式），遮罩用径向渐变
+                    // ——渐变在半径外恒为 0，所以只有「光晕包围盒」这一块有像素。节点做成这个
+                    // 正方形、跟着卡片中心走：整屏节点要付两次全屏离屏（saveLayer + 带 ColorFilter
+                    // 的采样层），包围盒只有 250dp 见方，像素量差一个数量级。
+                    val glowRadiusPx = remember(windowInfo.containerSize, density) {
+                        val container = windowInfo.containerSize
+                        val shortSide = minOf(container.width, container.height).toFloat()
+                        val cap = with(density) { 250.dp.toPx() }
+                        (if (shortSide > 0f) minOf(shortSide, cap) else cap) * 0.5f
+                    }
+                    // 遮罩渐变随节点尺寸固定，逐帧只读不重建（否则每帧都要新建 Brush/颜色表）
+                    val glowMaskBrush = remember(glowRadiusPx) {
+                        val r = glowRadiusPx.coerceAtLeast(1f)
+                        Brush.radialGradient(
+                            colors = listOf(Color.White, Color.White, Color.Transparent),
+                            center = Offset(r, r),
+                            radius = r,
+                        )
+                    }
                     Box(
                         Modifier
-                            .fillMaxSize()
+                            // 位移在 layout 阶段读 float state：不进组合，不触发重组
+                            .offset {
+                                IntOffset(
+                                    (draggedCardPosition.x + floatingOffsetX.floatValue - glowRadiusPx)
+                                        .roundToInt(),
+                                    (draggedCardPosition.y + floatingOffsetY.floatValue - glowRadiusPx)
+                                        .roundToInt()
+                                )
+                            }
+                            .size(with(density) { (glowRadiusPx * 2f).coerceAtLeast(1f).toDp() })
                             .drawWithContent {
                                 if (glowAlpha > 0f) {
                                     drawContext.canvas.saveLayer(
@@ -1998,23 +2030,7 @@ internal fun CourseScheduleAppMainContent(
                                         Paint()
                                     )
                                     drawContent()
-                                    // 半径与 InteractiveHighlight 同式：min(短边, 250dp) × 0.5
-                                    val radius = minOf(size.minDimension, 250.dp.toPx()) * 0.5f
-                                    drawRect(
-                                        brush = Brush.radialGradient(
-                                            colors = listOf(
-                                                Color.White,
-                                                Color.White,
-                                                Color.Transparent,
-                                            ),
-                                            center = Offset(
-                                                draggedCardPosition.x + floatingOffsetX.floatValue,
-                                                draggedCardPosition.y + floatingOffsetY.floatValue,
-                                            ),
-                                            radius = radius,
-                                        ),
-                                        blendMode = BlendMode.DstIn,
-                                    )
+                                    drawRect(brush = glowMaskBrush, blendMode = BlendMode.DstIn)
                                     drawContext.canvas.restore()
                                 }
                             }

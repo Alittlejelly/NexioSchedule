@@ -59,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1869,8 +1870,13 @@ private fun AnimatedDropTargetMask(
     val alpha = remember { Animatable(0f) }
     val lastTarget = remember { mutableStateOf<DropMaskBox?>(null) }
 
-    // 没有落点且遮罩已淡尽时不挂这棵树：BoxWithConstraints 是 SubcomposeLayout
-    if (dropHighlight == null && dropHighlightOrigin == null && alpha.value <= 0.01f) return
+    // 没有落点且遮罩已淡尽时不挂这棵树：BoxWithConstraints 是 SubcomposeLayout。
+    // 判据走 derivedStateOf —— 直接读 alpha.value 会让淡入/淡出的每一帧都重建整棵子组合。
+    val hasTarget = dropHighlight != null || dropHighlightOrigin != null
+    val mounted by remember(hasTarget) {
+        derivedStateOf { hasTarget || alpha.value > 0.01f }
+    }
+    if (!mounted) return
 
     BoxWithConstraints(
         modifier = Modifier

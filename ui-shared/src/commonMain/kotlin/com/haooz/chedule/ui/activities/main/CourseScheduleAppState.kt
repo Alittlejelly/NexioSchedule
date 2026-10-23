@@ -184,7 +184,13 @@ class CourseScheduleAppState {
     var isTablet: Boolean = false
     var screenWPx: Float = 0f
     var screenHPx: Float = 0f
-    var glowAlpha: Float = 0f
+    /**
+     * 跟手高光/提饱和的淡变进度（0~1）。
+     *
+     * snapshot state：两个消费者（提饱和遮罩、InteractiveHighlight）都在 draw 阶段读，
+     * 失效订阅就落在 draw 上。组合期读它会把整个外壳拖进逐帧重组。
+     */
+    var glowAlpha by mutableFloatStateOf(0f)
     var persistedScheduleThemeMode: ThemeMode = ThemeMode.FOLLOW_APP
     var initialCombWallpaperIsLight: Boolean? = null
 

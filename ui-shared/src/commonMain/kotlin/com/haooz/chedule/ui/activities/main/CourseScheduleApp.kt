@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.activities.main
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
@@ -299,11 +299,18 @@ fun CourseScheduleApp(
 
         // 高光开关 = 正在拖 && 浮层还活着：声明在 Scaffold 之前，Scaffold 内容里的提饱和节点要用它。
         // 一松手 onCourseDragEnd 立刻置 false 开始淡出，不等 360ms 退场动画。
-        glowAlpha = animateFloatAsState(
-            targetValue = if (glowShowing) 1f else 0f,
-            animationSpec = tween(150),
-            label = "dragCardGlowAlpha",
-        ).value
+        //
+        // 进度由动画帧写进 `glowAlpha`（snapshot state），组合期不读它 —— 两个消费者
+        // （提饱和遮罩、跟手高光）都只在 draw 阶段读，订阅落在 draw 上就够。
+        // 写成 `animateFloatAsState(...).value` 会让整个外壳（4 页 pager + 课表页）
+        // 在 150ms 淡变里逐帧重组。
+        val glowProgress = remember { Animatable(if (glowShowing) 1f else 0f) }
+        LaunchedEffect(glowShowing) {
+            glowProgress.animateTo(
+                targetValue = if (glowShowing) 1f else 0f,
+                animationSpec = tween(150),
+            ) { glowAlpha = value }
+        }
 
         // 独立偏好 key，与全局主题开关隔离
         persistedScheduleThemeMode = rememberScheduleThemeMode()
@@ -726,7 +733,17 @@ fun CourseScheduleApp(
                     drawContent()
 
                 }) {
-            val displayAppearance =
+            // ⚠ 必须 remember：`AppearanceConfig` 来自 :core（无 Compose 编译器），对外层
+            //   是**不稳定类型**，每次重组都新建实例会让 MainContent/浮层组整棵不可跳过 ——
+            //   拖拽期间 isDraggingCard / floatingCardVisible / shortcutMenuVisible 各变一次，
+            //   每次都把整个课表页重跑一遍。
+            val displayAppearance = remember(
+                showCustomizePage,
+                isWindowCutoutActive,
+                originalCombination,
+                combinations,
+                currentCombinationIndex,
+            ) {
                 // 开洞前显示已应用外观，避免快照过渡期闪编辑值
                 if (showCustomizePage && !isWindowCutoutActive) {
                     originalCombination?.let { AppearanceConfig.fromCombination(it) }
@@ -734,6 +751,7 @@ fun CourseScheduleApp(
                 } else {
                     currentAppearance()
                 }
+            }
             // 顶栏/底栏必须采主内容 liquidGlass，否则玻璃退化成纯色
             val chromeBackdrop: Backdrop = liquidGlassBackdrop
             val isEntryAnimating = showSwitchSchedule && switchAnimForward && switchAnimRunning

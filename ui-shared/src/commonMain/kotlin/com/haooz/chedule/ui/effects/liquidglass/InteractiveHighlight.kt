@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
@@ -144,25 +145,40 @@ half4 main(float2 coord) {
                         setFloatUniform("radius", radius)
                         setFloatUniform("position", haloCenter.x, haloCenter.y)
                     }
-                    drawRect(
-                        ShaderBrush(shader.asComposeShader()),
-                        blendMode = BlendMode.Plus
-                    )
+                    // 强度在半径外恒为 0：裁到光晕包围盒再画，整屏平铺是白刷一遍像素
+                    clipRect(
+                        left = haloCenter.x - radius,
+                        top = haloCenter.y - radius,
+                        right = haloCenter.x + radius,
+                        bottom = haloCenter.y + radius,
+                    ) {
+                        drawRect(
+                            ShaderBrush(shader.asComposeShader()),
+                            blendMode = BlendMode.Plus
+                        )
+                    }
                 } else {
                     // 无 RuntimeShader（API<33）：改画径向渐变而非整块平铺 —— 平铺没有圆形
                     // 边界，在「只要圆形光晕」的场景就是一整屏白。收边比 shader 宽，观感略散。
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            center = haloCenter,
-                            radius = radius,
-                            colors = listOf(
-                                Color.White.copy(peak),
-                                Color.White.copy(peak),
-                                Color.Transparent,
+                    clipRect(
+                        left = haloCenter.x - radius,
+                        top = haloCenter.y - radius,
+                        right = haloCenter.x + radius,
+                        bottom = haloCenter.y + radius,
+                    ) {
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                center = haloCenter,
+                                radius = radius,
+                                colors = listOf(
+                                    Color.White.copy(peak),
+                                    Color.White.copy(peak),
+                                    Color.Transparent,
+                                ),
                             ),
-                        ),
-                        blendMode = BlendMode.Plus
-                    )
+                            blendMode = BlendMode.Plus
+                        )
+                    }
                 }
             }
 
