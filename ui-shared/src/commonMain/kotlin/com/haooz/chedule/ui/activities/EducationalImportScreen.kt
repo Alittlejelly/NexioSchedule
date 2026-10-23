@@ -91,8 +91,8 @@ import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Surface
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Close
@@ -104,7 +104,6 @@ import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 /**
  * 学校 / 适配器选择页主体。
@@ -197,15 +196,53 @@ fun EducationalImportScreen(
         var searchBackdropAlpha by remember { mutableFloatStateOf(0f) }
         var searchShadowAlpha by remember { mutableFloatStateOf(0f) }
 
+        // 本页两层采样源（backdrop / liquidGlassBackdrop）录的是同一棵子树，
+        // 变化因素一致，共用一份指纹与谓词。
+        // 指纹：结构/内容变更（搜索词、tab、数据版本、更新中、主题底色）。
+        // 谓词：顶栏折叠 offset 与搜索框淡入淡出在 draw 阶段读，不进组合；
+        // 帧差检测，只有真在动的那几帧才重录。
+        val eduRecordKey = remember(
+            searchQuery, searchExpanded, selectedTab, dataVersion, isUpdating, backgroundColor
+        ) {
+            listOf(
+                searchQuery, searchExpanded, selectedTab, dataVersion, isUpdating, backgroundColor
+            )
+        }
+        val eduMustRecord = remember(scrollBehavior) {
+            var lastOffset = Float.NaN
+            var lastSearchAlpha = Float.NaN
+            var lastShadowAlpha = Float.NaN
+            {
+                val offset = scrollBehavior.state.heightOffset
+                val searchAlpha = searchBackdropAlpha
+                val shadowAlpha = searchShadowAlpha
+                val moving = offset != lastOffset ||
+                    searchAlpha != lastSearchAlpha ||
+                    shadowAlpha != lastShadowAlpha
+                lastOffset = offset
+                lastSearchAlpha = searchAlpha
+                lastShadowAlpha = shadowAlpha
+                moving
+            }
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdrop(backdrop)
+                    .layerBackdrop(
+                        backdrop,
+                        recordKey = eduRecordKey,
+                        mustRecord = eduMustRecord
+                    )
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize().then(
-                        Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                        Modifier.layerBackdrop(
+                            liquidGlassBackdrop,
+                            recordKey = eduRecordKey,
+                            mustRecord = eduMustRecord
+                        )
                     )
                 ) {
                     com.haooz.chedule.ui.screens.SchoolSelectionScreen(

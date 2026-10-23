@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
@@ -34,15 +32,22 @@ import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.LocalOverScrollState
 import top.yukonga.miuix.kmp.utils.OverScrollState
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 /**
  * 「全屏文档页」的统一脚手架：折叠大标题顶栏 + 玻璃返回按钮 + 内容采样层
+ *
+ * @param recordKey 两层采样源共用的结构指纹。传 null（默认）= 每帧录制，
+ *   保持原行为；使用方传入 remember 稳定的 List 可让顶栏玻璃在内容静止时
+ *   跳过重录。指纹必须覆盖**所有**会改变被采样像素的因素（数据版本、
+ *   弹窗/浮层可见性、主题等），漏项会让玻璃采到旧帧。
  */
 @Composable
 fun DocumentPageScaffold(
     title: String,
     onBack: () -> Unit,
+    recordKey: Any? = null,
     endAction: (@Composable (backdropAlpha: Float, shadowAlpha: Float) -> Unit)? = null,
     overlay: (@Composable BoxScope.(liquidGlassBackdrop: com.kyant.backdrop.Backdrop) -> Unit)? = null,
     content: @Composable (
@@ -63,7 +68,7 @@ fun DocumentPageScaffold(
         drawRect(backgroundColor)
         drawContent()
     }
-    val liquidGlassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val liquidGlassBackdrop = rememberLayerBackdrop()
     val scrollBehavior = rememberSharedScrollBehavior()
     // 本页独立的 overscroll 作用域：内容的 overScrollVertical 节点把越界量写进这个实例，
     // 顶栏 CollapsibleTopAppBar 也从同一个 CompositionLocal 读它 —— 两边必须是同一套。
@@ -71,6 +76,17 @@ fun DocumentPageScaffold(
     // 顶栏读的是永远为 0 的那套，于是「回弹也显现材质」整条分支成了死代码。
     // 顺带隔离：每页一个实例，不会互相串到 compositionLocalOf 的全局默认实例上。
     val pageOverScrollState = remember { OverScrollState() }
+    // 顶栏折叠动画期间采样像素逐帧变，谓词读 offset 帧差（draw 阶段，不进组合）。
+    // 内容自身的变化由调用方的 recordKey 负责枚举——组件看不到 content 的内部状态。
+    val docMustRecord = remember(scrollBehavior) {
+        var lastOffset = Float.NaN
+        {
+            val offset = scrollBehavior.state.heightOffset
+            val moving = offset != lastOffset
+            lastOffset = offset
+            moving
+        }
+    }
 
     CompositionLocalProvider(LocalOverScrollState provides pageOverScrollState) {
         Scaffold(
@@ -115,12 +131,16 @@ fun DocumentPageScaffold(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdrop(backdrop)
+                    .layerBackdrop(backdrop, recordKey = recordKey, mustRecord = docMustRecord)
             ) {
                 // 采样层只包内容；顶栏玻璃按钮放在层外，避免循环采样
                 Box(
                     modifier = Modifier.fillMaxSize().then(
-                        Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                        Modifier.layerBackdrop(
+                            liquidGlassBackdrop,
+                            recordKey = recordKey,
+                            mustRecord = docMustRecord
+                        )
                     )
                 ) {
                     content(scrollBehavior, liquidGlassBackdrop)

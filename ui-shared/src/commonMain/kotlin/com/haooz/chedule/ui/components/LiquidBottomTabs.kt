@@ -138,10 +138,6 @@ fun LiquidBottomTabs(
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()
-    // 高光自己的 export 层：胶囊采样它，玻璃里才会同时看到「底栏 + 光晕」，
-    // 两者被同一套 lens 一起折射 → 轮廓天然一致。
-    // 注意：捕获层带 ColorFilter.tint(accentColor)，高光不能塞进去（浅色会被染黑）。
-    val glowBackdrop = rememberLayerBackdrop()
 
     BoxWithConstraints(
         modifier,
@@ -298,20 +294,6 @@ fun LiquidBottomTabs(
             )
         }
 
-        Box(
-            Modifier
-                .fillMaxSize()
-                .layerBackdrop(glowBackdrop)
-                .graphicsLayer {
-                    translationX = panelOffset
-                    val progress = dampedDragAnimation.pressProgress
-                    val s = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
-                    scaleX = s
-                    scaleY = s
-                }
-                .clip(ContinuousCapsule())
-        )
-
         // 胶囊（纯视觉）
         Box(
             Modifier
@@ -322,9 +304,9 @@ fun LiquidBottomTabs(
                         else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
                 }
                 .drawBackdrop(
-                    // 页面 + 捕获层（底栏图标）+ 高光：高光排最后 → 叠在最上面，
-                    // 且它自身除光晕外全透明，不会遮掉前两层
-                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop, glowBackdrop),
+                    // 页面 + 捕获层（底栏图标，含 tint 高光）：高光在捕获层里随 lens
+                    // 一起折射，轮廓天然一致
+                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
                     shape = { ContinuousCapsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
