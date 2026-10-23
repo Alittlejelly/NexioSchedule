@@ -70,6 +70,14 @@ class HostNavigationState {
         private set
     /** 下层背景模糊强度（0…1，不是 dp）：iOS 没有可设的半径，宿主只能按强度插值。 */
     var onDetailBackdropBlurProgress: ((Double) -> Unit)? = null
+    /**
+     * 宿主是否自己接管「详情页下层背景模糊」。
+     *
+     * iOS 宿主在「详情页之下、其余一切之上」压了一层系统 material，Compose 侧就不该再给主内容
+     * 挂 renderEffect —— 否则同一段内容被糊两次：视觉上更糊更白，成本也翻倍。
+     * 只对页面级模糊生效；课程长按菜单仍在 Compose 层内自糊（宿主不读那段半径）。
+     */
+    var ownsDetailBackdropBlur by mutableStateOf(false)
 
     companion object {
         /** 详情 morph 的目标模糊半径（dp）；也是换算成 0…1 强度的基准，两处必须同源。 */

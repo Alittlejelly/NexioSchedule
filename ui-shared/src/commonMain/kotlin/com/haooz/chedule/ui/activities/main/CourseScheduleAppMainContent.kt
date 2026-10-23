@@ -156,6 +156,9 @@ internal fun CourseScheduleAppMainContent(
         // 连贯动画期间下层的实时模糊半径（dp）：长按菜单优先，其次详情 morph；与宿主侧口径一致
         fun currentDetailBlurDp(): Float =
             if (shortcutMenuBlurRadius.value > 0.01f) shortcutMenuBlurRadius.value
+            // 宿主已自己压一层系统 material（iOS）：主内容不再叠第二层。
+            // 长按菜单不走宿主，仍在上面那支里自糊。
+            else if (hostNavigation?.ownsDetailBackdropBlur == true) 0f
             else managePageBlurRadius.value
 
         // 顶栏/底栏那两层采样层的重录谓词。⚠️ 不能复用 liquidGlassMustRecord：那份闭包里
@@ -190,7 +193,10 @@ internal fun CourseScheduleAppMainContent(
                         showCustomizePage ||
                         mainContentAlpha != 1f ||
                         shortcutMenuBlurRadius.value > 0.01f ||
-                        managePageBlurRadius.value > 0.01f ||
+                        // 宿主接管页面级模糊时，这个半径不会再产生 renderEffect，
+                        // 别为它白开一层全屏离屏合成
+                        (managePageBlurRadius.value > 0.01f &&
+                                hostNavigation?.ownsDetailBackdropBlur != true) ||
                         cutoutMainScale.value != 1f ||
                         customizeExitScale.value != 1f ||
                         sheetOffsetY.value != 0f

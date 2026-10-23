@@ -381,6 +381,9 @@ class IosAppHost {
     init {
         navigation.onCutoutChromeOffsetY = { offsetY -> onCutoutChromeOffset?.invoke(offsetY) }
         navigation.onDetailBackdropBlurProgress = { onDetailBackdropBlurProgress?.invoke(it) }
+        // 详情页下层由 Swift 侧 detailBackdropBlur（UIVisualEffectView）独占。
+        // Compose 不再叠第二层 renderEffect：主内容被糊两遍既更糊更白，又是双份 GPU 开销。
+        navigation.ownsDetailBackdropBlur = true
     }
 
     val mainController: UIViewController by lazy {
