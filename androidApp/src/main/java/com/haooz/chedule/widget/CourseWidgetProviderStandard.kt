@@ -332,9 +332,6 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         margin(R.id.widget_header, RemoteViews.MARGIN_START, 4f)
         margin(R.id.widget_header, RemoteViews.MARGIN_END, 4f)
         margin(R.id.widget_header, RemoteViews.MARGIN_BOTTOM, 8f)
-        views.setLayoutWidthCompat(R.id.widget_header_icon, 16f * scale, unit)
-        views.setLayoutHeightCompat(R.id.widget_header_icon, 16f * scale, unit)
-        margin(R.id.widget_header_icon, RemoteViews.MARGIN_END, 6f)
 
         cardIds.indices.forEach { index ->
             val card = cardIds[index]

@@ -64,10 +64,19 @@ object WidgetTextSizes {
         views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_DIP, dp)
     }
 
-    /** 课程表小组件各文本的基准字号（dp） */
+    /** 课程表小组件各文本的基准字号（dp）。
+     *  整行版（widget_course_reminder_standard）与今明版（widget_today_tomorrow_course）
+     *  共用本表：布局里没有的 id，RemoteViews 找不到视图即静默跳过。 */
     private val COURSE_REMINDER_TEXTS = listOf(
+        // 整行版表头
         R.id.widget_title to 14f,
         R.id.widget_week to 14f,
+        // 今明版列表头（今天/明天）与列内空态文案
+        R.id.widget_header_today to 14f,
+        R.id.widget_header_tomorrow to 14f,
+        R.id.widget_empty_today to 13f,
+        R.id.widget_empty_tomorrow to 13f,
+        // 卡位 1~5（整行版：时间列 + 课名/信息 + 倒计时）
         R.id.widget_time_start1 to 12f,
         R.id.widget_time_end1 to 12f,
         R.id.widget_name1 to 14f,
@@ -93,11 +102,33 @@ object WidgetTextSizes {
         R.id.widget_name5 to 14f,
         R.id.widget_info5 to 12f,
         R.id.widget_now5 to 14f,
+        // 卡位 6~10（仅今明版有）：课名 + 信息行
+        R.id.widget_name6 to 14f,
+        R.id.widget_info6 to 12f,
+        R.id.widget_name7 to 14f,
+        R.id.widget_info7 to 12f,
+        R.id.widget_name8 to 14f,
+        R.id.widget_info8 to 12f,
+        R.id.widget_name9 to 14f,
+        R.id.widget_info9 to 12f,
+        R.id.widget_name10 to 14f,
+        R.id.widget_info10 to 12f,
+        // 今明版卡片第二行：课程时间（起-止）
+        R.id.widget_course_time1 to 12f,
+        R.id.widget_course_time2 to 12f,
+        R.id.widget_course_time3 to 12f,
+        R.id.widget_course_time4 to 12f,
+        R.id.widget_course_time5 to 12f,
+        R.id.widget_course_time6 to 12f,
+        R.id.widget_course_time7 to 12f,
+        R.id.widget_course_time8 to 12f,
+        R.id.widget_course_time9 to 12f,
+        R.id.widget_course_time10 to 12f,
         R.id.widget_empty_text to 14f,
     )
 
     /**
-     * 课程表小组件（widget_course_reminder_standard）。
+     * 课程表小组件（widget_course_reminder_standard / widget_today_tomorrow_course）。
      * @param scale 字号整体倍率，供 ColorOS 拉伸后反补偿用（默认 1 倍）
      */
     fun applyCourseReminder(views: RemoteViews, scale: Float = 1f) {

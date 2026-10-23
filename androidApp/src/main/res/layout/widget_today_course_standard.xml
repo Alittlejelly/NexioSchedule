@@ -32,14 +32,6 @@
             android:layout_marginEnd="4dp"
             android:layout_marginBottom="8dp">
 
-            <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:src="@drawable/ic_miuix_logo"
-                android:scaleY="-1"
-                android:alpha="0.8"
-                android:layout_marginEnd="6dp" />
-
             <TextView
                 android:id="@+id/widget_title"
                 android:layout_width="0dp"

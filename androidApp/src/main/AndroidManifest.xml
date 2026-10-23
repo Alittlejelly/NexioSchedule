@@ -183,6 +183,18 @@
         </receiver>
 
         <receiver
+            android:name=".widget.TodayTomorrowCourseWidgetProvider"
+            android:exported="true"
+            android:label="今明课程">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/appwidget_today_tomorrow_course" />
+        </receiver>
+
+        <receiver
             android:name=".widget.TodayCourseWidgetProviderStandard"
             android:exported="true"
             android:label="今日课程">

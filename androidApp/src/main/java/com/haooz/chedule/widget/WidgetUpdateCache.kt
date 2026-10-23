@@ -42,6 +42,9 @@ object WidgetUpdateCache {
         if (hasProviderWidgets(context, CourseWidgetProviderStandard::class.java)) {
             CourseWidgetProviderStandard.updateAllWidgets(context)
         }
+        if (hasProviderWidgets(context, TodayTomorrowCourseWidgetProvider::class.java)) {
+            TodayTomorrowCourseWidgetProvider.updateAllWidgets(context)
+        }
         if (hasProviderWidgets(context, TodayCourseWidgetProviderStandard::class.java)) {
             TodayCourseWidgetProviderStandard.updateAllWidgets(context)
         }
