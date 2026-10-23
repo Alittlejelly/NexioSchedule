@@ -29,6 +29,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalGraphicsContext
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import androidx.compose.ui.graphics.Color
@@ -93,6 +94,14 @@ fun CourseTimeSettingsScreen(
     refreshTrigger: Int = 0,
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
+    /**
+     * 正在 morph 进二级页的作息：源行必须隐藏。
+     *
+     * 与今日页（`hiddenCourseIds`）、课程管理页（`isHidden`）同一套做法：隐藏挂在
+     * 录制层**外面**，录制层自己继续留着内容给二级页重放，否则会出现「源行还在原地 +
+     * 一张一模一样的卡飞上去」的双影。
+     */
+    morphingRoutineId: Long? = null,
 ) {
     val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
     val repository = remember { CourseRepository() }
@@ -230,6 +239,7 @@ fun CourseTimeSettingsScreen(
                                         mutableStateOf(TimeConfigCardBounds(0f, 0f, 0f, 0f))
                                     }
                                     val isActive = config.effectiveRoutineId() == routine.id
+                                    val isMorphing = morphingRoutineId == routine.id
                                     ArrowPreference(
                                         title = routine.name,
                                         // 只有一套作息时没有切换对象，显示「始终生效」而不是日期
@@ -272,10 +282,13 @@ fun CourseTimeSettingsScreen(
                                         },
                                         holdDownState = false,
                                         modifier = Modifier
+                                            .graphicsLayer { alpha = if (isMorphing) 0f else 1f }
                                             .drawWithContent {
-                                                routineLayer.record {
-                                                    drawRect(routineBackground)
-                                                    this@drawWithContent.drawContent()
+                                                if (!isMorphing) {
+                                                    routineLayer.record {
+                                                        drawRect(routineBackground)
+                                                        this@drawWithContent.drawContent()
+                                                    }
                                                 }
                                                 drawLayer(routineLayer)
                                             }

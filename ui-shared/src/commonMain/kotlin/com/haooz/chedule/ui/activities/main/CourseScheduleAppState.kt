@@ -1497,7 +1497,19 @@ class CourseScheduleAppState {
             ) {
                 drawLayer(source.layer)
             }
-            TransitionLayerSnapshot(retainedDetailLayer, source.bounds)
+            val snapshot = TransitionLayerSnapshot(retainedDetailLayer, source.bounds)
+            // 再异步冻结一份位图：`drawLayer` 只是**活引用** —— 源行随后就被
+            // hiddenCourseIds 藏掉，退出 morph 重放出来就只剩玻璃背景、没有文字
+            //（进入时源还活着，所以只有退出缺内容）。光栅化后与源图层彻底脱钩。
+            // 进入 morph 先用活引用（和以前一致），位图就绪后原地替换；退出时用的就是它。
+            coroutineScope.launch {
+                val frozen = runCatching { source.layer.toImageBitmap() }.getOrNull()
+                    ?: return@launch
+                if (detailSnapshot === snapshot) {
+                    detailSnapshot = snapshot.copy(frozen = frozen)
+                }
+            }
+            snapshot
         }
         hiddenCourseIds = setOf(courseIdToHide)
         showDetail = true

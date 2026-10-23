@@ -762,6 +762,8 @@ fun CourseTimeSettingsRoute(
     var editingConfig by remember { mutableStateOf<TimeConfig?>(null) }
     var editingRoutineId by remember { mutableStateOf<Long?>(null) }
     var editingCardBounds by remember { mutableStateOf<TimeConfigCardBounds?>(null) }
+    // morph 进二级页期间要隐藏的源行（退出动画播完、回到列表时才放开）
+    var morphingRoutineId by remember { mutableStateOf<Long?>(null) }
     var listRefreshTrigger by remember { mutableIntStateOf(0) }
 
     // Retained source-card drawing; the list page owns the underlying layer.
@@ -793,12 +795,12 @@ fun CourseTimeSettingsRoute(
                 ) { scrollBehavior, liquidGlassBackdrop ->
                     CourseTimeSettingsScreen(
                         onEditRoutine = { routine, baseConfig, bounds ->
-                            // 二级页面只编辑这一个作息：把该作息的时间叠加上去
                             editingExitStarted = false
                             editingConfig = baseConfig.effectiveFor(routine.id)
                             editingRoutineId = routine.id
                             editingCardBounds = bounds
                             cardSnapshot = bounds.snapshot
+                            morphingRoutineId = routine.id
                             coroutineScope.launch {
                                 if (editingExitStarted || currentPage != "edit") return@launch
                                 managePageBlurRadius.animateTo(
@@ -806,23 +808,21 @@ fun CourseTimeSettingsRoute(
                                     animationSpec = tween(540, easing = OobeQuartOutEasing)
                                 )
                             }
-                            // 最后触发组合（背景已在动画中）
                             currentPage = "edit"
                         },
                         refreshTrigger = listRefreshTrigger,
                         scrollBehavior = scrollBehavior,
                         liquidGlassBackdrop = liquidGlassBackdrop,
+                        morphingRoutineId = morphingRoutineId,
                     )
                 }
             }
         }
 
-        // 编辑页面渲染在 Scaffold 外面（与 CourseManageRoute 结构一致）
+        // 编辑页面渲染在 Scaffold 外面
         if (currentPage == "edit") {
             editingConfig?.let { config ->
                 val bounds = editingCardBounds
-                // Native controls stay above the morph. Consume only their extra overlap
-                // so the original editor layout and card bounds do not shift.
                 Box(Modifier.fillMaxSize().consumeWindowInsets(PaddingValues(top = nativeBarInset))) {
                     TimeConfigEditScreen(
                         timeConfig = config,
@@ -842,6 +842,7 @@ fun CourseTimeSettingsRoute(
                             editingRoutineId = null
                             editingCardBounds = null
                             cardSnapshot = null
+                            morphingRoutineId = null
                         },
                         onSave = { savedConfig ->
                             // 只替换这一个作息；节次骨架由一级页面管理，这里不碰。
@@ -961,8 +962,6 @@ fun CourseManageRoute(
     }
 
     // 返回键关闭菜单（嵌套返回拦截：菜单开着时由它接管，否则交给 AppNavHost 的返回）
-    // ⚠ `androidx.activity.compose.BackHandler` 是 Android 专有 —— 这里用 :miuix 的
-    // `NavigationBackHandlerFor`（skiko 侧有 actual，iOS/桌面是空实现）
     NavigationBackHandlerFor(
         enabled = showShortcutMenu,
         onBackCompleted = { showShortcutMenu = false },
