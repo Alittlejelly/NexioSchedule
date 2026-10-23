@@ -3,10 +3,8 @@ package com.haooz.chedule.data
 import kotlin.concurrent.Volatile
 
 /**
- * 外观存储（跨平台）：键名、快照编解码与缓存口径。getter/setter 与 Android 侧同名，调用点零改动切换。
- *
- * ⚠ 键名与文件位置是数据兼容契约（[AppearancePrefs.FILE] / [AppearancePrefs.FILE_STYLE_KEY]），
- * 改了等于老用户的外观设置读不出来。
+ * 外观存储（跨平台）：键名、快照编解码与缓存。getter/setter 与 Android 同名，切换零改动。
+ * ⚠ 键名与文件位置是数据兼容契约（[AppearancePrefs.FILE]/[AppearancePrefs.FILE_STYLE_KEY]），改了等于老用户外观读不出来。
  */
 object AppearanceStore {
 
@@ -20,8 +18,7 @@ object AppearanceStore {
     private var cached: AppearanceStyle? = null
 
     /**
-     * 冷启动预加载的外观参数兜底缓存。宿主启动时回填；`CourseScheduleApp` 首帧若搭配
-     * 尚未加载完成，用它兜底，否则壁纸测光/卡片参数会先闪一帧默认值再跳到真实值。仅内存，不落盘。
+     * 冷启动兜底缓存：首帧搭配未加载完时用它兜底，避免壁纸测光/卡片参数闪一帧默认值。仅内存不落盘。
      */
     @Volatile
     var cachedConfig: AppearanceConfig = AppearanceConfig()
@@ -59,8 +56,7 @@ object AppearanceStore {
     }
 
     /**
-     * 批量保存：块内所有写入合并为一次磁盘提交（外观页一次拖动会触发十几次写入，
-     * 不合并就是十几次磁盘 IO）。可嵌套，由最外层统一落盘。
+     * 批量保存：块内写入合并为一次磁盘提交（一次拖动会触发十几次写入），可嵌套，由最外层落盘。
      */
     fun batchSave(block: () -> Unit) {
         if (inBatch) {

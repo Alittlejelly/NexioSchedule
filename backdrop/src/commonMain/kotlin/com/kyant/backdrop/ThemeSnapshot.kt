@@ -1,13 +1,6 @@
-// 绘制期主题快照 —— 供非组合上下文（draw 阶段）读取主题状态
-//
-// 背景：高光/描边的亮度要按「主题亮暗」和「背后是不是壁纸」分流，但这些判断发生在
-// DrawScope 里 —— 那里调不了 @Composable。
-// 这两个快照把组合期的结果缓存成普通状态供绘制期读：
-//   - isDark      主题是否深色（决定高光压多暗）
-//   - hasWallpaper 背后是不是壁纸（浅色下近白底加白会被截成白斑，故高光要更弱）
-//
-// 放在 backdrop 而不是各 App：它只描述「主题与背景」，是纯 UI 语义，不含业务知识。
-// App 侧在自己的组合期写入即可（MainActivity / isAppDarkTheme）。
+// 绘制期主题快照：供 DrawScope 等非组合上下文读主题状态——这些判断发生在 DrawScope 里（无法调 @Composable），
+// 故缓存组合期结果为普通状态：isDark 主题是否深色（决定高光压多暗）；hasWallpaper 背后是否壁纸
+// （浅色近白底加白会被截成白斑，高光需更弱）。置于 backdrop 而非各 App：纯 UI 语义不含业务知识，App 侧组合期写入。
 
 package com.kyant.backdrop
 

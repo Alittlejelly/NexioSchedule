@@ -11,16 +11,10 @@ import top.yukonga.miuix.kmp.interactive.dropdownPanelDragSelect as miuixDropdow
 import top.yukonga.miuix.kmp.interactive.dropdownPanelDragTransform as miuixDropdownPanelDragTransform
 import top.yukonga.miuix.kmp.interactive.dropdownPanelEntry as miuixDropdownPanelEntry
 
-// 跟手滑选实现已搬进 :miuix
-// （miuix/src/commonMain/kotlin/top/yukonga/miuix/kmp/interactive/DropdownPanelDragSelect.kt）。
-//
-// 原因：:miuix 自己的 ListPopup / Dropdown / OverlayListPopup / LiquidOverlayDropdownPopup
-// 都要用它 —— 那几个文件在 :app 里，会让 :miuix 反向依赖业务层，无法进 commonMain。
-//
-// 搬走之前这里是 405 行的完整实现，搬走后与 :miuix 那份逐字等价（同为 379/405 行，
-// 符号集合一致：DragSelectAxis、panelLeftInRoot、computeDragTransform、VerticalDragRefScale…）。
-// 本文件改为**重导出**，让 :app 内按 com.haooz.chedule.ui.basic.* 引用的地方
-// （TabletNavSideBar 等）一行都不用改，且两边操作的是同一批类型 —— 不是副本，状态互通。
+// 跟手滑选实现已搬进 :miuix（miuix/.../interactive/DropdownPanelDragSelect.kt）：
+// :miuix 的 ListPopup/Dropdown/OverlayListPopup/LiquidOverlayDropdownPopup 都用它，
+// 放 :app 会让 :miuix 反向依赖业务层、无法进 commonMain。本文件改为重导出 ——
+// :app 内按 com.haooz.chedule.ui.basic.* 引用的地方一行不改，且两边操作同一批类型（非副本，状态互通）。
 
 typealias DropdownPanelEntry = top.yukonga.miuix.kmp.interactive.DropdownPanelEntry
 

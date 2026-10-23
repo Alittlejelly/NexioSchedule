@@ -79,8 +79,7 @@ import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 外层为阴影预留的内缩；外部按"占位槽真实位置"摆放本控件时需要减掉它 */
-// 宿主层要读它换算占位槽位置，跨模块须 public
+/** 外层为阴影预留的内缩；外部按占位槽真实位置摆放本控件时需减掉它。跨模块须 public。 */
 val LiquidGlassDropdownShadowPadding = 24.dp
 
 /** 收起态圆形按钮直径，也是容器变换的起点尺寸 */
@@ -378,8 +377,8 @@ fun LiquidGlassDropdownMenu(
                     )
             )
 
-            // 按压高光：必须在玻璃壳之上、菜单内容之下 —— 前者否则被材质盖住，
-            // 后者否则会盖掉菜单项的跟手高亮底色（Plus 加色会把底色冲白）。
+                // 按压高光必须夹在玻璃壳与菜单内容之间：居上被材质盖住，居下会盖掉
+                // 菜单项的跟手高亮底色（Plus 加色会把底色冲白）。
             Box(
                 modifier = Modifier
                     .matchParentSize()

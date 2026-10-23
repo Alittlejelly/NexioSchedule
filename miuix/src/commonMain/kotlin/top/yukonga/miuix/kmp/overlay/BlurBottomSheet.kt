@@ -103,14 +103,7 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * 顶栏材质动画值载体：由 BlurBottomSheet 顶栏机制下发，供 startAction/endAction
  * 内部的 LiquidTopBarButton 读取，驱动液态玻璃材质/阴影随滚动渐变。
- */
-/**
- * 顶栏材质动画值载体：由 BlurBottomSheet 顶栏机制下发，供 startAction/endAction
- * 内部的 LiquidTopBarButton 读取，驱动液态玻璃材质/阴影随滚动渐变。
- *
- * 内部持有的是 Animatable 本身而不是快照值：provider 下发的对象因此是稳定实例，
- * 材质动画期间不会让整个弹窗内容作用域跟着逐帧重组；消费者通过 backdropAlpha /
- * shadowAlpha 读到的仍然是同一个浮点值，行为不变。
+ * 持有 Animatable 而非快照值，使 provider 下发稳定实例，材质动画期间不会逐帧重组整个弹窗内容。
  */
 @Stable
 class SheetTopBarMaterial internal constructor(
@@ -126,25 +119,16 @@ val LocalSheetTopBarMaterial = compositionLocalOf {
 }
 
 /**
- * 弹窗内容自身的 backdrop（由弹窗内部 rememberLayerBackdrop 捕获）。
- *
- * 弹窗内的玻璃组件（关闭按钮、下拉菜单等）应当从这里取 backdrop，
- * 而不是让调用方用 `onSheetContentBackdropCreated` 把它提升成屏幕级 State：
- * 后者会在弹窗挂载后的头一两帧里回写外层 State，导致整个页面（含壁纸模糊层）
- * 在弹窗进入动画最吃紧的时刻重跑一次组合，这是打开弹窗掉帧的主要来源。
- * 用 CompositionLocal 下发则完全不触碰外层作用域，零重组成本。
+ * 弹窗内容自身的 backdrop（内部 rememberLayerBackdrop 捕获）。
+ * 玻璃组件应从此读取，而非提升为屏幕级 State：回写外层 State 会让页面在进入动画最吃紧时重组，是掉帧主因；
+ * CompositionLocal 下发不触碰外层作用域，零重组成本。
  */
 val LocalSheetContentBackdrop = compositionLocalOf<Backdrop?> { null }
 
 /**
- * 非快照的 backdrop 持有者，配合 `onSheetContentBackdropCreated` 使用。
- *
- * 适用对象：**弹窗外部**的组件（典型是从弹窗里点开的二级 OverlayDialog，如节次/时间选择器）
- * 需要采样弹窗内容做模糊时——它们在弹窗作用域之外，读不到 LocalSheetContentBackdrop。
- *
- * 为什么不用 State：写入 State 会让整个宿主页面在弹窗挂载后重跑一次组合，而那正好压在
- * 弹窗进入动画的头几帧（打开弹窗掉帧的主因）。这里是普通对象，写入零成本、零重组。
- * 二级弹窗只可能在用户交互之后才组合，那时 backdrop 早已就绪，不需要 State 来驱动更新。
+ * 非快照 backdrop 持有者，配合 onSheetContentBackdropCreated 使用，
+ * 供弹窗外部的二级 OverlayDialog（如节次/时间选择器）采样弹窗内容做模糊——它们读不到 LocalSheetContentBackdrop。
+ * 用普通对象而非 State：写 State 会让宿主页面在挂载后重组（掉帧主因），且二级弹窗交互后才组合、backdrop 早已就绪。
  */
 class BackdropHolder {
     var value: Backdrop? = null
@@ -192,9 +176,7 @@ fun BlurBottomSheet(
             visibleState.value = true
         }
     }
-    // 注意：回调不再经由 State 中转。早先这里用一个 mutableStateOf 承接 backdrop，
-    // 但它的 value 在组合期被 LaunchedEffect 的 key 读取 → 弹窗挂载后的写入会让本组合作用域
-    // （进而整个弹窗内容）在打开动画头几帧重组一次。现在直接由内容层回调。
+    // 回调直接由内容层触发，不再经 State 中转：State 在组合期被读取，挂载后写入会让本作用域在打开动画头几帧重组一次。
 
     DialogLayout(
         visible = visibleState,
@@ -240,10 +222,9 @@ private fun BlurBottomSheetContent(
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // 弹窗始终跟随应用主题，不受壁纸强制主题影响。
-    // ⚠ 取色开关必须一起带上：这里自建的 controller 会把 LocalColorSchemeMode 改写成
-    // 自己的 mode，只给 Light/Dark 的话弹窗内 isDynamicColor 恒为 false，
-    // 弹窗里所有按莫奈取色的分支都会变成死代码（详见 LocalMonetColorEnabled 注释）。
+    // 弹窗跟随应用主题，不受壁纸强制主题影响。
+    // ⚠ 取色开关必须一并带上：自建 controller 会改写 LocalColorSchemeMode 为自己的 mode，
+    // 只给 Light/Dark 会让弹窗内 isDynamicColor 恒为 false，莫奈取色分支全部变死代码。
     val sheetAppDark = rememberAppSettingDark()
     val sheetMonetColor = LocalMonetColorEnabled.current
     val sheetAppController = remember(sheetAppDark, sheetMonetColor) {
@@ -259,8 +240,7 @@ private fun BlurBottomSheetContent(
     CompositionLocalProvider(LocalForcedDarkTheme provides null) {
         MiuixTheme(controller = sheetAppController) {
             val animationProgress = remember { Animatable(0f) }
-    // 拖拽位移用 floatState（graphicsLayer 在绘制期读取，拖拽期间零重组、零协程分配）；
-    // 松手后的 spring 回弹单独用 Animatable，与拖拽位移相加得到总位移。
+    // 拖拽位移用 floatState（绘制期读取，零重组、零协程分配）；松手回弹单独用 Animatable，二者相加得总位移。
     val dragOffsetY = remember { mutableFloatStateOf(0f) }
     val settleOffsetY = remember { Animatable(0f) }
     val density = LocalDensity.current
@@ -276,22 +256,21 @@ private fun BlurBottomSheetContent(
     }
 
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    // sheet 底色：莫奈取色下跟随 surfaceContainer（与课程管理新建卡、三处底部胶囊同一套）；
-    // 非莫奈保持原硬编码（暗 #1E1E1E / 亮 #F2F2F2）
+    // sheet 底色：莫奈取色跟随 surfaceContainer；非莫奈保持硬编码（暗 #1E1E1E / 亮 #F2F2F2）。
     val sheetBgColor = sheetBackgroundColor ?: if (MiuixTheme.isDynamicColor) {
         MiuixTheme.colorScheme.surfaceContainer
     } else if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
     val dismissThresholdPx = with(density) { 150.dp.toPx() }
     val velocityThresholdPx = with(density) { 800.dp.toPx() }
 
-    // 圆角固定 36dp：不再跟随屏幕物理圆角（那样在圆角很大的机型上会明显过大）
+    // 圆角固定 36dp：不跟随屏幕物理圆角，否则圆角大的机型会过大。
     val sheetShape = remember { ContinuousRoundedRectangle(36.dp) }
     val windowWidth = windowInfo.containerDpSize.width
     val horizontalGap = if (sheetMaxWidth != Dp.Unspecified) {
         ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)
     } else 0.dp
 
-            // 显示/隐藏动画（同时驱动弹窗位移与遮罩透明度，确保二者完全同步）
+            // 显示/隐藏动画同时驱动位移与遮罩透明度，确保二者完全同步
     LaunchedEffect(show) {
         if (show) {
             if (enableContentHeightSnap) detentState.reset()
@@ -299,7 +278,6 @@ private fun BlurBottomSheetContent(
             settleOffsetY.stop()
             settleOffsetY.snapTo(0f)
             backProgress.snapTo(0f)
-            // 进入动画：使用 CubicBezier 带回弹效果
             animationProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
@@ -308,7 +286,6 @@ private fun BlurBottomSheetContent(
                 )
             )
         } else {
-            // 退出动画
             animationProgress.animateTo(0f, animationSpec = tween(320, easing = CubicBezierEasing(0.34f, 1f, 0.3f, 1f)))
             visibleState.value = false
         }
@@ -321,11 +298,11 @@ private fun BlurBottomSheetContent(
         }
     } else Modifier
 
-    // 外层 lambda 身份不稳定时不要拿它当 pointerInput key，否则每次重组都会重启手势协程
+    // onDismiss 身份不稳定，不能作为 pointerInput key，否则每次重组都会重启手势协程。
     val currentOnDismissRequest by rememberUpdatedState(onDismissRequest)
     val coroutineScope = rememberCoroutineScope()
 
-    // 返回手势处理：手势进行中 progress 驱动 sheet 下滑，取消回弹，完成直接关闭
+    // 返回手势：进行中驱动 sheet 下滑，取消回弹、完成关闭。
     backState.handler(
         enabled = show,
         onBackCancelled = {
@@ -338,14 +315,13 @@ private fun BlurBottomSheetContent(
         },
     )
 
-    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）
-    // 组合期读取：CompositionLocal 只能在 @Composable 里取，
-    // 协程里直接 .current 编译不过。
+    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
+    // LocalPredictiveBackEnabled 须在组合期读取（协程内 .current 编译不过）。
     val predictiveBackEnabled = LocalPredictiveBackEnabled.current
 
     LaunchedEffect(Unit) {
-        // 预测性返回动画开关：关闭时连进度都不订阅（返回仍被拦截，直接关闭）。
-        // backProgress() 非手势期间返回 null → 保持静止；手势进行中为连续进度。
+        // 预测性返回关闭时连进度都不订阅（返回仍被拦截，直接关闭）；
+        // backProgress() 非手势期间返回 null（保持静止），手势进行中为连续进度。
         if (!predictiveBackEnabled) return@LaunchedEffect
         snapshotFlow { backState.backProgress() }
             .collect { progress ->
@@ -363,7 +339,7 @@ private fun BlurBottomSheetContent(
                 detectTapGestures(onTap = { currentOnDismissRequest() })
             },
     ) {
-        // 弹窗最底部兜底偏移用的窗口高度：在组合期读取一次，避免进入/拖拽动画期间逐帧做密度换算
+        // 窗口高度在组合期读取一次，避免进入/拖拽动画期间逐帧做密度换算。
         val windowHeightPx = with(density) { windowInfo.containerDpSize.height.toPx() }
         val sheetModifier = Modifier
             .graphicsLayer {
@@ -375,11 +351,8 @@ private fun BlurBottomSheetContent(
                     backProgress.value * currentHeight +
                     if (enableContentHeightSnap) detentState.dismissOffsetPx else 0f
             }
-            // 水平方向系统栏（iPadOS 竖排 tab bar / 横屏导航条）避让**加在外壳上**，
-            // 整个卡片（含底色、圆角、边缘光）一起内缩，内容不再单独避让。
-            // 反过来（外壳全宽 + 内容避让）会看到「实色背景铺到系统栏底下，文字却缩了一条」，
-            // 标题也按全宽居中，看起来歪。
-            // 指定 sheetMaxWidth 时是居中窄条，本就不贴边，不加（否则会把窄条顶到左边）。
+            // 水平系统栏避让加在外壳上：整张卡片（底色/圆角/边缘光）一起内缩，内容不再单独避让；
+            // 否则会出现「实底铺到系统栏下、文字却缩一条」的歪斜。指定 sheetMaxWidth 时为居中窄条不贴边，不加。
             .then(
                 if (sheetMaxWidth == Dp.Unspecified) {
                     Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -420,7 +393,7 @@ private fun BlurBottomSheetContent(
                 .background(sheetBgColor)
                 .consumeWindowInsets(PaddingValues(horizontal = horizontalGap))
                 .pointerInput(Unit) {
-                    // 消费弹窗空白处的点击，防止事件穿透到背景层触发关闭
+                    // 消费空白处点击，防止事件穿透到背景层触发关闭
                     detectTapGestures(onTap = {})
                 }
                 .semantics {
@@ -432,7 +405,7 @@ private fun BlurBottomSheetContent(
                 .then(if (enableContentHeightSnap) Modifier else Modifier.draggable(
                     orientation = Orientation.Vertical,
                     state = rememberDraggableState { dragAmount ->
-                        // 直接写 floatState，不再为每个指针事件起一个协程（拖拽时一秒上百次分配）
+                        // 直接写 floatState，不为每个指针事件起协程（拖拽时约每秒上百次分配）
                         val current = dragOffsetY.floatValue + settleOffsetY.value
                         val newOffset = current + dragAmount
                         // 往上拖时加阻尼，越往上越难拖
@@ -445,7 +418,7 @@ private fun BlurBottomSheetContent(
                         dragOffsetY.floatValue = dampedOffset
                     },
                     onDragStarted = {
-                        // 打断正在进行的回弹，把剩余位移并入拖拽位移，保证总位移连续不跳变
+                        // 打断回弹并将剩余位移并入拖拽位移，保证总位移连续不跳变
                         val pending = dragOffsetY.floatValue + settleOffsetY.value
                         settleOffsetY.stop()
                         settleOffsetY.snapTo(0f)
@@ -456,8 +429,7 @@ private fun BlurBottomSheetContent(
                         if (shouldDismiss) {
                             onDismissRequest()
                         } else {
-                            // 使用 spring 动画回弹，传入初始速度让回弹更自然。
-                            // onDragStopped 本身是挂起作用域，无需再 launch 协程。
+                            // spring 回弹并传入初始速度让回弹更自然；onDragStopped 已是挂起作用域，无需再 launch
                             settleOffsetY.snapTo(dragOffsetY.floatValue)
                             dragOffsetY.floatValue = 0f
                             settleOffsetY.animateTo(
@@ -472,7 +444,7 @@ private fun BlurBottomSheetContent(
                     },
                 )),
             content = {
-                // === 顶栏机制（迁移自 CollapsibleTopAppBar，小标题模式）===
+                // 顶栏机制
                 val topBarState = rememberCollapsibleTopAppBarState()
                 val scrollBehavior = rememberSharedScrollBehavior(topBarState)
                 val overScrollState = remember { OverScrollState() }
@@ -485,10 +457,9 @@ private fun BlurBottomSheetContent(
                         contentOffset < 0f || os < 0f
                     }
                 }
-                // OverScrollNode.onPostScroll 在 overscroll 时把 available.y 全部返回给父级，
-                // 会被 scrollBehavior 累加进 contentOffset 造成污染（松手后不归零，阴影错保持）。
-                // 用代理连接包裹：overscroll 激活时，把 onPostScroll 的 consumed.y 置零，contentOffset 不再被污染。
-                // 这样零F页面 co 始终为 0；可滚动页面 co 仅累积真实滚动量。
+                // overscroll 时 OverScrollNode.onPostScroll 把 available.y 全返父级，被 scrollBehavior 累加进 contentOffset
+                // （松手不归零，阴影错保持）。代理连接在 overscroll 激活时把 consumed.y 置零，contentOffset 不再被污染；
+                // 零滚动页面 co 恒为 0，可滚动页面仅累积真实滚动量。
                 val proxyConnection = remember(scrollBehavior, overScrollState) {
                     val delegate = scrollBehavior.nestedScrollConnection
                     object : NestedScrollConnection {
@@ -500,8 +471,7 @@ private fun BlurBottomSheetContent(
                             available: Offset,
                             source: NestedScrollSource,
                         ): Offset {
-                            // 用 offset != 0f 而非 isOverScrollActive 判断，避免 os 在 0~offsetThreshold(1f) 之间时
-                            // isOverScrollActive 仍为 false 导致的几帧污染窗口
+                            // 用 offset != 0f 判断而非 isOverScrollActive：后者在 0~offsetThreshold(1f) 间仍为 false，会漏判几帧污染
                             if (overScrollState.offset != 0f) {
                                 return delegate.onPostScroll(Offset.Zero, available, source)
                             }
@@ -517,7 +487,7 @@ private fun BlurBottomSheetContent(
                 }
                 val shadowAlpha = remember { Animatable(0f) }
                 val backdropAlpha = remember { Animatable(0f) }
-                // 稳定实例：provider 不再逐帧下发新对象
+                // 稳定实例，provider 不逐帧下发新对象
                 val topBarMaterial = remember { SheetTopBarMaterial(backdropAlpha, shadowAlpha) }
                 LaunchedEffect(showButtonShadow) {
                     val target = if (showButtonShadow) 1f else 0f
@@ -530,8 +500,7 @@ private fun BlurBottomSheetContent(
                     launch { backdropAlpha.animateTo(target, spec) }
                 }
 
-                // 录制时先铺 sheetBgColor：只进 backdrop，不改屏幕上的合成。
-                // 空隙/上边距才有实底，渐进模糊底边不会和外壳颜色对不齐。
+                // 录制时先铺 sheetBgColor（只进 backdrop，不改屏幕合成），使渐进模糊底边与外壳颜色对齐
                 val sheetContentBackdrop = rememberLayerBackdrop(
                     onDraw = remember(sheetBgColor) {
                         {
@@ -544,8 +513,8 @@ private fun BlurBottomSheetContent(
                     onSheetContentBackdropCreated?.invoke(sheetContentBackdrop)
                 }
 
-                // 原先等 enterDone 再挂 backdrop/AGSL，编译卡顿正好落在「动画刚结束、用户准备点遮罩」的窗口，
-                // 表现为遮罩暂时点不动、返回键却可以。改为进入动画早期挂载，让卡顿被滑入过程盖住。
+                // 进入动画早期挂载 backdrop/AGSL：原先等 enterDone 再挂，卡顿落在「动画刚结束、用户要点遮罩」的窗口，
+                // 表现为遮罩暂时点不动而返回键可用。
                 var sheetBackdropMounted by remember { mutableStateOf(false) }
                 LaunchedEffect(show) {
                     if (show) {
@@ -609,7 +578,7 @@ private fun BlurBottomSheetContent(
                                     Modifier.layerBackdrop(sheetContentBackdrop)
                                 } else Modifier
                             )
-                            // 水平系统栏避让已提到弹窗外壳上，这里不再内缩，否则会双倍避让
+                            // 水平避让已提到外壳，此处不再内缩，否则双倍避让
                     ) {
                         content()
                     }
@@ -633,13 +602,12 @@ private fun BlurBottomSheetContent(
                             )
                     )
 
-                    // 标题栏（zIndex 提升到顶层，消费触摸事件）
-                    // 标题栏固定高度，保证有无操作按钮时标题都垂直居中于同一位置
+                    // 标题栏（zIndex 置顶消费触摸）；固定高度使有无操作按钮时标题都垂直居中
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(76.dp)
-                            // 水平避让已在外壳上，标题按卡片实际宽度居中
+                            // 水平避让已在外壳，标题按卡片实际宽度居中
                             .zIndex(2f),
                     ) {
                         Text(

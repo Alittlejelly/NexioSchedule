@@ -401,11 +401,10 @@ fun WebViewScreen(
                 .layerBackdrop(webContentBackdrop)
         ) {
             // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding。
-            // ⚠ 必须用 animateColorAsState 做连续过渡：宿主侧采样已节流到 8Hz 且只报
-            //   目标色（加变化阈值），直接 background(target) 会一跳一跳、且每次上报都
-            //   触发整条顶栏重组（CollapsibleTopAppBar 内含多个 Animatable，重组不便宜）。
-            //   animateColorAsState 在 render 线程驱动 60fps 过渡，采样怎么降频都不影响
-            //   过渡帧率，重组只在目标色离散跳变时发生（稀疏）。
+            // ⚠ 必须 animateColorAsState 连续过渡：宿主采样已节流到 8Hz 且只报目标色
+            // （加变化阈值），直接 background(target) 会一跳一跳、且每次上报都触发整条顶栏
+            // 重组（CollapsibleTopAppBar 内含多个 Animatable，不便宜）；动画在 render 线程
+            // 驱动 60fps，采样降频不影响帧率，重组只在目标色离散跳变时发生（稀疏）。
             topColor?.let { color ->
                 val animatedColor by animateColorAsState(
                     targetValue = color,

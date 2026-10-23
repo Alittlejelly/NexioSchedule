@@ -19,16 +19,11 @@ suspend fun PointerInputScope.inspectDragGestures(
     /**
      * 父级消费掉 pointer change 后是否继续跟踪手指。
      *
-     * 翻页手势（HorizontalPagerGesture / VerticalPager）会在 **Initial 阶段**就
-     * `change.consume()`（ancestor 先于 descendant），等本函数在 Main 阶段拿到事件时
-     * `isConsumed` 已经是 true —— 于是横拉 / 竖拉被判定为「手势被抢走」而中止，
-     * 只有斜拉（两个 pager 都不认领）才留得下来，表现为「只有斜着拉才有位移」。
-     *
-     * 纯视觉观察者（[InteractiveHighlight] 只读手指位置做变形/位移，自身从不 consume）
-     * 传 true：不管谁消费了都继续跟手，各个方向都有位移。
-     *
-     * 会影响自身手势语义的调用方（LiquidBottomTabs 的 DampedDragAnimation）
-     * 保持 false：父级接管时应当取消。
+     * 翻页手势（HorizontalPagerGesture / VerticalPager）在 **Initial 阶段**就 consume
+     * （ancestor 先于 descendant），本函数在 Main 阶段拿到时 isConsumed 已为 true，
+     * 横 / 竖拉会被判为「手势被抢走」而中止，只剩斜拉留得下来。
+     * 纯视觉观察者（如 [InteractiveHighlight]，自身从不 consume）传 true 继续跟手；
+     * 影响自身手势语义的调用方（LiquidBottomTabs 的 DampedDragAnimation）保持 false。
      */
     observeConsumed: Boolean = false,
     onDrag: (change: PointerInputChange, dragAmount: Offset) -> Unit

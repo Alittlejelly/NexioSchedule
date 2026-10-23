@@ -98,9 +98,8 @@ object IosCourseNotifier {
     private var nativeRefreshAuthorization: () -> Unit = {}
 
     /**
-     * 等待异步授权回包的回调队列。提前回 `false` 会丢掉调用方的待执行动作
-     * （开关不翻转、reschedule 无通知可写）；[requestAuthorizationFromSwift] 用真实
-     * 结果冲刷，「授权 → 排程」不需要第二次触发。Swift 的每个分支都必回包，队列一定被冲掉。
+     * 等待异步授权回包的队列。提前回 `false` 会丢掉调用方待执行动作（开关不翻转、reschedule 无通知可写）；
+     * [requestAuthorizationFromSwift] 以真实结果冲刷，授权→排程无需二次触发。
      */
     private val pendingAuthorization = mutableListOf<(Boolean) -> Unit>()
 
@@ -194,11 +193,9 @@ object IosCourseNotifier {
             // Read current switches after the asynchronous permission response: the
             // user may have disabled reminders while the prompt was open.
             if (granted) {
-                // ⚠ writeAll 是「逐日 DayScheduleResolver + 排序」的纯计算，实测在 iOS 上
-                // 占主线程 ~250ms（sample 抓到的最大单项）。它恰好挂在切课表的
-                // reloadCourses() 上，压在主线程就会把那一帧直接卡死 —— 形变要等它。
-                // 它不需要主线程：只有最后一步 nativeWrite 碰 UNUserNotificationCenter，
-                // 而那套 API 的增删是线程安全的。
+                // ⚠ writeAll 是「逐日 DayScheduleResolver + 排序」纯计算，实测占主线程 ~250ms
+                //（sample 最大单项）；它挂在切课表的 reloadCourses() 上，压主线程会卡死那一帧。
+                // 无需主线程：仅最后 nativeWrite 碰 UNUserNotificationCenter（增删线程安全）。
                 val work = {
                     writeAll(repo, repo.getPreClassReminder(), repo.getNextDayReminder())
                 }
@@ -452,9 +449,8 @@ object IosCourseNotifier {
 /**
  * Injection point for driving the Live Activity.
  *
- * The implementation has to be Swift: ActivityKit is a pure-Swift framework, so
- * cinterop cannot reach it, same as the `UserNotifications` triggers. While null,
- * every call is dropped rather than throwing, meaning the host is not ready yet.
+ * The implementation has to be Swift (ActivityKit is pure-Swift; cinterop cannot reach it).
+ * While null, every call is dropped rather than throwing — the host is not ready yet.
  */
 object IosCourseLiveActivity {
 

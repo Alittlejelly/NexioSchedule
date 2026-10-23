@@ -75,8 +75,7 @@ final class NativeDocumentNavigationController: UINavigationController,
         if navigationBar.isHidden != hideNativeBar {
             setNavigationBarHidden(hideNativeBar, animated: false)
         }
-        // A route-local editor changes native items, never the bar's geometry or alpha.
-        // Its Compose card morph runs entirely below this persistent control layer.
+        // A route-local editor changes native items only, never the bar's geometry or alpha; its Compose card morph stays below this control layer.
         navigationBar.isUserInteractionEnabled = !floatingActive && !transitionInFlight
         for controller in viewControllers {
             (controller as? NativeDocumentPageController)?.applyChromeState(
@@ -93,10 +92,8 @@ final class NativeDocumentNavigationController: UINavigationController,
         updateBackMenuTitles()
     }
 
-    /// 长按返回按钮弹出的菜单由 UIKit 按栈里每个控制器的标题生成，而导航栏只渲染栈顶那一个 ——
-    /// 所以只有非栈顶的条目才填标题：菜单有文字，导航栏依旧归 Compose。
-    /// 两个属性都要写：`navigationItem.title` 为 nil 时导航栏会回退到 `title`，
-    /// 反过来只写 `title` 也拿不到菜单文字（UIKit 生成菜单读的是 navigationItem 那一份）。
+    /// 长按返回菜单由 UIKit 按各控制器标题生成，但导航栏只渲染栈顶那一个，所以只有非栈顶条目才填标题，让菜单有文字、导航栏仍归 Compose。
+    /// 两个属性都要写：`navigationItem.title` 为 nil 时导航栏回退到 `title`，而只写 `title` 拿不到菜单文字（UIKit 生成菜单读的是 navigationItem 那一份）。
     private func updateBackMenuTitles() {
         let top = topViewController
         for controller in viewControllers {
@@ -133,8 +130,7 @@ final class NativeDocumentNavigationController: UINavigationController,
         let wanted = host.nativeRouteIds
         let actual = displayedRouteIds
         guard wanted != actual else {
-            // A push can be cancelled before UIKit has displayed it. No transition means
-            // no didShow callback; acknowledge that pending pop here to release its state.
+            // A push may be cancelled before UIKit displays it; with no transition there is no didShow callback, so acknowledge the pending pop here to release its state.
             if host.nativePopPending {
                 host.completeNativePop(depth: Int32(actual.count))
             }
@@ -173,10 +169,8 @@ final class NativeDocumentNavigationController: UINavigationController,
         transitionOperation = .none
         transitionInFlight = false
         interactiveBack = nil
-        // UIKit 是唯一权威：每次转场落定都按「屏幕上真实存在的页」对齐 Kotlin 侧的原生栈。
-        // ⚠ 不能只在 pop 时对齐。漏对齐一次，旧 page 会连同它的 controller 一起留在栈里，
-        // 下次进来 makeNativePageController 直接把那个 controller 复用 —— 组合没重建，
-        // 表现就是「退出再进，状态还在」。
+        // UIKit 是唯一权威：每次转场落定都按屏幕上真实存在的页对齐 Kotlin 侧的原生栈。
+        // ⚠ 不能只在 pop 时对齐——漏对齐一次，旧 page 的 controller 会被复用而组合不重建，表现即「退出再进、状态还在」。
         host.completeNativePop(depth: Int32(actual.count))
         host.setNativeTransitionInFlight(inFlight: false)
         updateChromeState()
@@ -273,13 +267,10 @@ private final class NativeDocumentPageController: UIViewController {
         let primaryEnabled: Bool
     }
 
-    // ── 底部悬浮条：玻璃材质、按钮与安全区都交给系统控件 ──
-    // 页面只发布语义，这里用 UIVisualEffectView(UIGlassEffect()) + 系统按钮渲染，
-    // 挂在 safeAreaLayoutGuide.bottomAnchor 上，home indicator 让位由系统算。
+    // 底部悬浮条：页面只发布语义，这里用 UIVisualEffectView(UIGlassEffect()) + 系统按钮渲染，挂在 safeAreaLayoutGuide 上，home indicator 让位由系统安全区处理。
     private lazy var bottomGlass: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIGlassEffect())
-        // 真胶囊：半径在 viewDidLayoutSubviews 里按实际高度取一半
-        // （cornerCurve 用 circular —— continuous 在半圆处会显扁）
+        // 真胶囊：半径在 viewDidLayoutSubviews 中按实际高度取一半；cornerCurve 用 circular（continuous 在半圆处会显扁）。
         view.layer.cornerCurve = .circular
         view.clipsToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -407,9 +398,7 @@ private final class NativeDocumentPageController: UIViewController {
         self.host = host
         contentController = host.makeNativePageController(routeId: routeId)
         super.init(nibName: nil, bundle: nil)
-        // Compose owns both expanded and collapsed titles. Native chrome owns actions only.
-        // 返回菜单需要的标题由栈所在的 navigation controller 统一填（见 updateBackMenuTitles），
-        // 不在 init 里写死 —— 这里的 route 标题此时还没被 Compose 发布。
+        // Compose owns titles (expanded/collapsed); native chrome owns actions only. Back-menu titles are filled by the navigation controller (see updateBackMenuTitles) since the route title isn't published by Compose yet.
         navigationItem.title = nil
         edgesForExtendedLayout = [.top, .bottom]
         extendedLayoutIncludesOpaqueBars = true
@@ -571,8 +560,7 @@ private final class NativeDocumentPageController: UIViewController {
     /// 底部悬浮条：挂在 safeArea 底部之上，内容用系统 Stack / Button 排。
     private func installBottomBar() {
         bottomBadgeContainer.addSubview(bottomBadgeLabel)
-        // 末尾加一个可伸缩占位：让胶囊紧跟名字右侧，多余宽度都塞给占位，
-        // 而不是像以前那样把名字拉长、把胶囊顶到最右边。
+        // 末尾加可伸缩占位：让胶囊紧跟名字右侧、多余宽度塞给占位，而不是把名字拉长、把胶囊顶到最右
         let titleSpacer = UIView()
         titleSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         titleSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -597,8 +585,7 @@ private final class NativeDocumentPageController: UIViewController {
 
         bottomGlass.contentView.addSubview(rootStack)
         view.addSubview(bottomGlass)
-        // 宽度：手机铺满（左右各 16）；宽屏（iPad / 横向大屏）限制最大宽度并居中，
-        // 否则底栏横跨整屏显得过分宽。fullWidth 是「铺满」偏好，宽屏时被 maxWidth 压到上限。
+        // 宽度：手机铺满（左右各 16），宽屏（iPad / 横向大屏）限最大宽度并居中，否则横跨整屏；fullWidth 是「铺满」偏好，被 maxWidth 压到上限
         let fullWidth = bottomGlass.widthAnchor.constraint(
             equalTo: view.widthAnchor, constant: -16 * 2
         )
@@ -669,8 +656,7 @@ private final class NativeDocumentPageController: UIViewController {
 
     private func updateComposeSafeArea() {
         guard isViewLoaded, let window = view.window else { return }
-        // UIKit includes this bar in the child's safe area. Compose explicitly consumes
-        // that extra inset; negative additionalSafeAreaInsets do not reliably remove it.
+        // UIKit includes this bar in the child's safe area, but Compose consumes that inset; negative additionalSafeAreaInsets don't reliably remove it.
         let overlap = max(0, view.safeAreaInsets.top - window.safeAreaInsets.top)
         host.updateNativePageBarInset(routeId: routeId, points: Double(overlap))
     }
@@ -802,11 +788,8 @@ private struct NativeScreenCornerRadii {
     }
 }
 
-/// Only content views enter this container; UINavigationBar remains owned by UIKit above it.
-/// New navigation is gated while a transition is in flight. Interactive pop is linear while
-/// dragging; normal push/pop sample the existing Kotlin curves rather than copying them.
-/// The incoming/outgoing page is clipped to the screen corner radius only while it moves,
-/// mirroring `PageLayer.clipDuringTransition` on the Compose side.
+/// Only content views enter this container; UINavigationBar stays owned by UIKit. New navigation is gated while a transition is in flight, and interactive pop is linear while dragging (normal push/pop sample the existing Kotlin curves).
+/// The incoming/outgoing page is clipped to the screen corner radius only while moving, mirroring `PageLayer.clipDuringTransition` on the Compose side.
 private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTransitioning {
     private let push: Bool
     private let interactive: Bool
@@ -856,8 +839,7 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
         let upperAlpha = push ? originalToAlpha : originalFromAlpha
         let lowerAlpha = push ? originalFromAlpha : originalToAlpha
 
-        // 圆角只裁上层（推入的页 / 退出中的页）：下层是被揭开的那一层，不该有轮廓。
-        // 只在转场期间开 —— 到位后交还系统按屏幕圆角裁，常裁会叠出双圆角。
+        // 圆角只在转场期间裁上层（推入/退出中的页），到位后交还系统按屏幕圆角裁，常裁会叠出双圆角。
         let upperLayer = upper.layer
         let originalCornerRadius = upperLayer.cornerRadius
         let originalCornerCurve = upperLayer.cornerCurve
@@ -894,8 +876,7 @@ private final class NativeDocumentAnimator: NSObject, UIViewControllerAnimatedTr
         apply(0)
         let duration = transitionDuration(using: context)
         let samples = interactive || reduceMotion ? 1 : max(1, Int(ceil(duration * 120)))
-        // Keyframe calculationModeLinear alone still inherits an ease-in-out outer timeline.
-        // Explicit linear timing keeps the sampled curve intact and drag progress exactly 1:1.
+        // calculationModeLinear alone still inherits an ease-in-out outer timeline; explicit linear timing keeps the sampled curve intact and drag progress exactly 1:1.
         let linearTiming = UIView.KeyframeAnimationOptions(rawValue: UIView.AnimationOptions.curveLinear.rawValue)
         UIView.animateKeyframes(
             withDuration: duration, delay: 0,

@@ -47,25 +47,15 @@ private val DefaultShadow = { Shadow.Default }
 private val DefaultOnDrawBackdrop: DrawScope.(DrawScope.() -> Unit) -> Unit = { it() }
 
 /**
- * 采样视口（window 坐标，px）。
- *
- * 用途：**完全在视口外**的节点直接跳过 backdrop 采样 —— 那部分像素被父级裁掉、
- * 本来就不可见，跳过是纯赚。与降采样无关：采样变换仍是 1:1 全分辨率，
- * 只是少画几张「看不见但仍会录制 display list」的外层课卡。
- *
- * 写入侧是滚动容器（onGloballyPositioned），读取侧在 draw 阶段，
- * 所以不能用 state —— 那会把每帧滚动变成整棵重组。
- *
- * [bounds] 用**单个 volatile 引用整体替换**，而不是 4 个 volatile 字段：
- * 后者会让读侧看到「新 top + 旧 bottom」这种撕裂组合，从而误剔可见卡片。
- * 为 null 表示「视口未知 → 不剔除」，回调没跑时安全退化成原行为。
+ * 采样视口（window 坐标 px）：完全在视口外的节点跳过 backdrop 采样（被父级裁掉、不可见，纯赚），采样仍 1:1
+ * 全分辨率，只是少录外层课卡的 display list。写入侧是滚动容器、读取侧在 draw 阶段，故不能用 state（否则每帧
+ * 滚动触发整棵重组）；[bounds] 用单个 volatile 引用整体替换而非 4 个字段，避免读侧看到「新 top + 旧 bottom」
+ * 撕裂组合而误剔可见卡片。null = 视口未知，不剔除。
  */
 class BackdropViewport {
     class Bounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
-    // 必须用 kotlin.concurrent.Volatile：不带限定的 @Volatile 靠 JVM 专有的默认导入
-    // `kotlin.jvm.*` 解析，Kotlin/Native / JS 上会「Unresolved reference」。
-    // 这些字段被 draw 阶段读取，需要真正的跨线程可见性。
+    // 必须用 kotlin.concurrent.Volatile：裸 @Volatile 依赖 JVM 专有导入 kotlin.jvm.*，在 Native/JS 上「Unresolved reference」；该字段在 draw 阶段读取，需真正的跨线程可见性。
     @Volatile
     var bounds: Bounds? = null
 
@@ -73,7 +63,7 @@ class BackdropViewport {
         bounds = Bounds(left, top, right, bottom)
     }
 
-    /** 四个边界都严格在视口外才剔除；相等视为相交（贴边卡片保留）。 */
+    /** 四边界均严格在视口外才剔除；相等视为相交（贴边卡片保留）。 */
     fun isFullyOutside(left: Float, top: Float, right: Float, bottom: Float): Boolean {
         val b = bounds ?: return false
         return right < b.left || left > b.right || bottom < b.top || top > b.bottom
@@ -333,11 +323,7 @@ private class DrawBackdropNode(
     }
 
     private val drawBackdropLayer: DrawScope.() -> Unit = drawBackdropLayer@{
-        // 视口剔除：完全在视口外（含横滑到屏外的邻周课卡）的节点整段跳过采样 ——
-        // 那部分像素被父级裁掉、本来就不可见，跳过是纯赚。
-        // 卡片表面色/文字仍由 draw() 照常画，故视觉零差异。
-        // 这里是「少录制 display list + 少一次 localPositionOf」，不是 GPU 减负：
-        // 屏外那部分光栅化本来就会被裁掉。
+        // 视口剔除：完全在视口外的节点整段跳过采样（像素被父级裁掉、不可见，纯赚）；卡片表面色/文字仍由 draw() 照常画，视觉零差异——省的是 display list 录制与 localPositionOf，非 GPU 光栅化。
         val viewport = viewport
         if (viewport != null) {
             val coordinates = layoutCoordinates
@@ -359,8 +345,7 @@ private class DrawBackdropNode(
         val layer = graphicsLayer
         val padding = padding
 
-        // 直采：既没有 RenderEffect（无模糊/折射运算）也没有 padding（不需要外扩），
-        // 录进离屏缓冲再画出来就是纯粹白搬一次 —— 直接在当前 canvas 上采样
+        // 直采：无 RenderEffect 也无 padding 时，录进离屏缓冲再画出只是白搬一次，直接在当前 canvas 采样。
         if (layer == null || (padding == 0f && layer.renderEffect == null)) {
             val canvas = drawContext.canvas
             canvas.save()
@@ -400,7 +385,7 @@ private class DrawBackdropNode(
         constraints: Constraints
     ): MeasureResult {
         val placeable = measurable.measure(constraints)
-        // 改成在 draw 阶段按外形 clipPath：无额外合成层，也不强制离屏。
+        // draw 阶段按外形 clipPath：无额外合成层，也不强制离屏。
         return layout(placeable.width, placeable.height) {
             placeable.place(IntOffset.Zero)
         }
@@ -490,9 +475,7 @@ private class DrawBackdropNode(
 
         effectScope.apply(effects)
         val effect = effectScope.renderEffect
-        // 只有真要离屏运算（RenderEffect）或要外扩（padding）时才建层。
-        // 折射关闭 / 共享烘焙模糊这类「直采」路径整条都不碰离屏缓冲，
-        // 几十张课卡就省下几十个 GraphicsLayer 的创建与释放。
+        // 仅当需离屏运算（RenderEffect）或外扩（padding）时才建层；直采路径不碰离屏缓冲，几十张课卡省下等量 GraphicsLayer 的创建与释放。
         if (effect != null || effectScope.padding != 0f) {
             obtainGraphicsLayer().renderEffect = effect
         } else {

@@ -177,10 +177,8 @@ class IosBackupFileController : BackupFileController {
         NSFileManager.defaultManager.contentsAtPath(path)?.toByteArray()?.decodeToString()
 
     /**
-     * 备份文件名里的时间戳 `yyyyMMdd_HHmmss` → 展示用 `yyyy-MM-dd HH:mm:ss`。
-     *
-     * 直接切字符串即可：文件名里存的就是**本地时间**，不需要时区换算
-     *（Android 侧用 `SimpleDateFormat` 解析/格式化，同一时区，结果一致）。
+     * 备份文件名时间戳 `yyyyMMdd_HHmmss` → 展示用 `yyyy-MM-dd HH:mm:ss`。
+     * 文件名存的是本地时间，直接切字符串、无需时区换算（与 Android `SimpleDateFormat` 同结果）。
      */
     private fun formatBackupTimestamp(raw: String): String {
         if (raw.length != 15 || raw[8] != '_') return "未知时间"

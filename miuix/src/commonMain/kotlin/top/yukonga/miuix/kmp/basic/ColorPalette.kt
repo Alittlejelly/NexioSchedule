@@ -47,19 +47,7 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/**
- * A color palette component that allows users to select colors from a grid of HSV values.
- *
- * @param color The color to display in the palette.
- * @param onColorChanged Callback invoked when the selected color changes.
- * @param modifier Modifier for styling the palette.
- * @param rows Number of rows in the color grid.
- * @param hueColumns Number of columns for hue variations.
- * @param includeGrayColumn Whether to include a gray column in the palette.
- * @param showPreview Whether to show a preview of the selected color.
- * @param cornerRadius Corner radius for the palette's shape.
- * @param indicatorRadius Radius of the selection indicator circle.
- */
+/** Color palette for selecting a color from a grid of HSV values. */
 @Composable
 fun ColorPalette(
     color: Color,
@@ -118,7 +106,6 @@ fun ColorPalette(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Color preview
         if (showPreview) {
             Box(
                 modifier = Modifier

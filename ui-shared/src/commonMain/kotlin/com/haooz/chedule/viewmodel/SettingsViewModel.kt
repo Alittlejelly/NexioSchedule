@@ -32,11 +32,7 @@ internal fun shouldAdvanceForReorganizedWeekend(
 }
 
 /**
- * ⚠ 原来是 `AndroidViewModel(application)`，仅仅为了拿 `Context` 去调
- * `CourseReminderHelper.resolveDaySchedule(context, …)`；而那个 `context` 参数
- * **函数体根本没用**（见 `DayScheduleResolver` 的说明）。
- * 提醒时刻算法抠进 `:core` 后，这里不再需要 `Application` → 退回普通 [ViewModel]，
- * 于是本文件可以进 `:ui-shared`（引用它的页面也随之解锁）。
+ * ⚠ 原是 `AndroidViewModel(application)`，仅为拿 `Context` 调 `CourseReminderHelper.resolveDaySchedule(context, …)`，而那个 `context` 参数函数体根本没用（见 `DayScheduleResolver`）。提醒算法抠进 `:core` 后不再需要 `Application` → 退回普通 [ViewModel]，本文件得以进 `:ui-shared`。
  */
 class SettingsViewModel : ViewModel() {
 
@@ -113,10 +109,7 @@ class SettingsViewModel : ViewModel() {
 
     private fun isBeforeHolidayExclusionActive(date: LocalDate): Boolean {
         val exclusion = HolidayManager.loadBeforeCourseExclusion()
-        // 短路：isEnabledBeforeHolidayDate 的第一个判断就是 enabled，但 Kotlin 实参是急切
-        // 求值的，不挡这一下就会让「没开启该功能」的用户每次都白跑 loadAllByYear
-        // （SharedPreferences 全量解析 + 逐年 Gson 反序列化）。本方法是主线程
-        // remember 里的课表/今日/排班周末判定链路上的一环，节次时间一改就会重跑。
+        // 短路：Kotlin 实参急切求值，不挡这一下会让未开启该功能的用户每次白跑 loadAllByYear（SharedPreferences 全量解析 + 逐年 Gson 反序列化）。本方法在主线程 remember 的周末判定链路上，节次时间一改就重跑。
         if (!exclusion.enabled || !exclusion.isValid()) return false
         return HolidayCourseExclusion.isEnabledBeforeHolidayDate(
             HolidayManager.loadAllByYear(),
@@ -242,9 +235,7 @@ class SettingsViewModel : ViewModel() {
         val newSectionNames = repository.getSectionNames()
         if (_sectionNames.value != newSectionNames) _sectionNames.value = newSectionNames
 
-        // 必须走 getEffectiveTimeConfig()（与上面 _specialBlocks 的初值保持一致）：
-        // 顶层字段只是「当前生效作息」的镜像，跨日期自动切换和新增作息都不会刷新它，
-        // 直读顶层会出现「节次时间用当天生效那套、特殊时段块用上一套」的错位
+        // 必须走 getEffectiveTimeConfig()（与 _specialBlocks 初值一致）：顶层字段只是「当前生效作息」的镜像，跨日期自动切换和新增作息都不会刷新它，直读会出现「节次时间用当天那套、特殊时段块用上一套」的错位。
         val newSpecialBlocks = repository.getEffectiveTimeConfig().safeSpecialBlocks
         if (_specialBlocks.value != newSpecialBlocks) _specialBlocks.value = newSpecialBlocks
 

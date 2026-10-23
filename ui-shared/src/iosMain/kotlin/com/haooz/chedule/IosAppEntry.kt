@@ -81,13 +81,9 @@ import platform.UIKit.UIPasteboard
  *
  * ⚠ **必须在 Swift 侧 `@main` 的 `init()` 里调用，且早于任何 Compose 界面出现**。
  *
- * ⚠ **函数名别以 `init` 开头**：Kotlin/Native 导出到 ObjC 时，`initXxx` 会被当成
- * 构造器，Swift 侧 `IosAppEntryKt.` 下**找不到**这个方法（实测踩到：别的顶层函数
- * 都在，只有它 `has no member`）。所以叫 `bootstrap…` 而不是 `init…`。
- * 缺任何一个都会在首次使用时抛异常（不是静默失败），具体是：
- * - [AppInfo]：`AppInfo.version` 变 "unknown"（埋点负载里的 app_version 丢失）
- * - [AppStorage]：第一次 `AppStorage.store(...)` 抛
- * - [AppFiles]：第一次 `AppFiles.root` 抛（表现为「学校索引读不出来」）
+ * ⚠ **函数名别以 `init` 开头**：Kotlin/Native 导出 ObjC 时，`initXxx` 会被当成构造器，
+ * Swift 侧 `IosAppEntryKt.` 下**找不到**该方法（已实测：其他方法都在，唯独它 `has no member`）。
+ * 缺任何一个初始化都会首次使用时抛异常（AppInfo→app_version 丢失、AppStorage/AppFiles 首次调用即抛）。
  *
  * Also injects the toast host, the wallpaper backend and the schedule-change sink.
  */
@@ -96,14 +92,14 @@ fun bootstrapNexioIos() {
         .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "unknown"
     AppInfo.init(version)
 
-    // 按名字转发到各自的 UserDefaults suite —— 名字由各业务文件自带，这里不做汇总。
-    // ⚠ 合并成一张表 = 篡改存量数据的落盘位置，见 UserDefaultsStore 的类注释。
+    // 按名字转发到各自 UserDefaults suite（名字由各业务文件自带，这里不汇总）。
+    // ⚠ 合并成一张表会篡改存量数据的落盘位置，见 UserDefaultsStore 的类注释。
     AppStorage.init { name -> UserDefaultsStore(name) }
 
     AppFiles.init(
         root = NsFileAppFile(defaultDocumentsDir()),
         readAsset = { path ->
-            // 内置学校索引引导用。失败要**抛**：SchoolRepository 会捕获、打日志、跳过引导。
+            // 内置学校索引引导用；失败需**抛**，由 SchoolRepository 捕获日志并跳过引导。
             val resolved = NSBundle.mainBundle.pathForResource(path, null)
                 ?: error("内置资源缺失: $path")
             NSData.dataWithContentsOfFile(resolved)?.toByteArray()
@@ -111,18 +107,14 @@ fun bootstrapNexioIos() {
         },
     )
 
-    // 壁纸后端：iOS 用 UIImage（JPEG 编码）+ 共享的 AppFiles 落盘路径。
-    // 与 Android 同一条「接口 + 启动注入」链路，只是实现在 iosMain 里。
+    // 壁纸后端：iOS 用 UIImage（JPEG）+ 共享 AppFiles 落盘；与 Android 同一条接口+注入链路。
     WallpaperStore.backend = IosWallpaperBackend()
 
-    // 原生提示条：把 `showToast` 接到 UIKit HUD。导入/导出/分享/选壁纸全靠它给反馈，
-    // 不注入的话 native actual 只打日志 → 用户看到的是「点了没反应」。
+    // 原生提示条：把 showToast 接到 UIKit HUD；不注入则 native actual 只打日志，用户「点了没反应」。
     IosToast.install()
 
-    // Course reminders. Without this sink the effects are dropped silently, which
-    // shows up as "added a class but the reminder never updated".
-    // Must precede anything that mutates the schedule: first-run import and
-    // schedule switching both trigger a reschedule.
+    // 课程提醒：不注入此 sink 则副作用被静默丢弃（表现为「加了课但提醒不更新」）。
+    // 须在修改课表前初始化——首次导入与切换课表都会触发重排。
     ScheduleEffects.init(IosScheduleChangeSink)
 }
 
@@ -140,9 +132,7 @@ private object IosScheduleChangeSink : ScheduleChangeSink {
 /**
  * 文件选择/另存实现，全 app 共用一个。
  *
- * ⚠ 必须**全局单例**：它的 delegate 靠自身字段强引用（`UIDocumentPickerViewController.delegate`
- * 是弱引用），每次新建实例也能用，但共用一个更好排查；更要紧的是别让实例在 picker
- * 弹出后被回收 —— 所以挂在顶层 val 上，生命周期跟 app 一样长。
+ * ⚠ 必须全局单例：delegate 是弱引用、靠自身字段强引用；挂在顶层 val 上以免 picker 弹出后实例被回收。
  */
 private val fileController = IosScheduleFileController()
 
@@ -162,7 +152,7 @@ private val reminderController = IosReminderController()
 
 /**
  * 节假日数据变更（拉取/备份恢复/云同步恢复）的平台副作用：重排提醒。
- * 不注入的话，待发通知会继续按旧节假日数据排。
+ * 不注入则待发通知按旧数据排。
  */
 private val onHolidayDataChanged: () -> Unit = {
     IosCourseNotifier.reschedule()
@@ -183,9 +173,8 @@ internal fun NexioIosMain(host: IosAppHost) {
             StatsReporter.reportInstallOnce()
         }
     }
-    // 注入自检：AppStorage/UserDefaults 与 AppFiles/NSFileManager 的 iOS 实现是新写的，
-    // 编译通过 ≠ 落盘位置与还原类型正确（UserDefaultsStore 的 Int/Long 不分是已知雷区）。
-    // 原先是首页两行文字，真主界面就位后降级为**启动日志**——仍是唯一运行时证据，别删。
+    // 注入自检：iOS 的 AppStorage/UserDefaults 与 AppFiles/NSFileManager 是新写的，
+    // 编译通过 ≠ 落盘与还原类型正确（Int/Long 不分是雷区）。降级为启动日志仍是唯一运行时证据，别删。
     LaunchedEffect(Unit) {
         runCatching {
             val store = AppStorage.store("ios_smoke_test")
@@ -204,8 +193,7 @@ internal fun NexioIosMain(host: IosAppHost) {
     }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
-            // 主界面常驻底座：**真课表界面**。尚未接的宿主能力
-            // （分享/选壁纸/今日助手卡）走默认「无此能力」，入口不渲染而不是留个死按钮。
+            // 主界面常驻底座（真课表界面）；未接的宿主能力走默认「无此能力」，入口不渲染而非留死按钮。
                 CourseScheduleApp(
                     privacyConsented = consented,
                     onSystemBarsChanged = { statusDark, _ ->
@@ -213,8 +201,8 @@ internal fun NexioIosMain(host: IosAppHost) {
                     },
                     // 节假日数据变更 → 重排提醒
                     onHolidayDataChanged = onHolidayDataChanged,
-                    // 相册选壁纸：PHPicker → UIImage（系统已按 EXIF 校正方向）→ 降到屏幕像素
-                    // → skia 解码成 ImageBitmap。必须在 iOS 侧降采样：共享层拿到位图直接原样用。
+                    // 相册选壁纸：PHPicker→UIImage（系统已按 EXIF 校正）→降采样到屏幕像素→skia 解码。
+                    // 降采样必须在 iOS 侧完成，共享层直接原样用。
                     onPickWallpaperImage = { onPicked -> wallpaperPicker.pick(onPicked) },
                     // 分享课表：上传生成口令 → 复制剪贴板 → 模板图绘口令 → 系统分享面板
                     onShareSchedule = rememberIosShareAction(),
@@ -266,10 +254,8 @@ internal fun NexioIosNavigation(host: IosAppHost) {
     val router = host.router
     val mainTransition = host.mainTransition
     val consented by PrivacyConsent.consented.collectAsState()
-    // 与 Android MainActivity 对齐：隐私弹窗挂在 AppNavHost 之上，
-    // 全文页在栈上时撤掉弹窗遮罩，否则全文页读不了也滑不动。
-    // ⚠ iOS 的「隐私政策」是**原生文档页**（isNativeDocument），被 nativeRouteHandler 吃掉了、
-    // 不进 router.routes —— 只能问 nativePageIds。
+    // 与 Android MainActivity 对齐：隐私弹窗挂在 AppNavHost 之上，全文页在栈上时撤遮罩（否则读不了也滑不动）。
+    // ⚠ iOS「隐私政策」是原生文档页（isNativeDocument），被 nativeRouteHandler 吞掉不进 router.routes，只能查 nativePageIds。
     val policyPageVisible = host.nativeRouteIds.any { it == AppRoute.PrivacyPolicy.id }
     CompositionLocalProvider(LocalAppRouter provides router) {
         Box(Modifier.fillMaxSize()) {
@@ -280,10 +266,8 @@ internal fun NexioIosNavigation(host: IosAppHost) {
             ) { route ->
                 NexioIosRouteContent(router, route)
             }
-            // 隐私同意弹窗：与 Android MainActivity 相同的挂载方式（AppNavHost 之后、同层 Box），
-            // 且必须在这一层 —— 它位于原生 TabBar 之上，遮罩才盖得住底栏（mainController 层盖不住）。
-            // 同意后 PrivacyConsent.consented 流翻转 → CourseScheduleApp 内部的
-            // LaunchedEffect(privacyConsented) 才会启动云同步/公告，统计上报也在此时触发。
+            // 隐私同意弹窗：与 Android 同挂载方式（AppNavHost 之后、同层 Box），且须在此层——位于原生
+            // TabBar 之上遮罩才盖得住底栏。同意后 consented 翻转才触发 CourseScheduleApp 的云同步/公告与统计上报。
             if (!consented) {
                 PrivacyConsentScreen(
                     onAgree = {
@@ -293,8 +277,7 @@ internal fun NexioIosNavigation(host: IosAppHost) {
                         StatsReporter.reportInstallOnce()
                     },
                     onDecline = {
-                        // 对齐 Android 的 finish()：拒绝即退出。iOS 没有公开的「退出应用」API，
-                        // exit(0) 是仅有的等价手段（App Store 审核不喜，但拒绝者本就无法继续用）。
+                        // 对齐 Android 的 finish()：拒绝即退出。iOS 无公开退应用 API，exit(0) 是仅有的等价手段。
                         platform.posix.exit(0)
                     },
                     onOpenPolicy = { router.navigate(AppRoute.PrivacyPolicy) },
@@ -314,9 +297,8 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             appVersion = AppInfo.version,
             appIcon = imageResource(Res.drawable.about_app_icon),
             appIconShape = ContinuousRoundedRectangle(20.dp, continuity = G2Continuity()),
-            // 「撤回同意」确认后退出应用：iOS 无 finishAffinity 等价物，
-            // 与隐私同意弹窗的拒绝路径一致用 exit(0)。不传的话默认空实现，
-            // 撤回只清状态不退出，本该退出的语义就丢了。
+            // 「撤回同意」确认后退出应用：iOS 无 finishAffinity 等价物，与拒绝路径一致用 exit(0)；
+            // 不传则默认空实现，撤回只清状态不退出，语义丢失。
             onExitApp = { platform.posix.exit(0) },
         )
         // 纯文档壳路由，iOS 直接可用
@@ -328,9 +310,8 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
         // 带注入的文档壳：iOS 用默认 Noop 能力，剪贴板注入 UIPasteboard
         AppRoute.PreferenceSettings -> PreferenceSettingsRoute(router)
         AppRoute.UpdateSettings -> UpdateSettingsRoute(router)
-        // 本地备份：目录扫描 + 「手动选择文件」都要原生文件能力。
-        // ⚠ 不传的话会落到默认的 NoopBackupFileController ——
-        // 点「手动选择文件」直接静默回调 null，什么都不发生。
+        // 本地备份：目录扫描+手动选文件都需原生文件能力。
+        // ⚠ 不传会落到 NoopBackupFileController，点「手动选择文件」静默回调 null，什么都不发生。
         AppRoute.LocalBackup -> LocalBackupRoute(
             router = router,
             backupFileController = backupFileController,
@@ -352,13 +333,9 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             router,
             onRequestWidgetRefresh = { IosWidgetSnapshot.refresh() },
         )
-        // Course reminders: local notifications for pre-class and tomorrow's summary.
-        // Gaps vs Android (docs/KMP_IOS_MIGRATION_PLAN.md §7):
-        //  - no setAlarmClock counterpart, so pre-class notices may fire late;
-        //  - the in-class island can only start from a tap or while foregrounded,
-        //    so the island switch here means "start the activity when I tap a notice";
-        //  - DND / exact alarm / battery / Shizuku have no system API and their
-        //    entries stay hidden.
+        // 课程提醒：课前通知与次日汇总。与 Android 的差异（docs/KMP_IOS_MIGRATION_PLAN.md §7）：
+        // 无 setAlarmClock 对应物（课前通知可能迟到）；灵动岛只能从点击或前台启动；
+        // DND/精确闹钟/电量/Shizuku 无系统 API，对应入口隐藏。
         AppRoute.CourseReminder -> {
             val islandNotification by settingsViewModel().islandNotification.collectAsState()
             CourseReminderRoute(

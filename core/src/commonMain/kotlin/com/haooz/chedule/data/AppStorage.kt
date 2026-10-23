@@ -3,14 +3,11 @@ package com.haooz.chedule.data
 import kotlin.concurrent.Volatile
 
 /**
- * 全局存储入口。启动时 [init] 一次，业务代码用 [store] 按偏好文件名取读写通道。
- *
- * ⚠ 每个偏好文件名对应一个独立文件，绝不能合并成一个 —— 合并等于改掉存量数据的落盘位置。
- * 未初始化就读取会抛异常而不是静默返回空数据，静默失败会让「设置全丢」极难定位。
+ * 全局存储入口：启动时 [init] 一次，业务用 [store] 按偏好文件名取读写通道。
+ * ⚠ 每个偏好名对应独立文件，绝不合并（合并会改掉存量数据落盘位置）；未初始化读取抛异常而非静默返回空数据，便于定位「设置全丢」。
  */
 object AppStorage {
-    // ⚠ 必须用 kotlin.concurrent.Volatile：不限定名的 @Volatile 依赖 JVM 专有默认导入，
-    // 在 Kotlin/Native 与 JS 上直接 Unresolved reference。
+    // ⚠ 必须用 kotlin.concurrent.Volatile：裸 @Volatile 依赖 JVM 专有默认导入，在 Kotlin/Native 与 JS 上会 Unresolved reference。
     @Volatile
     private var factory: ((String) -> KeyValueStore)? = null
 
@@ -44,6 +41,5 @@ object AppStorage {
 }
 
 /*
- * 刻意不提供偏好文件名常量表：集中成表会让各文件已有的正确常量与表里手抄的常量并存，
- * 而名字写错的后果是用户数据静默读不出来。
+ * 刻意不提供偏好文件名常量表：集中成表会与各文件已有常量并存，名字写错会导致用户数据静默读不出来。
  */

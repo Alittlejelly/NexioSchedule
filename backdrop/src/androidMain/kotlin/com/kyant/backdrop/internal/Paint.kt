@@ -5,10 +5,8 @@ import androidx.compose.ui.graphics.Paint
 import com.kyant.backdrop.RuntimeShader
 import com.kyant.backdrop.asAndroidRuntimeShader
 
-// Compose 1.11 里 asFrameworkPaint() 被标记废弃，建议改用「平台专属扩展」；
-// 但那个扩展在本版本尚未提供（AndroidPaint 的 internalPaint 是库内部可见），
-// 唯一等价的绕法是自己持有 android.graphics.Paint，那要改动整条渲染管线的数据流，
-// 风险远大于收益。这里保留原调用并压制警告，等 Compose 提供正式替代再改。
+// Compose 1.11 废弃 asFrameworkPaint() 但本版本无等价扩展（internalPaint 仅库内可见）；
+// 自行持有 android.graphics.Paint 需改动整条渲染管线，风险过大。保留原调用并压制警告，待正式替代。
 @Suppress("DEPRECATION")
 internal actual fun Paint.blur(radius: Float) {
     this.asFrameworkPaint().maskFilter =

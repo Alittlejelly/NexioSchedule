@@ -1,11 +1,10 @@
 // 上课勿扰状态机：
-// - 进入课堂时快照系统原状态（铃声 + 勿扰两条通道），写入一次目标档位
+// - 进课堂快照系统原状态（铃声+勿扰两条通道），写入一次目标档位
 // - 课堂期间只观察：用户改过就不再强行写回，也不销毁快照
-// - 下课 / 离开课堂时校验：状态仍是本应用写入的值才还原快照，否则视为用户已接管
-// - 两条通道会互相联动（N+ 起静音被判定为切换勿扰，勿扰也会把铃声压成静音），
-//   所以快照与还原都要覆盖两条，只还原一条会把另一条留在勿扰态
-// - 关开关 / 切档位属于应用内明确指令，无条件还原；切档位沿用原快照，不重新取
-// - 通知 / 超级岛按钮的手动接管：课堂外点了保持到用户再点一次，进入课堂后转交课堂生命周期
+// - 下课/离课堂时校验：状态仍是本应用写入值才还原快照，否则视为用户已接管
+// - 两条通道互联动（静音⇄勿扰），快照与还原都要覆盖两条，只还原一条会把另一条留在勿扰态
+// - 关开关/切档位属应用内明确指令，无条件还原；切档位沿用原快照不重取
+// - 通知/超级岛按钮手动接管：课堂外保持到用户再点一次，进课堂转交课堂生命周期
 package com.haooz.chedule.reminder
 
 import android.app.AlarmManager
@@ -275,8 +274,7 @@ object ClassDndHelper {
         if (!writeState(context, mode)) return false
 
         val accepted = readCurrentState(context, mode) ?: targetState(mode)
-        // 写入前后毫无变化、又不等于目标值 → 系统拒绝了这次写入（权限被回收 / ROM 拦截）。
-        // 不判失败的话后面会当它已生效，还拿这个错值当下课校验基准，表现就是全程没反应。
+        // 写入前后无变化且不等于目标值 → 系统拒绝写入（权限回收/ROM 拦截）。不判失败会拿错值当下课校验基准，表现全程无反应。
         if (before != null && accepted == before && accepted != targetState(mode)) {
             NexioLog.d(TAG, "takeOver rejected by system: mode=$mode state=$accepted target=${targetState(mode)}")
             return false
@@ -330,13 +328,11 @@ object ClassDndHelper {
         }
 
         val hasSnapshot = p.contains(KEY_ORIGINAL_RINGER) || p.contains(KEY_ORIGINAL_FILTER)
-        // 顺序固定「先勿扰后铃声」：关掉勿扰时系统会自己把铃声恢复成它记的值，
-        // 先写铃声的话这一次会被随后到来的系统联动覆盖掉。
+        // 顺序固定「先勿扰后铃声」：关勿扰时系统会自己恢复铃声成它记的值，先写铃声会被随后的系统联动覆盖。
         val filterOk = !restoreFilter || restoreFilter(context)
         val ringerOk = !restoreRinger || restoreRinger(context)
 
-        // 有快照却写不回去（多半是权限被回收）：保留会话等权限恢复，别把快照丢掉，
-        // 否则手机就再也没有自动退出勿扰的机会了。没有快照则没什么可还原，正常收尾。
+        // 有快照却写不回去（多半权限被回收）：保留会话等权限恢复，别丢快照，否则手机再无自动退出勿扰机会；无快照则无可还原，正常收尾。
         if (hasSnapshot && !(filterOk && ringerOk)) {
             if (shouldAbandonDeferred(context)) {
                 NexioLog.w(TAG, "handBack abandoned: giving up on restoring state after ${DEFER_ABANDON_MS / 3600_000L}h")
@@ -495,9 +491,8 @@ object ClassDndHelper {
 
         val appliedMode = p.getInt(KEY_APPLIED_MODE, MODE_DND)
         if (appliedMode != mode) {
-            // 换档位：先把旧档位写入的那条通道还原回课前快照，再按新档位写入。
-            // 快照沿用不重取 —— 系统把勿扰与铃声的联动落下去是异步的，紧接着重新快照会把
-            // 还没落地的中间态当成「课前原始值」，下课就还原错。
+            // 换档位：先把旧档位写入的通道还原回课前快照，再按新档位写入。快照沿用不重取 ——
+            // 系统与铃声/勿扰联动落地是异步的，紧接着重快照会把未落地的中间态当课前值，下课还原错。
             if (appliedMode == MODE_SILENT) restoreRinger(context) else restoreFilter(context)
             if (writeState(context, mode)) {
                 recordAppliedState(context, mode, readCurrentState(context, mode) ?: targetState(mode))

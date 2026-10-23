@@ -7,14 +7,11 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
 /**
- * AI 图标（三颗四角星）。
+ * AI 图标（三颗四角星）。原始素材是 1024×1024 SVG，路径经 [PathParser] 直接解析
+ * SVG 的 `d` 搬进 [ImageVector]，免去手抄上千坐标（易错且难核对）。
  *
- * 原始素材是 1024×1024 的 SVG，这里把路径原样搬进 [ImageVector]：用 [PathParser]
- * 直接解析 SVG 的 `d`，省掉把上千个坐标手工翻译成 `PathBuilder` 调用 —— 那种手抄
- * 一处小数就歪，而且没法核对。
- *
- * 填充色沿用素材里的金色（`#FAB907`）。`Icon` 默认会用 `LocalContentColor` 覆盖，
- * 想保留原色就传 `tint = Color.Unspecified`。
+ * 填充色沿用素材金色（`#FAB907`）。`Icon` 默认用 `LocalContentColor` 覆盖，
+ * 想保留原色传 `tint = Color.Unspecified`。
  */
 val AiSparkleIcon: ImageVector by lazy {
     ImageVector.Builder(

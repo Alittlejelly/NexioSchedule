@@ -11,16 +11,9 @@ private let reminderLog = Logger(
     category: "course-reminder"
 )
 
-/// Native side of course reminders.
+/// Native side of course reminders. Kotlin (`IosCourseNotifier`) resolves the schedule and hands over ready-to-fire `Notice`s; this enum registers them with `UNUserNotificationCenter` and owns the Live Activity lifecycle.
 ///
-/// Kotlin (`IosCourseNotifier`) resolves the schedule and hands over ready-to-fire
-/// `Notice`s; this enum registers them with `UNUserNotificationCenter` and owns the
-/// Live Activity lifecycle.
-///
-/// Notification building must live in Swift: the Kotlin/Native ObjC bindings do not
-/// export the `UNCalendarNotificationTrigger` factory methods, and `ActivityKit` is a
-/// pure-Swift framework that cinterop cannot reach at all. Same injection pattern as
-/// `NativeToast`.
+/// Notification building must live in Swift: the Kotlin/Native ObjC bindings don't export the `UNCalendarNotificationTrigger` factory methods, and `ActivityKit` is a pure-Swift framework cinterop cannot reach. Same injection pattern as `NativeToast`.
 enum NativeCourseNotifier {
 
     static func install() {
@@ -35,18 +28,12 @@ enum NativeCourseNotifier {
 
     // MARK: - Registration
 
-    /// Serializes cancel/write end to end: the snapshot, the removal and the adds all
-    /// complete before the next operation enters, so a later snapshot can never miss
-    /// the previous batch's adds (stale notices surviving) and a cancel can never
-    /// snapshot ahead of an in-flight write (reminders firing after being turned off).
+    /// Serializes cancel/write end to end so a later snapshot can't miss the previous batch's adds (stale notices surviving) and a cancel can't snapshot ahead of an in-flight write (reminders firing after being turned off).
     private static let writeQueue = DispatchQueue(
         label: "com.haooz.iosschedule.course-reminder.write"
     )
 
-    /// Runs `body` on `writeQueue` and blocks the queue until `body`'s completion is
-    /// signalled. The completion runs on the daemon queue, not `writeQueue`, so the
-    /// wait cannot deadlock. The timeout only guards against a completion that never
-    /// arrives, which would otherwise wedge every later reminder update.
+    /// Runs `body` on `writeQueue` and blocks until its completion is signalled. The completion runs on the daemon queue (not `writeQueue`), so the wait can't deadlock; the timeout only guards a completion that never arrives.
     private static func serialized(_ body: @escaping (@escaping () -> Void) -> Void) {
         writeQueue.async {
             let done = DispatchSemaphore(value: 0)
@@ -62,12 +49,10 @@ enum NativeCourseNotifier {
             let content = UNMutableNotificationContent()
             content.title = notice.title
             content.body = notice.body
-            // Carries the resolved course so a tap can start the Live Activity
-            // without round-tripping back into Kotlin.
+            // Carries the resolved course so a tap can start the Live Activity without round-tripping back into Kotlin.
             content.userInfo = notice.userInfo
             content.sound = .default
-            // repeats = false: each notice is a one-off, not a weekday rule. Holiday
-            // and swap-day differences are already resolved on the Kotlin side.
+            // repeats = false: each notice is a one-off, not a weekday rule; holiday and swap-day differences are already resolved on the Kotlin side.
             let trigger = UNCalendarNotificationTrigger(
                 dateMatching: components(from: notice.fireEpochMillis),
                 repeats: false
@@ -79,11 +64,7 @@ enum NativeCourseNotifier {
             )
         }
 
-        // Cancel-then-write: pending requests read back asynchronously, so a diff is
-        // not possible. Removal and adds are issued from inside the snapshot
-        // completion, so the removal is guaranteed to precede the adds — identical
-        // identifiers across writes made the old caller-side ordering able to delete
-        // the batch it had just registered.
+        // Cancel-then-write: pending requests read back asynchronously so a diff isn't possible; removal and adds are issued inside the snapshot completion, guaranteeing removal precedes adds (identical identifiers across writes previously let the caller-side ordering delete the batch it just registered).
         serialized { finish in
             let center = UNUserNotificationCenter.current()
             center.getPendingNotificationRequests { pending in
@@ -141,8 +122,7 @@ enum NativeCourseNotifier {
 
     // MARK: - Authorization
 
-    /// Kotlin's queued authorization callbacks reach Compose state and toasts, so hop
-    /// to main: UNUserNotificationCenter completions run on the daemon's XPC queue.
+    /// Kotlin's queued authorization callbacks reach Compose state and toasts, so hop to main: UNUserNotificationCenter completions run on the daemon's XPC queue.
     private static func reportAuthorization(granted: Bool) {
         DispatchQueue.main.async {
             IosCourseNotifier.shared.requestAuthorizationFromSwift(granted: granted)
@@ -150,8 +130,7 @@ enum NativeCourseNotifier {
     }
 
     /// Launch-time seed of Kotlin's `authorized` cache, without showing the prompt.
-    /// Reports `true` only — `false` is the default, and a stale `.notDetermined`
-    /// answer must not clobber a grant that landed while this query was in flight.
+    /// Reports `true` only — `false` is the default, and a stale `.notDetermined` answer must not clobber a grant that landed while this query was in flight.
     private static func refreshAuthorization() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
@@ -173,15 +152,12 @@ enum NativeCourseNotifier {
             case .notDetermined:
                 center.requestAuthorization(options: [.alert, .sound, .badge]) {
                     granted, _ in
-                    // Kotlin flushes every callback queued by ensureAuthorization with
-                    // this answer, so a reschedule() that ran before the prompt lands
-                    // its notices right here — no second trigger needed.
+                    // Kotlin flushes every callback queued by ensureAuthorization with this answer, so a reschedule() that ran before the prompt lands its notices here — no second trigger needed.
                     reportAuthorization(granted: granted)
                 }
 
             case .denied:
-                // Already denied: the system will not prompt again. Report false so
-                // the settings page takes its "open System Settings" branch.
+                // Already denied: the system will not prompt again. Report false so the settings page takes its "open System Settings" branch.
                 reportAuthorization(granted: false)
 
             @unknown default:
@@ -288,8 +264,7 @@ enum NativeCourseNotifier {
 
     // MARK: - Helpers
 
-    /// Split via the current calendar rather than handing the raw timestamp to the
-    /// trigger, which drifts by an hour across DST and timezone changes.
+    /// Split via the current calendar rather than handing the raw timestamp to the trigger, which drifts by an hour across DST and timezone changes.
     private static func components(from epochMillis: Int64) -> DateComponents {
         let date = Date(timeIntervalSince1970: Double(epochMillis) / 1000.0)
         return Calendar.current.dateComponents(
@@ -301,10 +276,7 @@ enum NativeCourseNotifier {
 
 /// Course Live Activity, the iOS counterpart of Android's super island.
 ///
-/// Platform limit: `Activity.request()` requires the app to be visible, so the
-/// pre-class phase cannot start an island on its own. It starts either from a
-/// notification tap or while the app is in the foreground; the system ends it at
-/// `staleDate`.
+/// Platform limit: `Activity.request()` requires the app to be visible, so the pre-class phase can't start an island on its own — it starts from a notification tap or while the app is in the foreground, and the system ends it at `staleDate`.
 enum NativeCourseLiveActivity {
 
     /// Must be retained: a released `Activity` can no longer be updated or ended,

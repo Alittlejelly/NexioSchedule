@@ -28,9 +28,9 @@ import platform.darwin.NSObject
  *
  * ## 两个必须记的点
  *
- * 1. **delegate 是 weak**：`UIDocumentPickerViewController.delegate` 是弱引用，
- *    delegate 对象必须由本类**强引用**持有（`openDelegate` / `exportDelegate`），
- *    否则 picker 一弹出来 delegate 就被回收，回调永远不来（表现为「选完文件没反应」）。
+ * 1. **delegate 是 weak**（`UIDocumentPickerViewController.delegate`）：对象必须由本类**强引用**
+ *    持有（`openDelegate` / `exportDelegate`），否则 picker 一弹出来就被回收，回调永远不来
+ *    （表现为「选完文件没反应」）。
  * 2. **安全作用域资源**：`forOpeningContentTypes` 选出来的 URL 在 app 沙箱外，
  *    读之前必须 `startAccessingSecurityScopedResource()`、读完 `stop...`；
  *    漏了会读到 nil（不是抛异常，是静默失败）。
@@ -97,11 +97,8 @@ class IosScheduleFileController : ScheduleFileController {
 
     /**
      * 读文本：安全作用域 → NSData → ByteArray → UTF-8。
-     *
-     * 失败时**宿主内部已提示**（与 Android 侧 `onReadSharedFileText` 的约定一致）。
-     * 解码走 `ByteArray.decodeToString()`（`FoundationBytes.kt`，iOS 侧共用）：
-     * 默认把非法序列替换成 U+FFFD 而不抛，与 Android `bufferedReader()` 行为一致
-     * ——都不因编码问题整体失败。
+     * 失败时宿主内部已提示（与 Android `onReadSharedFileText` 约定一致）。
+     * 解码走 `decodeToString()`，非法序列替换为 U+FFFD 而不抛（同 Android `bufferedReader()`）。
      */
     private fun readText(url: NSURL): String? {
         val scoped = url.startAccessingSecurityScopedResource()

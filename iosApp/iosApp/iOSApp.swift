@@ -8,19 +8,15 @@ struct iOSApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        // Mirrors Android's `NexioApplication.onCreate()`: injects AppInfo /
-        // AppStorage / AppFiles. Must run before any Compose UI appears, otherwise
-        // first use throws instead of failing quietly.
+        // Mirrors Android's `NexioApplication.onCreate()`: injects AppInfo/AppStorage/AppFiles. Must run before any Compose UI appears, or the first use throws.
         IosAppEntryKt.bootstrapNexioIos()
 
-        // Course reminders. Must come after bootstrap, which is what sets up
-        // AppStorage -- the pre-class switch and lead minutes are unreadable before it.
+        // Course reminders; must follow bootstrap, which sets up AppStorage (pre-class switch and lead minutes are unreadable before it).
         NativeCourseNotifier.install()
         NativeCourseLiveActivity.install()
         NativeWidgetSnapshot.install()
 
-        // Delegate lives at the app level because routing calls into
-        // IosCourseLiveActivity, a singleton inside the main process.
+        // Delegate is app-level because routing calls into `IosCourseLiveActivity`, a singleton in the main process.
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         IosCourseNotifier.shared.reconcile()
     }
@@ -28,9 +24,7 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // Files shared in from outside. Kotlin's `IosSharedFileReceiver`
-                // keeps them in a mutableStateOf, so the main UI recomposes and
-                // raises the import confirmation on its own.
+                // Files shared in from outside are held in a `mutableStateOf` by `IosSharedFileReceiver`, so the main UI recomposes and raises import confirmation automatically.
                 .onOpenURL { url in
                     if url.scheme == "nexioschedule", url.host == "schedule" {
                         NativeWidgetSnapshot.refresh()
@@ -58,8 +52,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         NativeCourseNotifier.handleNotificationResponse(response)
     }
 
-    /// Foreground delivery still shows a banner: a reminder that stays silent while
-    /// the app is open reads as "it never fired".
+    /// Foreground delivery still shows a banner; a silent reminder while the app is open reads as "it never fired".
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification

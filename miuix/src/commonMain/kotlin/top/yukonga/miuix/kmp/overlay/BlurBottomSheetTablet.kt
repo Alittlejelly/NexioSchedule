@@ -130,8 +130,7 @@ fun BlurBottomSheetTablet(
             visibleState.value = true
         }
     }
-    // 回调不再经 State 中转（state 的 value 在组合期被 LaunchedEffect key 读取 →
-    // 弹窗挂载后的写入会让弹窗内容在打开动画头几帧重组一次），改由内容层直接回调。
+    // 回调直接由内容层触发，不再经 State 中转：State 在组合期被读取，挂载后写入会让弹窗内容在打开动画头几帧重组一次。
 
     DialogLayout(
         visible = visibleState,
@@ -178,9 +177,8 @@ private fun BlurBottomSheetTabletContent(
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    // 弹窗始终跟随应用主题，不受壁纸强制主题影响。
-    // ⚠ 取色开关必须一起带上（与手机版 BlurBottomSheet 同一套）：只给 Light/Dark 会让
-    // 弹窗内 isDynamicColor 恒为 false，莫奈取色分支全部失效。
+    // 弹窗跟随应用主题，不受壁纸强制主题影响。
+    // ⚠ 取色开关必须一并带上（与手机版同一套）：只给 Light/Dark 会让弹窗内 isDynamicColor 恒为 false，莫奈取色分支全部失效。
     val sheetAppDark = rememberAppSettingDark()
     val sheetMonetColor = LocalMonetColorEnabled.current
     val sheetAppController = remember(sheetAppDark, sheetMonetColor) {
@@ -198,12 +196,11 @@ private fun BlurBottomSheetTabletContent(
             val animationProgress = remember { Animatable(0f) }
     val density = LocalDensity.current
     val windowInfo = LocalWindowInfo.current
-    // 滑入动画用的窗口高度：在组合期读取一次，避免进入动画期间逐帧做密度换算
+    // 滑入动画用的窗口高度在组合期读取一次，避免进入动画期间逐帧做密度换算
     val windowHeightPx = with(density) { windowInfo.containerDpSize.height.toPx() }
-    // 预测性返回：返回手势进度实时驱动 sheet 下滑（API 33+），取消回弹、完成关闭；
-    // 低版本退化为立即关闭（navigationevent 自身行为，Android actual 逐字保留）
-    // 走本模块的 expect 封装（utils/NavigationBack.kt）—— commonMain 不直接依赖 AndroidX navigationevent。
-    // backState 必须同时喂 handler 与进度读取（同一份状态），拆开跟手动画就不动。
+    // 预测性返回（API 33+）进度实时驱动 sheet 下滑，取消回弹、完成关闭；低版本退化为立即关闭。
+    // 走本模块 expect 封装（utils/NavigationBack.kt），commonMain 不直接依赖 AndroidX navigationevent。
+    // backState 必须同时喂 handler 与进度读取（同一份状态），拆开跟手动画不动。
     val backState = rememberNavigationBack()
     val backProgress = remember { Animatable(0f) }
     val detentState = remember { BlurBottomSheetDetentState() }
@@ -212,13 +209,12 @@ private fun BlurBottomSheetTabletContent(
     }
 
     val isDark = MiuixTheme.colorScheme.background.luminance() < 0.5f
-    // sheet 底色：莫奈取色下跟随 surfaceContainer（与手机版 BlurBottomSheet 同一套）；
-    // 非莫奈保持原硬编码（暗 #1E1E1E / 亮 #F2F2F2）
+    // sheet 底色：莫奈取色跟随 surfaceContainer（与手机版同一套）；非莫奈保持硬编码（暗 #1E1E1E / 亮 #F2F2F2）。
     val sheetBgColor = sheetBackgroundColor ?: if (MiuixTheme.isDynamicColor) {
         MiuixTheme.colorScheme.surfaceContainer
     } else if (isDark) Color(0xFF1E1E1E) else Color(0xFFF2F2F2)
 
-    // 显示/隐藏动画（同时驱动弹窗位移与遮罩透明度，确保二者完全同步）
+    // 显示/隐藏动画同时驱动位移与遮罩透明度，确保二者完全同步
     LaunchedEffect(show) {
         if (show) {
             if (enableContentHeightSnap) detentState.reset()
@@ -236,18 +232,18 @@ private fun BlurBottomSheetTabletContent(
         }
     }
 
-    // 本组件存在性完全由 DialogEntry（visibleState）控制，禁止在此提前 return
+    // ⚠ 本组件存在性完全由 DialogEntry（visibleState）控制，禁止在此提前 return
     val dimModifier = if (dimBackground) {
         Modifier.drawBehind {
             drawRect(Color.Black.copy(alpha = 0.2f * animationProgress.value * (1f - backProgress.value)))
         }
     } else Modifier
 
-    // 外层 lambda 身份不稳定时不要拿它当 pointerInput key
+    // onDismiss 身份不稳定，不能作为 pointerInput key
     val currentOnDismissRequest by rememberUpdatedState(onDismissRequest)
     val coroutineScope = rememberCoroutineScope()
 
-    // 返回手势处理：手势进行中 progress 驱动 sheet 下滑，取消回弹，完成直接关闭
+    // 返回手势：进行中驱动 sheet 下滑，取消回弹、完成关闭
     backState.handler(
         enabled = show,
         onBackCancelled = {
@@ -260,14 +256,13 @@ private fun BlurBottomSheetTabletContent(
         },
     )
 
-    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）
-    // 组合期读取：CompositionLocal 只能在 @Composable 里取，
-    // 协程里直接 .current 编译不过。
+    // 逐帧收集返回手势进度（单独协程，避免手势期间每帧取消/重启 LaunchedEffect）；
+    // LocalPredictiveBackEnabled 须在组合期读取（协程内 .current 编译不过）。
     val predictiveBackEnabled = LocalPredictiveBackEnabled.current
 
     LaunchedEffect(Unit) {
-        // 预测性返回动画开关：关闭时连进度都不订阅（返回仍被拦截，直接关闭）。
-        // backProgress() 非手势期间返回 null → 保持静止；手势进行中为连续进度。
+        // 预测性返回关闭时连进度都不订阅（返回仍被拦截，直接关闭）；
+        // backProgress() 非手势期间返回 null（保持静止），手势进行中为连续进度。
         if (!predictiveBackEnabled) return@LaunchedEffect
         snapshotFlow { backState.backProgress() }
             .collect { progress ->
@@ -277,8 +272,8 @@ private fun BlurBottomSheetTabletContent(
             }
     }
 
-    // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用
-    // 圆角固定 38dp：平板弹窗是居中窄条，本就不贴屏幕边缘，不该跟屏幕物理圆角
+    // 弹窗形状与 drawBackdrop 的 shape lambda 必须固定引用（否则模糊重编译）。
+    // 圆角固定 38dp：平板弹窗是居中窄条不贴屏幕边缘，不跟屏幕物理圆角。
     val sheetShape = remember { ContinuousRoundedRectangle(38.dp) }
     val windowWidth = windowInfo.containerDpSize.width
     val horizontalGap = ((windowWidth - minOf(sheetMaxWidth, windowWidth)) / 2).coerceAtLeast(0.dp)

@@ -23,9 +23,7 @@ import com.haooz.chedule.ui.utils.bottomFloatingPadding
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 手机端底部导航。
- * 平板导航由 MainActivity 叠层 [LiquidNavigationRail] 绘制，此处直接 return，
- * 避免 Scaffold bottomBar 用 fillMaxSize 挡住内容滚动。
+ * 手机端底部导航。平板导航由 MainActivity 叠层 [LiquidNavigationRail] 绘制，此处直接 return，避免 Scaffold bottomBar 的 fillMaxSize 挡住内容滚动。
  */
 @Composable
 fun ScheduleBottomBar(

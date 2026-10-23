@@ -55,16 +55,7 @@ import top.yukonga.miuix.kmp.color.space.OkLch
 import kotlin.math.ceil
 import kotlin.math.min
 
-/**
- * A [ColorPicker] component with Miuix style that supports multiple color spaces.
- *
- * @param color The color of the picker.
- * @param onColorChanged The callback to be called when the color changes.
- * @param modifier The modifier to be applied to the color picker.
- * @param showPreview Whether to show a preview of the selected color.
- * @param hapticEffect The haptic effect of the [ColorSlider].
- * @param colorSpace The color space to use for the picker.
- */
+/** A [ColorPicker] supporting multiple color spaces. */
 @Composable
 fun ColorPicker(
     color: Color,
@@ -118,15 +109,7 @@ fun ColorPicker(
     }
 }
 
-/**
- * A [HsvColorPicker] component with Miuix style using HSV color space.
- *
- * @param color The color of the picker.
- * @param onColorChanged The callback to be called when the color changes.
- * @param modifier The modifier to be applied to the color picker.
- * @param showPreview Whether to show a preview of the selected color.
- * @param hapticEffect The haptic effect of the [ColorSlider].
- */
+/** HSV color picker. */
 @Composable
 fun HsvColorPicker(
     color: Color,
@@ -138,7 +121,6 @@ fun HsvColorPicker(
     val currentOnColorChanged by rememberUpdatedState(onColorChanged)
     val capsuleShape = CircleShape
 
-    // Initialize basic values, execute only once.
     val hsv = remember { color.toHsv() }
     var currentHue by remember { mutableFloatStateOf(hsv.h) }
     var currentSaturation by remember { mutableFloatStateOf(hsv.s / 100f) }
@@ -186,7 +168,6 @@ fun HsvColorPicker(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Color preview
         if (showPreview) {
             Box(
                 modifier = Modifier
@@ -197,7 +178,6 @@ fun HsvColorPicker(
             )
         }
 
-        // Hue selection
         HsvHueSlider(
             currentHue = currentHue,
             onHueChanged = { newHue ->
@@ -207,7 +187,6 @@ fun HsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Saturation selection
         HsvSaturationSlider(
             currentHue = currentHue,
             currentSaturation = currentSaturation,
@@ -218,7 +197,6 @@ fun HsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Value selection
         HsvValueSlider(
             currentHue = currentHue,
             currentSaturation = currentSaturation,
@@ -230,7 +208,6 @@ fun HsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Alpha selection
         HsvAlphaSlider(
             currentHue = currentHue,
             currentSaturation = currentSaturation,
@@ -245,13 +222,7 @@ fun HsvColorPicker(
     }
 }
 
-/**
- * A [HsvHueSlider] component for selecting the hue of a color using pure HSV colors.
- *
- * @param currentHue The current hue value (0-360).
- * @param onHueChanged The callback to be called when the hue changes (0-1).
- * @param hapticEffect The haptic effect of the [HsvHueSlider].
- */
+/** Hue slider. `currentHue` is 0-360; `onHueChanged` returns normalized 0-1. */
 @Composable
 fun HsvHueSlider(
     currentHue: Float,
@@ -271,14 +242,7 @@ fun HsvHueSlider(
     )
 }
 
-/**
- * A [HsvSaturationSlider] component for selecting the saturation of a color.
- *
- * @param currentHue The current hue value.
- * @param currentSaturation The current saturation value.
- * @param onSaturationChanged The callback to be called when the saturation changes.
- * @param hapticEffect The haptic effect of the [HsvSaturationSlider].
- */
+/** HSV saturation slider. */
 @Composable
 fun HsvSaturationSlider(
     currentHue: Float,
@@ -301,15 +265,7 @@ fun HsvSaturationSlider(
     )
 }
 
-/**
- * A [HsvValueSlider] component for selecting the value/brightness of a color.
- *
- * @param currentHue The current hue value.
- * @param currentSaturation The current saturation value.
- * @param currentValue The current value value.
- * @param onValueChanged The callback to be called when the value changes.
- * @param hapticEffect The haptic effect of the [HsvValueSlider].
- */
+/** HSV value/brightness slider. */
 @Composable
 fun HsvValueSlider(
     currentHue: Float,
@@ -330,16 +286,7 @@ fun HsvValueSlider(
     )
 }
 
-/**
- * A [HsvAlphaSlider] component for selecting the alpha of a color.
- *
- * @param currentHue The current hue value.
- * @param currentSaturation The current saturation value.
- * @param currentValue The current value value.
- * @param currentAlpha The current alpha value.
- * @param onAlphaChanged The callback to be called when the alpha changes.
- * @param hapticEffect The haptic effect of the [HsvAlphaSlider].
- */
+/** HSV alpha slider. */
 @Composable
 fun HsvAlphaSlider(
     currentHue: Float,
@@ -366,14 +313,7 @@ fun HsvAlphaSlider(
 }
 
 /**
- * A [OkHsvColorPicker] component with Miuix style using OkHSV color space based on OkLab.
- * OkHSV provides better perceptual uniformity than traditional HSV.
- *
- * @param color The color of the picker.
- * @param onColorChanged The callback to be called when the color changes.
- * @param modifier The modifier to be applied to the color picker.
- * @param showPreview Whether to show a preview of the selected color.
- * @param hapticEffect The haptic effect of the [ColorSlider].
+ * OkHSV color picker (OkLab-based, better perceptual uniformity than HSV).
  */
 @Composable
 fun OkHsvColorPicker(
@@ -386,7 +326,6 @@ fun OkHsvColorPicker(
     val currentOnColorChanged by rememberUpdatedState(onColorChanged)
     val capsuleShape = CircleShape
 
-    // Initialize basic values, execute only once.
     val okhsv = remember { Transforms.colorToOkhsv(color) }
     var currentH by remember { mutableFloatStateOf(okhsv[0]) }
     var currentS by remember { mutableFloatStateOf(okhsv[1]) }
@@ -434,7 +373,6 @@ fun OkHsvColorPicker(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Color preview
         if (showPreview) {
             Box(
                 modifier = Modifier
@@ -445,7 +383,6 @@ fun OkHsvColorPicker(
             )
         }
 
-        // Hue selection (OkHSV)
         OkHsvHueSlider(
             currentH = currentH,
             onHueChanged = {
@@ -455,7 +392,6 @@ fun OkHsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Saturation selection (OkHSV)
         OkHsvSaturationSlider(
             currentH = currentH,
             currentS = currentS,
@@ -466,7 +402,6 @@ fun OkHsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Value selection (OkHSV)
         OkHsvValueSlider(
             currentH = currentH,
             currentS = currentS,
@@ -478,7 +413,6 @@ fun OkHsvColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Alpha selection (OkHSV)
         OkHsvAlphaSlider(
             currentH = currentH,
             currentS = currentS,
@@ -493,13 +427,7 @@ fun OkHsvColorPicker(
     }
 }
 
-/**
- * A [OkHsvHueSlider] component for selecting the hue of a color using OkHSV color space.
- *
- * @param currentH The current hue value (0-1).
- * @param onHueChanged The callback to be called when the hue changes.
- * @param hapticEffect The haptic effect of the [OkHsvHueSlider].
- */
+/** OkHSV hue slider (`currentH` is normalized 0-1). */
 @Composable
 fun OkHsvHueSlider(
     currentH: Float,
@@ -519,14 +447,7 @@ fun OkHsvHueSlider(
     )
 }
 
-/**
- * A [OkHsvSaturationSlider] component for selecting the saturation of a color using OkHSV.
- *
- * @param currentH The current hue value.
- * @param currentS The current saturation value.
- * @param onSaturationChanged The callback to be called when the saturation changes.
- * @param hapticEffect The haptic effect of the [OkHsvSaturationSlider].
- */
+/** OkHSV saturation slider. */
 @Composable
 fun OkHsvSaturationSlider(
     currentH: Float,
@@ -550,15 +471,7 @@ fun OkHsvSaturationSlider(
     )
 }
 
-/**
- * A [OkHsvValueSlider] component for selecting the value/brightness of a color using OkHSV.
- *
- * @param currentH The current hue value.
- * @param currentS The current saturation value.
- * @param currentV The current value value.
- * @param onValueChanged The callback to be called when the value changes.
- * @param hapticEffect The haptic effect of the [OkHsvValueSlider].
- */
+/** OkHSV value slider. */
 @Composable
 fun OkHsvValueSlider(
     currentH: Float,
@@ -583,16 +496,7 @@ fun OkHsvValueSlider(
     )
 }
 
-/**
- * A [OkHsvAlphaSlider] component for selecting the alpha of a color using OkHSV.
- *
- * @param currentH The current hue value.
- * @param currentS The current saturation value.
- * @param currentV The current value value.
- * @param currentAlpha The current alpha value.
- * @param onAlphaChanged The callback to be called when the alpha changes.
- * @param hapticEffect The haptic effect of the [OkHsvAlphaSlider].
- */
+/** OkHSV alpha slider. */
 @Composable
 fun OkHsvAlphaSlider(
     currentH: Float,
@@ -618,15 +522,7 @@ fun OkHsvAlphaSlider(
     )
 }
 
-/**
- * A [OkLabColorPicker] component with Miuix style using OkLab color space.
- *
- * @param color The color of the picker.
- * @param onColorChanged The callback to be called when the color changes.
- * @param modifier The modifier to be applied to the color picker.
- * @param showPreview Whether to show a preview of the selected color.
- * @param hapticEffect The haptic effect of the [ColorSlider].
- */
+/** OkLab color picker. */
 @Composable
 fun OkLabColorPicker(
     color: Color,
@@ -638,7 +534,6 @@ fun OkLabColorPicker(
     val currentOnColorChanged by rememberUpdatedState(onColorChanged)
     val capsuleShape = CircleShape
 
-    // Initialize basic values, execute only once.
     val ok = remember { color.toOkLab() }
     var currentL by remember { mutableFloatStateOf(ok.l / 100f) }
     var currentA by remember { mutableFloatStateOf(((ok.a / 100f) * 0.4f)) }
@@ -686,7 +581,6 @@ fun OkLabColorPicker(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Color preview
         if (showPreview) {
             Box(
                 modifier = Modifier
@@ -697,7 +591,6 @@ fun OkLabColorPicker(
             )
         }
 
-        // Lightness selection
         OkLabLightnessSlider(
             currentL = currentL,
             currentA = currentA,
@@ -709,7 +602,6 @@ fun OkLabColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // A channel selection (green-red axis)
         OkLabAChannelSlider(
             currentL = currentL,
             currentA = currentA,
@@ -721,7 +613,6 @@ fun OkLabColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // B channel selection (blue-yellow axis)
         OkLabBChannelSlider(
             currentL = currentL,
             currentA = currentA,
@@ -733,7 +624,6 @@ fun OkLabColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Alpha selection
         OkLabAlphaSlider(
             currentL = currentL,
             currentA = currentA,
@@ -748,15 +638,7 @@ fun OkLabColorPicker(
     }
 }
 
-/**
- * A [OkLchColorPicker] component with Miuix style using OkLch color space.
- *
- * @param color The color of the picker.
- * @param onColorChanged The callback to be called when the color changes.
- * @param modifier The modifier to be applied to the color picker.
- * @param showPreview Whether to show a preview of the selected color.
- * @param hapticEffect The haptic effect of the [ColorSlider].
- */
+/** OkLch color picker. */
 @Composable
 fun OkLchColorPicker(
     color: Color,
@@ -768,7 +650,6 @@ fun OkLchColorPicker(
     val currentOnColorChanged by rememberUpdatedState(onColorChanged)
     val capsuleShape = CircleShape
 
-    // Initialize basic values, execute only once.
     val oklch = remember { color.toOkLch() }
     var currentL by remember { mutableFloatStateOf(oklch.l / 100f) } // 0..1
     var currentC by remember { mutableFloatStateOf(oklch.c / 100f) } // proportion 0..1 (scaled to 0..0.4 internally)
@@ -816,7 +697,6 @@ fun OkLchColorPicker(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Color preview
         if (showPreview) {
             Box(
                 modifier = Modifier
@@ -827,7 +707,6 @@ fun OkLchColorPicker(
             )
         }
 
-        // Hue selection
         OkLchHueSlider(
             currentL = currentL,
             currentC = currentC,
@@ -839,7 +718,6 @@ fun OkLchColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Lightness selection
         OkLchLightnessSlider(
             currentL = currentL,
             currentC = currentC,
@@ -851,7 +729,6 @@ fun OkLchColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Chroma selection
         OkLchChromaSlider(
             currentL = currentL,
             currentC = currentC,
@@ -863,7 +740,6 @@ fun OkLchColorPicker(
             hapticEffect = hapticEffect,
         )
 
-        // Alpha selection
         OkLchAlphaSlider(
             currentL = currentL,
             currentC = currentC,
@@ -978,9 +854,7 @@ fun OkLchAlphaSlider(
     )
 }
 
-/**
- * A [OkLabLightnessSlider] component for selecting the lightness (L) of a color in OkLab space.
- */
+/** OkLab lightness (L) slider. */
 @Composable
 fun OkLabLightnessSlider(
     currentL: Float,
@@ -1009,9 +883,7 @@ fun OkLabLightnessSlider(
     )
 }
 
-/**
- * A [OkLabAChannelSlider] component for selecting the A channel (green-red axis) of a color in OkLab space.
- */
+/** OkLab A-channel (green-red axis) slider. */
 @Composable
 fun OkLabAChannelSlider(
     currentL: Float,
@@ -1044,9 +916,7 @@ fun OkLabAChannelSlider(
     )
 }
 
-/**
- * A [OkLabBChannelSlider] component for selecting the B channel (blue-yellow axis) of a color in OkLab space.
- */
+/** OkLab B-channel (blue-yellow axis) slider. */
 @Composable
 fun OkLabBChannelSlider(
     currentL: Float,
@@ -1079,9 +949,7 @@ fun OkLabBChannelSlider(
     )
 }
 
-/**
- * A [OkLabAlphaSlider] component for selecting the alpha of a color in OkLab space.
- */
+/** OkLab alpha slider. */
 @Composable
 fun OkLabAlphaSlider(
     currentL: Float,
@@ -1145,9 +1013,7 @@ fun Modifier.drawCheckerboard(
     },
 )
 
-/**
- * Generic slider component for color selection.
- */
+/** Generic color-selection slider. */
 @Composable
 private fun ColorSlider(
     value: Float,
@@ -1280,9 +1146,7 @@ private fun SliderIndicator(
     )
 }
 
-/**
- * Handle slider interaction and calculate new value.
- */
+/** Maps a drag position to a normalized 0-1 slider value. */
 private fun handleSliderInteraction(
     positionX: Float,
     totalWidth: Float,

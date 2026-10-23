@@ -23,7 +23,7 @@ import platform.UIKit.UIWindow
  */
 internal object IosUiHost {
 
-    /** 当前 key window；多场景下取第一个 key window，都没有就退回第一个 window。 */
+    /** 当前 key window；多场景取第一个，没有则退回第一个 window。 */
     fun keyWindow(): UIWindow? {
         val windows = UIApplication.sharedApplication.windows.mapNotNull { it as? UIWindow }
         return windows.firstOrNull { it.isKeyWindow() } ?: windows.firstOrNull()
@@ -46,13 +46,12 @@ internal object IosUiHost {
 /**
  * iOS 提示条的**接线与兜底**（正式渲染在 Swift 侧 `NativeToast`，见 `iosApp/iosApp/ContentView.swift`）。
  *
- * 本 object 只做两件事：
- *  1. 启动时把 [com.haooz.chedule.data.showToast] 接到 [nativeShow]（Swift 启动注入）；
- *  2. Swift 还没注入时的**极早期调用**，用一条朴素的半透明黑底提示兜底。
+ * 只做两件事：1. 启动时把 [com.haooz.chedule.data.showToast] 接到 [nativeShow]（Swift 启动注入）；
+ * 2. Swift 未注入时的**极早期调用**，用半透明黑底提示兜底。
  *
- * ⚠ 液态玻璃刻意不在这里做：`UIGlassEffect` 虽然在 Kotlin/Native 绑定里编译得过，
- * 但运行期行为不可控，取 window 也得用 `connectedScenes`（`UIApplication.windows`
- * 在 iOS 13+ 已废弃、启动早期会返回空）。两边各写一份玻璃只会让效果漂移。
+ * ⚠ 液态玻璃刻意不在这里做：`UIGlassEffect` 在 Kotlin/Native 绑定里编译得过但运行期行为不可控，
+ * 取 window 也得用 `connectedScenes`（`UIApplication.windows` iOS 13+ 已废弃、启动早期返回空），
+ * 两边各写一份玻璃只会让效果漂移。
  *
  * 时长对齐 `LENGTH_SHORT`(2s) / `LENGTH_LONG`(3.5s)；**不合并**，连续调用弹两条、上下错开堆叠；
  * 不拦截触摸（`userInteractionEnabled = false`）。
@@ -74,11 +73,8 @@ object IosToast {
     /**
      * Swift 侧注入的原生渲染实现（`NativeToast`，见 `iosApp/iosApp/ContentView.swift`）。
      *
-     * ⚠ **渲染放 Swift 侧**：iOS 26 的 Liquid Glass（`UIGlassEffect`）在 Kotlin/Native 的
-     * UIKit 绑定里虽然编译得过，但运行期行为不可控；取 window 也得走 `connectedScenes` ——
-     * `UIApplication.windows` 在 iOS 13+ 已废弃，**启动早期会返回空**（本类原来的写法就踩了这个）。
-     *
-     * 为 null 时退回下面的内置实现（宿主还没注入的极早期调用）。
+     * ⚠ 渲染放 Swift 侧的原因见类注释：`UIGlassEffect` 运行期行为不可控，`UIApplication.windows`
+     * 启动早期还会返回空（原写法踩过）。为 null 时退回下面的内置实现（宿主未注入的极早期调用）。
      */
     var nativeShow: ((message: String, longDuration: Boolean) -> Unit)? = null
 
@@ -125,8 +121,7 @@ object IosToast {
     /**
      * 组装**兜底**提示条（尺寸与子视图位置都已摆好，调用方直接 setFrame 定位即可）。
      *
-     * ⚠ 这里刻意**不做液态玻璃** —— 玻璃渲染是 Swift 侧 `NativeToast` 的职责，
-     * 两边各写一份只会让效果慢慢漂移。兜底只要求「有个能看的提示」。
+     * ⚠ 刻意**不做液态玻璃**：那是 Swift 侧 `NativeToast` 的职责，兜底只要求「有个能看的提示」。
      */
     private fun buildToast(message: String): UIView {
         val label = UILabel().apply {

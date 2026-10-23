@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * | 换掉 | 风险 |
  * |---|---|
  * | `SharedPreferences` → `KeyValueStore` | 偏好文件名 / 键名写错 → 用户数据读不出来 |
- * | `org.json` → `JsonSupport` | `opt(key) as? X` 的类型判断语义变了 → 合法数据被判为非法，**整行被丢弃** |
+ * | `org.json` → `JsonSupport` | 类型判断语义变了 → 合法数据被判为非法，**整行被丢弃** |
  * | Gson → `JsonSupport` | 备份里的条目行解析语义变了 → 导入备份丢数据 |
  *
  * 这里用**真实的存量串**（迁移前 org.json 写出来的那种）做 round-trip：

@@ -42,12 +42,6 @@ import top.yukonga.miuix.kmp.utils.platformDialogProperties
  * @param outsideMargin The margin outside the [WindowDialog].
  * @param insideMargin The margin inside the [WindowDialog].
  * @param defaultWindowInsetsPadding Whether to apply default window insets padding to the [WindowDialog].
- * @param maxWidth The maximum width of the [WindowDialog].
- * @param largeScreen Optional override for the large-screen presentation (centered scale/fade
- *   instead of bottom slide-in). If null, detected from the window size.
- * @param cornerRadius Optional corner radius override. If null, [DialogDefaults.CornerRadius]
- *   for the centered presentation, or derived from the screen corner radius (clamped to
- *   32dp..48dp) when bottom-attached.
  * @param content The [Composable] content of the [WindowDialog].
  */
 @Composable
@@ -65,10 +59,9 @@ fun WindowDialog(
     outsideMargin: DpSize = DialogDefaults.outsideMargin,
     insideMargin: DpSize = DialogDefaults.insideMargin,
     defaultWindowInsetsPadding: Boolean = true,
-    // ⚠ 上游的 `maxWidth` / `largeScreen` / `cornerRadius` 三个参数**已按 fork 的取舍去掉**：
-    // 本 fork 的 `DialogContentLayout` 不再接受它们（宽度由 outsideMargin + 大屏判定内部决定，
-    // 圆角由主题统一给），fork 自己的 `OverlayDialog` 也同样去掉了这三个。
-    // 留着会编不过（`No parameter with name 'maxWidth'`），且窗口尺寸策略本来就该走一条路。
+    // ⚠ 上游的 maxWidth / largeScreen / cornerRadius 三参数已按 fork 取舍去掉：
+    // DialogContentLayout 不再接受它们（宽度由 outsideMargin + 大屏判定内部决定，圆角由主题统一给），
+    // OverlayDialog 同样去掉；留着会编不过（No parameter with name 'maxWidth'）。
     content: @Composable () -> Unit,
 ) {
     val statusBarsPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

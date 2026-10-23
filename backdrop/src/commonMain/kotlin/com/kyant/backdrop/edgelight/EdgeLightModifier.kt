@@ -93,7 +93,7 @@ internal class EdgeLightNode(
     private var recordedOutlineHashCode: Int = 0
     private var needsRecord = true
 
-    // outline 只在 (shape, size, layoutDirection) 变化时重建：原来每帧都要重走一次路径构建
+    // outline 仅在 (shape, size, layoutDirection) 变化时重建：原先每帧都重走一次路径构建
     private var cachedOutline: Outline? = null
     private var cachedOutlineShape: Any? = null
     private var cachedOutlineSize: Size? = null
@@ -225,9 +225,8 @@ internal class EdgeLightNode(
         needsRecord = true
     }
 
-    // 描边模糊走本模块自己的 expect/actual（Android=RenderEffect，iOS/Desktop=SkSL），
-    // 不再用 android.graphics.BlurMaskFilter + asFrameworkPaint() —— 那是把整个文件
-    // 钉死在 Android 的原因，也是它当初没进 backdrop 模块的唯一障碍。
+    // 描边模糊走本模块的 expect/actual（Android=RenderEffect，iOS/Desktop=SkSL），不用 android.graphics.BlurMaskFilter + asFrameworkPaint()——
+    // 后者会把整个文件钉死在 Android，是当初进不了 backdrop 模块的唯一障碍。
     private fun DrawScope.configurePaint(edgeLight: EdgeLight) {
         paint.color = edgeLight.style.color
 

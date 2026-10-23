@@ -44,9 +44,8 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sign
 
-// SpringMath / SpringEngine / runSettleAnimation 已统一到同包的 SpringUtils.kt
-// （Miuix 原版就是放在那里的 internal 声明）。本文件原本又抄了一份 private 版本，
-// 既重复，又让 PullToRefresh / OverscrollFactory 访问不到；删除重复，保留增强的 OverScrollState。
+// SpringMath / SpringEngine / runSettleAnimation 统一在同包的 SpringUtils.kt
+// （Miuix 原版即如此）；本文件曾另抄一份 private 版本，重复且 PullToRefresh / OverscrollFactory 访问不到，已删除。
 
 class OverScrollState {
     var isOverScrollActive by mutableStateOf(false)

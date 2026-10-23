@@ -1,14 +1,10 @@
 package com.kyant.backdrop.edgelight
 
-// 三个 shader 同时服务 AGSL（Android）与 SkSL（iOS/Desktop），因此：
-//   - 颜色 uniform 用 float4 而不是 layout(color) half4 —— layout(color) 是 AGSL 专有修饰符，
-//     SkSL 不认；且 Skia 按 4 字节对齐，half4 会以 8 字节打包，用 setColorUniform(Color)
-//     喂极易错位。float4 让槽位与写入一一对应。
-//   - 其余语法（float2 / half4 / smoothstep / pow / exp / sign / normalize）两端逐字通用。
-//
-// 背景：这套 shader 原本只跑在 android.graphics.RuntimeShader 上，是 edgelight 进不了
-// commonMain 的最后一道坎；迁入 backdrop 后 Android 侧行为不变（Android 的 Skia 同样
-// 接受 float4），同时 iOS 侧可以走 SkSL。
+// 三个 shader 同时服务 AGSL（Android）与 SkSL（iOS/Desktop）。约束：
+//   - 颜色 uniform 用 float4 而非 layout(color) half4：layout(color) 是 AGSL 专有、SkSL 不认；且 Skia 按 4 字节对齐、
+//     half4 按 8 字节打包，setColorUniform(Color) 喂 half4 极易错位，float4 使槽位与写入一一对应。
+//   - 其余语法（float2 / half4 / smoothstep / pow / exp / sign / normalize）两端通用。
+// 原 shader 只跑 android.graphics.RuntimeShader，是 edgelight 进不了 commonMain 的最后一道坎；迁入 backdrop 后 Android 行为不变，iOS 可走 SkSL。
 
 internal const val RoundedRectSDF = """
 float radiusAt(float2 coord, float4 radii) {

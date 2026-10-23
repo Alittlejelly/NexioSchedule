@@ -9,12 +9,10 @@ import kotlin.test.assertTrue
 /**
  * [AppearanceStyleCodec] 与 **真实 Gson** 的差分基准（数据兼容红线的直接证明）。
  *
- * ## 背景
- *
  * 存量用户 `appearance_settings` 里的外观快照是 `Gson().toJson(CombinationStyle)`
- * 写的（键名 = 字段名，枚举存 name，null 字段跳过）。第四十二批把读写换成了
- * [AppearanceStyleCodec]（kotlinx-serialization 手写映射）——
- * **换了序列化实现，输出必须与 Gson 一致**，光靠手写字面量不够，所以拉真实 Gson 对拍。
+ * 写的（键名 = 字段名，枚举存 ordinal，null 字段跳过）。读写换成 [AppearanceStyleCodec]
+ * （kotlinx-serialization 手写映射）后**输出必须与 Gson 一致**，光靠手写字面量不够，
+ * 所以拉真实 Gson 对拍。
  *
  * 对拍口径：
  * 1. **读**：手写金样 JSON（**枚举 = ordinal**，模拟真实存量数据）逐字段断言

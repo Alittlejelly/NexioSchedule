@@ -18,35 +18,23 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 /**
- * [KeyValueStore] 的 JVM / 桌面实现：每个偏好名一个独立 JSON 文件。
+ * [KeyValueStore] 的 JVM / 桌面实现：每个偏好名一个独立 JSON 文件（一个名字一个文件，绝不合并）。
  *
  * ## 与 Android SharedPreferences 的对应关系
  *
  * | Android | 本实现 |
  * |---|---|
- * | `getSharedPreferences(name)` 的独立 XML 文件 | `<目录>/<name>.json` 的独立文件（**一个名字一个文件，绝不合并**） |
- * | `edit { … }.apply()` | [edit] 回调结束后**同步写盘**（桌面文件小，无主线程卡顿问题） |
+ * | `getSharedPreferences(name)` 的独立 XML 文件 | `<目录>/<name>.json` 的独立文件 |
+ * | `edit { … }.apply()` | [edit] 回调结束后**同步写盘**（桌面文件小，无卡顿） |
  * | 类型存在 XML 标签里（`<int>` / `<long>`） | 类型存在每个值的**标签数组**里（`["i", 42]`） |
- * | `registerListener` 跨实例通知 | **同名实例共享**（[AppStorage] 按名字缓存实例，天然满足） |
+ * | `registerListener` 跨实例通知 | **同名实例共享**（[AppStorage] 按名缓存，天然满足） |
  *
- * ## ⚠ 类型标签是本实现最关键的设计（与 iOS `UserDefaultsStore` 同一个坑）
+ * ⚠ 每个值以 `["<类型标签>", <值>]` 落盘：`s`=String / `i`=Int / `l`=Long / `f`=Float / `b`=Boolean / `ss`=Set\<String\>。
+ * JSON 的 `42` 无法区分 Int 与 Long——若还原猜错类型，`CourseRepository` 复制课表会把 Int 写成长整型，Android 侧 `getInt` 抛 `ClassCastException` 被兜底成默认值，导致用户设置静默丢失（与 iOS `UserDefaultsStore` 同一坑）。
  *
- * `CourseRepository` 用 `when (value) { is Int -> putInt … is Long -> putLong }` 复制课表，
- * `exportAllPreferences()` 按类型导出全量备份。JSON 的 `42` 本身**分不清 Int 还是 Long**
- * —— 若还原时猜错（统一按 Long），复制课表会把 Int 键写成长整型，
- * Android 侧 `getInt` 抛 `ClassCastException`、被既有 `runCatching` 兜底成默认值，
- * **用户设置静默丢失**。所以每个值都以 `["<类型标签>", <值>]` 落盘：
- * `s`=String / `i`=Int / `l`=Long / `f`=Float / `b`=Boolean / `ss`=Set\<String\>。
+ * 解析失败不静默清空：坏文件改名 `<name>.json.corrupt-<时间戳>` 保留现场，再从空库启动并告警（静默丢数据是本项目的头号故障模式）。
  *
- * ## 文件损坏的处理
- *
- * 解析失败时**不静默清空**：把坏文件改名为 `<name>.json.corrupt-<时间戳>` 保留现场，
- * 再从空库开始（并打 stderr 警告）。静默丢数据是这个项目最忌讳的故障模式。
- *
- * ## 线程安全
- *
- * jvmMain 不受 `checkKmpPurity` 扫描，可以用 `synchronized`：[edit] 块整体持锁执行
- * （与 InMemoryKeyValueStore 的顺序语义一致），listener 通知在锁外触发。
+ * 线程安全：jvmMain 不受 `checkKmpPurity` 扫描，可用 `synchronized`；[edit] 块整体持锁，listener 在锁外通知（与 InMemoryKeyValueStore 顺序语义一致）。
  */
 class FileKeyValueStore(private val file: File) : KeyValueStore {
 

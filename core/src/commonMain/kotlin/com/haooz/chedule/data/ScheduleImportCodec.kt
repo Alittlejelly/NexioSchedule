@@ -3,10 +3,6 @@ package com.haooz.chedule.data
 /**
  * 「导入课表」JSON 解析 —— 跨平台（kotlinx-serialization）实现。
  *
- * 2026-10-11 从 `:androidApp` 的 `screens/SettingsScreen.kt` 拆到 `:core`：
- * 原实现用 `Gson().fromJson(text, TypeToken<Map<String,Any>>)`，而 Gson 走运行时反射、
- * Kotlin/Native（iOS）上不存在 —— 属 R2 序列化通道，必须换 `kotlinx-serialization`。
- *
  * ## 兼容性红线
  * **落盘/输入 JSON 格式一个字节都不改**，只把「Gson 库调用」换成 `JsonSupport` 的
  * `parseJsonObject` + `jsonToPlainValue`。后者的 plain 值类型（String/Double/Boolean/
@@ -26,8 +22,8 @@ package com.haooz.chedule.data
  */
 fun parseFullScheduleJson(text: String): Triple<Boolean, String, Map<String, Any>?> {
     try {
-        // 原：Gson().fromJson(text, object : TypeToken<Map<String,Any>>(){}.type)
-        // 现：parseJsonObject 解析 + jsonToPlainValue 转 plain Map（类型与 Gson 一致）
+        // Gson().fromJson(text, TypeToken<Map<String,Any>>) → parseJsonObject + jsonToPlainValue
+        // （plain 值类型与 Gson 的 Map<String,Any> 一致）
         @Suppress("UNCHECKED_CAST")
         val data = jsonToPlainValue(parseJsonObject(text)) as Map<String, Any>
 

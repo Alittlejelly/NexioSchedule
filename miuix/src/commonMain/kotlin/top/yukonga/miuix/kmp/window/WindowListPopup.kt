@@ -39,9 +39,8 @@ import top.yukonga.miuix.kmp.utils.platformDialogProperties
 fun WindowListPopup(
     show: Boolean,
     popupModifier: Modifier = Modifier,
-    // ⚠ 默认定位器换成 fork 的液态玻璃版本：本 fork 把上游的
-    // `ListPopupDefaults.DropdownPositionProvider` 换成了 `liquidDropdownPositionProvider()`
-    // （fork 的 `ListPopupLayout` / `OverlayListPopup` 都走这一个），这里跟随，避免两套定位语义。
+    // ⚠ 默认定位器用 fork 的液态玻璃版本：上游的 ListPopupDefaults.DropdownPositionProvider
+    // 在本 fork 已换成 liquidDropdownPositionProvider()（ListPopupLayout / OverlayListPopup 共用），避免两套定位语义。
     popupPositionProvider: PopupPositionProvider = liquidDropdownPositionProvider(),
     alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.Start,
     enableWindowDim: Boolean = true,

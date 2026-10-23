@@ -13,21 +13,19 @@ import kotlin.test.assertTrue
  *
  * ## 为什么这是最强的一条安全网
  *
- * 前面几批（⑨ 的 Gson→JsonSupport、⑩ 的 org.json→JsonSupport）换的都是**序列化实现**，
- * 而它们的输出会落盘、会进备份文件。单测里的字面量是我按语义推的，
- * 这份是**真机跑出来的存量数据** —— 只要它逐字过，就说明格式没漂。
- *
- * 数据来源：`全部备份_20261009_155825.json`（166 个键的全量备份，prefs 级透传）。
+ * 前几批（Gson→JsonSupport、org.json→JsonSupport）换的都是**序列化实现**，而它们的输出
+ * 会落盘、会进备份文件。单测里的字面量是按语义推的，这份是**真机跑出来的存量数据**
+ * —— 只要它逐字过，就说明格式没漂。
  *
  * ## 覆盖的两条通道
  *
- * 1. **节假日条目**（`holiday_entries.entries_2026`，530 字节，4 条）
- *    —— 走 `load()` 读 → `toJson()` 写，要求与原串**逐字相同**。
- * 2. **调休改周规则**（`schedule_{名}_teaching_week_reorganizations`）
- *    —— 真实值是 `{"schema_version":1,"rules":[]}`，走 `decode` → `encode` 要求逐字相同。
+ * 1. **节假日条目**（`holiday_entries.entries_2026`，4 条）走 `load()` 读 → `toJson()` 写，
+ *    要求与原串**逐字相同**。
+ * 2. **调休改周规则**（`schedule_{名}_teaching_week_reorganizations`）真实值是
+ *    `{"schema_version":1,"rules":[]}`，走 `decode` → `encode` 要求逐字相同。
  *
- * ⚠ 本文件不入库（用户长期要求）。下面第 3 个用例依赖本机存在那份备份文件，
- * 文件不在时**打印警告并跳过**（不静默通过）。
+ * ⚠ 本文件不入库（用户长期要求）。第 3 个用例依赖本机存在那份备份文件，不在时
+ * **打印警告并跳过**（不静默通过）。
  */
 class RealBackupRoundTripTest {
 

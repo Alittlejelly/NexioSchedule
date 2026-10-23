@@ -29,8 +29,7 @@ enum NativeWidgetSnapshot {
         do {
             let data = Data(json.utf8)
             let url = directory.appendingPathComponent("widget-snapshot.json")
-            // Ignore the generation timestamp when deciding whether to request a reload.
-            // Foreground reconciliation should not repeatedly spend widget refreshes.
+            // Ignore the generation timestamp; otherwise foreground reconciliation would repeatedly trigger widget refreshes.
             var incoming = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             incoming?.removeValue(forKey: "generatedAt")
             if let previous = try? Data(contentsOf: url),

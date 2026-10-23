@@ -16,25 +16,15 @@ private struct ComposeRootRepresentable: UIViewControllerRepresentable {
     @Environment(\.colorScheme) private var systemColorScheme
 
     func makeUIViewController(context: Context) -> UIViewController {
-        // 状态栏样式：**交给系统自适应**，App 侧不接管。
-        //
-        // ⚠ 两条自己接管的路都不通，别再试：
-        //  1. `UIApplication.setStatusBarStyle` 自 iOS 27 起是 no-op；
-        //  2. 把 SwiftUI 的 root VC 包一层、在 wrapper 上覆写 `preferredStatusBarStyle`
-        //     → 直接崩：UIKit 禁止把 root VC 加为 child，而 `UIHostingController` 正是 root。
-        //
-        // Info.plist 的 `UIViewControllerBasedStatusBarAppearance=false` 也已删 ——
-        // 那个键会让系统去读已废弃的全局 API（就是刷屏警告的来源）。
+        // 状态栏样式交给系统自适应。⚠ 自接管两条路都不通：`UIApplication.setStatusBarStyle` 自 iOS 27 起是 no-op；wrapper 覆写 `preferredStatusBarStyle` 会崩（UIKit 禁止把 root VC 加为 child，`UIHostingController` 正是 root）。`UIViewControllerBasedStatusBarAppearance=false` 已删，该键会让系统读废弃全局 API（刷屏警告来源）。
 
-        // 原生 toast（液态玻璃）：渲染放 Swift 侧（见 NativeToast），Kotlin 只留注入点。
-        // ⚠ `longDuration` 是 `KotlinBoolean` 而不是 `Bool` —— Kotlin/Native 导出**函数类型**时
-        // 会把基本类型 boxed，必须 `.boolValue` 拆箱。
+        // 原生 toast（液态玻璃）渲染放 Swift 侧（见 NativeToast），Kotlin 只留注入点。
+        // ⚠ `longDuration` 是 `KotlinBoolean` 而非 `Bool`（Kotlin/Native 导出函数类型时会把基本类型 boxed），必须 `.boolValue` 拆箱。
         IosToast.shared.nativeShow = { message, longDuration in
             NativeToast.show(message, longDuration: longDuration.boolValue)
         }
         let host = IosAppHost()
-        // Read the enclosing SwiftUI environment, not a child with an app/page style override.
-        // Seed the host before any Compose controller creates its first composition.
+        // Read the enclosing SwiftUI environment, not a child with an app/page style override; seed the host before any Compose controller creates its first composition.
         host.updateSystemDarkTheme(isDark: systemColorScheme == .dark)
         return NativeSessionController(host: host)
     }
@@ -51,9 +41,8 @@ private final class NativeSessionController: UIViewController {
     private let rootController: AppHostController
     private let documentNavigation: NativeDocumentNavigationController
     private let floatingContainer = FloatingOverlayPassthroughView()
-    /// 全屏背景模糊层：详情页之下、其余一切之上。
-    /// iOS 没有可设的模糊半径，只能让材质从 nil 渐变到满、强度逐帧写 `fractionComplete`。
-    /// ⚠ 起始 effect 必须是 nil，animator 的动画才是「无 → 有」。
+    /// 全屏背景模糊层：详情页之下、其余一切之上。iOS 无模糊半径可设，只能让材质从 nil 渐变到满、强度逐帧写 `fractionComplete`。
+    /// ⚠ 起始 effect 必须为 nil，animator 的动画才是「无 → 有」。
     private let detailBackdropBlur: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: nil)
         view.isUserInteractionEnabled = false
@@ -88,9 +77,7 @@ private final class NativeSessionController: UIViewController {
         pin(floatingContainer, to: view)
         embed(host.floatingController, in: floatingContainer)
         // 层级（自下而上）：原生导航栈 → 弹窗层 → 本层全屏背景模糊 → 详情页。
-        // 底栏/顶栏是 UIKit 原生视图、弹窗层在另一个 Compose 根里，都不在主内容的 Compose
-        // 模糊层内，与其按各自形状凑效果层（底栏是浮动胶囊、顶栏由 SwiftUI 渲染、量不到几何），
-        // 不如在这里压一整块，一次盖住「除详情页外的一切」。
+        // 底栏/顶栏是 UIKit 原生视图、弹窗层在另一 Compose 根里，都不在主内容模糊层内；与其按各自形状凑效果层，不如整块压住「除详情页外的一切」。
         pin(detailBackdropBlur, to: view)
         detailContainer.backgroundColor = .clear
         pin(detailContainer, to: view)
@@ -157,9 +144,8 @@ private final class NativeSessionController: UIViewController {
         detailBackdropBlur.isHidden = target <= 0.001
     }
 
-    /// animator 的闭包会改 `effect`，须等视图进 window 再建；新建时是 inactive，
-    /// 要先 `startAnimation()` 再 `pauseAnimation()` 把强度停在 0。
-    /// `curve` 不参与输出（只赋 `fractionComplete`），别在这里再套缓动 → 双重缓动。
+    /// animator 闭包会改 `effect`，须等视图进 window 再建；新建时是 inactive，要先 `startAnimation()` 再 `pauseAnimation()` 把强度停在 0。
+    /// `curve` 不参与输出（只赋 `fractionComplete`），别再套缓动以免双重缓动。
     private func detailBlurAnimatorIfReady() -> UIViewPropertyAnimator? {
         if let animator = detailBlurAnimator { return animator }
         guard view.window != nil else { return nil }
@@ -259,9 +245,7 @@ private final class AppHostController: UIViewController {
     init(host: IosAppHost) {
         self.host = host
         super.init(nibName: nil, bundle: nil)
-        // The last row of the long-press back menu is this retained root. Same reason as
-        // NativeDocumentPageController: Compose draws the visible header, UIKit only needs a
-        // parent-facing label, and the bar must not render one.
+        // The long-press back menu's last row is this retained root; same as NativeDocumentPageController: Compose draws the visible header, UIKit only needs a parent-facing label and must not render a bar one.
         title = "主界面"
         navigationItem.title = nil
     }
@@ -296,8 +280,7 @@ private final class AppHostController: UIViewController {
         chromeController.onTransitionDirectionChange = { [weak self] vertical in
             self?.host.updateTabTransitionDirection(vertical: vertical)
         }
-        // 屏幕形态：折叠屏折叠态（tab bar 竖排、状态栏跑到右侧、顶部没有状态栏）
-        // 顶栏糊带与星期行据此换一套几何
+        // 折叠屏折叠态：tab bar 竖排、状态栏跑到右侧、顶部没有状态栏；顶栏糊带与星期行据此换几何
         chromeController.onVerticalBarEdgeChange = { [weak self] vertical in
             self?.host.updateVerticalBarEdge(active: vertical)
         }
@@ -386,8 +369,7 @@ private final class AppHostController: UIViewController {
         if navigationItem.leftBarButtonItem != nil {
             navigationItem.setLeftBarButtonItems(nil, animated: animated)
         }
-        // 开洞（外观页）与详情页期间都保留 items：外观页这一排跟着主内容一起缩放，
-        // 详情页盖满全屏、原生栏本来就被挡住。清空再设回会让 iOS 26 重建整块 platter
+        // 开洞（外观页）与详情页期间都保留 items：外观页这一排跟着主内容缩放，详情页盖满全屏原生栏本就被挡；清空再设回会让 iOS 26 重建整块 platter。
         let showHeader = (host.showsNativeHeader || host.keepsNativeHeaderDuringCutout) &&
             !host.nativePageActive
         // 已经在外观页里时「课表外观」项无意义（再点会重跑一次入场）
@@ -486,8 +468,7 @@ private final class AppHostController: UIViewController {
         host.performMainAction(actionId: "switchSchedule")
     }
 
-    /// ⚠ `updateMainHeaderControls` 被 `applyState` 逐帧调用，每次新建 UIMenu 会让
-    /// 导航栏 platter 反复更新（观感即「顶栏重载」）。按「排班模式 / 是否带课表外观项」缓存。
+    /// ⚠ `updateMainHeaderControls` 被 `applyState` 逐帧调用，每次新建 UIMenu 会让导航栏 platter 反复更新（观感即「顶栏重载」），按「排班模式 / 是否带课表外观项」缓存。
     private var scheduleMenuCache: (shift: Bool, customize: Bool, menu: UIMenu)?
     private var todayMenuCache: (shift: Bool, customize: Bool, menu: UIMenu)?
 
@@ -567,12 +548,8 @@ private final class AppHostController: UIViewController {
         if target.transform != transform { target.transform = transform }
     }
 
-    /// 开洞（课表外观）时把原生 chrome（tab bar + 导航栏）跟着主内容一起移动缩小。
-    /// 两者都不在 Compose 的缩放层里，得自己施加同一套变换（scale + 洞心原点）。
-    ///
-    /// ⚠ 不能直接缩 `chromeContainer`：容器带非单位 transform 后 UIKit 会重新解析
-    /// `verticalBarEdge`，折叠屏 iPhone 的侧边竖排 tab bar 会从 (397,0,69,678) 掉回底部
-    /// (0,595,466,83)。所以只能逐个缩「真正的 chrome 视图」，且每个都必须单独确认，见下。
+    /// 开洞（课表外观）时把原生 chrome（tab bar + 导航栏）跟着主内容一起移动缩小；两者都不在 Compose 缩放层里，得自己施加同一套变换（scale + 洞心原点）。
+    /// ⚠ 不能直接缩 `chromeContainer`：带非单位 transform 后 UIKit 会重新解析 `verticalBarEdge`，折叠屏 iPhone 的侧边竖排 tab bar 会从 (397,0,69,678) 掉回底部 (0,595,466,83)；只能逐个缩真正的 chrome 视图。
     private func updateCutoutTransform() {
         let screenW = view.bounds.width
         let screenH = view.bounds.height
@@ -585,8 +562,7 @@ private final class AppHostController: UIViewController {
         )
         // 外观页里打开底部弹窗时，Compose 主内容整体上移让位；原生 chrome（底栏 + 导航栏）
         let sheetOffsetY = cachedChromeOffsetY
-        // 竖排 tab bar 本体。`chromeController.view` 子树里若有 SwiftUI 托管的
-        // `FloatingBarHostingView`（其他 iOS 版本/布局下图标在那里）优先缩它，否则缩 `UITabBar`。
+        // 竖排 tab bar 本体：子树里若有 SwiftUI 托管的 `FloatingBarHostingView`（其他 iOS 版本/布局下图标在那里）优先缩它，否则缩 `UITabBar`
         let barHost = findView(chromeController.view, className: "FloatingBarHostingView")
             ?? chromeController.tabBar
         applyCutoutScale(scale, extraTranslationY: sheetOffsetY, to: barHost, pivot: pivot)
@@ -598,15 +574,8 @@ private final class AppHostController: UIViewController {
                 pivot: pivot
             )
         }
-        // 折叠屏竖排模式：顶栏的「更多 / 切换课表」不在 `UINavigationBar`（它高度为 0），
-        // 而被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` →
-        // `FloatingBarHostingView<FloatingBarContainer>`（与 chromeController.view 是兄弟）。
-        //
-        // ⚠ 这一层缩不动：只要祖先带缩放，它就按 1/scale 反向撑大自己的 bounds
-        // （实测 scale 0.75 → bounds 621×904），内容视觉尺寸恒不变，只会错位（偏上）。
-        // UIView.transform / layer.transform / anchorPoint / sublayerTransform / 逐个缩子视图
-        // 全都试过，结果不是偏上就是图标与玻璃分离。开洞期间直接淡出：
-        // 这一页的头部本来就由 Compose 的「取消 / 应用」承担。
+        // 折叠屏竖排模式：顶栏的「更多 / 切换课表」不在 `UINavigationBar`（高度 0），而被 UIKit 挪进导航控制器的 `_UIFloatingBarContainerView` → `FloatingBarHostingView`（与 chromeController.view 是兄弟）。
+        // ⚠ 这一层缩不动：祖先带缩放时它按 1/scale 反向撑大自身 bounds（实测 scale 0.75 → bounds 621×904），视觉尺寸恒不变、只会错位。各种 transform/anchorPoint 方案都试过，开洞期间直接淡出（此页头部由 Compose 的「取消/应用」承担）。
         if let navView = navigationController?.view,
            let floatingBar = findView(navView, className: "_UIFloatingBarContainerView"),
            let host = findView(floatingBar, className: "FloatingBarHostingView") {
@@ -642,11 +611,9 @@ private final class AppHostController: UIViewController {
 
     private func reportTopInset() {
         guard isViewLoaded, let window = view.window else { return }
-        // Keep the retained root's geometry stable while a document covers it.
-        // Hiding its controls must not clear the Compose header's reserved space.
+        // Keep the retained root's geometry stable while a document covers it; hiding its controls must not clear the Compose header's reserved space.
         guard !host.nativePageActive else { return }
-        // ⚠ 开洞期间也要算进来：inset 归零会让 Compose 顶栏换一套排布（多留 40dp、
-        // 顶栏高度不同），主内容一缩放就跟原生栏错开约 40pt
+        // ⚠ 开洞期间也要算进来：inset 归零会让 Compose 顶栏换排布（多留 40dp、高度不同），主内容一缩放就跟原生栏错开约 40pt。
         let showHeader = host.showsNativeHeader || host.scheduleLibraryActive ||
             host.keepsNativeHeaderDuringCutout
         let inset = showHeader ? max(0, view.safeAreaInsets.top - window.safeAreaInsets.top) : 0
@@ -692,15 +659,9 @@ private final class AppHostController: UIViewController {
         ])
     }
 
-    /// 全屏截图（含底栏与导航栏右上角菜单）的原始像素。供 Compose 侧补进快照。
-    ///
-    /// ⚠ 必须从 **window** 渲染：只画 `self.view` 漏导航栏（它是 self.view 的兄弟）
-    /// 全屏原始像素（BGRA8888，紧凑排布：rowBytes = width × 4，alpha 预乘）。
-    ///
-    /// 刻意不做 `pngData()`：像素在**同进程内存里**递给 Compose，不需要压缩格式。
-    /// 实测 `pngData()` 要 215ms、Kotlin 侧再 PNG 解码 55ms，换成裸像素后这两段
-    /// 全消失，只剩一次 CGContext 转储（~30ms）。字节序与 `IosNativeCapture.storePixels`
-    /// 的约定（BGRA8888 / 预乘）严格对应，改这里必须同步改 Kotlin 侧。
+    /// 全屏截图（含底栏与导航栏右上角菜单）的原始像素，供 Compose 补进快照。
+    /// ⚠ 必须从 **window** 渲染：只画 `self.view` 会漏掉导航栏（兄弟节点）。像素 BGRA8888、rowBytes = width×4、alpha 预乘。
+    /// 刻意不做 `pngData()`（同进程内存直传）：实测 215ms + Kotlin 解码 55ms vs 裸像素 ~30ms。字节序须与 `IosNativeCapture.storePixels` 严格对应，改此处必同步 Kotlin 侧。
     private func captureScreenPixels() -> (data: Data, width: Int, height: Int)? {
         guard let container = viewIfLoaded?.window ?? navigationController?.view ?? viewIfLoaded else { return nil }
         let format = UIGraphicsImageRendererFormat.default()
@@ -740,8 +701,7 @@ private final class TabBarPassthroughView: UIView {
               let controller = chromeController,
               let hit = super.hitTest(point, with: event),
               hit !== self, hit !== controller.view else { return nil }
-        // UIKit may host vertical tab controls outside the public UITabBar view.
-        // Hit-test the actual hierarchy, but let the empty tab content pass through.
+        // UIKit may host vertical tab controls outside the public UITabBar view; hit-test the real hierarchy but let empty tab content pass through.
         if let content = controller.selectedViewController?.view,
            hit === content || hit.isDescendant(of: content) {
             return nil
@@ -773,9 +733,7 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
         }
     }
 
-    /// `verticalBarEdge`（leading/trailing）= 折叠屏 iPhone 折叠态：tab bar 竖排到侧边，
-    /// 状态栏跟着移到右侧、屏幕顶部没有状态栏。形态只认这个 trait ——
-    /// 高度算出来是 0 分不出「顶部没有」和「被导航栏吃光」。
+    /// `verticalBarEdge`（leading/trailing）= 折叠屏 iPhone 折叠态：tab bar 竖排到侧边、状态栏移到右侧、顶部无状态栏。形态只认这个 trait（高度算 0 分不出「顶部没有」与「被导航栏吃光」）。
     func updateTransitionDirection() {
         let vertical: Bool
         if #available(iOS 27.1, *) {

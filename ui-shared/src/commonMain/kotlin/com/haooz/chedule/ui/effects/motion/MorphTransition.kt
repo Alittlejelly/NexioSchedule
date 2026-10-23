@@ -32,13 +32,10 @@ import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 /**
  * 「卡片 ⇄ 全屏」连贯形变（课程详情 / 编辑作息 / 课程编辑共用一套）。
  *
- * 一次形变由三个进度驱动：
- * - `animProgress`（0=卡片，1=全屏）：位移、裁切高度、快照/内容透明度
- * - `animTransY`（0..1）：位移曲线参数，前快后慢，让卡片中心沿抛物线落到屏幕中心
- * - `scaleProgress`（1=全屏，0=卡片）：缩放。预测返回手势单独驱动它，走完整行程
- *
- * 预测返回期间位移锁在 0（锚点固定在屏幕正中心），松手后由 [MorphTransition] 内部
- * 平滑放开 —— 详见 `centerLock` 的注释。
+ * 三个进度驱动：animProgress（0=卡片，1=全屏）管位移、裁切高度、快照/内容透明度；
+ * animTransY（0..1）是位移曲线参数，前快后慢，让卡片中心沿抛物线落到屏幕中心；
+ * scaleProgress（1=全屏，0=卡片）管缩放，预测返回手势单独驱动它、走完整行程。
+ * 预测返回期间位移锁 0（锚点固定屏幕正中心），松手后由内部平滑放开，详见 centerLock 注释。
  */
 
 /** 展开：前快后慢，收尾绵。 */
@@ -345,7 +342,7 @@ fun rememberMorphTransition(
         launch { animTransY.animateTo(1f, tween(TRANS_OPEN_MILLIS, easing = MorphTransOpenEase)) }
     }
 
-    // ⚠ 宿主传进来的几何值都是普通 Float。直接捕获进 derivedStateOf 会被冻结在首次组合
+    // ⚠ 宿主传进来的几何值都是普通 Float，直接捕获进 derivedStateOf 会被冻结在首次组合的值上
     val cardLeftState = rememberUpdatedState(cardLeft)
     val cardTopState = rememberUpdatedState(cardTop)
     val cardWidthState = rememberUpdatedState(cardWidth)
@@ -403,12 +400,10 @@ fun rememberMorphTransition(
                 val normalYStart = targetCenterY - screenHeight / 2f * (1f - startScale) -
                     (cardHeight + (screenHeight - cardHeight) * p) / 2f
                 val lockedY = normalYStart * (1f - gesture)
-                // 提交位移：从屏幕中心直线收到「内容顶部对齐卡片顶部」。
-                // 终点须与 p=0/scale=cardRatio 时的 normalY 相等（裁切框从内容顶部算，
-                // 按中心对齐会整体偏上）；走直线避开 normalY 曲线与顶部补偿的叠加。
-                // 垂直跟随：touchY − 首帧 touchY（progress 只归一化水平方向）。
-                // 阻尼 = 0.65 × 手势进度（起手垂直不动、越滑介入越多），再按
-                // 1/(1+|o|/6.5·range) 衰减防露白；松手后冻结值按权重收回，落地归零。
+                // 提交位移：从屏幕中心直线收到「内容顶部对齐卡片顶部」，终点须与
+                // p=0/scale=cardRatio 时的 normalY 相等（裁切框从内容顶部算，按中心
+                // 对齐会整体偏上）。垂直跟随 = touchY − 首帧 touchY（progress 只归一化
+                // 水平方向），阻尼 0.65×手势进度、按 1/(1+|o|/6.5·range) 衰减防露白。
                 val rawY = navigationBackState.backSwipeOffsetY()
                 if (rawY != null) lastFollowYRaw = rawY
                 val followRange = screenHeight * 0.25f
@@ -421,11 +416,9 @@ fun rememberMorphTransition(
                         followY * gesture
                 }
 
-                // 缩放锚点：手势首帧按 edge 定好（右边缘返回 → 偏左），手势期间不变 ——
-                // 变化的是缩放进度（由手指水平位移比例驱动）。页面围绕固定锚点缩放，
-                // 横向位移量只有 (1−scale)×偏移，天然有限。
-                // 松手后按时间轴收回中心（提交 p、取消 gesture），落地必须回 0.5，
-                // 否则卡片落在偏置位置。
+                // 缩放锚点：手势首帧按 edge 定好（右边缘返回 → 偏左），期间不变；变的
+                // 是缩放进度（手指水平位移比例驱动）。围绕固定锚点缩放，横向位移天然有限。
+                // 松手后按时间轴收回中心（提交 p、取消 gesture），落地必须回 0.5。
                 val anchorShift = when (gestureEdge) {
                     EDGE_LEFT -> PREDICTIVE_ANCHOR_SHIFT
                     EDGE_RIGHT -> -PREDICTIVE_ANCHOR_SHIFT

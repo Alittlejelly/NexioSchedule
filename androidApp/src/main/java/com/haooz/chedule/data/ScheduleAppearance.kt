@@ -15,32 +15,19 @@ import java.io.File
 import java.io.FileOutputStream
 
 // ════════════════════════════════════════════════════════════════════════
-//  课表外观 —— 单文件全包
-//
-//  壁纸 + 偏移缩放 + 课程卡片全部可调参数（模糊/底色/高度/圆角/亮度/
-//  分隔线/对齐/文字色/文字缩放/教室/教师/折射/壁纸模糊），加上配套的
-//  三个枚举与取值对象。**调整外观只需要动这一个文件。**
-//
-//  设计取舍：当前是**单搭配**（没有搭配列表 UI），所以这里不保留 id维度 ——
-//
-//  存储位置：独立的 `appearance_settings` 文件，不与课程数据混存，
-//  也不进全量备份（外观是本机观感，不随备份迁移）。
+//  课表外观（单文件全包）：壁纸 + 偏移缩放 + 卡片全部可调参数与三个枚举。
+//  独立 `appearance_settings` 文件存储，不与课程数据混存，也不进全量备份。
 // ════════════════════════════════════════════════════════════════════════
 
 /** 卡片内容对齐方式 / 文字配色 / 透镜折射强度：已下沉 :core（同包名 CardTextColor.kt） */
 
-// `ThemeMode` 枚举也已下沉 :core（同包名 ThemeMode.kt）——
-// `CustomizeScheduleScreen` 迁 :ui-shared 后签名里要用它。
-// 本文件只保留**读写它的那对函数**（[ScheduleAppearance.getThemeMode] /
-// [ScheduleAppearance.setThemeMode]，要碰 SharedPreferences），页面通过注入参数调用。
+// `ThemeMode` 已下沉 :core；本文件仅保留读写它的 getThemeMode/setThemeMode（需碰 SharedPreferences），页面经注入参数调用。
 
 /**
- * 外观参数快照 —— 落盘的唯一结构。
+ * 外观参数快照 —— 落盘唯一结构。
  *
- * ⚠️ 这里的默认值就是**实际生效的默认值**：反序列化后直接读它。
- * [AppearanceConfig] 与 ui-shared 的 `ScheduleCombination` 里同名字段的默认值只在
- * 直接构造对象时有效，走 `AppearanceConfig.fromCombination` 时一律被覆盖 ——
- * **三处必须保持一致**。
+ * ⚠ 这里的默认值即实际生效默认值；[AppearanceConfig]、`ScheduleCombination` 同名字段只在直接构造时有效，
+ * 走 `fromCombination` 一律被覆盖 —— 三处默认值必须一致。
  *
  * 枚举字段声明为可空并配 safe getter：Gson UnsafeAllocator 使 Kotlin 默认值不生效。
  */
@@ -76,10 +63,7 @@ data class CombinationStyle(
     val safeCardTextScale: Float get() = if (cardTextScale > 0f) cardTextScale else 1f
     val safeCardSurfaceAlpha: Float get() = cardSurfaceAlpha?.takeIf { it in 0f..1f } ?: CARD_SURFACE_ALPHA_DEFAULT
 
-    /**
-     * 为 0 时网格高度会整页静默空白（不崩、无日志）；滑杆合法区间 34~92，
-     * 0 一律视为损坏恢复默认。
-     */
+    /** cardHeight 为 0 时网格整页静默空白（不崩无日志）；滑杆合法区间 34~92，0 视为损坏恢复默认。 */
     val safeCardHeight: Float get() = if (cardHeight > 0f) cardHeight else CARD_HEIGHT_DEFAULT
 
     companion object {
@@ -98,10 +82,7 @@ data class CombinationStyle(
             "wallpaperBlur"
         )
 
-        /**
-         * 至少命中一个已知字段名才采信。键名对不上时 Gson 会把字段停在 Java
-         * 默认值（如 cardHeight=0 → 课表页空白），故判为不可用，由调用方恢复默认。
-         */
+        /** 至少命中一个已知字段名才采信；键名对不上 Gson 会停在 Java 默认值（如 cardHeight=0 → 课表空白），判为不可用由调用方恢复默认。 */
         fun parseSnapshotOrNull(gson: Gson, json: String): CombinationStyle? {
             val obj = runCatching { gson.fromJson(json, JsonObject::class.java) }.getOrNull() ?: return null
             if (obj.keySet().none { it in FIELD_NAMES }) return null
@@ -111,11 +92,8 @@ data class CombinationStyle(
 }
 
 /**
- * [AppearanceStyle]（共享层）⇄ [CombinationStyle]（本文件）的互转。
- *
- * 两份字段**逐字同名**，转换只是搬运 —— 这是有意的：`AppearanceStore`
- * 在 `:ui-shared` 用前者存取，`CombinationStyle` 的调用点（页面/`parseSnapshotOrNull`）
- * 还在用后者。等 `CourseScheduleApp` 迁完，后者就可以删了。
+ * [AppearanceStyle]（共享层）⇄ [CombinationStyle]（本文件）互转。
+ * 两份字段逐字同名，转换仅搬运；等 CourseScheduleApp 迁完后者可删。
  */
 fun AppearanceStyle.toCombinationStyle(): CombinationStyle = CombinationStyle(
     offsetX = offsetX,
@@ -170,8 +148,7 @@ fun CombinationStyle.toAppearanceStyle(): AppearanceStyle = AppearanceStyle(
  */
 object ScheduleAppearance {
 
-    // 这两个常量已下沉 :core（AppearancePrefs）—— CourseRepository 判「是不是外观键」
-    // 时要用它们，而 :core 不能反向依赖 :app。这里 const 转发，取值同源不会抄错。
+    // 这两个常量已下沉 :core（CourseRepository 判外观键要用，:core 不能反向依赖 :app）；此处 const 转发取值同源不抄错。
     /** 独立 prefs 文件名 */
     const val FILE = AppearancePrefs.FILE
 
@@ -182,10 +159,8 @@ object ScheduleAppearance {
     private const val WALLPAPER_FILE = "appearance_wallpaper.webp"
 
     /**
-     * 壁纸文件所在目录 —— 供 `:ui-shared` 的 [WallpaperStore] 复用同一个落盘位置。
-     *
-     * ⚠ 必须与 [loadWallpaper] / [saveWallpaper] 内部用的 `File(appContext.filesDir, …)`
-     * 逐字一致：两边指的不是同一个地方 = 存量用户壁纸静默丢失。
+     * 供 [WallpaperStore] 复用同一落盘目录。
+     * ⚠ 必须与此处 loadWallpaper/saveWallpaper 内部 `File(appContext.filesDir, …)` 逐字一致，否则存量壁纸静默丢失。
      */
     fun appFilesDir(): java.io.File = appContext.filesDir
 
@@ -199,12 +174,8 @@ object ScheduleAppearance {
     /** 参数快照缓存，读多写少 */
     private var cached: CombinationStyle? = null
 
-    /** 壁纸解码是主要瓶颈，按可用内存做 Lru 缓存。
-     *
-     * 上限必须装得下**一张** cover 保存策略下的壁纸：3680×2760 ≈ 40.5MB，
-     * 长边封顶图 5520×2760 ≈ 61MB。此前上限 32MB 装不下，put 进去立即被
-     * 逐出 → 每次冷启动都在 IO 线程全量重解（~100ms + 40MB 分配）。
-     * 48MB 下限不可省：小内存机型 maxMemory/4 可能只有几 MB，等于没缓存。 */
+    /** 壁纸解码是主要瓶颈，按可用内存做 Lru 缓存。上限须装得下一张 cover 壁纸（3680×2760≈40.5MB，长边封顶 5520×2760≈61MB）；
+     * 旧上限 32MB 装不下会被逐出，每次冷启动全量重解（~100ms+40MB 分配）。48MB 下限不可省：小内存机型 maxMemory/4 可能仅几 MB。 */
     private val wallpaperCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(
         minOf(Runtime.getRuntime().maxMemory() / 4, 96L * 1024 * 1024)
             .coerceAtLeast(48L * 1024 * 1024)
@@ -217,21 +188,16 @@ object ScheduleAppearance {
     fun init(context: Context) {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
-        // 走 AppStorage 按名字取（Android 侧仍是同一个 appearance_settings 文件）
+        // 走 AppStorage 按名取（Android 侧仍是同一 appearance_settings 文件）
         prefs = AppStorage.store(FILE)
         migrateLegacyAppearanceIfNeeded()
     }
 
     /**
-     * 从旧版主 prefs（`course_schedule_prefs`）迁移外观数据。
-     *
-     * 外观曾寄存在主 prefs 里，键为 `combination_style_{id}`（JSON 快照，
-     * 自 1.5.2 起就是这个格式），壁纸文件为 `combination_wallpaper_{id}.webp`。
-     * 搬进独立文件后若不迁移，老用户升级会静默丢失全部外观设置 —— 且不报错，
-     * 故这里必须做。**兼容基线：1.5.2**；更早的 `comb_xxx` 分散键格式不再处理。
-     *
-     * 幂等：只在**新文件完全为空**（本机从无外观数据）时执行一次；
-     * 已迁过一次或用户在新文件里有任何值，一律跳过，绝不覆盖。
+     * 从旧版主 prefs（course_schedule_prefs）迁移外观数据。
+     * 外观曾寄存在主 prefs，键为 combination_style_{id}（自 1.5.2 起此格式），壁纸为 combination_wallpaper_{id}.webp。
+     * 不迁移老用户升级会静默丢失全部外观且不报错。兼容基线 1.5.2；更早 comb_xxx 格式不再处理。
+     * 幂等：仅在新文件完全为空时执行一次，已有值一律跳过绝不覆盖。
      */
     private fun migrateLegacyAppearanceIfNeeded() {
         if (prefs.all().isNotEmpty()) return
@@ -239,8 +205,7 @@ object ScheduleAppearance {
             AppStorage.store(LEGACY_PREFS)
         }.getOrNull() ?: return
 
-        // 迁「当前正在用的那套」：1.5.6 及更早存有 current_combination_id 指针，
-        // 只取 combination_ids 首个会在多搭配老数据上迁错（迁成用户没在用的那套）。
+        // 迁「当前正在用的那套」：1.5.6 及更早有 current_combination_id 指针，只取首个会在多搭配数据上迁错。
         val legacyIds = legacy.getStringOrNull(LEGACY_KEY_COMBINATION_IDS)
             ?.split(",")?.mapNotNull { it.trim().toLongOrNull() }
             ?.takeIf { it.isNotEmpty() }
@@ -253,8 +218,7 @@ object ScheduleAppearance {
             else -> legacyIds.first()
         }
 
-        // 快照坏掉（键名对不上/ JSON 损坏）时**不迁**，交给 getStyle() 走
-        // restoreAfterBadSnapshot 按壁纸重测光，避免把默认值当用户设置落盘
+        // 快照坏掉（键名对不上/JSON 损坏）时不迁，交给 getStyle() 按壁纸重测光，避免把默认值当用户设置落盘。
         val style = legacy.getStringOrNull("$LEGACY_STYLE_PREFIX$legacyId")
             ?.let { CombinationStyle.parseSnapshotOrNull(gson, it) }
         if (style != null) {
@@ -285,11 +249,7 @@ object ScheduleAppearance {
     private const val LEGACY_KEY_COMBINATION_IDS = "combination_ids"
     private const val LEGACY_KEY_CURRENT_COMBINATION_ID = "current_combination_id"
 
-    /**
-     * 批量保存外观参数，块内写入合并为一次提交；可嵌套。
-     *
-     * 委托 `:ui-shared` 的 [AppearanceStore.batchSave]，合并逻辑在共享层。
-     */
+    /** 批量保存外观参数，块内写入合并为一次提交（可嵌套）。委托 [AppearanceStore.batchSave]，合并逻辑在共享层。 */
     fun batchSave(block: () -> Unit) = AppearanceStore.batchSave(block)
 
     // ── 参数快照 ────────────────────────────────────────────
@@ -302,13 +262,7 @@ object ScheduleAppearance {
         return style
     }
 
-    /**
-     * 当前外观快照 —— 委托 `:ui-shared` 的 [AppearanceStore]。
-     *
-     * 返回类型仍是 [CombinationStyle]（androidApp 的既有类型，调用点零改动），
-     * 内部从共享层的 [AppearanceStyle] 转过来。两份字段逐字同名，
-     * 转换只是字段搬运。
-     */
+    /** 当前外观快照（委托 [AppearanceStore]）。返回既有 [CombinationStyle]，内部由共享层 [AppearanceStyle] 转来，字段逐字同名仅搬运。 */
     fun getStyle(): CombinationStyle {
         cached?.let { return it }
         val style = AppearanceStore.currentStyle()
@@ -320,8 +274,7 @@ object ScheduleAppearance {
 
     /** 快照坏掉（键名对不上）时用现有壁纸重测光后重存，避免主题开关整条失效 */
     private fun restoreAfterBadSnapshotIfNeeded(style: AppearanceStyle): AppearanceStyle {
-        // AppearanceStore 解析失败会回落默认值 —— 用「盘上是否有过写入」区分
-        // 「真默认」与「坏快照被兜住了」，只有后者才需要重测光重存。
+        // AppearanceStore 解析失败回落默认值；用「盘上是否写过」区分真默认与坏快照被兜住，仅后者需重测光重存。
         val raw = runCatching { prefs.getStringOrNull(FILE_STYLE_KEY) }.getOrNull()
         if (raw != null && style == AppearanceStyle.defaults() &&
             AppearanceStyleCodec.decodeOrNull(raw) == null
@@ -334,13 +287,7 @@ object ScheduleAppearance {
         return style
     }
 
-    /**
-     * 覆盖写入快照 —— 委托 `:ui-shared` 的 [AppearanceStore]。
-     *
-     * 写入路径从「Gson 序列化 CombinationStyle」换成「转 AppearanceStyle 后由
-     * AppearanceStyleCodec 编码」。两份字段逐字同名，JSON 键名不变 ——
-     * 这是存量用户外观设置还能读出来的保证。
-     */
+    /** 覆盖写入快照（委托 [AppearanceStore]）。改为转 AppearanceStyle 后由 AppearanceStyleCodec 编码；字段逐字同名、JSON 键名不变，保证存量设置可读。 */
     fun saveStyle(style: CombinationStyle) {
         AppearanceStore.saveStyle(style.toAppearanceStyle())
         cached = style
@@ -417,19 +364,15 @@ object ScheduleAppearance {
     fun saveWallpaperBlur(blur: Boolean) = updateStyle { it.copy(wallpaperBlur = blur) }
     fun getWallpaperBlur(): Boolean = getStyle().wallpaperBlur
 
-    // ⚠️ 下课烟花开关**不在本文件**：它的真实读写方是 `ClassEndEffectSettings`
-    // （`app_preferences` 的 `class_end_fireworks`）。外观曾在这里重复定义一份同键属性，
-    // 但零调用点且读的是本文件，读到的永远是默认值 —— 已删除，别再加回来。
+    // ⚠ 下课烟花开关不在此文件，真实读写方是 `ClassEndEffectSettings`（`app_preferences` 的 `class_end_fireworks`）。
+    // 曾在此重复定义同键属性却零调用点（读到默认值），已删，勿再加回。
 
     // ── 默认主题（课表外观自定义页的下拉）────────────────────
 
     /**
-     * 课表页/今日页跟随的主题。
-     *
-     * ⚠️ 存`app_theme_prefs` 而**不是**本文件的 `appearance_settings`：
-     * 它与全局应用主题共用一个文件但**不同的键**，且要被 `Theme.kt`、
-     * `WidgetTextSizes` 在首帧读取 —— 放进外观文件会让这些组件多依赖一个文件，
-     * 而首帧主题计算不能碰 IO 大的文件。键语义见 [ThemeMode]。
+     * 课表页/今日页跟随主题。
+     * ⚠ 存 `app_theme_prefs` 而非本文件：与全局主题共用文件但不同键，且 `Theme.kt`/`WidgetTextSizes`
+     * 需在首帧读取；放进外观文件会让这些组件多依赖一文件，而首帧主题计算不能碰 IO 大的文件。
      */
     private val themePrefs: KeyValueStore
         get() = AppStorage.store(FILE_THEME)
@@ -446,23 +389,18 @@ object ScheduleAppearance {
 
     // ── 壁纸位图 ────────────────────────────────────────────
 
-    /** 壁纸的目标存储/解码分辨率：当前屏幕的 (宽, 高)，方向感知。
-     *
-     * ⚠ 曾经用长短边（maxOf/minOf）以规避横竖屏切换时的尺寸漂移，代价是横图在竖屏上
-     * 被按「短边对齐屏宽」砍掉高度（4000×3000 → 1674×1256），cover 显示时再放大
-     * 2.2 倍 —— 「选完壁纸很糊」的根因。方向感知后 load 侧 inSampleSize 对
-     * 两个方向都只按 cover 计算（只缩不扩），不会反向降质。 */
+    /** 壁纸目标存储/解码分辨率：当前屏幕 (宽, 高)，方向感知。
+     * ⚠ 曾用长短边规避横竖屏漂移，代价是横图在竖屏被按短边砍高（4000×3000→1674×1256）cover 放大 2.2 倍 = 「选完壁纸很糊」根因。
+     * 方向感知后 inSampleSize 对两方向只按 cover 计算（只缩不扩），不反向降质。 */
     private fun wallpaperTargetBounds(): Pair<Int, Int> {
         val metrics = appContext.resources.displayMetrics
         return metrics.widthPixels to metrics.heightPixels
     }
 
     /**
-     * 保存前的缩放策略：cover 到屏幕，只缩不扩，长边封顶 2×屏幕长边。
-     *
-     * 与 :ui-shared 的 [com.haooz.chedule.data.WallpaperBackend.saveTargetSize]
-     * 必须逐条一致 —— 共享层 save 先按策略缩一次，这里的 encode 链路会再判一次，
-     * 策略幂等（对已处理的图返回原尺寸）才不会二次丢像素。
+     * 保存前缩放策略：cover 到屏幕，只缩不扩，长边封顶 2×屏幕长边。
+     * ⚠ 必须与 [WallpaperBackend.saveTargetSize] 逐条一致：共享层 save 先缩一次、encode 再判一次，
+     * 策略须幂等（已处理图返回原尺寸）才不二次丢像素。
      */
     private fun scaleWallpaperForSave(bitmap: Bitmap, targetW: Int, targetH: Int): Bitmap {
         if (bitmap.width <= 0 || bitmap.height <= 0) return bitmap
@@ -522,7 +460,7 @@ object ScheduleAppearance {
             val (targetW, targetH) = wallpaperTargetBounds()
             val scaled = scaleWallpaperForSave(bitmap, targetW, targetH)
             val file = File(appContext.filesDir, WALLPAPER_FILE)
-            // 旧的 CompressFormat.WEBP 在 API 30 起被 WEBP_LOSSY 取代，语义等价（都是有损）
+            // API 30 起 WEBP 被 WEBP_LOSSY 取代，语义等价（均有损）
             val webpFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 CompressFormat.WEBP_LOSSY
             } else {

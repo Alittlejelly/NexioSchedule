@@ -9,19 +9,11 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 
 /**
- * Android 实现 —— 直接包住 androidx.navigationevent，逻辑逐字照搬 fork 原用法。
+ * Android 实现：直接包住 androidx.navigationevent，逻辑逐字照搬 fork 原用法。
  *
- * 关键：**handler 与进度读取共用同一个 `navigationEventState`**。原 fork 就是这么写的：
- * ```
- * val navigationEventState = rememberNavigationEventState(NavigationEventInfo.None)
- * NavigationBackHandler(state = navigationEventState, …)
- * snapshotFlow { navigationEventState.transitionState }
- * ```
- * 若拆成两处各自 remember，就会拿到两个独立对象 —— handler 收到手势，
- * 而读取进度的那个 state 永远不动，跟手动画完全失效（且编译无任何报错）。
- *
- * 「低版本退化为立即关闭」是 navigationevent 自身的行为：老平台没有预测性返回手势，
- * onBackCancelled 不会被调用，所以各调用点的状态机仍要能只靠 onBackCompleted 正常关闭。
+ * handler 与进度读取必须共用同一个 `navigationEventState`；若各 remember 一份，
+ * 手势会被 handler 收到而进度 state 不动，跟手动画静默失效（编译无报错）。
+ * 低版本无预测性返回手势、onBackCancelled 不触发，状态机仍需靠 onBackCompleted 关闭。
  */
 @Composable
 actual fun rememberNavigationBack(): NavigationBackState {

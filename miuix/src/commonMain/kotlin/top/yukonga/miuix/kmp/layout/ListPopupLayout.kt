@@ -88,9 +88,8 @@ private fun PopupPositionProvider.Align.resolve(layoutDirection: LayoutDirection
 /**
  * 下拉弹窗相对锚点的补偿量。
  *
- * **必须是 [Dp]，不能写死 px**：px 是设备相关的，同一个数值在 3x 机型上等于 8dp，
- * 在 4x 机型上只有 6dp（差 2dp），在 2.75x 上是 8.7dp —— 换机就错位。
- * 下面两个值就是原先 `24`/`18` px 在 3x 机型上的等效 dp，视觉不变。
+ * **必须是 [Dp]，不能写死 px**：px 设备相关，同一数值在 3x/4x/2.75x 机型上各算作
+ * 8/6/8.7dp —— 换机就错位。下面两值即原先 24/18px 在 3x 上的等效 dp，视觉不变。
  */
 private val LiquidDropdownAnchorOffsetX = 7.dp
 private val LiquidDropdownAnchorOffsetY = 5.dp
@@ -354,8 +353,7 @@ fun ListPopupLayout(
                         val windowBounds = layoutInfo.windowBounds
                         val popupMargin = layoutInfo.popupMargin
                         val minHeightPx = LocalMinPopupHeight.roundToPx()
-                        // chrome = 弹窗外一圈非面板留白（每边 shadowPadding + overshootRoom）。
-                        // maxHeight、measuredSize、place 三处必须扣同一个量，少扣一处就整体偏移。
+                        // maxHeight、measuredSize、place 三处必须扣同一个 chrome 量，少扣一处就整体偏移
                         val chromePadPx = (2 * chromePaddingPx).roundToInt()
                         val chromeOffPx = chromePaddingPx.roundToInt()
                         val placeable = measurable.measure(
@@ -388,8 +386,7 @@ fun ListPopupLayout(
                         val (_, transformOrigin) = resolvePopupAnchors(
                             positionResult, calculatedOffset, measuredSize, parentBounds, alignment, layoutDirection,
                         )
-                        // 写普通 holder 而非 state：state 要下一帧才生效，draw 会先用错一帧，
-                        // 导致 panelRect 的锚点分支选错（位置差一整个面板宽）。
+                        // 写普通 holder 而非 state：state 下一帧才生效，draw 先用错一帧会选错锚点分支（差一整个面板宽）
                         popupAnchors.right = transformOrigin.pivotFractionX >= 0.5f
                         popupAnchors.bottom = transformOrigin.pivotFractionY >= 0.5f
 

@@ -14,13 +14,12 @@ import kotlin.test.assertTrue
  *
  * ## 为什么是「契约」而不是「功能」
  *
- * 本地起不了 WebDAV 服务器，所以没法端到端测。而 WebDAV 的失败方式恰恰是
+ * 本地起不了 WebDAV 服务器，没法端到端测；而 WebDAV 的失败方式恰恰是
  * 「编译全绿、真机才发现」那类：方法名写错（PROPFIND vs POST）、少一个 `Depth` 头、
  * 认证头拼错 —— 全部只在连真服务器时才暴露。
  *
- * 所以这里塞一个**记录请求的假 [HttpService]**，把「发出去的请求长什么样」逐条钉死：
+ * 所以塞一个**记录请求的假 [HttpService]**，把「发出去的请求长什么样」逐条钉死：
  * 方法 / URL / `Authorization` / `Depth` / body / contentType。
- * 换实现时只要这些不变，线上行为就不会变。
  */
 class WebDavManagerContractTest {
 

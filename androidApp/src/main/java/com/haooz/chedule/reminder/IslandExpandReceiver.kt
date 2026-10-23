@@ -5,8 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.haooz.chedule.data.NexioLog
 /**
- * 超级岛展开态触发器
- * 倒计时结束后发送广播，触发展开态弹出
+ * 超级岛展开态触发器：倒计时结束后发广播触发展开态弹出。
  */
 class IslandExpandReceiver : BroadcastReceiver() {
 
@@ -26,9 +25,8 @@ class IslandExpandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         NexioLog.d(TAG, "Received island expand broadcast")
 
-        // 闹钟可能因为 Doze 严重延迟，等它到达时岛上已经是另一门课的倒计时了。
-        // 这里校验开始时间是否仍与当前岛状态一致，不一致说明是迟到的旧闹钟，直接丢弃。
-        // 测试岛与真实岛有独立 PREF，按 notificationId 选择对应的 state。
+        // 闹钟可能因 Doze 严重延迟，到达时岛已是另一门课倒计时。校验开始时间仍与当前岛状态一致，
+        // 不一致即迟到旧闹钟直接丢弃。测试岛与真实岛独立 PREF，按 notificationId 选对应 state。
         val notificationId2 = intent.getIntExtra(EXTRA_NOTIFICATION_ID, IslandNotificationHelper.ISLAND_NOTIFICATION_ID)
         val expectedStart = intent.getLongExtra(EXTRA_COURSE_START_MILLIS, -1L)
         if (expectedStart > 0L) {

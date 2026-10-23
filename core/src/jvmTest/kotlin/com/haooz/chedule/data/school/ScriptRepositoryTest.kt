@@ -13,11 +13,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * [ScriptRepository] 迁移等价性验证。
- *
- * 这个类是从 `:app` 搬进 `:core` 的，过程中换了三样东西：
- * `Context.filesDir` → [AppFiles]、`SharedPreferences` → [AppStorage]、OkHttp → [HttpService]。
- * 所以必须验证的不是「能编译」，而是**分支行为没变**：
+ * [ScriptRepository] 迁移等价性验证：验证的不是「能编译」，而是**分支行为没变**。
  *
  * - 防盗链跟随（`isGiteeAntiHotlinkPage` / `extractGiteeSignedUrl` / `remoteBase` 的 `.git` 处理）
  * - 版本比较的三个分支（更新 / 相同 / 更旧）

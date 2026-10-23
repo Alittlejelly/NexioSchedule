@@ -9,24 +9,14 @@ import kotlin.test.assertTrue
 /**
  * **全量备份的「导出 → 导入 → 导出」逐字回归** —— 文档「阶段 2.3 数据兼容红线」要求的那一条。
  *
- * ## 为什么以前做不了、现在能做了
- *
- * 这条测试需要 `CourseRepository.exportAllPreferences()` / `importAllPreferences()`，
- * 而它们原先在 `:app`（没有测试源集）。把 `CourseRepository` 下沉到 `:core` 之后，
- * 它就能用 `InMemoryKeyValueStore` 直接测了 —— **这是搬它的最大回报**。
- *
- * ## 断言
- *
- * 1. 把真实备份的内容灌进 prefs → `exportAllPreferences()` 必须**还原出同一份备份**
- * 2. `importAllPreferences(备份)` → 再 `exportAllPreferences()` 必须与第一次导出**完全一致**
- *    （即「二次导出 == 首次导出」）
+ * 断言：① 真实备份灌进 prefs → `exportAllPreferences()` 还原出同一份备份；
+ * ② `importAllPreferences(备份)` 后再导出，与首次导出**完全一致**（再走一轮仍稳定）。
  *
  * ## 比较方式：语义相等，不是字符串相等
  *
- * 按「⑪-a」的实测结论，JSON 字段顺序不是契约（release 构建的 R8 会重排字段），
- * 所以这里把两侧都归一成「数字统一 Double、Set 转 List」的 Map 再比。
- * 备份里的**原始串**（`schedule_{名}_courses` 等）是逐字透传的，不会被重新序列化 ——
- * 这一点由断言 1 直接覆盖。
+ * JSON 字段顺序不是契约（release 的 R8 会重排字段），故两侧都归一成「数字统一 Double、
+ * Set 转 List」的 Map 再比。备份里的**原始串**（`schedule_{名}_courses` 等）逐字透传，
+ * 不被重新序列化 —— 由断言 ① 直接覆盖。
  *
  * ⚠ 本文件不入库（用户长期要求）。依赖本机存在那份真实备份，不在时跳过并打印警告。
  */

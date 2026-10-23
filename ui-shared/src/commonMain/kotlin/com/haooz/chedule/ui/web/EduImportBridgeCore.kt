@@ -18,11 +18,9 @@ import kotlinx.serialization.json.JsonObject
 class EduBridgeReject(message: String) : Exception(message)
 
 /**
- * 教务导入桥的跨平台内核：四类负载（课程 / 配置 / 时间段 / 组合作息）的解析、落盘与
- * 调用顺序约束都在这里，Android 与 iOS 共用一份（两端各写一遍必然漂移）。
+ * 教务导入桥的跨平台内核：四类负载（课程 / 配置 / 时间段 / 组合作息）的解析、落盘与调用顺序约束都在此，Android 与 iOS 共用一份（两端各写一遍必然漂移）。
  *
- * ⚠ 与云端脚本仓库是契约：JSON 字段名、[PREFS_NAME] 键名、默认值（20 / 45 / 10 / 1）
- * 逐字不能改，改了存量用户的作息配置会静默错位。
+ * ⚠ 与云端脚本仓库是契约：JSON 字段名、[PREFS_NAME] 键名、默认值（20 / 45 / 10 / 1）逐字不能改，改了存量用户的作息配置会静默错位。
  *
  * 平台侧只留三件事：调用 [handle]、兑现 Promise、对话框三件套与 toast。
  */
@@ -34,8 +32,7 @@ class EduImportBridgeCore(
     /** 本次导入的目标课表；null = 当前课表 */
     private var importTableId: String? = null
 
-    // 组合作息的顺序状态（契约 2.1.5 / 2.1.7）：saveComboSchedule 需以已提交的基础时间段为骨架；
-    // combo 提交后本次不再接受 savePresetTimeSlots（否则方案绑定被覆盖）。
+    // 组合作息的顺序状态（契约 2.1.5 / 2.1.7）：saveComboSchedule 需以已提交的基础时间段为骨架；combo 提交后本次不再接受 savePresetTimeSlots（否则方案绑定被覆盖）。
     // ⚠ 只在 [setImportTableId]（每次执行前必调）重置，不靠页面生命周期（会跨轮次残留）。
     private var baseTimeSlotsSaved = false
     private var comboSaved = false

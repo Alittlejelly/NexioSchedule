@@ -1,23 +1,15 @@
 /**
- * 全局卡片「出现 / 消失」动效
+ * 全局卡片「出现 / 消失」动效。
  *
- * ## 两种用法
+ * 两种用法：[CardReveal]（首选，直接包住卡片）或 [rememberCardRevealState]（卡片已有 `graphicsLayer` 时自写图层，参数同一份）。
  *
- * - [CardReveal]：**首选**。直接包住卡片，位移/缩放/透明度都由它算。
- * - [rememberCardRevealState]：卡片自己已经有 `graphicsLayer`（比如还要挂
- *   `onGloballyPositioned` / `animateItem`）时用这个，拿进度自己写图层，参数仍是同一份。
+ * 约定：
+ * 1. 稳态零代价：停稳后撤掉 `graphicsLayer`，静态只剩 `Box`。
+ * 2. 不在组合期读进度：只在绘制阶段读，整段零重组（仅一个「是否还在动」布尔在起止各翻一次）。
+ * 3. 始终参与布局：只做透明/位移/缩放，勿换 `AnimatedVisibility`（收拢尺寸会让外层 `wrapContentHeight` 逐帧变高、弹窗闪烁）。
+ * 4. 错开由 [index] 负责：入场延迟 = `START_DELAY_MILLIS + index × STEP_DELAY_MILLIS`。
  *
- * ## 四条约定
- *
- * 1. **稳态零代价**：[CardReveal] 停稳后把 `graphicsLayer` 整块撤掉，静态时只剩一个 `Box`。
- * 2. **不在组合期读进度**：进度只在 `graphicsLayer` 的绘制阶段读，整段动画**零重组**
- *    （只有一个「是否还在动」的布尔在起止各翻一次）。
- * 3. **始终参与布局**：卡片全程占位，只做透明 / 位移 / 缩放。不要换成
- *    `AnimatedVisibility` —— 收拢尺寸会让外层 `wrapContentHeight` 逐帧变高，弹窗闪烁。
- * 4. **错开由 [index] 负责**：入场延迟 = `START_DELAY_MILLIS + index × STEP_DELAY_MILLIS`，
- *    页面不必再自己维护 `revealStep` / `revealCount` 计数器与 `LaunchedEffect` 循环。
- *
- * ⚠ 入场延迟只在**首次**出现时生效；之后 `visible` 反复切换一律立即开始，避免「删一个又等一轮」。
+ * ⚠ 入场延迟只在**首次**出现时生效；之后 `visible` 反复切换立即开始，避免「删一个又等一轮」。
  */
 package com.haooz.chedule.ui.components
 

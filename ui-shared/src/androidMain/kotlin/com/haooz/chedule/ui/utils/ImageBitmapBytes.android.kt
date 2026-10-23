@@ -9,8 +9,7 @@ import java.io.ByteArrayOutputStream
 
 internal actual fun encodeImageBitmapPng(image: ImageBitmap): ByteArray? = runCatching {
     val src = image.asAndroidBitmap()
-    // `GraphicsLayer.toImageBitmap()`（以及原生裁剪出来的）在 Android 上是 **HARDWARE** 位图，
-    // `compress()` 读不到它的像素；先 copy 成 ARGB_8888 软件位图（copy 对硬件源走 native 读回）。
+    // Android 上 toImageBitmap()/原生裁剪产出 HARDWARE 位图，compress() 读不到像素，先 copy 成 ARGB_8888
     val software = if (src.config == Bitmap.Config.HARDWARE) {
         src.copy(Bitmap.Config.ARGB_8888, false)
     } else {

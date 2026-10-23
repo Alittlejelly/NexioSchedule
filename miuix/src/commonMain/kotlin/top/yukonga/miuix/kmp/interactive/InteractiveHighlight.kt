@@ -146,9 +146,8 @@ half4 main(float2 coord) {
                     pos.x.fastCoerceIn(0f, size.width),
                     pos.y.fastCoerceIn(0f, size.height)
                 )
-                // 深色恒 0.15；浅色默认 0.05（有壁纸的今日/课程表页 0.1），
-                // 调用方可用 lightPeakAlpha 直接覆盖整个浅色档。
-                // 主题与页面信号都是 draw 阶段可读的全局快照。
+                // 深色恒 0.15；浅色默认 0.05（有壁纸的页面 0.1），调用方可用
+                // lightPeakAlpha 覆盖整个浅色档；主题与页面信号均为 draw 阶段可读的全局快照。
                 val peak = (
                     if (AppThemeSnapshot.isDark.value) 0.15f
                     else lightPeakAlpha
@@ -172,10 +171,9 @@ half4 main(float2 coord) {
                         blendMode = BlendMode.Plus
                     )
                 } else {
-                    // 无 RuntimeShader（API<33）：改画径向渐变而非整块平铺。
-                    // 平铺没有圆形边界，在「只要圆形光晕」的场景就是一整屏白。
-                    // 半径与 shader 分支同源，但收边比 shader 宽（shader 在
-                    // radius→radius*0.5 收边，这里是整段渐隐），观感略散。
+                    // 无 RuntimeShader（API<33）：平铺无圆形边界，「只要圆形光晕」
+                    // 的场景会成一整屏白，故改画径向渐变；半径与 shader 分支同源，
+                    // 但整段渐隐收边更宽，观感略散。
                     drawRect(
                         brush = Brush.radialGradient(
                             center = haloCenter,
@@ -238,7 +236,6 @@ half4 main(float2 coord) {
                 animationScope.launch {
                     pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec)
                 }
-                // 等待所有手指释放
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Final)
                 } while (event.changes.any { it.pressed })

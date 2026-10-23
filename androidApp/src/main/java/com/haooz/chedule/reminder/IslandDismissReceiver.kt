@@ -6,9 +6,7 @@ import android.content.Intent
 import com.haooz.chedule.data.NexioLog
 /**
  * 超级岛"已上课"自动收起触发器。
- *
- * 之前收起只由每分钟的刷新链对账完成，最坏要等一整分钟才消失（用户反馈"已上课过好久才消失"）；
- * 且进程被杀后刷新链若未重启就永远收不起来。这里改用精确闹钟，展示时长一到立即收起。
+ * 之前只靠每分钟刷新链收起，最坏等一整分钟；进程被杀未重启就永远收不起。改用精确闹钟，时长一到立即收起。
  */
 class IslandDismissReceiver : BroadcastReceiver() {
 

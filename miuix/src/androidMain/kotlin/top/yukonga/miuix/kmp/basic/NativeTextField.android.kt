@@ -62,22 +62,18 @@ actual fun NativeTextField(
                 val weight = textStyle.fontWeight?.weight ?: FontWeight.Medium.weight
                 applyWeightedTypeface(typeface, weight)
 
-                // 设置输入类型
                 inputType = InputType.TYPE_CLASS_TEXT
 
-                // 设置文本对齐
                 textAlignment = when (textAlign) {
                     TextAlign.Center -> EditText.TEXT_ALIGNMENT_CENTER
                     TextAlign.End, TextAlign.Right -> EditText.TEXT_ALIGNMENT_VIEW_END
                     else -> EditText.TEXT_ALIGNMENT_VIEW_START
                 }
 
-                // 设置最大长度
                 if (maxLength < Int.MAX_VALUE) {
                     filters = arrayOf(InputFilter.LengthFilter(maxLength))
                 }
 
-                // 设置 imeOptions
                 imeOptions = EditorInfo.IME_ACTION_DONE
 
                 // 设置背景为透明，去掉默认内边距
@@ -90,7 +86,6 @@ actual fun NativeTextField(
                 // 设置选中文本的背景高亮颜色
                 highlightColor = themeColor.copy(alpha = 0.2f).toArgb()
 
-                // 添加 TextWatcher
                 addTextChangedListener(textWatcher)
             }
         },

@@ -21,17 +21,11 @@ val LocalAppRouter = staticCompositionLocalOf<AppRouter> {
 enum class NavDirection { Push, Pop }
 
 /**
- * 子页叠加路由器：主界面（`CourseScheduleApp`）**永远保持组合**、不参与路由的
- * save/restore，子页以叠加层压在其上；**栈内全部子页整栈常驻**，出栈时组合才销毁
- *（saveable 状态由 `SaveableStateHolder` 托管，见 [AppNavHost]）。
- * 静止时底层页暂停绘制 —— 等价 Activity back stack：实例全活着，stop 的不画。
+ * 子页叠加路由器：主界面（`CourseScheduleApp`）永远保持组合、不参与路由 save/restore，子页以叠加层压在其上；栈内子页整栈常驻，出栈才销毁组合（saveable 状态由 `SaveableStateHolder` 托管，见 [AppNavHost]）。静止时底层页暂停绘制，等价 Activity back stack。
  *
- * ⚠ 主界面不能塞进 `AnimatedContent` + `SaveableStateHolder`：`rememberSaveable` 救得回来，
- * `remember { mutableStateOf }` 救不回来 —— `CourseScheduleApp` 里有大量这类状态，
- * 丢了就是「切到设置再回来 pager 位置变了」。
+ * ⚠ 主界面不能塞进 `AnimatedContent` + `SaveableStateHolder`：`rememberSaveable` 救得回，`remember { mutableStateOf }` 救不回，`CourseScheduleApp` 里大量此类状态会丢（切设置再回来 pager 位置变了）。
  *
- * 通过 [rememberAppRouter] 创建，用 `rememberSaveable` 保存**当前栈**，配置变更/进程被杀
- * 后重建都能回到原来的页面。只在主线程（Compose 组合）里改。
+ * 用 [rememberAppRouter] 创建，`rememberSaveable` 保存当前栈，配置变更/进程被杀后都能回到原页面。只在主线程（组合）改。
  */
 @Stable
 class AppRouter {
@@ -73,9 +67,7 @@ class AppRouter {
     val routes: List<AppRoute> get() = stack
 
     /**
-     * 入栈
-     * 挡「已在栈顶」：A → B → A 是合法路径，非栈顶的同名路由照样能入栈，
-     * 所以 [layerKeys] 的裸 id / `#2` / `#3` 去重还得留着。
+     * 入栈。只挡「已在栈顶」：A → B → A 合法，非栈顶同名路由照样入栈，故 [layerKeys] 的裸 id/`#2`/`#3` 去重仍需保留。
      */
     fun navigate(route: AppRoute) {
         if (nativeRouteHandler?.invoke(route) == true) return

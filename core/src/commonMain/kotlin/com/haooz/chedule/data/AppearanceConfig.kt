@@ -1,17 +1,9 @@
 package com.haooz.chedule.data
 
 /**
- * 课表外观配置：全部可调参数收敛为不可变值对象。
- *
- * 取代原先分散的 N 个字段 × 4 份状态（cached/live/saved/original）的写法，
- * 避免手工同步遗漏导致的 bug。
- *
- * ⚠️ 2026-10-11 从 `:androidApp` 的 `data/ScheduleAppearance.kt` 拆到 `:core` ——
- * `MainScheduleScreen` 迁入 `:ui-shared` 后作为页面参数类型需要跨平台可见；
- * 本类是纯数据（Float/Boolean/三个 :core 枚举），拆分零风险。
- * `fromCombination` 曾以 **companion 扩展**留在 `ScheduleAppearance.kt`（依赖含 Bitmap 的
- * android 版 `Combination`），已随迁移完成删除 —— 现役实现在 `:ui-shared`
- * 的 `CourseScheduleAppTypes.kt`，参数是跨平台的 `ScheduleCombination`。
+ * 课表外观配置：全部可调参数收敛为不可变值对象，取代原先 N 字段 × 4 状态的写法以避免手工同步遗漏。
+ * ⚠️ 从 `:androidApp` 拆到 `:core`（页面参数需跨平台可见），纯数据拆分零风险；
+ * 原 android 版 `fromCombination` 已删除，现役在 `:ui-shared` 的 `CourseScheduleAppTypes.kt`。
  */
 data class AppearanceConfig(
     val cardBlurRadius: Float = 4f,

@@ -12,11 +12,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 
 /**
- * Android：自由窗口固定 20dp；Android 12+ 分别读系统四个真实圆角；更老的系统返回 0（不裁切）。
+ * Android：自由窗口固定 20dp；Android 12+ 读系统四角真实圆角；更老系统返回 0（不裁切）。
  *
- * ⚠ remember key 必须含窗口尺寸（containerSize）：只挂 context/density 的话，全屏时缓存了
- *   屏幕物理圆角，进出小窗不会重算 —— 表现为页面间转场不裁 20dp，而「进小窗之后才 push」
- *   的二级页首次组合恰好缓存到 20dp，出现「有的页有、有的页没有」。
+ * ⚠ remember key 必须含 containerSize：否则只挂 context/density 时全屏会缓存屏幕物理圆角，
+ *   进出小窗不重算，导致「有的页裁、有的页不裁」。
  */
 @Composable
 actual fun rememberScreenCornerRadiiPx(): ScreenCornerRadiiPx {

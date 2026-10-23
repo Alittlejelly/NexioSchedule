@@ -9,18 +9,14 @@ import kotlin.test.assertTrue
 /**
  * `TeachingWeekReorganization.encode/decode` 的**持久化格式回归**。
  *
- * ## 为什么必须有
- *
- * 这两个函数原来用 **Gson**（`gson.toJson(toBackupValue(rules))` /
- * `gson.fromJson<Map<String, Any>>(raw, TypeToken…)`）。下沉 `:core` 时换成了
- * `JsonSupport`（kotlinx-serialization），而**它们的输出会落盘、会进备份文件** ——
+ * 这两个函数原来用 **Gson**，下沉 `:core` 时换成了 `JsonSupport`
+ * （kotlinx-serialization），而**它们的输出会落盘、会进备份文件** ——
  * 换 JSON 库等于换持久化格式，属于数据兼容红线。
  *
  * ## 基准是怎么来的（不是猜的）
  *
- * 下面那些字面量是用**真实的 Gson 2.11.0** 跑 `toJson(toBackupValue(...))` 打出来的
- * （`java -cp gson-2.11.0.jar Probe.java`），逐字抄进来的。所以这些断言等于
- * 「新旧实现在同一份输入上输出完全一致」的机械证明。
+ * 字面量是用**真实的 Gson 2.11.0** 跑 `toJson(toBackupValue(...))` 打出来的，逐字抄进来。
+ * 所以这些断言等于「新旧实现在同一份输入上输出完全一致」的机械证明。
  *
  * ⚠ 本文件不入库（用户长期要求）。
  */

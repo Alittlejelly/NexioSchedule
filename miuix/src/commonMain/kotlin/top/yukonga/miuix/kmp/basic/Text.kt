@@ -34,18 +34,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * A [Text] component with Miuix style.
  *
- * High level element that displays text and provides semantics / accessibility information.
+ * The default [style] uses [LocalTextStyles.current.main]; when overriding, prefer
+ * [TextStyle.copy] on the current style to keep theme-defined attributes.
  *
- * The default [style] uses [LocalTextStyles.current.main]. If you are setting your own style, you
- * may want to consider first retrieving the current style, and using [TextStyle.copy] to keep any
- * theme defined attributes, only modifying the specific attributes you want to override.
- *
- * For ease of use, commonly used parameters from [TextStyle] are also present here. The order of
- * precedence is as follows:
- * - If a parameter is explicitly set here (i.e, it is _not_ `null` or [TextUnit.Unspecified]), then
- *   this parameter will always be used.
- * - If a parameter is _not_ set, (`null` or [TextUnit.Unspecified]), then the corresponding value
- *   from [style] will be used instead.
+ * Commonly used [TextStyle] parameters are also present here: a parameter explicitly set here
+ * (not `null` or [TextUnit.Unspecified]) takes precedence, otherwise the [style] value is used.
  *
  * Additionally, for [color], if [color] is not set, and [style] does not have a color, then
  * [LocalContentColor] will be used.
@@ -136,18 +129,11 @@ fun Text(
 /**
  * A [Text] component with Miuix style.
  *
- * High level element that displays text and provides semantics / accessibility information.
+ * The default [style] uses [LocalTextStyles.current.main]; when overriding, prefer
+ * [TextStyle.copy] on the current style to keep theme-defined attributes.
  *
- * The default [style] uses [LocalTextStyles.current.main]. If you are setting your own style, you
- * may want to consider first retrieving the current style, and using [TextStyle.copy] to keep any
- * theme defined attributes, only modifying the specific attributes you want to override.
- *
- * For ease of use, commonly used parameters from [TextStyle] are also present here. The order of
- * precedence is as follows:
- * - If a parameter is explicitly set here (i.e, it is _not_ `null` or [TextUnit.Unspecified]), then
- *   this parameter will always be used.
- * - If a parameter is _not_ set, (`null` or [TextUnit.Unspecified]), then the corresponding value
- *   from [style] will be used instead.
+ * Commonly used [TextStyle] parameters are also present here: a parameter explicitly set here
+ * (not `null` or [TextUnit.Unspecified]) takes precedence, otherwise the [style] value is used.
  *
  * @param text the text to be displayed
  * @param color the [ColorProducer] that returns a [Color]. Useful when providing a color value that
@@ -233,18 +219,11 @@ fun Text(
 /**
  * A [Text] component with Miuix style.
  *
- * High level element that displays text and provides semantics / accessibility information.
+ * The default [style] uses [LocalTextStyles.current.main]; when overriding, prefer
+ * [TextStyle.copy] on the current style to keep theme-defined attributes.
  *
- * The default [style] uses [LocalTextStyles.current.main]. If you are setting your own style, you
- * may want to consider first retrieving the current style, and using [TextStyle.copy] to keep any
- * theme defined attributes, only modifying the specific attributes you want to override.
- *
- * For ease of use, commonly used parameters from [TextStyle] are also present here. The order of
- * precedence is as follows:
- * - If a parameter is explicitly set here (i.e, it is _not_ `null` or [TextUnit.Unspecified]), then
- *   this parameter will always be used.
- * - If a parameter is _not_ set, (`null` or [TextUnit.Unspecified]), then the corresponding value
- *   from [style] will be used instead.
+ * Commonly used [TextStyle] parameters are also present here: a parameter explicitly set here
+ * (not `null` or [TextUnit.Unspecified]) takes precedence, otherwise the [style] value is used.
  *
  * Additionally, for [color], if [color] is not set, and [style] does not have a color, then
  * [LocalContentColor] will be used.
@@ -342,18 +321,11 @@ fun Text(
 /**
  * A [Text] component with Miuix style.
  *
- * High level element that displays text and provides semantics / accessibility information.
+ * The default [style] uses [LocalTextStyles.current.main]; when overriding, prefer
+ * [TextStyle.copy] on the current style to keep theme-defined attributes.
  *
- * The default [style] uses [LocalTextStyles.current.main]. If you are setting your own style, you
- * may want to consider first retrieving the current style, and using [TextStyle.copy] to keep any
- * theme defined attributes, only modifying the specific attributes you want to override.
- *
- * For ease of use, commonly used parameters from [TextStyle] are also present here. The order of
- * precedence is as follows:
- * - If a parameter is explicitly set here (i.e, it is _not_ `null` or [TextUnit.Unspecified]), then
- *   this parameter will always be used.
- * - If a parameter is _not_ set, (`null` or [TextUnit.Unspecified]), then the corresponding value
- *   from [style] will be used instead.
+ * Commonly used [TextStyle] parameters are also present here: a parameter explicitly set here
+ * (not `null` or [TextUnit.Unspecified]) takes precedence, otherwise the [style] value is used.
  *
  * @param text the text to be displayed
  * @param color the [ColorProducer] that returns a [Color]. Useful when providing a color value that

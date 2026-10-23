@@ -14,12 +14,9 @@ import kotlin.test.assertEquals
  * - `findWorkSwap(date)`：只扫 type=1，**优先返回配了 follow 映射的那条**，都没有才用第一条
  * - `resolveDisplayDayKey`：`if (findHolidayEntry(date, 0)) return -1` —— **假期无条件压倒调休**
  *
- * 手机端同款口径（`HolidayCourseExclusion.resolveDayCourses`）：
- * `isHolidayDate = entriesForDate(date).any { type == TYPE_HOLIDAY }` → 有假期就空课表；
- * 调休取 `entriesForDate(date).firstOrNull { type == TYPE_WORKSWAP }`。
- *
- * 所以真正的对齐条件是两条：
- * 1. **假期判定**：手机端「有没有 type=0 命中」== 手环端「有没有 type=0 命中」（与顺序无关）
+ * 手机端同款口径（`HolidayCourseExclusion.resolveDayCourses`）：有 type=0 就空课表，
+ * 调休取首条 type=1。所以真正的对齐条件是两条：
+ * 1. **假期判定**：两端「有没有 type=0 命中」一致（与顺序无关）
  * 2. **调休选取**：手机端首条 type=1 == 手环端 `findWorkSwap` 的结果
  */
 class HolidayEntriesForWatchBandTest {

@@ -41,10 +41,9 @@ private const val TAG = "WallpaperPicker"
  *
  * ## 三个必须记住的点
  *
- * 1. **必须用 `loadDataRepresentation…`，不能用 `loadItemForTypeIdentifier`**：
- *    后者对相册图返回 `PLSandboxedURL`（Photos 的沙盒 URL），拿它的 `path` 去
- *    `NSData.dataWithContentsOfFile(...)` 读出来是 **0 字节**（App 没有那个沙盒的读权限，
- *    也不是 security-scoped）—— 表现就是「选完图没反应」。前者由系统把数据读好再交给我们。
+ * 1. **必须用 `loadDataRepresentation…`，不能用 `loadItemForTypeIdentifier`**：后者对相册图
+ *    返回 `PLSandboxedURL`（Photos 沙盒 URL），拿 `path` 读出来是 **0 字节**（App 没有那个沙盒的
+ *    读权限、也不是 security-scoped）—— 表现就是「选完图没反应」；前者由系统读好数据再交给我们。
  * 2. **必须在 iOS 侧降采样**：共享层的 `applyPickedWallpaper` 拿到位图后**直接原样用**
  *    （只算 `minScale` 做显示缩放，不重采样），Android 是靠宿主在解码阶段三级降采样压内存的。
  *    相册原图动辄 4000×3000，不降采样直接把内存顶爆。
@@ -52,9 +51,8 @@ private const val TAG = "WallpaperPicker"
  *    而解码用的 `UIGraphics*` / `UIScreen` 是 UIKit 的图形 API（非线程安全），
  *    且共享层会写 Compose 状态 —— 后台跑会静默失败或崩。
  *
- * ⚠ 另：不能用 `loadObjectOfClass(UIImage, …)` —— 它要 `Class<NSItemProviderReading>`
- * 协议对象，Kotlin/Native 侧只能硬转：编译期只报「This cast can never succeed」警告，
- * **运行期直接抛**。
+ * ⚠ 另：不能用 `loadObjectOfClass(UIImage, …)`：它要 `Class<NSItemProviderReading>` 协议对象，
+ * Kotlin/Native 侧只能硬转 —— 编译期只报「This cast can never succeed」警告，**运行期直接抛**。
  */
 class IosWallpaperPicker {
 
@@ -196,9 +194,8 @@ class IosWallpaperPicker {
         /**
          * 按比例把原图缩到不超过屏幕像素（`UIGraphics` 经典路径）。
          *
-         * ⚠ 不用 `preparingThumbnailOfSize`：那个 API（iOS 15+）在 Kotlin/Native 的
-         * UIKit 绑定里没生成（实测 Unresolved reference）。`UIGraphics*` 这组是
-         * iOS 2 起就有的老 API，绑定齐全且行为稳定。
+         * ⚠ 不用 `preparingThumbnailOfSize`：该 API（iOS 15+）在 Kotlin/Native 的 UIKit 绑定里
+         * 没生成（实测 Unresolved reference）；`UIGraphics*` 是 iOS 2 起的老 API，绑定齐全且稳定。
          */
         private fun downscale(image: UIImage, maxW: Double, maxH: Double): UIImage {
             var w = 0.0

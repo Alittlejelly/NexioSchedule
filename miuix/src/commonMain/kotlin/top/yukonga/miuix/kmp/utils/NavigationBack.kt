@@ -1,15 +1,9 @@
-// 返回键预测 —— 跨平台封装（navigationevent 的唯一用途）
+// 返回键预测 —— 跨平台封装（navigationevent 的唯一用途）。
 //
-// 背景：Miuix fork 在 6 个文件里用 androidx.navigationevent 做两件事：
-//   ① NavigationBackHandler —— 接收系统返回键 / 预测性返回手势
-//   ② navigationEventState.transitionState —— 读「转场进行中且方向为后退」，
-//      用于在用户滑到一半松手时取消关闭（可回退的退场动画）
-//
-// navigationevent 是 AndroidX 库，CMP 的 iOS / Desktop artifact 里没有。
-// 上游 0.9.3 同样没解决（commonMain 里直接 import 了 22 处，靠 Android artifact 兜底），
-// 这里把它收成一个最小 expect 接口，commonMain 不再直接依赖 AndroidX。
-//
-// Android 实现逐字保留原逻辑（含 onBackCancelled 分支），保证 Android 行为零变化。
+// androidx.navigationevent 是 AndroidX 库，CMP 的 iOS / Desktop artifact 里没有；
+// 上游 fork 曾在 commonMain 直接 import 22 处、靠 Android artifact 兜底。
+// 这里收成一个最小 expect 接口，commonMain 不再直接依赖 AndroidX；
+// Android 实现逐字保留原逻辑（含 onBackCancelled 分支），行为零变化。
 
 package top.yukonga.miuix.kmp.utils
 
@@ -27,13 +21,11 @@ class BackHandlerScope(
  *
  * ⚠ **[handler] 与本对象里的进度读取必须来自同一次 [rememberNavigationBack]。**
  *
- * 原 fork 的写法是「**一个** `navigationEventState` 同时喂给 `NavigationBackHandler`
- * 和 `transitionState` 读取」—— 两者必须是同一个对象，否则 handler 收到的手势进度
+ * 原 fork 由**一个** `navigationEventState` 同时喂 `NavigationBackHandler`
+ * 和 `transitionState` 读取——必须是同一对象，否则 handler 收到的手势进度
  * 不会出现在另一个 state 上，跟手动画永远不动。
- *
- * 迁移时一度把它拆成两个独立的 expect 函数，各自 `rememberNavigationEventState()`，
- * 于是拿到两个不同对象 —— **编译全绿，Android 上预测性返回完全失效**。
- * 现在把 handler 收进本类，两个职责绑在同一份状态上，从签名上杜绝这种拆错。
+ * 迁移时曾拆成两个独立 expect 函数，编译全绿但 Android 预测性返回完全失效；
+ * 现在把 handler 收进本类，从签名上杜绝拆错。
  */
 class NavigationBackState(
     val isTransitioningBack: () -> Boolean,

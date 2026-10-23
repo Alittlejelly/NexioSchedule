@@ -23,12 +23,9 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 
 /**
- * ⚠ 原来继承 `AndroidViewModel(application)`，只为拿 `Context` 去调提醒服务 /
- * 小组件 / 手表三者 —— 现在这三件事全走 `:core` 的 [ScheduleEffects] 出口，
- * 由 `NexioApplication` 注入 `AndroidScheduleEffects` 接手，这里不再需要 Application。
+ * ⚠ 原继承 `AndroidViewModel(application)` 只为拿 `Context` 调提醒/小组件/手表，现三者全走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入 `AndroidScheduleEffects`），不再需要 Application。
  *
- * 保持**无参构造**很重要：调用点几乎都用 AndroidX 的 `viewModel()`（默认工厂
- * 只认无参构造），改成带参就得给每个调用点写自定义 Factory。
+ * 保持无参构造：调用点几乎都用 AndroidX `viewModel()`（默认工厂只认无参），改成带参就得给每个调用点写自定义 Factory。
  */
 class CourseViewModel : ViewModel() {
 
@@ -127,10 +124,7 @@ class CourseViewModel : ViewModel() {
     /**
      * 只在「会影响课表渲染的数据」真的变了才返回 true。
      *
-     * 不要在这里无条件 `_dataVersion.value++`：
-     * MainScheduleScreen 的 weekendDaysByWeek / weekFilteredCourses 都以 dataVersion 为 key，
-     * 预计算「全周次 × 全课程」两张表。无脑 bump 会让每次从二级页返回时在主线程整表重算，
-     * 而这恰好落在 MainActivity 刚 resume、主界面刚可见的那几帧上 → 返回时卡一下。
+     * 不要无条件 `_dataVersion.value++`：MainScheduleScreen 的 weekendDaysByWeek / weekFilteredCourses 都以 dataVersion 为 key 预计算「全周次 × 全课程」两张表，无脑 bump 会让每次从二级页返回时在主线程整表重算，恰好落在 MainActivity 刚 resume 的那几帧上 → 返回时卡一下。
      */
     private fun loadEssentialData(): Boolean {
         val currentScheduleId = repository.getCurrentScheduleId()
@@ -200,9 +194,7 @@ class CourseViewModel : ViewModel() {
     }
 
     /**
-     * 小组件广播：内容变了、或跨天（今日/明日预告与周次都随时间变）才发。
-     * 每次 resume 都无条件广播，会让 provider 在本进程主线程重建所有 RemoteViews，
-     * 正好和主界面 resume 后的重组撞在一起。跨天仍会刷，不会漏掉日期滚动。
+     * 小组件广播：内容变了、或跨天（今日/明日预告与周次都随时间变）才发。每次 resume 都无条件广播会让 provider 在本进程主线程重建所有 RemoteViews，正好和主界面 resume 后的重组撞在一起。跨天仍会刷，不会漏掉日期滚动。
      */
     private fun updateWidgetsIfNeeded(contentChanged: Boolean) {
         val today = todayLocalDate()
@@ -253,10 +245,7 @@ class CourseViewModel : ViewModel() {
                     date = todayLocalDate(),
                     teachingWeek = week.toLong(),
                     rules = repository.getTeachingWeekReorganizations(),
-                    // ⚠ 必须写具名 return@synchronizedOn：
-                    // `synchronizedOn` 是**刻意非 inline** 的（见 :core 的 `Lock.kt`），
-                    // 非局部 `return` 会被 Kotlin 拒绝。这里 lambda 就是函数体本身、
-                    // 块后无代码，所以退化成具名返回行为完全一致。
+                    // ⚠ 必须写具名 return@synchronizedOn：`synchronizedOn` 刻意非 inline（见 :core 的 `Lock.kt`），非局部 return 会被 Kotlin 拒绝；此处 lambda 即函数体、块后无代码，具名返回行为一致。
                 ) ?: return@synchronizedOn
             } else null
             _currentWeek.value = week

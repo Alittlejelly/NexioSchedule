@@ -47,14 +47,10 @@ import top.yukonga.miuix.kmp.utils.SinkFeedback
 import top.yukonga.miuix.kmp.utils.pressable
 
 /**
- * A [Checkbox] component with Miuix style, supporting three states: On, Off, and Indeterminate.
+ * A Miuix-styled [Checkbox] with three states: On, Off, and Indeterminate.
  *
- * @param state The current [ToggleableState] of the [Checkbox].
- * @param onClick The callback to be called when the [Checkbox] is clicked. The caller is
- *   responsible for updating the state. If `null`, the [Checkbox] is not interactive.
- * @param modifier The modifier to be applied to the [Checkbox].
- * @param colors The [CheckboxColors] of the [Checkbox].
- * @param enabled Whether the [Checkbox] is enabled.
+ * @param onClick Caller is responsible for updating the state; if `null` the checkbox is not
+ *   interactive.
  */
 @Composable
 fun Checkbox(

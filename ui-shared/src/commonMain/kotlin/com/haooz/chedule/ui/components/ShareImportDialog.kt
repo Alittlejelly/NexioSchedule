@@ -27,20 +27,15 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 
 // ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
-//
-// 迁移动机：整页只碰 Android 的三样东西 —— `Intent.ACTION_VIEW/SEND` 常量、
-// `contentResolver.openInputStream`、以及 `MainActivity` 那三个分享 Intent 字段。
-// 抽成「宿主投递一个 [SharedFileIntent] + 提供一个读文本的回调」之后就是纯 UI。
-//
-// ⚠ 本文件里不应再出现任何 `android.*`；要读别的平台数据就再加一个注入回调。
+// 迁移动机：整页只碰 Android 三样 —— Intent.ACTION_VIEW/SEND 常量、contentResolver.openInputStream、
+// MainActivity 三个分享 Intent 字段；抽成「宿主投递 [SharedFileIntent] + 提供读文本回调」后即纯 UI。
+// ⚠ 本文件不应再出现任何 `android.*`；要读别的平台数据就再加注入回调。
 
 /**
  * 宿主投递进来的「外部分享」请求。
- *
- * 宿主负责在 `onNewIntent` / 冷启动里解析 Intent，**只把 ACTION_VIEW / ACTION_SEND 两种
- * 转成本类型**（其它 action 直接丢，页面不再做 action 判断 —— 那需要 `android.content.Intent`）。
- *
- * [version] 单调递增：同一个 uri 再次分享时靠它触发重新处理（`LaunchedEffect` 的 key）。
+ * 宿主负责在 `onNewIntent` / 冷启动里解析 Intent，**只把 ACTION_VIEW / ACTION_SEND 转成本类型**
+ * （其它 action 直接丢，页面不再做 action 判断 —— 那需要 `android.content.Intent`）。
+ * [version] 单调递增：同一 uri 再次分享时靠它触发重新处理（`LaunchedEffect` 的 key）。
  */
 class SharedFileIntent(
     val uri: String,

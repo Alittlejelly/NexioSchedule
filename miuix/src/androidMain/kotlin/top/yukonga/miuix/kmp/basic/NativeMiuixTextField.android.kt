@@ -252,7 +252,6 @@ actual fun NativeMiuixTextField(
 
                                 addTextChangedListener(textWatcher)
 
-                                // 保存 EditText 引用
                                 editTextHolder.value = this
                             }
                         },
@@ -478,7 +477,6 @@ actual fun NativeMiuixTextField(
                                     }
                                 })
 
-                                // 保存 EditText 引用
                                 editTextHolder.value = this
                             }
                         },

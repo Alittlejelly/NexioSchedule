@@ -24,11 +24,8 @@ import kotlinx.serialization.json.JsonObject
  * 对应 Android `ShareCodeApi.fetchShare` 与 `ThirdPartyShareImporter.importStarLink`；
  * WakeUp 那条要跑无头 WKWebView，在 `IosWakeUpImport.kt`。
  *
- * ## 为什么在 iOS 侧重写而不是上提 commonMain
- *
- * 与 `IosScheduleShare` 同一条理由：Android 那两份还在用 OkHttp + Gson + `JSONObject`，
- * 为了 **Android 零回归** 不去动它们。这里复用共享的 [HttpService]（iOS = NSURLSession）
- * 与共享的 JSON 层，把逻辑重抄一遍 —— 将来要收敛，把 Android 侧也切到共享网络层即可。
+ * 与 `IosScheduleShare` 同理由：Android 那两份还在用 OkHttp + Gson + JSONObject，
+ * 为 Android 零回归不去动它们，这里复用共享 [HttpService] 与 JSON 层重抄逻辑。
  *
  * ⚠ **接口地址与字段名与服务端是契约**，逐字不能改（改了 Android 也一起坏）。
  */

@@ -27,12 +27,11 @@ import platform.UIKit.UIRectCornerBottomLeft
 import platform.UIKit.effectiveRadiusForCorner
 
 /**
- * Returns the window's effective corner radius in pixels using public UIKit APIs.
- *
- * A UIWindow's default corner configuration can resolve to zero even on a rounded
- * display. On iOS 26+, a transparent child with a container-concentric configuration
+ * Returns the window's effective corner radius in pixels using public UIKit APIs:
+ * a UIWindow's default corner configuration can resolve to zero even on a rounded
+ * display, so on iOS 26+ a transparent child with a container-concentric configuration
  * resolves the window geometry after attachment and layout. The host is never clipped
- * or reconfigured. Older systems use a best-effort device-size estimate.
+ * or reconfigured; older systems use a best-effort device-size estimate.
  */
 @Composable
 actual fun rememberScreenCornerRadiiPx(): ScreenCornerRadiiPx {

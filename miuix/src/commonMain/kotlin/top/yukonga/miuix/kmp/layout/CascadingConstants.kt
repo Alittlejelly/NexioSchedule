@@ -1,9 +1,8 @@
 // 级联弹窗的共享动效常量
 //
-// 这些常量原先定义在 CascadingListPopupLayout.kt 里。该文件是本项目自研的
-// 级联下拉实现、且 :app 侧零引用，此前按死代码删除了 —— 但 CascadingMorphContent.kt
-// 仍在使用它们，等级联布局本身可以再考虑是否恢复，这里先把常量独立出来，
-// 免得 Morph 动画跟着一起消失。
+// 原先定义在 CascadingListPopupLayout.kt（该项目自研级联下拉、:app 侧零引用，已按死代码删除）。
+// CascadingMorphContent.kt 仍在使用这些常量，故先独立出来，免得 Morph 动画跟着消失；
+// 级联布局本身是否恢复可再议。
 
 package top.yukonga.miuix.kmp.layout
 

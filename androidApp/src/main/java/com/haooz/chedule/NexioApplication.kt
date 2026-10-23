@@ -11,30 +11,21 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * 应用入口 - 启动加速
+ * Application 阶段提前预热高频 SharedPreferences 文件。
  *
- * SharedPreferences 的实现在首次 getSharedPreferences() 时会开启后台线程异步加载 XML，
- * 但后续任意 getXXX() 都会 awaitLoadedLocked() 阻塞调用线程直到加载完成。
- * 冷启动时 MainActivity / 各 ViewModel 会在主线程同步读取大量配置键，
- * 如果此时 XML 尚未加载完（课程数据 JSON 可达数百 KB），主线程会被硬生生卡住。
- *
- * 这里在 Application 阶段就用后台线程把这些文件"碰"一次，把磁盘加载提前到
- * 主线程真正需要它们之前，从而让主线程的首次读取基本变成纯内存操作。
+ * 首次 getSharedPreferences() 后台异步加载 XML，但后续 getXXX() 会阻塞调用线程
+ * 直到加载完成；冷启动主线程同步读取大量配置键（课程 JSON 可达数百 KB），
+ * XML 未加载完即被卡住。提前"碰"一次让主线程首次读取变纯内存操作。
  */
 class NexioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 跨平台存储入口：必须最先初始化，之后任何 AppStorage.store(...) 才可用。
-        // 工厂按名字转发到各自的 SharedPreferences 文件 —— 名字由各业务文件自带，
-        // 这里不做汇总，避免抄错名字导致存量数据读不出来。
+        // 必须最先初始化：之后 AppStorage.store(...) 才可用；工厂按名转发各自文件，不在本处汇总以免抄错键名。
         com.haooz.chedule.data.AppStorage.init { name ->
             getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
         }
-        // 平台提示条：:core 只认 showToast(...)，Android 实现在这里接线（同 AppStorage/AppFiles 套路）。
-        // 用 applicationContext（Application 本身即 Context）—— Toast 不需要窗口令牌，
-        // 且不会像 Activity Context 那样挂住页面实例。时长语义与迁移前的
-        // Toast.LENGTH_SHORT / LENGTH_LONG 逐字一致。
+        // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
         com.haooz.chedule.data.initToast { message, long ->
             android.widget.Toast.makeText(
                 this,
@@ -42,40 +33,31 @@ class NexioApplication : Application() {
                 if (long) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT,
             ).show()
         }
-        // 应用版本号：跨平台侧（:core）无法读 PackageManager，启动时注入一次。
-        // 上报负载里的 app_version 依赖它，漏掉会变成 "unknown"。
+        // :core 无法读 PackageManager，启动时注入版本号；上报负载的 app_version 依赖它，漏掉会成 "unknown"。
         com.haooz.chedule.data.AppInfo.init(
             runCatching {
                 packageManager.getPackageInfo(packageName, 0).versionName
             }.getOrNull() ?: "unknown",
         )
-        // 文件系统入口：:core 侧只认接口，Android 用 java.io.File 实现（行为与迁移前一致）。
-        // readAsset 走 assets，供「内置学校索引」首启引导使用；读取失败让它抛，
-        // 由 SchoolRepository 按原逻辑打日志并跳过引导。
+        // :core 只认接口，Android 用 File 实现。readAsset 走 assets 供内置学校索引首启引导；失败让它抛，由 SchoolRepository 打日志跳过引导。
         com.haooz.chedule.data.AppFiles.init(
             root = com.haooz.chedule.data.FileAppFile(filesDir),
             readAsset = { name -> assets.open(name).use { it.readBytes() } },
         )
-        // 课表外观单例：尽早初始化，主界面首帧即可读壁纸与卡片参数
+        // 尽早初始化，主界面首帧可读取壁纸与卡片参数。
         com.haooz.chedule.data.ScheduleAppearance.init(this)
-        // 壁纸后端：:ui-shared 的 WallpaperStore 走「接口 + 启动注入」，
-        // Android 实现原样委托 ScheduleAppearance（降采样/LruCache/WebP 80 口径不变）。
-        // 必须在 ScheduleAppearance.init 之后 —— 后端读它。
+        // WallpaperStore 走「接口 + 启动注入」，Android 原样委托 ScheduleAppearance（降采样/LruCache/WebP 80 口径不变）。必须在 ScheduleAppearance.init 之后。
         com.haooz.chedule.data.WallpaperStore.backend =
             com.haooz.chedule.data.AndroidWallpaperBackend()
-        // 课程变更后的平台副作用（重排提醒 / 手表同步 / 刷新小组件）。
-        // CourseViewModel / ScheduleViewModel 已进 :ui-shared，不能直接碰 reminder/widget，
-        // 只能经 :core 的 ScheduleEffects 出口回调到这里 —— 未注入时静默丢弃。
+        // 课程变更后的平台副作用（重排提醒/手表同步/刷新小组件）。VM 已进 :ui-shared 不能直接碰 reminder/widget，只能经 ScheduleEffects 回调至此；未注入静默丢弃。
         com.haooz.chedule.data.ScheduleEffects.init(AndroidScheduleEffects(this))
-        // 预测性返回动画开关：应用启动即同步到全局单例（应用设置中可切换）
+        // 同步预测性返回动画开关到全局单例。
         PredictiveBackSettings.enabled = AppStorage.store("app_preferences")
             .getBoolean(PredictiveBackSettings.KEY_PREDICTIVE_BACK_ANIMATION, true)
-        // 应用材质档位：按钮/低栏等 chrome 折射随档降级
+        // 加载应用材质档位。
         com.haooz.chedule.ui.utils.AppMaterialSettings.load()
         com.haooz.chedule.ui.utils.CrashLogHelper.install(this)
-        // 埋点入口：FeatureLog 已抽到 :core（供 viewmodel 等平台中立代码使用），
-        // 真正的轨迹记录在这里接回 CrashLogHelper。必须在 install 之后 —— 未注入时
-        // FeatureLog 静默丢弃，不会崩，但录制中的轨迹会丢，排查时容易误判。
+        // FeatureLog 已抽 :core，轨迹记录在此接回 CrashLogHelper。必须在 install 之后；未注入静默丢弃但录制轨迹会丢。
         com.haooz.chedule.ui.utils.FeatureLog.init(
             trace = { feature, event, detail ->
                 com.haooz.chedule.ui.utils.CrashLogHelper.trace(feature, event, detail)
@@ -89,11 +71,9 @@ class NexioApplication : Application() {
         cleanupTransientFiles()
         initWearableSync()
         enableWebViewRemoteDebugging()
-        // 调休映射迁移：旧版存「第几周+星期几」，周次相对课表，换课表就错位。
-        // 一次性换算成绝对日期（followDate），之后按当前课表实时折算。走后台线程避免拖慢冷启动。
+        // 调休映射迁移：旧版存「周次+星期」相对课表会错位，换算成绝对日期后按当前课表实时折算。后台线程执行避免拖慢冷启动。
         Thread {
-            // 日期解析由这里注入：:core 不能反向依赖还在 :app 的 CourseRepository。
-            // 仓储构造不出来时**整段跳过**（连迁移标记都不写），与原实现一致。
+            // 日期解析在此注入（:core 不能反向依赖 :app 的 CourseRepository）。仓储构造失败则整段跳过，与原实现一致。
             runCatching {
                 val repository = com.haooz.chedule.data.CourseRepository()
                 com.haooz.chedule.data.HolidayManager.migrateLegacyFollowDates { week, weekday ->
@@ -103,10 +83,7 @@ class NexioApplication : Application() {
         }.start()
     }
 
-    /**
-     * 打开 WebView 远程调试（chrome://inspect），仅 debuggable 包。
-     * 排查"网页某些资源加载不出来"时，这是唯一能直接看到每个请求状态码 / MIME 的手段。
-     */
+    /** 仅 debuggable 包开启 WebView 远程调试（chrome://inspect），排查资源加载问题时可直接看到每个请求状态码/MIME。 */
     private fun enableWebViewRemoteDebugging() {
         runCatching {
             val debuggable =
@@ -126,11 +103,7 @@ class NexioApplication : Application() {
         }
     }
 
-    /**
-     * 异步预热高频 SharedPreferences 文件。
-     * 只做触发加载，不读取具体值；加载本身在 SharedPreferences 内部线程完成，
-     * 后台线程在此阻塞等待不影响主线程。
-     */
+    /** 异步触发高频 SharedPreferences 文件加载（不读具体值）；加载在内部线程完成，后台等待不阻塞主线程。 */
     private fun warmUpSharedPreferences() {
         // 按启动路径上的命中顺序排列：最大的课程数据文件优先
         val names = arrayOf(
@@ -142,9 +115,7 @@ class NexioApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             names.forEach { name ->
                 runCatching {
-                    // 访问一次即触发 awaitLoaded()，加载在后台线程完成后返回。
-                    // 走 AppStorage 与原写法等价（底层就是同一个 SharedPreferences 文件），
-                    // 且不在这里另开一套取用方式。
+                    // 访问一次即触发加载（底层同一 SharedPreferences 文件），与原写法等价。
                     AppStorage.store(name).all()
                 }
             }
@@ -165,7 +136,7 @@ class NexioApplication : Application() {
                         file.delete()
                     }
                 }
-                // APK 与检查更新同一策略：按 latest_tag 保留完整包，不按 mtime 只留最新
+                // APK 沿用检查更新策略：按 latest_tag 保留完整包，不按 mtime 只留最新。
                 com.haooz.chedule.ui.utils.UpdateChecker.cleanupTransientApks(this@NexioApplication)
             }
         }

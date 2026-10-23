@@ -108,10 +108,7 @@ fun RowScope.LiquidBottomTab(
 }
 
 /**
- * 液态玻璃底部导航。手势全部由 [LiquidBottomTabs] 的统一层处理：
- * - 按下 tab：胶囊飞过去并保持按压
- * - 按下胶囊 / 随后拖动：1:1 跟手
- * - 松手：吸附最近 tab，提交选中
+ * 液态玻璃底部导航。手势统一由内部层处理：按下 tab 胶囊飞过去并保持按压；按下胶囊/拖动 1:1 跟手；松手吸附最近 tab 提交选中。
  */
 @Composable
 fun LiquidBottomTabs(

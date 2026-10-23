@@ -1,11 +1,9 @@
 package com.haooz.chedule.data
 
 /**
- * 外观参数快照（跨平台）。
- *
- * ⚠ 字段名是数据兼容契约：存量用户在 `appearance_settings` 里存的就是本结构的 JSON 快照
- * （键名 = 字段名），一个字符都不能改 —— 改名/删除 = 老用户外观设置全部读不出来。
- * 可以新增字段（Gson/kotlinx 都忽略未知键），落盘格式必须保持原样。
+ * 外观参数快照（跨平台）
+ * 存量用户 JSON 快照键名=字段名，一个字符都不能改（改名/删除=老用户外观全部读不出来）；
+ * 可新增字段（解析器忽略未知键），落盘格式须保持原样。
  */
 data class AppearanceStyle(
     val offsetX: Float = 0f,

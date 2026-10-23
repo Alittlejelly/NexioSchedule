@@ -1,10 +1,8 @@
-// RuntimeShader 仅在 isRuntimeShaderSupported()（AGSL 能力检测）为真时才被创建/使用，
-// 低版本流程不会执行到这里；自定义反射守卫 lint 无法识别，故整个文件豁免 NewApi。
+// RuntimeShader 仅在 isRuntimeShaderSupported()（AGSL 能力检测）为真时才创建/使用，低版本流程不会执行到这里；自定义反射守卫 lint 无法识别，故整文件豁免 NewApi。
 
 package com.kyant.backdrop.edgelight
 
-// RuntimeShader 等类型来自本模块根包 com.kyant.backdrop（commonMain 的 expect 接口），
-// 而不是 android.graphics.RuntimeShader —— 后者是原生 Android 类，Kotlin/Native 上不存在。
+// RuntimeShader 等类型来自本模块根包 com.kyant.backdrop（commonMain 的 expect 接口），而非 android.graphics.RuntimeShader —— 后者是原生 Android 类，Kotlin/Native 上不存在。
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
@@ -44,10 +42,8 @@ internal fun Canvas.clipOutline(outline: Outline, path: Path?) {
     }
 }
 
-// blur / setRuntimeShader / isRuntimeShaderSupported 全部复用本模块根包的 expect/actual
-// （com.kyant.backdrop.internal.blur / setRuntimeShader、com.kyant.backdrop.isRuntimeShaderSupported）。
-// 原来这里自己用 asFrameworkPaint() + android.graphics 重新实现了一套，那是它进不了
-// commonMain 的根因；重复定义还会与根包同名 internal 函数冲突，故整段删除。
+// blur / setRuntimeShader / isRuntimeShaderSupported 全部复用根包的 expect/actual（com.kyant.backdrop.internal.blur / setRuntimeShader、com.kyant.backdrop.isRuntimeShaderSupported）；
+// 原先 asFrameworkPaint() + android.graphics 自实现一套，是它进不了 commonMain 的根因，且重复定义会与根包同名 internal 函数冲突，故整段删除。
 
 internal fun getCornerRadii(
     shape: Shape,
@@ -104,8 +100,7 @@ internal fun createEdgeLightShader(
     when (style) {
         is EdgeLightStyle.Uniform -> {}
         is EdgeLightStyle.Directional -> {
-            // alpha 交给 GraphicsLayer.alpha 统一控制（与 backdrop 的 HighlightStyle 一致），
-            // 这里必须传 alpha=1f，否则会与 intensity 相乘、描边整体偏暗。
+            // alpha 交给 GraphicsLayer.alpha 统一控制（与 backdrop 的 HighlightStyle 一致），这里须传 alpha=1f，否则会与 intensity 相乘使描边整体偏暗。
             shader.setColorUniform("color", style.color.copy(alpha = 1f))
             shader.setFloatUniform("angle", style.angle * (PI / 180f).toFloat())
             shader.setFloatUniform("falloff", style.falloff)

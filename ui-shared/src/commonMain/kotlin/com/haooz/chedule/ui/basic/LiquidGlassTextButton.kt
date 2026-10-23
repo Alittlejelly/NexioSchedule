@@ -43,9 +43,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.interactive.computeDragTransform
 
 /**
- * 底部悬浮液态玻璃按钮。效果对齐 [com.haooz.chedule.ui.components.BackToNowFloatingButton]：
- * graphicsLayer clip=false，形变不裁切。无 ShadowPadding 外溢预留。
- * 依赖 Activity 已有的 liquidGlassBackdrop 采样层。
+ * 底部悬浮液态玻璃按钮，效果对齐 [com.haooz.chedule.ui.components.BackToNowFloatingButton]：
+ * graphicsLayer clip=false（形变不裁切），无 ShadowPadding 外溢；依赖 Activity 已有的 liquidGlassBackdrop 采样层。
  */
 @Composable
 fun LiquidGlassTextButton(
@@ -203,9 +202,8 @@ fun LiquidGlassTextButton(
                 style = MiuixTheme.textStyles.button,
                 fontWeight = FontWeight.Medium,
                 color = textColor.copy(alpha = if (enabled) 1f else 0.4f),
-                // 文案本身居中（父 Box 的 contentAlignment）。这里必须**显式**告诉文字过渡容器：
-                // 父级的对齐方式在测量期看不到，不传就按左对齐落位 —— 文案变长时旧字会先贴到
-                // 变宽盒子的左边缘再滑回来（「测试实时活动」↔「测试小米超级岛」就差一个字，最明显）。
+                // 文案本身居中（父 Box 的 contentAlignment），但须**显式**指定 textAlign：
+                // 父级对齐在测量期不可见，不传会先按左对齐落位，文案变长时旧字先贴左缘再滑回。
                 textAlign = TextAlign.Center,
             )
         }

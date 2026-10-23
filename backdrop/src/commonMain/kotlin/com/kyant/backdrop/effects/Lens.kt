@@ -26,9 +26,7 @@ fun BackdropEffectScope.lens(
         padding = (padding - refractionHeight).fastCoerceAtLeast(0f)
     }
 
-    // 不支持的 shape（自定义 Shape / 非圆角矩形）直接跳过折射，**不能抛** ——
-    // 这里跑在 draw/measure 链路里，抛出去就是整个应用崩溃（曾因弹窗面板用了
-    // 自定义 AnimatedPanelRectShape 一开菜单就 FATAL）。
+    // 不支持的 shape（自定义 Shape / 非圆角矩形）直接跳过折射，**不能抛**——这里跑在 draw/measure 链路里，抛出去即整应用崩溃（曾因弹窗面板用自定义 AnimatedPanelRectShape 一开菜单就 FATAL）。
     val cornerRadii = cornerRadii ?: return
     val shader =
         if (!chromaticAberration) {
@@ -42,9 +40,8 @@ fun BackdropEffectScope.lens(
                 RoundedRectRefractionWithDispersionShaderString
             )
         }
-    // 折射 shader 在降采样缓冲上执行，所有像素空间 uniform 需同步 ×scale，
-    // 等比例缩放可保持 SDF 比例与折射位移在放大回原尺寸后与未降采样一致。
-    // scale 取当前缓冲的实际降采样比例（非固定常量），与 DrawBackdropNode 的 n 对齐。
+    // 折射 shader 在降采样缓冲上执行，像素空间 uniform 需同步 ×scale：等比例缩放可保持 SDF 比例与折射位移
+    // 放大回原尺寸后与未降采样一致。scale 取当前缓冲实际降采样比例（非固定常量），与 DrawBackdropNode 的 n 对齐。
     val scale = this.downsampleScale
     shader.apply {
         setFloatUniform("size", size.width * scale, size.height * scale)

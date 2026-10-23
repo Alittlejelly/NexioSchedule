@@ -1,13 +1,6 @@
 package com.haooz.chedule.data
 
-// 版本比较独立成文件的原因：
-//
-// 动机：`UpdateDialog` 迁 `:ui-shared` 时要用版本比较，而它当时和 `UpdateChecker`
-// （OkHttp + SharedPreferences + File）挤在一个 Android 文件里。这段逻辑**一行平台 API 都没有**，
-// 只是字符串切分与逐段比较 —— 属于典型该下沉的纯逻辑（同 `DayScheduleResolver` / `formatOneDecimal`）。
-//
-// 包名保持 `com.haooz.chedule.data` → 宿主侧 `UpdateChecker` 里的调用点无需改 import
-// （它原本就在同包内互相调用，现在变成跨模块可见的顶层函数）。
+// 版本比较独立成文件：纯字符串逻辑、无平台 API，供 `:ui-shared`（`UpdateDialog`）共用。
 
 /**
  * 解析版本号为数字序列。

@@ -2,8 +2,7 @@ import Foundation
 import SwiftUI
 import WidgetKit
 
-// The app writes this versioned JSON atomically into the App Group container.
-// These models are self-contained so the widget never opens the app's database.
+// The app writes this versioned JSON atomically into the App Group container; these models are self-contained so the widget never opens the app's database.
 struct DesktopWidgetSnapshot: Codable {
     var schemaVersion: Int = 1
     var generatedAt: Double
@@ -87,8 +86,7 @@ struct DesktopWidgetPresentation {
             return
         }
 
-        // Include yesterday's still-running class after midnight. Its timestamp
-        // identifies this occurrence even when a recurring course reuses its ID.
+        // Include yesterday's still-running class after midnight; its timestamp identifies this occurrence even when a recurring course reuses its ID.
         let carryover = snapshot.days.filter { $0.start < today.start }.flatMap(\.courses)
             .filter { $0.start < today.start && $0.end > now }
         let todayCourses = (carryover + today.courses).sorted {
@@ -129,8 +127,7 @@ struct DesktopWidgetPresentation {
 
     var weekday: String {
         guard let day else { return "课程表" }
-        // Use the exported calendar date, not a swap day's teaching weekday or
-        // a timestamp interpreted in a timezone different from the writer's.
+        // Use the exported calendar date, not a swap day's teaching weekday or a timestamp interpreted in a timezone different from the writer's.
         let parts = day.date.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return "课程表" }
         var calendar = Calendar(identifier: .gregorian)
@@ -203,8 +200,7 @@ enum DesktopWidgetTimeline {
         }
         let dates = transitions.sorted().prefix(maximumEntries).map { Date(timeIntervalSince1970: $0) }
         let entries = dates.map { DesktopWidgetEntry(date: $0, snapshot: snapshot) }
-        // Re-read the latest shared snapshot at the end of this bounded timeline.
-        // If the 96-entry limit is hit, renewal starts at its last covered event.
+        // Re-read the latest shared snapshot at the end of this bounded timeline; if the 96-entry limit is hit, renewal starts at its last covered event.
         return Timeline(entries: entries, policy: .after(dates.last ?? now.addingTimeInterval(3600)))
     }
 }

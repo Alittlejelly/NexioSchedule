@@ -16,7 +16,7 @@ import kotlin.math.roundToInt
  * 设置页叠层标题槽：左/右栏顶栏标题随侧栏避让平移与分宽。
  * 竖屏侧栏为叠层，标题不跟随展开；横屏仍随避让。进度只在 measure 读。
  *
- * ⚠ 2026-10-11 从 `:androidApp` 的 `components/TabletNavSideBar.kt` 拆到 `:ui-shared` ——
+ * ⚠ 2026-10-11 从 `:androidApp` 的 `components/TabletNavSideBar.kt` 拆到 `:ui-shared`：
  * `TabletSettingsScreen` 迁入 commonMain 后需要它，而它只依赖跨平台符号
  * （[TabletNavSideState] 同在 :ui-shared，screenWidthDp/screenHeightDp 在 :ui-shared）。
  * Android 专有的 `TabletNavSideBar`/`LiquidNavigationRail`/`startActivity*` 仍留 androidApp。

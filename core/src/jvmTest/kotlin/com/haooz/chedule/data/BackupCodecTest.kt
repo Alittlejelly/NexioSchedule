@@ -9,10 +9,9 @@ import kotlin.test.assertTrue
 /**
  * 本地备份「恢复门禁」[parseBackupPayload] 的**真实备份**回归测试。
  *
- * ## 背景：R2 序列化通道 + 用户数据安全
  * [parseBackupPayload] 原用 Gson，2026-10-11 换 kotlinx-serialization。它是**恢复门禁**：
  * 全量恢复会先清空全部课表再写入，若门禁误放行无关 JSON，用户课表会被清空。
- * 本测试用两份**用户真实备份**固化「换库后门禁行为不变」—— 这是数据兼容的直接证明。
+ * 本测试用两份**用户真实备份**固化「换库后门禁行为不变」—— 数据兼容的直接证明。
  *
  * 夹具（`core/src/jvmTest/resources/`，2026-10-11 从本机导出的冻结快照）：
  * - `backup_full_export.json`：全量备份（扁平 `schedule_*` 键值）→ 应识别为 [BackupPayload.Full]

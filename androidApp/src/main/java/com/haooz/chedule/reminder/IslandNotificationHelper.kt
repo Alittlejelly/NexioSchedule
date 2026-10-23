@@ -55,8 +55,7 @@ object IslandNotificationHelper {
     private var inClassTickJob: Job? = null
     private val inClassTickLock = Any()
 
-    // 岛倒计时是系统原生 Chronometer，切换依赖 AlarmManager 精确闹钟（可能丢/滞后）。
-    // 持久化应处状态，由每分钟刷新链对账兜底，避免卡在倒计时或迟迟不切换。
+    // 岛倒计时用系统 Chronometer；切换靠精确闹钟（可能丢/滞后），故持久化状态由每分钟刷新链对账兜底
     object IslandState {
         // 测试/真实两套 prefs：否则测试写真实 state 会让 expand 闹钟被 stale 校验丢弃
         private const val PREF = "island_countdown_state"
@@ -589,8 +588,7 @@ object IslandNotificationHelper {
 
         val now = System.currentTimeMillis()
         val counting = courseEndMillis > now
-        // 与课前岛同理：课中岛的息屏标题、展开态「地点」行都是窄条，真机实测会把
-        // 「新校区J02西414」截成「新校区J…」，所以统一喂精简后的地点。
+        // 与课前岛同理：息屏标题/展开态「地点」是窄条，实测会把「新校区J02西414」截成「新校区J…」，统一喂精简地点
         val shortClassroom = prefs.shortClassroom(classroom)
         val aodTitle = if (aodMode == 1) {
             shortClassroom.ifEmpty { courseName }

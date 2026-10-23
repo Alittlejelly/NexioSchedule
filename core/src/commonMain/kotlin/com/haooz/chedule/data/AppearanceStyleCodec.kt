@@ -8,12 +8,8 @@ import kotlinx.serialization.json.float
 import kotlinx.serialization.json.floatOrNull
 
 /**
- * [AppearanceStyle] 的 JSON 编解码 —— 与 Gson 输出逐字段对齐。
- *
- * ⚠ 存量数据是 `Gson().toJson(CombinationStyle)` 写的，键名 = 字段名，逐字不能改；
- * 也不能换成 `@Serializable`：枚举字段的缺省行为不同（Gson 的 UnsafeAllocator 让 Kotlin 默认值失效），
- * 会让「老数据里没有的字段」在两端落到不同默认值。枚举按 ordinal 存取、缺键一律用 Kotlin 默认值、
- * 反序列化失败给 null（交给 safe getter 兜默认值）。
+ * [AppearanceStyle] 的 JSON 编解码，与 Gson 输出逐字段对齐。
+ * ⚠ 存量数据是 `Gson().toJson(CombinationStyle)` 写入，键名=字段名逐字不能改；也不能换 `@Serializable`——Gson 的 UnsafeAllocator 让 Kotlin 默认值失效，会让「老数据没的字段」两端落到不同默认值。枚举按 ordinal 存取、缺键用 Kotlin 默认值、反序列化失败给 null（交 safe getter 兜底）。
  */
 object AppearanceStyleCodec {
 
@@ -57,10 +53,8 @@ object AppearanceStyleCodec {
     }
 
     /**
-     * 解析 JSON 快照；格式非法 / 键名一个都对不上时返回 null。
-     *
-     * ⚠ 「键名对不上就判不可用」是刻意的：字段名写错曾让 Gson 把值停在 Java 默认值 0，
-     * 导致课表页网格整页静默空白（不崩、无日志）。宁可回落默认值也不要静默显示坏状态。
+     * 解析 JSON 快照；格式非法或键名一个都对不上时返回 null。
+     * ⚠ 「键名对不上即判不可用」是刻意的：字段名写错曾让 Gson 把值停在 Java 默认值 0，导致网格整页静默空白（不崩无日志）；宁可回落默认也不要静默显示坏状态。
      */
     fun decodeOrNull(json: String): AppearanceStyle? {
         val obj = runCatching { parseJsonObject(json) }.getOrNull() ?: return null
@@ -101,15 +95,12 @@ object AppearanceStyleCodec {
         (this[key] as? JsonPrimitive)?.booleanOrNull ?: default
 
     /**
-     * 枚举按 ordinal（数字）存取 —— 与 Gson 对本项目这三个枚举的实际行为一致。
-     *
-     * ⚠ 别改成按 name：落盘格式 = ordinal，枚举顺序不能改。Gson 默认按 name 序列化枚举，
-     * 但旧数据的编写路径（手写 TypeAdapter / 手动 putInt）存的是 ordinal，以存量数据为准。
+     * 枚举按 ordinal（数字）存取，与 Gson 对这三个枚举的实际行为一致。
+     * ⚠ 别改成按 name：落盘格式=ordinal，枚举顺序不能改；旧数据编写路径存的是 ordinal，以存量数据为准。
      */
     private fun <T> JsonObject.enumOr(key: String, fromOrdinal: (Int) -> T): T? {
         val primitive = this[key] as? JsonPrimitive ?: return null
-        // ordinal 存的是数字；JsonPrimitive.content 是文本，手动转 Int
-        //（float 落盘可能带 ".0" 尾巴，先 toDouble 再截断，与旧行为一致）
+        // ordinal 为数字；float 落盘可能带 ".0" 尾巴，先 toDouble 再截断以兼容旧行为。
         val v = primitive.content.toDoubleOrNull()?.toInt() ?: return null
         return runCatching { fromOrdinal(v) }.getOrNull()
     }

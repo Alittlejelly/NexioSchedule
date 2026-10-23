@@ -4,10 +4,8 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 
 // ════════════════════════════════════════════════════════════════════════
-//  ICS（`text/calendar`）导入 —— 纯文本解析
-//
-//  迁移动机：这是**纯字符串处理 + kotlinx-datetime**，一行 Android / java 依赖都没有，
-//  而「课表导入」页要进 `:ui-shared` commonMain —— 留在 Android 模块里那页就迁不动。
+//  ICS（`text/calendar`）导入 —— 纯文本解析，无 Android / java 依赖
+//  （「课表导入」页要进 `:ui-shared` commonMain，留在 Android 模块里那页就迁不动）。
 //
 //  与 [parseFullScheduleJson]（JSON 导入通道，见 `ScheduleImportCodec.kt`）并列：
 //  两者都返回 `Triple(是否成功, 提示消息, 课表数据 Map)`，数据交由

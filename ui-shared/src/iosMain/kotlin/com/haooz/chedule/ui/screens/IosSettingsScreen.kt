@@ -42,10 +42,10 @@ import platform.UIKit.UIPasteboard
 /**
  * `SettingsScreen` 的 **iOS 宿主包装** —— 对应 Android 的 `AndroidSettingsScreen`。
  *
- * 只做一件事：把平板（rail）分支那 8 个平台专有 dest 的接线、以及
- * 「测试通知 / 刷新小部件 / 节假日拉取」这几个平台副作用装配好，
- * 通过注入参数交给共享页。iOS 的注入实现与 [com.haooz.chedule.NexioIosRouteContent]
- * 里原生文档页复用同一批控制器（UIDocumentPicker / 本地通知 / 灵动岛 / NSURLSession）。
+ * 只做一件事：把平板（rail）分支 8 个平台专有 dest 的接线、「测试通知 / 刷新小部件 /
+ * 节假日拉取」几个平台副作用装配好，经注入参数交给共享页；注入实现与
+ * [com.haooz.chedule.NexioIosRouteContent] 的原生文档页复用同一批控制器
+ * （UIDocumentPicker / 本地通知 / 灵动岛 / NSURLSession）。
  */
 @Composable
 internal fun IosSettingsScreen(

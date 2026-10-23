@@ -68,9 +68,7 @@ fun BadgedBox(
             measurables
                 .fastFirst { it.layoutId == "badge" }
                 .measure(
-                    // Measure with loose constraints for height as we don't want the text to take
-                    // up more
-                    // space than it needs.
+                    // Loose height constraints so text reserves no more space than it needs.
                     constraints.copy(minHeight = 0),
                 )
 
@@ -84,12 +82,10 @@ fun BadgedBox(
         layout(
             width = totalWidth,
             height = totalHeight,
-            // Provide custom baselines based only on the anchor content to avoid default baseline
-            // calculations from including by any badge content.
+            // Anchor-only baselines exclude badge content from baseline calc.
             alignmentLines = mapOf(FirstBaseline to firstBaseline, LastBaseline to lastBaseline),
         ) {
-            // Use the width of the badge to infer whether it has any content (based on radius used
-            // in [Badge]) and determine its horizontal offset.
+            // Infer content from badge width to pick offsets.
             val hasContent = badgePlaceable.width > (BadgeDefaults.Size.roundToPx())
             val badgeHorizontalOffset =
                 if (hasContent) BadgeWithContentHorizontalOffset else BadgeOffset
@@ -98,7 +94,7 @@ fun BadgedBox(
 
             anchorPlaceable.placeRelative(0, 0)
 
-            // Desired Badge placement
+            // Desired badge placement
             val badgeX =
                 minOf(
                     anchorPlaceable.width - badgeHorizontalOffset.roundToPx(),
@@ -139,7 +135,6 @@ fun Badge(
     val size = if (content != null) BadgeDefaults.LargeSize else BadgeDefaults.Size
     val shape = CircleShape
 
-    // Draw badge container.
     Row(
         modifier =
         modifier
@@ -156,10 +151,9 @@ fun Badge(
         horizontalArrangement = Arrangement.Center,
     ) {
         if (content != null) {
-            // Not using Surface composable because it blocks touch propagation behind it.
-            // Center the single-line label within an explicit line height so the digits are
-            // vertically centered consistently across platforms (footnote2 alone carries no
-            // line-height style, leaving placement to platform-dependent font metrics).
+            // Avoid Surface: it blocks touch behind the badge. Explicit 16.sp line-height centers
+            // digits consistently across platforms (footnote2 has no line-height style, so
+            // placement varies by platform font metrics).
             val style = MiuixTheme.textStyles.footnote2.copy(
                 lineHeight = 16.sp,
                 lineHeightStyle = LineHeightStyle(
@@ -215,21 +209,16 @@ private fun ProvideContentColorTextStyle(
 }
 
 /*@VisibleForTesting*/
-// Leading and trailing text padding when a badge is displaying text that is too long to fit in
-// a circular badge, e.g. if badge number is greater than 9.
+// Horizontal padding for text badges too long for a circular badge (e.g. number > 9).
 internal val BadgeWithContentHorizontalPadding = 4.dp
 
 /*@VisibleForTesting*/
-// Offsets for badge when there is short or long content
-// Horizontally align start/end of text badge 12.dp from the top end corner of its anchor
-// Vertical overlap with anchor is 14.dp
+// Offsets for badges with content: 12.dp from top-end corner, 14.dp vertical overlap.
 internal val BadgeWithContentHorizontalOffset = 12.dp
 internal val BadgeWithContentVerticalOffset = 14.dp
 
 /*@VisibleForTesting*/
-// Offsets for badge when there is no content
-// Horizontally align start/end of icon only badge 6.dp from the end/start edge of anchor
-// Vertical overlap with anchor is 6.dp
+// Offsets for icon-only badges: 6.dp from anchor edge, 6.dp vertical overlap.
 internal val BadgeOffset = 6.dp
 
 internal val BadgeTopRuler = HorizontalRuler()
@@ -241,8 +230,7 @@ internal fun Modifier.badgeBounds() = this.layout { measurable, constraints ->
         width = placeable.width,
         height = placeable.height,
         rulers = {
-            // use provides instead of provideRelative cause we will place relative
-            // in the badge code
+            // Use provides (not provideRelative); placement happens later in badge code.
             BadgeEndRuler provides coordinates.size.width.toFloat()
             BadgeTopRuler provides 0f
         },

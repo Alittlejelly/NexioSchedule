@@ -1,10 +1,8 @@
 package com.haooz.chedule.data
 
 /**
- * 应用私有目录里的一个文件 / 目录句柄。
- *
- * 只覆盖项目**实际用到**的能力（拼接 / 存在性 / 读 / 写 / 建目录），不做通用文件系统 ——
- * `java.io.File` 在 Kotlin/Native 与 JS 上都不存在，所以必须抽象。
+ * 应用私有目录的文件/目录句柄，仅抽象项目实际用到能力（拼接/存在性/读/写/建目录）。
+ * `java.io.File` 在 Kotlin/Native 与 JS 上不存在，故必须抽象。
  */
 interface AppFile {
     /** 完整路径，仅用于日志与调试；不保证跨平台格式一致。 */
@@ -31,13 +29,8 @@ interface AppFile {
 }
 
 /**
- * 应用文件系统入口。
- *
- * 与 [AppStorage] 同一模式：`:core` 只声明接口，平台实现由应用启动时注入 ——
- * commonMain 才能保持平台中立（iOS 编译门禁），Android 继续用 `java.io.File`。
- *
- * ⚠ 必须在任何 [root] / [readAsset] 使用之前 [init]，否则**抛异常**而不是静默失败 ——
- * 静默返回空目录会让「学校索引读不出来」这类问题极难定位。
+ * 应用文件系统入口：`:core` 只声明接口，平台实现由应用启动时注入（保持 commonMain 平台中立），Android 继续用 `java.io.File`。
+ * ⚠ 必须在 [root]/[readAsset] 使用前 [init]，否则抛异常而非静默失败——静默返回空目录会让「学校索引读不出来」极难定位。
  */
 object AppFiles {
     private var rootFile: AppFile? = null

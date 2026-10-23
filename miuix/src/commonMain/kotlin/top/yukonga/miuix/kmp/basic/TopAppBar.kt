@@ -114,7 +114,6 @@ fun TopAppBar(
     actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding,
     bottomContent: @Composable () -> Unit = {},
 ) {
-    // Wrap the given actions in a Row.
     val actionsRow =
         @Composable {
             Row(
@@ -124,10 +123,7 @@ fun TopAppBar(
             )
         }
 
-    // Compose a Surface with a TopAppBarLayout content.
-    // The surface's background color is animated as specified above.
-    // The height of the app bar is determined by subtracting the bar's height offset from the
-    // app bar's defined constant height value (i.e. the ContainerHeight token).
+    // Bar height follows the scroll behavior's height offset (see TopAppBarLayout).
     TopAppBarLayout(
         title = title,
         color = color,
@@ -193,7 +189,6 @@ fun SmallTopAppBar(
         }
     }
 
-    // Wrap the given actions in a Row.
     val actionsRow =
         @Composable {
             Row(
@@ -203,10 +198,7 @@ fun SmallTopAppBar(
             )
         }
 
-    // Compose a Surface with a SmallTopAppBarLayout content.
-    // The surface's background color is animated as specified above.
-    // The height of the app bar is determined by subtracting the bar's height offset from the
-    // app bar's defined constant height value (i.e. the ContainerHeight token).
+    // Bar height follows the scroll behavior's height offset (see SmallTopAppBarLayout).
     SmallTopAppBarLayout(
         title = title,
         color = color,
@@ -862,13 +854,11 @@ private fun TopAppBarLayout(
         val layoutHeight = contentTop + bottomContentPlaceable.height
 
         layout(constraints.maxWidth, layoutHeight) {
-            // Navigation icon
             navigationIconPlaceable.placeRelative(
                 x = 0,
                 y = verticalCenter - navigationIconPlaceable.height / 2,
             )
 
-            // Title
             var baseX = (constraints.maxWidth - titlePlaceable.width) / 2
             if (baseX < navigationIconPlaceable.width) {
                 baseX += (navigationIconPlaceable.width - baseX)
@@ -886,7 +876,6 @@ private fun TopAppBarLayout(
                 y = verticalCenter + titlePlaceable.height / 2,
             )
 
-            // Action icons
             actionIconsPlaceable.placeRelative(
                 x = constraints.maxWidth - actionIconsPlaceable.width,
                 y = verticalCenter - actionIconsPlaceable.height / 2,
@@ -1054,13 +1043,11 @@ private fun SmallTopAppBarLayout(
         val layoutHeight = contentTop + bottomContentPlaceable.height
 
         layout(constraints.maxWidth, layoutHeight) {
-            // Navigation icon
             navigationIconPlaceable.placeRelative(
                 x = 0,
                 y = verticalCenter - navigationIconPlaceable.height / 2,
             )
 
-            // Title
             var baseX = (constraints.maxWidth - titlePlaceable.width) / 2
             if (baseX < navigationIconPlaceable.width) {
                 baseX += (navigationIconPlaceable.width - baseX)
@@ -1072,7 +1059,6 @@ private fun SmallTopAppBarLayout(
                 y = verticalCenter - titlePlaceable.height / 2,
             )
 
-            // Action icons
             actionIconsPlaceable.placeRelative(
                 x = constraints.maxWidth - actionIconsPlaceable.width,
                 y = verticalCenter - actionIconsPlaceable.height / 2,

@@ -15,7 +15,6 @@ class PrivilegedServiceImpl : IPrivilegedService.Stub() {
 
     override fun setPackageNetworkingEnabled(uid: Int, enabled: Boolean): Boolean {
         return try {
-            // Use reflection to call ServiceManager.getService
             val serviceManagerClass = Class.forName("android.os.ServiceManager")
             val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
             val connectivityBinder = getServiceMethod.invoke(null, "connectivity") as? IBinder
@@ -30,7 +29,6 @@ class PrivilegedServiceImpl : IPrivilegedService.Stub() {
 
             val thread = Thread {
                 try {
-                    // Enable OEM firewall chain
                     val setFirewallChainEnabled = iConnectivityManager.javaClass.getMethod(
                         "setFirewallChainEnabled",
                         Int::class.javaPrimitiveType,
@@ -38,7 +36,6 @@ class PrivilegedServiceImpl : IPrivilegedService.Stub() {
                     )
                     setFirewallChainEnabled.invoke(iConnectivityManager, FIREWALL_CHAIN_OEM_DENY, true)
 
-                    // Set UID rule
                     val rule = if (enabled) 0 else 2 // 0 = ALLOW, 2 = DENY
                     val setUidFirewallRule = iConnectivityManager.javaClass.getMethod(
                         "setUidFirewallRule",

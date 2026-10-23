@@ -283,18 +283,13 @@ fun rememberSharedScrollBehavior(
 /**
  * 让内容顶部让位给折叠顶栏，且**只在布局阶段读取** [SharedScrollBehavior.currentHeightPx]。
  *
- * `currentHeightPx` 在顶栏折叠动画期间逐帧变化（见 [CollapsibleTopAppBar] 测量期按
- * collapsedFraction 做 lerp 上报）。无论是写成 `Modifier.padding(top = currentHeightPx.toDp())`，
- * 还是塞进 LazyColumn 的 `contentPadding`，都是在**组合期**读这个状态 —— 顶栏每折叠一帧，
- * 持有这个读取的整个页面就要重组一次；若页面里全是 ArrowPreference / SwitchPreference
- * （MiUiX 标了 @NonRestartableComposable，参数不变也无法跳过），代价会被成倍放大。
+ * `currentHeightPx` 折叠期间逐帧变化。若用 `Modifier.padding(top = ...)` 或 LazyColumn 的
+ * `contentPadding` 读它，是在**组合期**订阅 —— 每折叠一帧整个页面重组一次；页面里全是
+ * @NonRestartableComposable 的 Preference 时代价成倍放大。
  *
- * 用法：把顶部内边距固定为「状态栏高度 + [CollapsibleTopAppBarDefaults.CollapsedHeight]」，
- * 展开态多出来的那部分交给本 Modifier 在布局阶段补齐。视觉结果与直接用实测高度做内边距一致
- * —— 内容始终贴着顶栏下沿，顶栏完全折叠后内容仍可滚到顶栏下方 —— 但每帧只触发重新测量/摆放，
- * 不再触发重组。
- *
- * 顶栏尚未上报高度（`currentHeightPx == 0f`）时按 0 处理，即先按折叠态摆放，测量完成后自行纠正。
+ * 用法：顶部内边距固定为「状态栏高度 + [CollapsibleTopAppBarDefaults.CollapsedHeight]」，
+ * 展开态多出的部分由本 Modifier 在布局阶段补齐。视觉与实测高度做内边距一致，但每帧只触发
+ * 重新测量/摆放，不再触发重组。顶栏未上报高度（currentHeightPx == 0f）时按折叠态摆放，测后自纠。
  */
 fun Modifier.collapsibleTopInset(scrollBehavior: SharedScrollBehavior?): Modifier =
     layout { measurable, constraints ->
@@ -535,11 +530,9 @@ fun CollapsibleTopAppBar(
             },
             modifier = modifier
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                // 顶栏高度必须在「测量期」写入，不能用 onSizeChanged：
-                // onSizeChanged 是在摆放（place）阶段才回调的，那时当帧布局已结束，
-                // 依赖它的内容（课程表网格顶部间距、星期行位置）只能等下一帧才更新，
-                // 表现为切换 tab 时课程表页顶部距离慢一帧才就位。
-                // 这里改在测量期写入：Scaffold 先测 TopBar 再测 MainContent，同帧即可生效。
+                // 顶栏高度必须在「测量期」写入，不能用 onSizeChanged：它在 place 阶段才回调，
+                // 当帧布局已结束，依赖它的内容（课程表网格顶部间距、星期行位置）只能等下一帧更新，
+                // 表现为切换 tab 时顶部距离慢一帧。Scaffold 先测 TopBar 再测 MainContent，同帧即可生效。
                 .layout { measurable, constraints ->
                     val placeable = measurable.measure(constraints)
                     // 该 layout 位于 windowInsetsPadding 之内，测得的尺寸**不含**状态栏高度：
@@ -647,13 +640,12 @@ fun CollapsibleTopAppBar(
 /**
  * 是否按平板宽度布局（>= 600dp 时 CollapsibleTopAppBar 默认不显示大标题）。
  *
- * 原实现读 `LocalConfiguration.current.screenWidthDp >= 600` —— `LocalConfiguration`
- * 是 **Android-only** 的 API，在 CMP 的 desktop/iOS 上根本不存在，会让本文件编不过
- * skiko 目标（这正是「Android 绿了但 iOS 编不过」的典型：Android 目标先通过，
- * 掩盖了 commonMain 里的平台专用 import）。
+ * 原实现读 `LocalConfiguration.current.screenWidthDp >= 600` —— LocalConfiguration 是
+ * **Android-only** API，CMP 的 desktop/iOS 上不存在，会让本文件编不过 skiko 目标
+ * （Android 先通过、掩盖了 commonMain 里的平台专用 import）。
  *
- * 改用 expect/actual：Android 侧保持原判断（含窗口/分屏变化），其他平台用
- * `BoxWithConstraints` 的 maxWidth —— 语义等价，且不依赖 adaptive 库。
+ * 改用 expect/actual：Android 保持原判断（含窗口/分屏变化），其他平台用 BoxWithConstraints
+ * 的 maxWidth —— 语义等价且不依赖 adaptive 库。
  */
 @Composable
 expect fun isTabletWidth(): Boolean

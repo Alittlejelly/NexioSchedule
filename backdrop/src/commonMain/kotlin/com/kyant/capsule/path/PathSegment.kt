@@ -4,8 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import com.kyant.capsule.core.Point
-// java.lang.Math.PI 是 JVM 专有（Kotlin/Native / JS 都没有 java.*）；
-// kotlin.math.PI 是同一个 Double 常量，且本就与下面的 abs/ceil/cos/sin/tan 同源。
+// java.lang.Math.PI 是 JVM 专有（Kotlin/Native / JS 都没有 java.*）；kotlin.math.PI 是同一个 Double 常量，且本就与下面的 abs/ceil/cos/sin/tan 同源。
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -51,8 +50,7 @@ sealed interface PathSegment {
             )
 
         override fun drawTo(path: Path) {
-            // 不直接使用 Path.arcTo()：Android 用折线多边形近似弧线，细圆角会产生明显锯齿。
-            // 改用若干段三次贝塞尔平滑逼近圆弧（每段最大 90°），走原生 cubicTo 渲染。
+            // 不用 Path.arcTo()：Android 用折线多边形近似弧线，细圆角会有明显锯齿；改用若干段三次贝塞尔平滑逼近圆弧（每段最大 90°），走原生 cubicTo 渲染。
             val segmentCount = ceil(abs(sweepAngle) / (PI * 0.5)).toInt().coerceAtLeast(1)
             val segmentSweep = sweepAngle / segmentCount
             val k = 4.0 / 3.0 * tan(segmentSweep / 4.0)

@@ -15,8 +15,6 @@ import top.yukonga.miuix.kmp.window.WindowListPopup
  *
  * This is automatically provided by all overlay components ([OverlayDialog], [WindowDialog],
  * [WindowBottomSheet], [OverlayListPopup], [WindowListPopup]).
- * 底部弹窗现在统一走 `BlurBottomSheet` / `BlurBottomSheetTablet`（fork 改造版，
- * 2026-10-10 迁入 commonMain），旧的 `OverlayBottomSheet` 已删除。
  *
  * Call the provided function to request dismissal from inside overlay content:
  * ```kotlin

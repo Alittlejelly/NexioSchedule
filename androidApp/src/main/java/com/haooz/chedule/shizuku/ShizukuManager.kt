@@ -129,7 +129,6 @@ object ShizukuManager {
         }
 
         return try {
-            // Reset latch for fresh bind
             bindLatch = CountDownLatch(1)
 
             val args = Shizuku.UserServiceArgs(
@@ -142,7 +141,6 @@ object ShizukuManager {
 
             Shizuku.bindUserService(args, serviceConnection)
 
-            // Wait for onServiceConnected callback, max 3 seconds
             val connected = bindLatch.await(3, TimeUnit.SECONDS)
             if (connected) {
                 NexioLog.d(TAG, "Privileged service bound successfully")
@@ -167,7 +165,6 @@ object ShizukuManager {
                 .getMethod("asInterface", IBinder::class.java)
                 .invoke(null, wrappedBinder)
 
-            // Enable OEM firewall chain
             val setFirewallChainEnabled = iConnectivityManager.javaClass.getMethod(
                 "setFirewallChainEnabled",
                 Int::class.javaPrimitiveType,
@@ -175,7 +172,6 @@ object ShizukuManager {
             )
             setFirewallChainEnabled.invoke(iConnectivityManager, FIREWALL_CHAIN_OEM_DENY, true)
 
-            // Set UID rule
             val rule = if (enabled) 0 else 2 // 0 = ALLOW, 2 = DENY
             val setUidFirewallRule = iConnectivityManager.javaClass.getMethod(
                 "setUidFirewallRule",

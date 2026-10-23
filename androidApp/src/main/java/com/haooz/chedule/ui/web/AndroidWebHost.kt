@@ -45,14 +45,10 @@ import kotlin.math.abs
 /** 顶栏色条采样高度：只取页面最顶部几行，用来统计主导底色 */
 private const val TOP_MIRROR_SAMPLE_HEIGHT_PX = 12
 
-/**
- * 顶栏色条采样延迟启动：
- */
+/** 顶栏色条采样延迟启动 */
 private const val TOP_MIRROR_START_DELAY_MS = 600L
 
-/**
- * 采样节流间隔：顶栏色是缓变的大面积底色，逐帧采纯浪费
- */
+/** 采样节流间隔：顶栏色是缓变的大面积底色，逐帧采纯浪费 */
 private const val TOP_MIRROR_SAMPLE_INTERVAL_MS = 120L
 
 /** JS 报"基础库没定义"的特征：站点脚本没加载全（多因 `X-Requested-With` 被判非浏览器） */

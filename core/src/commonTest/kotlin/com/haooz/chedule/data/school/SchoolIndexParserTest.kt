@@ -12,11 +12,6 @@ import kotlin.test.assertTrue
  * 这是**手写的 protobuf 解析器**，且刚做过改造（`java.io.InputStream` → 下标游标）。
  * 解析错误不会崩，只会静默产出错的学校/适配器列表 —— 用户看到的是「教务导入列表空了」，
  * 所以这里用手写字节序列把每种 wire type、varint 长度边界、截断情形都钉死。
- *
- * protobuf 编码回顾：
- * - tag = `(fieldNumber shl 3) or wireType`
- * - varint 每字节 7 位数据，最高位为「后续还有」标志
- * - length-delimited(2)：tag + varint 长度 + 字节
  */
 class SchoolIndexParserTest {
 

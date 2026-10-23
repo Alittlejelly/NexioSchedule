@@ -5,27 +5,18 @@ import com.haooz.chedule.ui.utils.decodeImageBitmapPng
 import com.haooz.chedule.ui.utils.encodeImageBitmapPng
 
 /**
- * 「切换课表」卡片快照的落盘存储。
+ * 「切换课表」卡片快照落盘存储。
  *
- * ## 为什么必须落盘
+ * 需落盘的原因：`GraphicsLayer.record{}` 只存引用、活不过组合销毁，
+ * `ImageBitmap` 活不过进程，仅文件能留到下次启动。
+ * 生命周期：保留至下次从切换课表页退出，每次退出覆盖写、进入只读。
+ * 快照可能来自上次会话，首帧形变先复用它再接真实内容（形变仅数百毫秒）。
  *
- * 进入切换课表页时要复用「上次退出录到的卡片」，但：
- * - `GraphicsLayer` 的录制内容**活不过组合销毁**（`record{}` 里 `drawLayer(x)` 只存引用）；
- * - `ImageBitmap` **活不过进程**（重进应用就没了）。
- *
- * 只有文件能留到下次启动。
- *
- * ## 生命周期
- *
- * 保持到**下次从切换课表页退出**为止：每次退出覆盖写，进入只读、绝不录制。
- * 所以这份快照可能来自上一次会话 —— 日程内容若在别处变过，首帧形变会先用它，
- * 真实内容随后接上（形变本来就只有几百毫秒）。
- *
- * ⚠ 文件名是数据兼容契约，别改。
+ * ⚠ 文件名是数据兼容契约，勿改。
  */
 object SwitchCardSnapshotStore {
 
-    /** 落地文件名，与存量快照兼容绑定，别改。 */
+    /** 快照落盘文件名；数据兼容契约，勿改。 */
     const val FILE_NAME = "switch_card_snapshot.png"
 
     /** 读回上次退出固化的卡片快照；没有/读失败/未初始化都返回 null。 */

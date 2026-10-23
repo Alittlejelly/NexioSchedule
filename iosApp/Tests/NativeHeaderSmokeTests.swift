@@ -36,8 +36,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     private func stableFrame(of element: XCUIElement) -> CGRect {
-        // Compose's fling is not included in XCTest's UIKit-idle detection. Wait for the
-        // existing scrolling to stop rather than relaxing any post-navigation assertion.
+        // Compose's fling isn't covered by XCTest's UIKit-idle detection, so wait for scrolling to stop before asserting.
         var previous = element.frame
         var stableSamples = 0
         for _ in 0..<16 {
@@ -56,8 +55,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
     }
 
     private func visibleContentAnchor() throws -> XCUIElement {
-        // Changelog body text is merged into clickable cards and need not itself be hittable.
-        // We only read geometry here; requiring hittability would reject visible static content.
+        // Changelog body text is merged into clickable cards and need not be hittable; we only read geometry, so hittability isn't required.
         try XCTUnwrap(app.staticTexts.allElementsBoundByIndex.first {
             $0.exists && $0.label != "更新日志" && $0.label.count > 4 &&
                 $0.frame.minY > 180 && $0.frame.maxY < app.frame.height - 100 &&
@@ -373,8 +371,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.navigationBars.buttons.count, 2)
         capture("Holiday - native update action")
         app.navigationBars.buttons["更新"].tap()
-        // A fast response may finish before XCTest snapshots the spinner. Accept either
-        // original feedback state; this check deliberately does not require network success.
+        // A fast response may finish before XCTest snapshots the spinner; accept either original feedback state — this check deliberately does not require network success.
         let busy = item("更新中")
         let update = app.navigationBars.buttons["更新"]
         XCTAssertTrue(busy.exists || update.exists,
@@ -531,10 +528,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.navigationBars.count, 0, "Import did not return to Compose settings")
     }
 
-    /// UIKit builds the long-press back menu out of each stack entry's *view controller* title.
-    /// Those were nil while Compose owned the visible header, so every row rendered blank even
-    /// though all of them popped correctly. "主界面" exists only as the retained root's
-    /// parent-facing title, so it is a precise marker for the menu being labelled at all.
+    /// UIKit builds the long-press back menu from each stack entry's view-controller title. Those were nil while Compose owned the visible header, so every row rendered blank though all popped correctly. "主界面" exists only as the retained root's parent-facing title, so it's a precise marker for the menu being labelled.
     func testLongPressBackMenuLabelsEveryDestination() throws {
         try requireExpandedRoutes()
         try requirePhoneWidthSettings()
@@ -548,8 +542,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
 
         let back = app.navigationBars.firstMatch.buttons.element(boundBy: 0)
         XCTAssertTrue(back.exists && back.isHittable, app.debugDescription)
-        // A plain press(forDuration:) is delivered as touch-down/up, which UIKit resolves to the
-        // normal pop. Hold, then move 1 pt, so the menu is still up once the touch lifts.
+        // A plain press is delivered as touch-down/up, which UIKit resolves to a normal pop; hold then move 1 pt so the menu stays up after the touch lifts.
         let anchor = back.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         anchor.press(forDuration: 8.0)
         Thread.sleep(forTimeInterval: 1.0)
@@ -915,8 +908,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
         }
     }
 
-    /// 从原生「更多」菜单点进课表外观：入场快照必须带上右上角菜单。
-    /// （直接调用进入不会有问题，必须走菜单 —— 见 ContentView.captureScreenPNG 注释。）
+    /// 从原生「更多」菜单点进课表外观：入场快照必须带上右上角菜单（直接调用进入无此要求，必须走菜单，见 ContentView.captureScreenPNG 注释）。
     func testCustomizeEntryFromMoreMenuKeepsHeaderInSnapshot() throws {
         if app.tabBars.buttons["课程表"].waitForExistence(timeout: 5) {
             app.tabBars.buttons["课程表"].tap()
@@ -938,13 +930,10 @@ final class NativeHeaderSmokeTests: XCTestCase {
         // 课表外观页已打开（原生「应用」按钮）
         XCTAssertTrue(app.buttons["应用"].waitForExistence(timeout: 5),
                       "Customize page did not open from the more menu")
-        // ⚠ 不再断言 `app.buttons["更多"]`：iOS 26 的导航栏按钮走 SwiftUI hosting + portal，
-        // 菜单交互后 UIKit 会把这块 platter reparent，XCTest 的无障碍树就找不到它
-        // （屏幕上仍可见）。快照能否拍到它由 captureScreenPNG 从 window 渲染保证。
+        // ⚠ 不再断言 `app.buttons["更多"]`：iOS 26 导航栏按钮走 SwiftUI hosting + portal，菜单交互后 UIKit 把这块 platter reparent，XCTest 无障碍树就找不到它（屏幕上仍可见）；能否拍到由 captureScreenPNG 从 window 渲染保证。
     }
 
-    /// 折叠屏 iPhone（Duo）回归：回主屏时系统给 scene 拍快照，会在 draw 里跑一次懒布局测量。
-    /// 本用例连做 3 轮「退出 → 再打开」，覆盖主 Pager 越界那次崩溃。
+    /// 折叠屏 iPhone（Duo）回归：回主屏时系统给 scene 拍快照，会在 draw 里跑一次懒布局测量；连做 3 轮「退出 → 再打开」覆盖主 Pager 越界崩溃。
     func testBackgroundAndReopenDoesNotCrash() {
         // 元素定位不成本用例的目的：就算找不到按钮也要把 home 那一步走完
         continueAfterFailure = true

@@ -6,11 +6,11 @@ import androidx.compose.ui.graphics.toPixelMap
 import com.haooz.chedule.data.AppFiles
 
 /**
- * 壁纸的后端能力 —— 平台实现方需要提供的四件事。
+ * 壁纸后端能力 —— 平台实现需提供四项能力。
  *
- * 走接口 + 启动注入而不是 expect/actual：Android 实现（`ScheduleAppearance`）在
- * `:androidApp`，`:ui-shared` 反向依赖不到它。Android 由 `NexioApplication.onCreate()`
- * 注入 `AndroidWallpaperBackend`，iOS 默认用 [IosWallpaperBackend]。
+ * 用接口 + 启动注入而非 expect/actual：`:androidApp` 的 `ScheduleAppearance`
+ * 无法被 `:ui-shared` 反向依赖；Android 由 `NexioApplication.onCreate()` 注入
+ * `AndroidWallpaperBackend`，iOS 默认 [IosWallpaperBackend]。
  */
 interface WallpaperBackend {
     /** 解码壁纸字节为 [ImageBitmap]；失败返回 null（不抛）。 */
@@ -26,16 +26,12 @@ interface WallpaperBackend {
     fun screenBoundsPx(): Pair<Int, Int>
 
     /**
-     * 保存尺寸策略：cover 到当前屏幕，只缩不扩，长边封顶 2×屏幕长边。
+     * 保存尺寸策略：cover 到当前屏幕，只缩不扩，长边封顶 2×屏幕长边；
+     * 返回应保存的 (宽, 高)，与原图相同即原样保存。幂等，多层链路重复应用安全。
      *
-     * 返回「源图按策略应保存的 (宽, 高)」；与原图相同即原样保存。
-     *
-     * ⚠ 这条策略曾经用「屏幕长短边」做目标，横图会被按短边对齐屏宽砍掉高度
-     * （4000×3000 → 1674×1256），竖屏 cover 显示时再放大 2.2 倍 —— 这就是
-     * 「选完壁纸很糊」的根因。短边方向不足屏幕的小图无解（源图没有那些像素），
-     * 原样保存、显示侧放大是唯一选择。
-     *
-     * 幂等：对已按本策略处理过的图再算一次返回原尺寸，多层链路重复应用安全。
+     * ⚠ 曾用「屏幕长短边」做目标，横图被按短边对齐屏宽砍高度
+     * （4000×3000 → 1674×1256），竖屏 cover 再放大 2.2 倍，即「选完壁纸很糊」根因。
+     * 短边不足屏幕的小图无解，原样保存、显示侧放大是唯一选择。
      */
     fun saveTargetSize(width: Int, height: Int): Pair<Int, Int> {
         if (width <= 0 || height <= 0) return width to height
@@ -58,12 +54,12 @@ interface WallpaperBackend {
 /**
  * 壁纸存储。
  *
- * ⚠ 存储路径是数据兼容契约：文件名与落盘根目录（[AppFiles.root]）逐字不能改，
- * 改了等于存量用户的壁纸静默丢失。后缀 `.webp` 只是名字 —— 解码按内容识别格式，不看扩展名。
+ * ⚠ 存储路径是数据兼容契约：文件名与落盘根目录（[AppFiles.root]）逐字勿改，
+ * 否则存量用户壁纸静默丢失。后缀 `.webp` 仅为名字，解码按内容识别格式而非扩展名。
  */
 object WallpaperStore {
 
-    /** 壁纸文件名，与存量用户的数据兼容绑定，别改。 */
+    /** 壁纸文件名；数据兼容契约，勿改。 */
     const val FILE_NAME = "appearance_wallpaper.webp"
 
     /** 测光网格边长（16×16）。 */
@@ -73,13 +69,13 @@ object WallpaperStore {
     var backend: WallpaperBackend? = null
 
     /**
-     * 内存缓存。Android 侧真正的主缓存是 `ScheduleAppearance` 的 `LruCache`，
-     * 这里只是「避免同一次会话重复读盘」的兜底 —— 所以改壁纸必须两边都清。
+     * 内存缓存；Android 主缓存在 `ScheduleAppearance.LruCache`，此处仅兜底避免
+     * 同会话重复读盘，故改壁纸须两侧都清。
      */
     private var cached: ImageBitmap? = null
 
-    // 变换存这里而不是 Activity 的 companion：横竖屏切换、进程重建后都要靠它把壁纸
-    // 摆回用户上次调的位置，而它是纯数据、没有平台成分。
+    // 变换存于此而非 Activity companion：横竖屏切换 / 进程重建后需靠它把壁纸
+    // 摆回用户上次位置，且其为纯数据、无平台成分。
 
     /** 重映射到当前屏幕后的壁纸 offset（px）。与 [transformScale] 成对。 */
     var wallpaperOffset: Offset = Offset.Zero
@@ -91,8 +87,7 @@ object WallpaperStore {
 
     /**
      * 写入当前生效的壁纸变换。
-     *
-     * ⚠ 只在「已经 remap 到当前屏幕」之后调，否则旋转一圈后画面会漂。
+     * ⚠ 须在已 remap 到当前屏幕后调用，否则旋转一圈画面会漂。
      */
     fun saveTransform(offset: Offset, scale: Float) {
         wallpaperOffset = offset
@@ -178,8 +173,7 @@ object WallpaperStore {
 
     /**
      * 当前内存里的壁纸实例（不解码、不读盘）。
-     *
-     * 给宿主层做身份比较用 —— 靠 `===` 判断该不该回收，换实例会误回收正在显示的位图。
+     * 供宿主层用 `===` 做身份比较以决定是否回收；换实例会误回收正在显示的位图。
      */
     fun currentImageBitmap(): ImageBitmap? = cached
 

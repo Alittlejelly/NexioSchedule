@@ -10,28 +10,25 @@ import kotlin.test.assertTrue
  *
  * ## 背景
  *
- * 真实备份 `全部备份_20261009_155910.json`（41 键）里有 `schedule_time_config_默认课表`：
- * 课表「默认课表」被删除时，`schedule_{名}_*` 前缀的键被清掉了，但绑定键用的是
- * 另一个前缀 `schedule_time_config_{名}`，没被一起清 → 残留在用户 prefs 里、
- * 随全量备份原样导出。
+ * 真实备份（41 键）里有 `schedule_time_config_默认课表`：课表删除时 `schedule_{名}_*`
+ * 前缀的键被清掉，但绑定键用的是另一个前缀 `schedule_time_config_{名}`，没被一起清
+ * → 残留在用户 prefs 里、随全量备份原样导出。
  *
- * 旧校验（1.6.4-1008 及更早）要求每个绑定的课表名必须在 `schedule_names` 里：
- *   require(scheduleName in scheduleNames) {
- *       "Invalid full schedule backup: time configuration belongs to an unknown schedule"
- *   }
+ * 旧校验（1.6.4-1008 及更早）要求绑定名 ∈ `schedule_names`，否则抛
+ * `Invalid full schedule backup: time configuration belongs to an unknown schedule`
  * → 用户**连自己的备份都恢复不了**（Toast「无法识别备份文件：…」）。
  *
- * 修复（`9d13813`，2026-10-09）：孤儿绑定**不是损坏**，是正常残留 ——
- * 恢复流程本来就会先删全部 `schedule_*` 再按备份写回，残留写回去与现状一致、无害。
- * 校验降级为「格式合理」（非空），不再要求名字已知。
+ * 修复（`9d13813`，2026-10-09）：孤儿绑定**不是损坏**，是正常残留 —— 恢复流程本来就
+ * 先删全部 `schedule_*` 再按备份写回，残留写回去与现状一致、无害。校验降级为
+ * 「格式合理」（非空），不再要求名字已知。
  *
  * ## 为什么只断言纯函数层
  *
  * 修复点就在 [validateFullScheduleBackupStructure] —— 把孤儿校验拿掉这里立刻红，
  * 覆盖完整。刻意**不碰 CourseRepository / AppStorage**：`CourseRepository()` 实为
- * `getInstance()` 单例（invoke 转发），其 prefs 在 JVM 内首次构造时就钉死当时的
- * AppStorage store；本类若在别的测试类之前构造它，会污染它们的 store
- *（实测：FullBackupRoundTripTest 因此红过）。纯函数断言顺序无关。
+ * `getInstance()` 单例，其 prefs 在 JVM 内首次构造时就钉死当时的 AppStorage store；
+ * 本类若在别的测试类之前构造它，会污染它们的 store（实测：FullBackupRoundTripTest
+ * 因此红过）。纯函数断言顺序无关。
  */
 class OrphanTimeConfigBackupRestoreTest {
 

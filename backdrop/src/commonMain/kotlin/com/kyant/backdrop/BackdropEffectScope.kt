@@ -12,17 +12,9 @@ sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
     val size: Size
 
     /**
-     * 当前离屏模糊缓冲的降采样比例。
-     *
-     * 采样链路已回退到源库实现：缓冲是 1:1 全分辨率（只外扩 padding），
-     * 因此固定为 1f —— effect（尤其 lens 的 runtimeShader）的像素 uniform
-     * 不再需要缩放。保留这个字段只是为了让 lens()/blur() 不用改签名。
-     *
-     * ⚠ **effect 里凡是要按像素缩放 uniform/半径的，一律读这个字段，
-     * 不要写死常量。** 这里曾经有个 `DOWNSAMPLE_SCALE = 0.42f` 的残留常量被
-     * blur() 乘上去，降采样回退后没跟着删，所有「卡片自模糊」路径的半径都被
-     * 缩到 42% —— 长按浮层因此明显比网格卡清，而 n=1 下看不出任何异常。
-     * 常量已删；要恢复降采样时改这个字段即可，effect 会自动跟随。
+     * 离屏模糊缓冲的降采样比例；采样链路回退源库实现后缓冲为 1:1 全分辨率，故固定 1f（字段保留仅为
+     * lens()/blur() 不改签名）。⚠ effect 中按像素缩放 uniform/半径的必须读此字段，切勿写死常量：
+     * 曾残留 `DOWNSAMPLE_SCALE = 0.42f` 被 blur() 乘上，导致所有卡片模糊半径被缩到 42%。恢复降采样改此字段即可。
      */
     val downsampleScale: Float
 

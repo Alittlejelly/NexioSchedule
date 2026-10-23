@@ -231,10 +231,9 @@ internal fun BottomSheetContentLayout(
         )
 
         LaunchedEffect(allowDismiss) {
-            // Collect inside a single coroutine so the per-frame progress ticks during a
-            // back gesture do not cancel/relaunch the LaunchedEffect on every progress update.
-            // fork 的 backProgress() 在手势进行中给连续进度、非手势期间给 null（上游的
-            // transitionState 是把这两个语义塞在一个对象里，这里拆成 null 判定）。
+            // 单个协程内收集，避免手势期间每帧进度都取消/重启 LaunchedEffect。
+            // fork 的 backProgress() 手势进行中给连续进度、非手势期间给 null（上游的 transitionState
+            // 把两个语义塞在一个对象里，这里拆成 null 判定）。
             snapshotFlow { navBackState.backProgress() }
                 .collect { progress ->
                     if (progress != null && predictiveBackEnabled) {
@@ -409,10 +408,8 @@ internal fun BottomSheetContent(
             settlingJob.value = coroutineScope.launch {
                 val currentOffset = dragOffsetY.value
                 val dismissThresholdPx = with(density) { 150.dp.toPx() }
-                // Velocity comes from gesture pipeline as px/s; the threshold is intentionally
-                // expressed as a dp value converted to px so the trigger feels equivalent across
-                // densities (higher-density screens both demand and produce proportionally larger
-                // px/s values, which roughly cancels out).
+                // 手势速度单位是 px/s；阈值用 dp 换算 px 表达，保证各密度下手感一致
+                // （高密度屏阈值与产出速度都成比例放大，大致抵消）。
                 val velocityThresholdPx = with(density) { 800.dp.toPx() }
                 val windowHeightPx = with(density) { currentWindowHeight.toPx() }
 
@@ -450,7 +447,6 @@ internal fun BottomSheetContent(
                 } catch (_: CancellationException) {
                     // Animation is interrupted
                 } finally {
-                    // Reset state after animation completes
                     isSettling.value = false
                 }
             }
@@ -646,8 +642,8 @@ private fun BottomSheetColumn(
                         end = (if (isRtl) left else right).coerceAtLeast(0.dp) + outsideMargin.width,
                     )
                     // Only capture the natural sheet height while the IME is closed; otherwise the
-                    // bottom inset added by imePadding would inflate sheetHeightPx, shifting the
-                    // dim threshold and causing translationY jumps mid-animation.
+                    // imePadding bottom inset inflates sheetHeightPx, shifting the dim threshold
+                    // and causing mid-animation translationY jumps.
                     if (imeInsets.getBottom(density) == 0) {
                         sheetHeightPx.intValue = coordinates.size.height
                     }
@@ -693,10 +689,9 @@ private fun BottomSheetColumn(
 
 /**
  * Renders the elastic background fill that follows the sheet upward when the user
- * drags past the top of its contents (negative `dragOffsetY`). Lives in its own
- * composable so the only state it reads — `dragOffsetY.value` — invalidates this
- * subtree alone, leaving the surrounding [BottomSheetColumn] free of per-frame
- * recomposition during a drag.
+ * drags past the top of its contents (negative `dragOffsetY`). Separate composable
+ * so reading `dragOffsetY.value` invalidates only this subtree, keeping
+ * [BottomSheetColumn] free of per-frame recomposition during a drag.
  */
 @Composable
 private fun BoxScope.OverscrollBackground(
@@ -737,11 +732,11 @@ private fun CoroutineScope.animateHandlePressRelease(
 }
 
 /**
- * Drag handle strip at the top of the sheet. Animates a press scale/width when the user
- * touches or drags the handle, and forwards drag amounts into [dragSnapChannel].
+ * Drag handle strip at the top of the sheet. Animates press scale/width on touch or
+ * drag, and forwards drag amounts into [dragSnapChannel].
  *
  * Press/release scaling is delegated to [animateHandlePressDown] / [animateHandlePressRelease]
- * so the same launch-pair is not rewritten in each of the four entry points
+ * so the launch-pair is not rewritten at each of the four entry points
  * (tap-press, tap-release, drag-start, drag-stop).
  */
 @Composable

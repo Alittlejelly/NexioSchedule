@@ -47,10 +47,8 @@ import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 顶栏液态玻璃圆形按钮。
- *
- * 拖拽时沿拖动方向拉伸、抬手回弹，机制与 BackToNowFloatingButton 一致：
- * 按压反馈（[InteractiveHighlight] 的高光 + 高光跟随）、图标随动、阴影同步变形。
+ * 顶栏液态玻璃圆形按钮。拖拽沿拖动方向拉伸、抬手回弹，机制与 BackToNowFloatingButton 一致
+ * （[InteractiveHighlight] 高光 + 高光跟随、图标随动、阴影同步变形）。
  */
 @Composable
 fun LiquidTopBarButton(
@@ -85,8 +83,8 @@ fun LiquidTopBarButton(
     val shadowColor = if (isLightTheme) Color(0x12000000) else Color(0x20000000)
     val interactionSource = remember { MutableInteractionSource() }
 
-    // drawBackdrop 的 element 用引用比较 shape / effects / onDrawSurface
-    // 若 lambda 每次都新建，节点就会每帧 update → invalidateDraw → 每帧重新录制采样层并重新跑一次
+    // drawBackdrop 的 element 按引用比较 shape / effects / onDrawSurface；lambda 每帧新建
+    // 会让节点每帧 invalidateDraw、重新录制采样层并重跑采样
     val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
     // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
     val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
@@ -187,9 +185,8 @@ fun LiquidTopBarButton(
                 .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
                 .zIndex(0f)
         )
-        // 按压高光单独一层，与材质层平级。
-        // 不能挂在上面那个 Box 上：drawBackdrop 的 layerBlock 会把整个节点的
-        // alpha 乘上 backdropAlpha，顶栏滚动时材质淡出、**按压高光也跟着消失**。
+        // 按压高光单独一层、与材质层平级：drawBackdrop 的 layerBlock 会把整个节点 alpha
+        // 乘上 backdropAlpha，挂在材质 Box 上会让顶栏滚动时高光跟着材质一起消失。
         // 高光跟随手势（gestureModifier）与 clickable 同层，两者都是 pointerInput，可叠加。
         Box(
             modifier = Modifier

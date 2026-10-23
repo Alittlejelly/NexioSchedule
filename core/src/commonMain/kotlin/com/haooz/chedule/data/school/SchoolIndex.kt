@@ -3,12 +3,7 @@ package com.haooz.chedule.data.school
 /**
  * 学校索引数据模型，对应 shiguang_warehouse 的 `school_index.proto`。
  *
- * ## 关于字段名映射
- *
- * 这几个类原先带 `com.google.gson.annotations.SerializedName`，但**项目里没有任何
- * gson 反序列化用到它们**（解析走的是下面的手写 protobuf），注解是装饰性的，因此去掉。
- * 保留 wire 字段名在 KDoc 里，便于对照 `.proto`：
- *
+ * wire 字段名对照（解析走下面的手写 protobuf，不引入 gson/protobuf 运行时）：
  * ```
  * SchoolIndexData: protocol_version=1, version_id=2, schools=3
  * SchoolData:      id=1, name=2, initial=3, resource_folder=4, adapters=5
@@ -57,16 +52,9 @@ data class AdapterData(
 /**
  * Protobuf 二进制格式解析器（手写，不引入 protobuf 运行时）。
  *
- * ## 迁移说明
- *
- * 原实现基于 `java.io.ByteArrayInputStream` / `InputStream` —— 那是 JVM 专有，
- * Kotlin/Native 与 JS 都没有。现改为基于 [ByteArray] + 下标的游标，
- * **不复制嵌套消息的字节**（原实现每层都 `ByteArrayInputStream(bytes)` 复制一次）。
- *
- * 行为保持不变的要点：
- * - 循环条件由 `input.available() > 0` 改为 `pos < end`，语义一致
- * - 长度校验、截断检测、[MAX_FIELD_BYTES] 上限全部保留
- * - 未知字段按 wire type 跳过（varint / 64bit / length-delimited / 32bit）
+ * 基于 [ByteArray] + 下标游标，嵌套消息只裁剪边界、不复制字节。
+ * 未知字段按 wire type 跳过（varint / 64bit / length-delimited / 32bit），
+ * 单字段长度受 [MAX_FIELD_BYTES] 上限约束。
  */
 object SchoolIndexParser {
 

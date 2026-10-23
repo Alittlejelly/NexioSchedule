@@ -32,35 +32,32 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * iOS 的 WakeUp 课表导入：**无头 WKWebView 跑云端适配脚本**。
- *
- * 对应 Android `ThirdPartyShareImporter.importWakeUp`（无头 `WebView` + `@JavascriptInterface`）。
- * 脚本本体由 [IosShareImport] 用共享的 `ScriptRepository` 下载好再传进来 ——
- * 下载是跨平台能力，不该和 WKWebView 绑在一起。
+ * iOS 的 WakeUp 课表导入：**无头 WKWebView 跑云端适配脚本**，对应 Android
+ * `ThirdPartyShareImporter.importWakeUp`（无头 `WebView` + `@JavascriptInterface`）。
+ * 脚本本体由 [IosShareImport] 用共享 `ScriptRepository` 下载好再传入 —— 下载是跨平台能力，
+ * 不与 WKWebView 绑在一起。
  *
  * ## 桥接差异（本文件唯一难的地方）
  *
- * Android 用 `addJavascriptInterface`，JS 里可以直接 `AndroidBridge.saveImportedCourses(a, b)`；
+ * Android 的 `addJavascriptInterface` 可让 JS 直接 `AndroidBridge.saveImportedCourses(a, b)`；
  * WKWebView **没有这个能力**，只有 `window.webkit.messageHandlers.X.postMessage(...)` 单向通道。
- * 所以先注入一层 JS shim（[IOS_BRIDGE_JS]）：造一个**方法签名逐字相同**的
- * `window.AndroidBridge`，内部把 `(方法名, 参数数组)` postMessage 出来。
- * 这样云端脚本和共享的 [JS_PROMISE_BRIDGE] 一行都不用改。
+ * 故先注入 JS shim（[IOS_BRIDGE_JS]）：造一个**方法签名逐字相同**的 `window.AndroidBridge`，
+ * 内部把 `(方法名, 参数数组)` postMessage 出来 —— 云端脚本与共享 [JS_PROMISE_BRIDGE] 零改动。
  *
- * Promise 的兑现方向相反（Native → JS）：走 `evaluateJavaScript` 调
+ * Promise 兑现方向相反（Native → JS）：走 `evaluateJavaScript` 调
  * `window._resolveAndroidPromise(id, result)`，与 Android 完全同构。
  *
  * ## 三个必须记住的坑
  *
- * 1. **WKWebView 只能在主线程创建和调用**。协程跑在 `ioDispatcher` 上，所有 WebKit
- *    操作都切主队列，否则直接崩（不是静默失败）。
- * 2. **参数里的数字是 NSNumber**：WKScriptMessage 的 body 走的是 Foundation 桥，
- *    JS number 到 Kotlin 是 `NSNumber`，**不能 `as? Number`**。一律 `toString()` 再转。
- * 3. **handler / delegate 要自己强引用**（[Controller] 的字段），否则页面加载完成前
- *    就可能被回收，回调永远不来（表现为「点了没反应」）。
+ * 1. **WKWebView 只能在主线程创建和调用**：协程跑在 `ioDispatcher`，所有 WebKit 操作切主队列，
+ *    否则直接崩（不是静默失败）。
+ * 2. **参数里的数字是 NSNumber**：WKScriptMessage 的 body 走 Foundation 桥，JS number 到 Kotlin
+ *    是 `NSNumber`，**不能 `as? Number`**，一律 `toString()` 再转。
+ * 3. **handler / delegate 要自己强引用**（[Controller] 的字段），否则页面加载完成前就可能被回收，
+ *    回调永远不来（表现为「点了没反应」）。
  *
- * 另外：WebView 会**加到 key window 上**（1×1、挪到屏幕外、`alpha` 0.01）。
- * 不挂到视图层级时 WKWebView 有可能延后执行 JS，挂上去最稳；`hidden = true` 反而会
- * 让系统跳过渲染，别用。
+ * 另外：WebView 要**加到 key window 上**（1×1、屏幕外、`alpha` 0.01）—— 不挂视图层级时
+ * WKWebView 可能延后执行 JS；`hidden = true` 会让系统跳过渲染，别用。
  */
 internal object IosWakeUpImport {
 
@@ -82,8 +79,7 @@ internal object IosWakeUpImport {
             controller.awaitPageLoad()
             controller.eval(IOS_BRIDGE_JS)
             controller.eval(JS_PROMISE_BRIDGE)
-            // 与 Android 的 bootstrap 同构：口令已在导入页收集好，直接回填给 showPrompt；
-            // showAlert 一律当成失败（脚本只会用它报错）。
+            // 与 Android 的 bootstrap 同构：口令回填 showPrompt，showAlert 一律当失败（脚本只用它报错）
             controller.eval(bootstrapJs(shareKey))
             controller.eval(script)
             return controller.awaitPayload()
@@ -207,8 +203,8 @@ internal object IosWakeUpImport {
             config.userContentController = contentController
 
             val wv = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = config)
-            // 挪到屏幕外 + 几乎全透明：既保证 WKWebView 正常渲染/执行 JS，又看不见。
-            // ⚠ 别用 hidden = true —— 系统会跳过渲染，JS 执行时机变得不可控。
+            // 挪到屏幕外 + 几乎全透明：保证 WKWebView 正常渲染/执行 JS，又看不见。
+            // ⚠ 别用 hidden = true —— 系统会跳过渲染，JS 执行时机不可控。
             wv.setFrame(CGRectMake(-10000.0, -10000.0, 1.0, 1.0))
             wv.alpha = 0.01
             val nav = NavDelegate(
@@ -225,9 +221,9 @@ internal object IosWakeUpImport {
         /**
          * 等空白页载入完成（注入脚本的前置条件）。
          *
-         * ⚠ 自带 20s 超时并把 `TimeoutCancellationException` 换成可读文案：
-         * 网络不通时 `didFinishNavigation` 根本不会来，不兜底就是干等到外层 45s 超时、
-         * 抛一句没人看得懂的 "Timed out waiting for ..."（与 IosShareImport 的中文文案风格一致）。
+         * ⚠ 自带 20s 超时并把 `TimeoutCancellationException` 换成可读文案：网络不通时
+         * `didFinishNavigation` 不会来，不兜底就干等到外层 45s 超时、抛没人看得懂的
+         * "Timed out waiting for ..."（文案风格与 IosShareImport 一致）。
          */
         suspend fun awaitPageLoad() {
             try {
@@ -440,11 +436,10 @@ internal object IosWakeUpImport {
             onFinish()
         }
 
-        // ⚠ 只留一个 didFail：Kotlin 侧 `didFailNavigation` 与
-        // `didFailProvisionalNavigation` 的签名**完全一样**（`(WKWebView, WKNavigation?, NSError)`），
-        // 只有 ObjC selector 不同，两个都写会报 "Conflicting overloads"
-        // （编译器提示加 @ObjCSignatureOverride，但本仓库的 Kotlin 版本里没有这个注解）。
-        // 载入失败/一直没载入完由 [Controller.awaitPageLoad] 的超时兜底。
+        // ⚠ 只留一个 didFail：Kotlin 侧 `didFailNavigation` 与 `didFailProvisionalNavigation`
+        // 签名**完全一样**（仅 ObjC selector 不同），两个都写会报 "Conflicting overloads"
+        // （编译器提示的 @ObjCSignatureOverride 本仓库 Kotlin 版本没有）。
+        // 载入失败/没载入完由 [Controller.awaitPageLoad] 的超时兜底。
         override fun webView(
             webView: WKWebView,
             didFailNavigation: WKNavigation?,

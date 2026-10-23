@@ -9,20 +9,18 @@ import kotlin.test.assertTrue
 /**
  * 「导入课表」JSON 解析（[parseFullScheduleJson]）的**真实备份**回归测试。
  *
- * ## 背景：这是 R2 序列化通道
- * [parseFullScheduleJson] 原用 `Gson().fromJson(text, TypeToken<Map<String,Any>>)`。
- * Gson 走运行时反射，Kotlin/Native（iOS）上不存在 —— 2026-10-11 换成 `kotlinx-serialization`
- * （`JsonSupport.parseJsonObject` + `jsonToPlainValue`）。**落盘/输入格式一字节未改**，
- * 只换了库；本测试用两份**用户真实备份文件**固化「换库后行为不变」。
+ * [parseFullScheduleJson] 原用 `Gson().fromJson(text, TypeToken<Map<String,Any>>)`；
+ * Gson 走运行时反射，Kotlin/Native（iOS）上不存在 —— 2026-10-11 换成
+ * `kotlinx-serialization`（`JsonSupport.parseJsonObject` + `jsonToPlainValue`）。
+ * **落盘/输入格式一字节未改**，只换了库；本测试用两份**用户真实备份文件**固化
+ * 「换库后行为不变」。
  *
- * ## 夹具（2026-10-11 从本机导出，冻结快照）
+ * 夹具（2026-10-11 从本机导出，冻结快照）：
  * - `/backup_single_schedule.json`（12,285 字节）：单课表备份「数字经济3」，
  *   含 `semester_settings` + `teaching_week_reorganizations` + `courses[]`（23 门课）。
- * - `/backup_full_export.json`（61,949 字节）：全量导出，扁平 `schedule_*` 键值
- *   （SharedPreferences 全导出格式）。
+ * - `/backup_full_export.json`（61,949 字节）：全量导出，扁平 `schedule_*` 键值。
  *
- * ## 为什么放 jvmTest
- * 需读文件资源；解析器本身在 commonMain（[parseFullScheduleJson] 在 `:core` commonMain）。
+ * 放 `jvmTest`：需读文件资源；解析器本身在 commonMain。
  */
 class ScheduleImportCodecTest {
 

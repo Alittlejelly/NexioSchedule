@@ -1,7 +1,6 @@
 /**
- * 教务导入第二步：网页导入页（独立路由 `AppRoute.WebImport`，右侧推入，返回先回选择页）。
+ * 教务导入第二步：网页导入页（独立路由 `AppRoute.WebImport`，右侧推入，返回先回选择页），
  * 学校 / 适配器经 [com.haooz.chedule.ui.web.EduImportSelection] 带入。
- *
  * iOS 原生文档页上本页整页交给系统：导航栏与底部悬浮条由 Swift 画，安全区由系统 inset 处理。
  */
 package com.haooz.chedule.ui.activities

@@ -1,8 +1,7 @@
 package com.haooz.chedule.data
 
 /**
- * 卡片外观的三个纯枚举（2026-10-10 从 androidApp 的 ScheduleAppearance.kt 下沉 ——
- * CourseCard（:ui-shared）要用它们做布局/配色分流）。零依赖。
+ * 卡片外观的三个纯枚举：CourseCard（`:ui-shared`）用它们做布局/配色分流，零依赖。
  *
  * ⚠ 落盘格式 = ordinal（fromOrdinal 是旧数据的恢复入口），**枚举顺序不能改**。
  */

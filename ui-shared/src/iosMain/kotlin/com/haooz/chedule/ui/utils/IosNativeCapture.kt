@@ -12,16 +12,11 @@ import org.jetbrains.skia.ImageInfo
 import platform.Foundation.NSData
 
 /**
- * 原生层截屏桥：把**含原生 chrome（UITabBar + 导航栏右上角菜单）**的全屏画面交给
- * Compose —— 转场快照走 `GraphicsLayer.record()`，只录 Compose 的绘制内容，抓不到
- * UIKit 那两层，快照里底部永远缺一条、右上角缺一块。Swift 只负责 `storePixels`
- * 结果，Kotlin 主动拉取。
+ * 原生层截屏桥：把含原生 chrome（UITabBar + 导航栏右上角菜单）的全屏画面交给 Compose——
+ * 转场快照走 `GraphicsLayer.record()` 只录 Compose 绘制，抓不到 UIKit 那两层。
  *
- * ⚠ 传递的是**未压缩的 BGRA 原始像素**，不是 PNG 字节。
- * 走 PNG 时实测（iPhone 18 Pro Max / iOS 27.0）：Swift 侧 `pngData()` 编码 215ms，
- * 回 Kotlin 后 Skia 再解码 55ms —— 270ms 全花在编解码上，而两边都不需要
- * "可传输的压缩格式"（同进程内存里递一个缓冲而已）。改成裸像素后只剩
- * `drawHierarchy` 渲染 + 一次 CGContext 转储，实测截图段 344ms → ~90ms。
+ * ⚠ 传递**未压缩 BGRA 原始像素**而非 PNG：实测（iPhone 18 Pro Max / iOS 27.0）PNG 编解码共 270ms，
+ * 改裸像素后截图段 344ms → ~90ms（同进程内存直接递缓冲，无需可传输压缩格式）。
  */
 object IosNativeCapture {
 

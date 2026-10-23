@@ -1,9 +1,7 @@
 package com.haooz.chedule.data
 
 /**
- * 捐赠明细项。
- * 数据由云端后端（/api/appreciations）动态下发，App 端不再本地硬编码捐赠样本，
- * 见 [AppreciationFetcher]。
+ * 捐赠明细项；数据由云端后端动态下发（见 [AppreciationFetcher]），App 端不再本地硬编码样本。
  */
 data class AppreciationItem(
     val nickname: String,

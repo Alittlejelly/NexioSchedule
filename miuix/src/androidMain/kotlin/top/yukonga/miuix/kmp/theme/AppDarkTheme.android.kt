@@ -10,11 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Android 实现 —— 读 App 的 SharedPreferences（app_theme_prefs / theme_mode）。
- *
- * 原先这段在 :app 的 ThemeUtils.kt 里，:miuix 的 BlurBottomSheet 直接调用它，
- * 构成反向依赖。搬进来后 :app 侧的 rememberAppSettingDark 改为转调本函数，
- * 单一实现、行为不变；Skia 侧另有一份退回系统深浅色的实现。
+ * Android 实现：读 App 的 SharedPreferences（app_theme_prefs / theme_mode）。
+ * 从 :app 的 ThemeUtils.kt 迁入以避免反向依赖，:app 侧转调本函数；Skia 侧另有退回系统深浅色的实现。
  */
 @Composable
 actual fun rememberAppSettingDark(): Boolean {

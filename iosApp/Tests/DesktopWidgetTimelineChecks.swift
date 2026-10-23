@@ -2,8 +2,7 @@ import Foundation
 import WidgetKit
 
 @main
-// Standalone simulator regression checks. Run with run-desktop-widget-checks.sh;
-// this compiles the production widget source without an XCTest/project target.
+// Standalone simulator regression checks (run-desktop-widget-checks.sh); compiles the production widget source without an XCTest/project target.
 struct DesktopWidgetTimelineChecks {
     static func main() throws {
         var calendar = Calendar(identifier: .gregorian)

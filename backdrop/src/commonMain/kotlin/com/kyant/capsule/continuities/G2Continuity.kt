@@ -39,9 +39,7 @@ data class G2Continuity(
         val centerX = width * 0.5
         val centerY = height * 0.5
 
-        // mnemonics:
-        // T: top, R: right, B: bottom, L: left
-        // H: horizontal Bezier, V: vertical Bezier, C: arc, I: line
+        // mnemonics: T/R/B/L = top/right/bottom/left, H/V = horizontal/vertical Bezier, C = arc, I = line
 
         // non-capsule ratios of each half corner
         // 0: full capsule, 1: safe rounded rectangle, (0, 1): progressive capsule

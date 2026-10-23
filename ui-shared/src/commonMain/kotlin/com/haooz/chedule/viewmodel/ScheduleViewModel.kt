@@ -11,10 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * ⚠ 原来继承 `AndroidViewModel(application)`，只为拿 `Context` 去调 `CourseReminderHelper`。
- * 现在重排提醒走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入
- * `AndroidScheduleEffects` 接手），这里不再需要 Application。
- * 保持无参构造：调用点用 AndroidX 的 `viewModel()`，默认工厂只认无参构造。
+ * ⚠ 原继承 `AndroidViewModel(application)` 只为拿 `Context` 调 `CourseReminderHelper`，现重排提醒走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入 `AndroidScheduleEffects`）。保持无参构造：调用点用 AndroidX `viewModel()`，默认工厂只认无参构造。
  */
 class ScheduleViewModel : ViewModel() {
 

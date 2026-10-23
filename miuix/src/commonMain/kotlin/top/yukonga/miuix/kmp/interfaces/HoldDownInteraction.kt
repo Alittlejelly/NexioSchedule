@@ -42,10 +42,8 @@ interface HoldDownInteraction : Interaction {
 }
 
 /**
- * Subscribes to this [MutableInteractionSource] and returns a [State] representing whether this
- * component is selected or not.
- *
- * @return [State] representing whether this component is being focused or not
+ * Subscribes to this [InteractionSource] and returns a [State] representing whether
+ * this component is held down or not.
  */
 @Composable
 fun InteractionSource.collectIsHeldDownAsState(): State<Boolean> {

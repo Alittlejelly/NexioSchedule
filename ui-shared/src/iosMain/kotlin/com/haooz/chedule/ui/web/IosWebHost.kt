@@ -45,7 +45,7 @@ private fun iosMajorVersion(): String =
     UIDevice.currentDevice.systemVersion.substringBefore('.').takeIf { it.isNotBlank() } ?: "18"
 
 /**
- * 手机版 UA —— 必须显式设置。WKWebView 默认 UA 缺 `Version/x.x ... Safari/604.1`，
+ * 手机版 UA —— 必须显式设置：WKWebView 默认 UA 缺 `Version/x.x ... Safari/604.1`，
  * 不少教务系统只认 Safari 版本号，会判「浏览器版本过低」拒绝渲染。
  */
 private fun mobileUserAgent(): String {
@@ -66,8 +66,8 @@ private const val POLL_INTERVAL_SECONDS = 0.25
 
 /**
  * 伪造 `window.AndroidBridge`：WKWebView 没有 `addJavascriptInterface`，只有
- * `messageHandlers.X.postMessage` 单向通道。造一个签名逐字相同的桥把 `(方法名, 参数)` 转出来，
- * 云端脚本与共享的 [JS_PROMISE_BRIDGE] 一行都不用改（同 `IosWakeUpImport`）。
+ * `messageHandlers.X.postMessage` 单向通道；造签名逐字相同的桥把 `(方法名, 参数)` 转出来，
+ * 云端脚本与共享 [JS_PROMISE_BRIDGE] 零改动（同 `IosWakeUpImport`）。
  */
 private val IOS_BRIDGE_JS = """
     (function() {
@@ -109,10 +109,10 @@ private val DESKTOP_VIEWPORT_JS = """
 /**
  * 造一个 iOS 网页宿主（WKWebView），对应 Android 的 `AndroidWebHost`。
  *
- * 与 Android 的差异（平台事实）：顶栏取色无等价物（不上报 onTopColor）；进度/标题靠定时轮询
+ * 与 Android 的差异（平台事实）：顶栏取色无等价物（不上报 onTopColor）；进度/标题靠轮询
  * （estimatedProgress 是 KVO 属性）；无 POST 转发通道（isPostForwardEnabled 恒 false）。
  *
- * ⚠ WKWebView 只能主线程创建与调用 —— 组合、回调都在主线程，别丢到后台队列（会崩）。
+ * ⚠ WKWebView 只能主线程创建与调用 —— 组合、回调都在主线程，别丢后台队列（会崩）。
  */
 @Composable
 fun rememberIosWebHost(config: WebHostConfig, events: WebHostEvents): WebHost {
@@ -156,8 +156,8 @@ fun rememberIosWebHost(config: WebHostConfig, events: WebHostEvents): WebHost {
         object : WebHost {
             @Composable
             override fun Content(modifier: Modifier) {
-                // ⚠ 刻意不用传进来的 modifier：它带 Offscreen（Android 为让 layerBackdrop 录到
-                // WebView 像素而加），iOS 原生视图被包离屏 layer 后不参与合成，整块会变黑。
+                // ⚠ 刻意不用传入的 modifier：它带 Offscreen（Android 为 layerBackdrop 录
+                // WebView 像素而加），iOS 原生视图包进离屏 layer 后不参与合成，整块变黑。
                 UIKitView(factory = { controller.webView }, modifier = Modifier.fillMaxSize())
             }
 
@@ -231,8 +231,7 @@ private class IosWebHostController {
         // 登录态与 Android 一样跨页面保存：默认 WKWebsiteDataStore 就是共享的
         opaque = false
         backgroundColor = platform.UIKit.UIColor.clearColor
-        // 网页铺满整屏（含 home indicator 区域），滚动内容的让位**按系统安全区算**
-        // （见 applySafeAreaInsets）—— 由系统给数值，不再手写 padding。
+        // 网页铺满整屏（含 home indicator 区域），滚动让位按系统安全区算（见 applySafeAreaInsets），不再手写 padding
         scrollView.contentInsetAdjustmentBehavior =
             UIScrollViewContentInsetAdjustmentBehavior.UIScrollViewContentInsetAdjustmentNever
     }
@@ -255,7 +254,7 @@ private class IosWebHostController {
      * 把「系统安全区 + 页面要求的让位」写进滚动 inset，让网页铺满整屏、内容由 inset 避让。
      *
      * ⚠ 顶部用 webView 自己的 `safeAreaInsets.top`（含状态栏 + 原生导航栏）；window 那份只有
-     * 状态栏，会少算一条导航栏。自己被 Compose 容器清零时退回 window 兜底。放轮询里跟旋转/分屏。
+     * 状态栏会少算导航栏，自己被 Compose 容器清零时退回 window 兜底。放轮询里跟旋转/分屏。
      */
     private fun applySafeAreaInsets() {
         val window = webView.window ?: IosUiHost.keyWindow() ?: return
@@ -425,8 +424,8 @@ private class IosWebHostController {
     // ── 输入校验 / Promise 兑现 ────────────────────────────────────
 
     /**
-     * 官方约定：验证函数返回 `false` 表示通过，返回错误文案表示失败。
-     * 与 Android 一致，执行的是脚本在全局作用域里定义的函数名。
+     * 官方约定：验证函数返回 `false` 表示通过，返回错误文案表示失败；执行的是脚本在全局
+     * 作用域定义的函数名（与 Android 一致）。
      */
     private fun validateThenResolve(promiseId: String?, validator: String, input: String) {
         if (validator.isBlank()) {
@@ -492,10 +491,9 @@ private class BridgeHandler(
 /**
  * 载入完成时刷一次标题并把进度顶到 1。
  *
- * ⚠ **只能留一个 `webView(_:didXxx:)`**：`didFinishNavigation` 与
- * `didStartProvisionalNavigation` 在 Kotlin 侧的签名完全一样（`(WKWebView, WKNavigation?)`），
- * 两个都写会报 "Conflicting overloads"（编译器提示的 `@ObjCSignatureOverride` 本仓库
- * Kotlin 版本没有）—— 与 `IosWakeUpImport` 的 didFail 同一坑。
+ * ⚠ **只能留一个 `webView(_:didXxx:)`**：`didFinishNavigation` 与 `didStartProvisionalNavigation`
+ * Kotlin 侧签名完全一样（`(WKWebView, WKNavigation?)`），两个都写报 "Conflicting overloads"
+ * （`@ObjCSignatureOverride` 本仓库 Kotlin 版本没有）—— 同 `IosWakeUpImport` 的 didFail 坑。
  * 加载中的进度由 `estimatedProgress` 轮询提供，不需要 start 回调。
  */
 private class NavDelegate(
@@ -507,7 +505,7 @@ private class NavDelegate(
         onFinish(webView.title)
     }
 
-    // ⚠ 只留 provisional 这一个失败回调：它与 didFailNavigation 的 Kotlin 签名相同，
+    // ⚠ 只留 provisional 这个失败回调：它与 didFailNavigation 签名相同，
     // 两个都写会报 Conflicting overloads（同 IosWakeUpImport）。
     override fun webView(
         webView: WKWebView,

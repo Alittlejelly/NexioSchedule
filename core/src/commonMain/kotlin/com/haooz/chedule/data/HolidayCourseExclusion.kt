@@ -4,17 +4,14 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 
 // ── 节假日与调休 · 假期课程剔除与逐日裁决 ────────────────
-//
-// 拆分自 `Holidays.kt`（拆分说明见 `HolidayManager.kt` 的文件头）。
 // 只依赖纯日期类型；假期数据由调用方查 `HolidayManager` 后传入。
 
 /**
  * Pure rules for allowing selected courses on the final date of a holiday interval.
  *
  * 配套的 4 个数据结构（`HolidayEndCourseExclusion` / `HolidayBeforeCourseExclusion` /
- * `HolidayDayCourseResolution` / `HolidayCourseDisplaySelection`）已下沉 `:core`
- * （`core/.../data/HolidayTypes.kt`）—— 它们只由 Int / Boolean / [Course] 构成，
- * 不需要等本文件处理完 `java.time` 才能搬。
+ * `HolidayDayCourseResolution` / `HolidayCourseDisplaySelection`）在 `HolidayTypes.kt`
+ * —— 纯 Int / Boolean / [Course] 构成，不碰平台 API。
  */
 object HolidayCourseExclusion {
     fun resolveDayCourses(

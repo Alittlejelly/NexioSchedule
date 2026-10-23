@@ -10,21 +10,18 @@ import kotlin.test.assertTrue
 /**
  * **真实平台实现**的 `maxBytes` 行为验证（不是假实现）。
  *
- * ## 为什么单独写这一个
+ * `HttpServiceContractTest` 与 `ScriptRepositoryTest` 用的都是假实现，只验证了**调用方**
+ * 怎么处理 `truncated`，没碰到 `HttpService.jvm.kt` / `HttpService.android.kt` 里那段
+ * 「边读边停」的真实代码 —— 而它守着「异常大响应不要 OOM」的闸门，是本次迁移里最容易
+ * 悄悄失效的地方。
  *
- * `HttpServiceContractTest` 与 `ScriptRepositoryTest` 用的都是 `FakeHttpService`，
- * 也就是只验证了**调用方**怎么处理 `truncated`，完全没碰到 `HttpService.jvm.kt` /
- * `HttpService.android.kt` 里那段"边读边停"的真实代码。而这段代码守着
- * 「异常大响应不要 OOM」的闸门 —— 是本次迁移里最容易悄悄失效的地方。
- *
- * 这里直接起一个本地 socket 服务器，用 JDK 的原生实现（JVM 目标走 `HttpURLConnection`）
- * 跑端到端：
- * - **声明长度已知**（带 Content-Length）→ 应走"预检即拒绝"，不读 body
- * - **声明长度未知**（Transfer-Encoding: chunked）→ 应走流式读取并在超限处停手
+ * 这里起本地 socket 服务器，用 JDK 原生实现（JVM 目标走 `HttpURLConnection`）跑端到端：
+ * - **声明长度已知**（带 Content-Length）→ 预检即拒绝，不读 body
+ * - **声明长度未知**（Transfer-Encoding: chunked）→ 流式读取并在超限处停手
  * - 正好等于上限 → **不算截断**（off-by-one 的经典坑）
  *
- * Android 侧无法在本机跑宿主测试（缺 Robolectric / 真机），那块仍需真机回归，
- * 但两端走的是同一份 [readAtMost] 语义，这里的边界结论可直接参考。
+ * Android 侧本机跑不了宿主测试（缺 Robolectric / 真机），仍需真机回归；但两端走同一份
+ * [readAtMost] 语义，这里的边界结论可直接参考。
  */
 class HttpServiceRealImplTest {
 

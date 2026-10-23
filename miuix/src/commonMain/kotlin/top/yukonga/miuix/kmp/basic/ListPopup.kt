@@ -178,10 +178,7 @@ private const val MAX_ITEMS_FOR_HEIGHT = 8
 /**
  * 弹窗内容列，自动将宽度对齐到最宽的子项。
  *
- * 功能说明：
- * - 自动计算宽度：取前8个子项的最大固有宽度，限制在200dp~288dp之间
- * - 支持垂直滚动
- * - 使用自定义MeasurePolicy进行精确的宽度控制
+ * 宽度取前 8 个子项的最大固有宽度，钳制在 200dp~288dp；支持垂直滚动。
  *
  * @param onFitsOnScreen 内容是否一屏装得下（不需要滚动）。跟手滑选据此决定是否启用：
  *   装不下时纵向手势归滚动，否则两种手势互相抢。不关心就别传（默认空实现）。
@@ -200,7 +197,6 @@ fun ListPopupColumn(
                 measurables: List<Measurable>,
                 constraints: Constraints,
             ): MeasureResult {
-                // 宽度范围：200dp ~ 288dp
                 val minPx = 200.dp.roundToPx()
                 val maxPx = 288.dp.roundToPx()
                 val widthCount = min(MAX_ITEMS_FOR_WIDTH, measurables.size)
@@ -215,7 +211,6 @@ fun ListPopupColumn(
                 val lower = maxOf(minPx, parentMin).coerceAtMost(upper)
                 val listWidth = maxIntrinsic.coerceIn(lower, upper)
 
-                // 使用计算出的宽度测量所有子项
                 val childConstraints = constraints.copy(minWidth = listWidth, maxWidth = listWidth, minHeight = 0)
 
                 val placeables = ArrayList<Placeable>(measurables.size)
@@ -282,9 +277,7 @@ fun ListPopupColumn(
 // =====================================================================
 
 /**
- * 弹窗位置提供者接口。
- * 负责计算弹窗相对于锚点（触发组件）的显示位置。
- *
+ * 弹窗位置提供者接口：计算弹窗相对于锚点（触发组件）的显示位置。
  * 注意：位置是相对于窗口计算的，不是相对于锚点！
  */
 /**
@@ -351,18 +344,10 @@ interface PopupPositionProvider {
 object ListPopupDefaults {
     // ---- 动画参数 ----
 
-    /**
-     * 进入时的缩放动画（较慢，stiffness较小）
-     * - dampingRatio: 阻尼比，控制弹簧的弹性程度（0.82 = 适中的弹性）
-     * - stiffness: 刚度，控制弹簧的硬度（200 = 较慢）
-     */
+    /** 进入时的缩放动画（较慢） */
     val FractionEnterAnimationSpec = spring(dampingRatio = 0.78f, stiffness = 232f, visibilityThreshold = 0.0001f)
 
-    /**
-     * 退出时的缩放动画（使用原始弹簧参数）
-     * - dampingRatio: 阻尼比，控制弹簧的弹性程度（0.82 = 适中的弹性）
-     * - stiffness: 刚度，控制弹簧的硬度（362.5 = 中等速度）
-     */
+    /** 退出时的缩放动画（更快） */
     val FractionExitAnimationSpec = spring(dampingRatio = 0.78f, stiffness = 400f, visibilityThreshold = 0.0001f)
 
     /** 通用缩放动画（兼容库引用，等同于进入动画） */
@@ -435,7 +420,7 @@ object ListPopupDefaults {
                     popupMargin: IntRect,
                     alignment: PopupPositionProvider.Align,
                 ): PopupPositionResult {
-                    // 计算X偏移（左对齐或右对齐，往右偏移）
+                    // 计算X偏移（左对齐或右对齐）
                     val offsetX = if (alignment.resolve(layoutDirection) == PopupPositionProvider.Align.End) {
                         anchorBounds.right - popupContentSize.width - popupMargin.right + offsetXDelta
                     } else {
@@ -578,9 +563,9 @@ object ListPopupDefaults {
  */
 @Immutable
 data class PopupLayoutPosition(
-    val showBelow: Boolean,     // 弹窗是否显示在锚点下方
-    val showAbove: Boolean,     // 弹窗是否显示在锚点上方
-    val isRightAligned: Boolean,// 弹窗是否右对齐（与锚点右侧对齐）
+    val showBelow: Boolean,
+    val showAbove: Boolean,
+    val isRightAligned: Boolean,
 )
 
 /**

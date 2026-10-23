@@ -57,15 +57,9 @@ fun rememberPagerTakeoverGestureState(): PagerTakeoverGestureState {
 /**
  * 松手后横向落页。
  *
- * 连续切页时上一拍 settle 常未结束，起点可能是小数页，故目标以
- * `max/min(currentPage, startRound)` 为基准。
+ * 连续切页时上一拍 settle 常未结束、起点可能是小数页，故目标以 `max/min(currentPage, startRound)` 为基准。落页规则：位移约 1/4 页认方向；甩速 ≥ 100.dp/s 至少推进基准页 ±1。门限不能再高：小幅快甩释放速度常只有 300~600px/s，200.dp/s 会整段漏判；也不能再低，否则慢拖残余速度会误翻页。
  *
- * 落页规则：位移约 1/4 页认方向；甩速 ≥ 100.dp/s 至少推进基准页 ±1。
- * 门限不能再高：小幅快甩的释放速度常只有 300~600px/s，200.dp/s 会整段漏判；
- * 也不能再低，否则慢拖释放的残余速度会误翻页。
- *
- * [fingerDragPages] 是手指拖过的页数（正 = 下一页）。课表页每页是整张重表格，
- * 拖动中 pager 的 offset 可能落后于手指，距离判定取它与 pager 实际位移的绝对值较大者。
+ * [fingerDragPages] 是手指拖过的页数（正 = 下一页）。课表页每页是整张重表格，拖动中 pager 的 offset 可能落后于手指，距离判定取它与 pager 实际位移的绝对值较大者。
  */
 internal suspend fun settleHorizontalPager(
     pagerState: PagerState,

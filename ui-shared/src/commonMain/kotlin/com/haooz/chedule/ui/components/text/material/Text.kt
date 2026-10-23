@@ -2,8 +2,8 @@
  * 全局文字组件（Material3 版）：签名与 [androidx.compose.material3.Text] 一致，
  * 文字被改写时叠加模糊聚焦过渡（见 [com.haooz.chedule.ui.components.text.TextMotionBox]）。
  *
- * ⚠ 刻意的包名设计：本文件在 `text.material` 子包里，函数**就叫** `Text`。
- * 调用点只要把文件头那行换成
+ * ⚠ 刻意的包名设计：本文件在 `text.material` 子包里，函数**就叫** `Text`，
+ * 调用点把 import 换成本包即可。
  */
 package com.haooz.chedule.ui.components.text.material
 

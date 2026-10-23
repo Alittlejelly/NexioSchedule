@@ -213,11 +213,9 @@ internal fun DialogContentLayout(
     }
 
     popupHost(internalVisible.value) {
-        // 预测性返回：commonMain 走本模块的 expect 封装（utils/NavigationBack.kt），
-        // Android 实现内部仍用 androidx.navigationevent，进度语义与原代码一致。
-        // handler 与 backProgress() 必须来自同一个 backState —— 拆开就拿不到手势进度。
-        //
-        // 全局开关要在组合期取好：LocalPredictiveBackEnabled.current 是 @Composable，
+        // 预测性返回：commonMain 走本模块的 expect 封装（utils/NavigationBack.kt），Android 内部
+        // 仍用 androidx.navigationevent，进度语义与原代码一致。handler 与 backProgress() 必须来自
+        // 同一个 backState。全局开关在组合期取好：LocalPredictiveBackEnabled.current 是 @Composable，
         // 读在 LaunchedEffect 里编译不过。
         val backState = rememberNavigationBack()
         val predictiveBackEnabled = LocalPredictiveBackEnabled.current
@@ -231,13 +229,11 @@ internal fun DialogContentLayout(
 
         LaunchedEffect(Unit) {
             // 不响应预测性返回手势时，连手势进度都不订阅，避免弹窗被拖动。
-            // 全局开关（App 偏好）同样在这里生效：关闭时不驱动跟手动画，
-            // 但返回键仍被拦截、直接关闭。
+            // 全局开关（App 偏好）同样在此生效：关闭时不驱动跟手动画，但返回键仍被拦截、直接关闭。
             if (!enablePredictiveBackGesture || !predictiveBackEnabled) {
                 return@LaunchedEffect
             }
-            // Collect inside a single coroutine so the per-frame progress ticks during a
-            // back gesture do not cancel/relaunch the LaunchedEffect on every progress update.
+            // 单个协程内收集，避免手势期间每帧进度都取消/重启 LaunchedEffect。
             snapshotFlow { backState.backProgress() }
                 .collect { progress ->
                     if (progress != null) {

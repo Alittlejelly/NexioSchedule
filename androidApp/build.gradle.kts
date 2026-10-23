@@ -183,8 +183,7 @@ tasks.register<DefaultTask>("downloadEduIndex") {
     }
 }
 
-// 仅 Release 变体打包资产时拉取内嵌索引：Debug 等构建不触发。
-// configureEach 惰性挂依赖，规避 release 任务未实例化时的急切解析。
+// 仅 Release 变体打包资产时拉取内嵌索引（Debug 不触发）；configureEach 惰性挂依赖，规避 release 任务未实例化时的急切解析。
 tasks.configureEach {
     if (name == "mergeReleaseAssets") {
         dependsOn("downloadEduIndex")

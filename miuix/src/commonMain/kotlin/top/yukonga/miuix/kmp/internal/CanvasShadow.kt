@@ -1,8 +1,8 @@
 // 路径模糊阴影 —— 跨平台绘制（SearchBar 等毛玻璃容器的悬浮投影）
 //
-// 与 PopupShadow 的区别：那个是「圆角矩形描边」的模糊（几何参数描述），
-// 这个是「任意路径填充」的模糊（形状来自 Shape.createOutline，可能是超椭圆等
-// 自定义 Path，几何参数表达不了）——所以 expect 直接收 compose Path。
+// 与 PopupShadow 的区别：那个模糊「圆角矩形描边」（几何参数可描述），
+// 这个模糊「任意路径填充」（形状来自 Shape.createOutline，可能是超椭圆等
+// 自定义 Path）——所以 expect 直接收 compose Path。
 //
 // 分工：
 //   androidMain —— BlurMaskFilter + nativeCanvas（从 SearchBar 原实现逐字搬出，零回归）

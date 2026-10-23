@@ -24,8 +24,7 @@ private data class SystemPaletteInfo(
     val colorSpec: ThemeColorSpec,
 )
 
-// `actual`：commonMain 的 `theme/DynamicColors.kt` 里有对应的 expect（2026-10-11 补入，
-// 之前这份是靠官方 miuix-ui 的 klib 提供 expect 才编过的 —— 排除官方 artifact 后必须对齐）。
+// `actual` 对应的 expect 在 commonMain 的 theme/DynamicColors.kt（2026-10-11 补入；排除官方 klib 后必须对齐）。
 @Composable
 actual fun platformDynamicColors(dark: Boolean): Colors {
     val context = LocalContext.current

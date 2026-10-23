@@ -106,8 +106,7 @@ data class EdgeLight(
     }
 }
 
-// 以下三个便捷函数把「主题亮暗」与「材质档解析」交给调用方传：
-// backdrop 不能反向依赖业务层，:app 侧传自己的实现，iOS 侧由 KMP 共享层提供。
+// 以下便捷函数把「主题亮暗」与「材质档解析」交给调用方传：backdrop 不能反向依赖业务层，由 :app / KMP 共享层各自提供实现。
 @Composable
 fun rememberDefaultEdgeLight(
     baseColor: Color? = null,
@@ -169,13 +168,9 @@ private const val WHITE_MIX = 0f
 private const val NEUTRAL_SATURATION_EPS = 0.02f
 
 /**
- * 均匀描边。混合模式必须是**提亮型**，且按主题分工：
- * - 深色 `Screen`：只提亮、保留色相；
- * - 浅色 `Plus`：浅底已接近 1.0，`Screen` 几乎无效果，加色才顶得出来。
- *
- * ⚠ `Color` / `Hue` / `Saturation` 不能用：描边色取自 `baseColor`（面板自己的色），
- * 这类混合 = 把「面板明度 + 面板色相」再画一遍，与底色同色 → 整圈消失。
- * ⚠ `Overlay` 也不能用：暗底走乘法分支 `2·b·s`，同样会被压到和底色一样暗。
+ * 均匀描边。混合模式须为提亮型并按主题分工：深色用 `Screen`（只提亮、保留色相），浅色用 `Plus`（浅底近 1.0，Screen 几乎无效，加色才顶得出来）。
+ * ⚠ `Color`/`Hue`/`Saturation` 不可用：描边色取自 baseColor，这类混合 = 把面板明度+色相再画一遍，与底色同色 → 整圈消失。
+ * ⚠ `Overlay` 也不可用：暗底走乘法分支 2·b·s，同样会被压到和底色一样暗。
  */
 private fun uniformHighlight(
     baseColor: Color?,

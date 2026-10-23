@@ -38,18 +38,7 @@ import top.yukonga.miuix.kmp.utils.SinkFeedback
 import top.yukonga.miuix.kmp.utils.TiltFeedback
 import top.yukonga.miuix.kmp.utils.pressable
 
-/**
- * A [Card] component with Miuix style.
- * Card contain content and actions that relate information about a subject.
- *
- * This [Card] does not handle input events
- *
- * @param modifier The modifier to be applied to the [Card].
- * @param cornerRadius The corner radius of the [Card].
- * @param insideMargin The margin inside the [Card].
- * @param colors [CardColors] that will be used to resolve the color(s) used for the [Card].
- * @param content The [Composable] content of the [Card].
- */
+/** A Miuix-styled [Card] that does not handle input events. */
 @Composable
 @NonRestartableComposable
 fun Card(
@@ -71,23 +60,7 @@ fun Card(
     }
 }
 
-/**
- * A [Card] component with Miuix style.
- * Card contain contain content and actions that relate information about a subject.
- *
- * This [Card] handles input events
- *
- * @param modifier The modifier to be applied to the [Card].
- * @param cornerRadius The corner radius of the [Card].
- * @param insideMargin The margin inside the [Card].
- * @param colors [CardColors] that will be used to resolve the color(s) used for the [Card].
- * @param pressFeedbackType The press feedback type of the [Card].
- * @param showIndication Whether to show indication of the [Card].
- * @param holdDownState Whether the [Card] is in a hold-down state.
- * @param onClick The callback to be invoked when the [Card] is clicked.
- * @param onLongPress The callback to be invoked when the [Card] is long pressed.
- * @param content The [Composable] content of the [Card].
- */
+/** A Miuix-styled [Card] that handles click/long-press and press feedback. */
 @Composable
 fun Card(
     modifier: Modifier = Modifier,
@@ -156,14 +129,7 @@ fun Card(
     }
 }
 
-/**
- * A [BasicCard] component.
- *
- * @param modifier The modifier to be applied to the [BasicCard].
- * @param colors [CardColors] that will be used to resolve the color(s) used for the [BasicCard].
- * @param cornerRadius The corner radius of the [BasicCard].
- * @param content The [Composable] content of the [BasicCard].
- */
+/** Internal [Card] surface with squircle shape and content color. */
 @Composable
 private fun BasicCard(
     modifier: Modifier = Modifier,
@@ -189,24 +155,17 @@ private fun BasicCard(
 
 object CardDefaults {
 
-    /**
-     * The default corner radius of the [Card].
-     */
+    /** Default corner radius of the [Card]. */
     val CornerRadius = 20.dp
 
-    /**
-     * The default margin inside the [Card].
-     */
+    /** Default inside margin of the [Card]. */
     val InsideMargin = PaddingValues(0.dp)
 
     /**
-     * 卡片高度变化的补间曲线。
-     *
-     * 卡片内部直接写裸 `if (...) { }`、行数变化、文字换行导致的高度差，都由 [Card] 自己
-     * 用这条 spring 补间，调用方不必再包 `AnimatedVisibility`。首帧不播（首次测量直接定高）。
-     *
-     * 选 spring 不选 tween：高度是布局量，每帧都要重新测量；tween 两端有「停一下」感，
-     * 连续触发会被打断成阶梯。`dampingRatio = 0.9` 只有极轻微回弹。
+     * 卡片高度补间曲线：内部行数/文字换行导致的高度差由 [Card] 自行补间，调用方不必再包
+     * `AnimatedVisibility`；首帧不播（首次测量直接定高）。选 spring 而非 tween：高度是布局
+     * 量需每帧重测，tween 两端有停顿感且连续触发会被打断成阶梯；dampingRatio = 0.9 仅有
+     * 极轻微回弹。
      */
     val SizeAnimation: FiniteAnimationSpec<IntSize> = spring(
         dampingRatio = 0.9f,
@@ -214,9 +173,7 @@ object CardDefaults {
         visibilityThreshold = IntSize.VisibilityThreshold,
     )
 
-    /**
-     * The default colors width of the [Card].
-     */
+    /** Default [CardColors]. */
     @Composable
     fun defaultColors(
         color: Color = MiuixTheme.colorScheme.surfaceContainer,

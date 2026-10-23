@@ -6,15 +6,9 @@ import com.haooz.chedule.data.compareByChineseCollator
 /**
  * 课程排序规则。
  *
- * 之前课程名用 `compareBy { it }` 排，等于按 Unicode 码点排 —— 中文没有任何顺序感
- * （"英"U+82F1 排在 "高"U+9AD8 后面），看起来就是乱的；分组顺序则直接沿用数据库添加顺序。
- * 这里统一成：
- * - **课程名**：中文按拼音，同名内的数字段按数值比（"体育2" 排在 "体育10" 前）
- * - **时段**：未排时间的沉底 → 周一→周日 → 实际上课时刻 → 节次号 → 周次
+ * 之前课程名用 `compareBy { it }` 按 Unicode 码点排，中文无顺序感（"英"U+82F1 排在 "高"U+9AD8 后），分组则沿用数据库添加顺序，看着像乱的。这里统一为：课程名中文按拼音、同名内数字段按数值比（"体育2" 在 "体育10" 前）；时段未排时间沉底 → 周一→周日 → 实际上课时刻 → 节次号 → 周次。
  *
- * 2026-10-10：`java.text.Collator` 已下沉到 `:core` 的 [compareByChineseCollator]
- * （expect/actual，Android/JVM 仍走 Collator，Native 暂时退化为码点比较），
- * 本文件因此不再依赖任何 JVM 专有 API。
+ * 2026-10-10：`java.text.Collator` 下沉到 `:core` 的 [compareByChineseCollator]（expect/actual，Android/JVM 走 Collator，Native 暂退化为码点比较），本文件不再依赖 JVM 专有 API。
  */
 object CourseSorting {
 

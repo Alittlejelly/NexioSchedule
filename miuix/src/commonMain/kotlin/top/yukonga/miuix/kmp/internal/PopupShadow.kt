@@ -4,9 +4,8 @@
 //   androidMain —— BlurMaskFilter（逐像素与 Android 原生路径一致）
 //   skikoMain   —— 构造环形路径后复用 [drawBlurredPathShadow]（Skia MaskFilter）
 //
-// 形状语义：环形路径（外圈 CW 减内圈 CCW）再整体模糊 = 圆角矩形描边的模糊。
-// 为什么不用 backdrop 的 shadow：它的 ShadowModifier 走 Paint().blur()，
-// 语义是「填充形状后模糊」，而这里要的是「模糊描边」，两者不是一回事。
+// 形状语义：环形路径（外圈 CW 减内圈 CCW）再整体模糊 = 圆角矩形描边的模糊；
+// 不用 backdrop 的 shadow 是因其 ShadowModifier 为「填充后模糊」，与「模糊描边」不是一回事。
 
 package top.yukonga.miuix.kmp.internal
 

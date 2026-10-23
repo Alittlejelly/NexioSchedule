@@ -1,10 +1,8 @@
 package com.haooz.chedule.ui.activities.today
 
-// 今日助手卡（纯展示与纯逻辑）。
-// 天气拉取与定位在平台侧（LocationManager vs CoreLocation），算好后按参数传入；
-// 下课烟花走 `fireworksOverlay` 槽位，null = 该端不渲染。
-// ⚠ 文件名必须与 androidApp 的 `TodayAssistant.kt` 不同：同包同名 .kt 会让 Kotlin
-//   生成同名 facade 类，dex 只留一个 → 运行期 NoSuchMethodError。
+// 今日助手卡（纯展示与纯逻辑）：天气/定位由平台侧算好后按参数传入，下课烟花走 `fireworksOverlay` 槽位。
+// ⚠ 文件名必须与 androidApp 的 `TodayAssistant.kt` 不同：同包同名 .kt 会让 Kotlin 生成同名
+//   facade 类，dex 只留一个 → 运行期 NoSuchMethodError。
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

@@ -8,8 +8,6 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
 // ── 节假日与调休 · 假期倒计时（今日页）──────────────────
-//
-// 拆分自 `Holidays.kt`（拆分说明见 `HolidayManager.kt` 的文件头）。
 // 只依赖纯日期类型；假期数据由调用方查 `HolidayManager` 后传入。
 
 /** Pure date/time rules for the holiday countdown shown on the Today page. */
@@ -239,8 +237,7 @@ object HolidayCountdown {
         }
 
         is Snapshot.BeforeHoliday -> {
-            // 原来用 java.time 的 Duration.between(now, startsAt)。kotlinx-datetime 没有
-            // LocalDateTime 的 Duration 差，直接算秒差 —— 语义一致（两者同时区解释）。
+            // kotlinx-datetime 没有 LocalDateTime 的 Duration 差，直接算秒差（语义一致）
             val remainingSeconds = secondsBetween(now, snapshot.startsAt)
             if (remainingSeconds <= 0L) {
                 "恭喜你放假啦！"

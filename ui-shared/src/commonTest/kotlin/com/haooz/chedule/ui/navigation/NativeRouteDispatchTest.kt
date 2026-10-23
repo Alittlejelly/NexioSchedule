@@ -99,8 +99,8 @@ class NativeRouteDispatchTest {
     }
 
     /**
-     * 连点同一入口只压一层：压出多层同名页就得按好几次返回才回得去（用户实测）。
-     * 转场有 600ms，这期间点击照样收得到。
+     * 连点同一入口只压一层：压出多层同名页得按好几次返回才回得去（用户实测）；
+     * 转场 600ms 内点击照样收得到。
      */
     @Test
     fun repeatedNavigateOfTheTopRouteDoesNotStackDuplicates() {
@@ -135,8 +135,8 @@ class NativeRouteDispatchTest {
     }
 
     /**
-     * 栈内层用裸 id（重开同一页才恢复得到滚动位置），重复路由顺延 `#2`/`#3`。
-     * 同一帧两次 `SaveableStateProvider(同 key)` 会让 `SaveableStateHolderImpl` 抛异常崩屏。
+     * 栈内层用裸 id（重开同一页才恢复滚动位置），重复路由顺延 `#2`/`#3`：同一帧两次
+     * `SaveableStateProvider(同 key)` 会让 `SaveableStateHolderImpl` 抛异常崩屏。
      */
     @Test
     fun inStackLayersKeepBareRouteIdAndDeduplicateRepeats() {
@@ -150,8 +150,8 @@ class NativeRouteDispatchTest {
 
     /**
      * 退场层必须**沿用它在栈里时的 key**：换 key 会让 `ReusableContent(key)` 把这一层整体
-     * 重建（滚动位置在退出动画过程中当场归零），且 `removeState` 删的是新 key、旧 key 名下
-     * 那份状态永远留着 —— 下次再进这一页还是旧滚动位置。
+     * 重建（滚动位置在退场动画中当场归零），且 `removeState` 删新 key、旧 key 那份状态永远
+     * 留着 —— 下次再进这一页还是旧滚动位置。
      */
     @Test
     fun exitingLayerKeepsTheKeyItHadInTheStack() {

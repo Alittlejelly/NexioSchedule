@@ -61,10 +61,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 val startTime = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_START_TIME) ?: ""
                 val courseId = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_ID) ?: ""
 
-                // 去重 ID 先以"当前课表"为准：先回查匹配课程并重新取节次/时间，
-                // 避免用户改时间后旧闹钟带着旧 startTime 算 dedupId，与 checkPending
-                // 用新 startTime 算的 dedupId 双发（均落入不同 dedupId，互相不拦截）。
-                // 如果回查失败再退化为闹钟里快照的 name+section+time。
+                // 去重 ID 以当前课表为准：回查匹配课程重取节次/时间，避免改时间后旧闹钟与 checkPending 算出不同 dedupId 双发；回查失败退化用快照的 name+section+time。
                 val matchedEarly = CourseReminderHelper.getTodayCourses(context)
                     .firstOrNull { it.id == courseId }
                 val dedupId = if (matchedEarly != null) {
@@ -91,9 +88,8 @@ class AlarmReceiver : BroadcastReceiver() {
                     return
                 }
 
-                // 关键：闹钟里携带的是"注册那一刻"的课程快照。
-                // 课程可能已被删除、改了时间/教室、或因换课表/云同步换了 ID，
-                // 若直接照快照发送就会弹出旧数据提醒。这里一律以当前课表为准重新解析。
+                // 关键：闹钟携带的是注册时刻的课程快照；课程可能被删/改时间教室/换课表换 ID，
+                // 直接照发会弹旧数据。一律以当前课表重新解析。
                 val matched = CourseReminderHelper.getTodayCourses(context)
                     .firstOrNull { it.id == courseId }
                 if (matched == null) {

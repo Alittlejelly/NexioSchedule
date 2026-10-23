@@ -38,11 +38,9 @@ import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 import kotlin.math.roundToInt
 
 /**
- * 子页叠加层：**整栈常驻渲染** + 在有子页时接管系统返回。
+ * 子页叠加层：整栈常驻渲染 + 在有子页时接管系统返回。
  *
- * 栈内每层都保持组合，pop 回去是活页而非重建；静止时按三档暂停绘制 —— 等价 stop 的 Activity
- * 转场只有一个进度 `p`：栈顶 `(1-p)×W`、下层 `-NAV_PARALLAX×p×W`、黑幕 `NAV_BG_DIM×p`
- * push 0→1 / pop 1→0 共用同一套公式 —— 这是打断续播与手势跟手的前提
+ * 栈内每层都保持组合，pop 回去是活页而非重建；静止时按三档暂停绘制，等价 stop 的 Activity。转场只有一个进度 `p`：栈顶 `(1-p)×W`、下层 `-NAV_PARALLAX×p×W`、黑幕 `NAV_BG_DIM×p`；push 0→1 / pop 1→0 共用同一公式，这是打断续播与手势跟手的前提。
  *
  * 返回手势走 `:miuix` 的 `rememberNavigationBack()`（Android 包 navigationevent，skiko 空实现）。
  */
@@ -98,8 +96,8 @@ fun AppNavHost(
         if (finished) {
             destroyExiting(exiting)
         } else if (progress.value <= 0f && !back.isTransitioningBack()) {
-            // 被打断时 p 已归手势驱动，不能直接收尾。但手势已结束、页面也彻底滑出屏幕了，
-            // 说明这次收尾被整个吞掉 —— 不补掉的话这一层会永远挂在渲染列表上
+            // 被打断时 p 已归手势驱动，不能直接收尾；但手势已结束、页面也彻底滑出屏幕，
+            // 说明这次收尾被整个吞掉 —— 不补掉这一层会永远挂在渲染列表上。
             destroyExiting(exiting)
         }
     }
@@ -160,12 +158,9 @@ fun AppNavHost(
             }
         },
     )
-    // backProgress 手势期间为 0..1、非手势期间为 null（skiko 恒 null），Android 上走
-    // navigationevent 的 snapshot state，snapshotFlow 能跟上逐帧变化。
+    // backProgress 手势期间为 0..1、非手势期间为 null（skiko 恒 null），Android 上走 navigationevent 的 snapshot state，snapshotFlow 能跟上逐帧变化。
     LaunchedEffect(Unit) {
-        // ⚠ 必须**按手势起点成比例**回落，不能写成 `p = 1 - 手势进度`：入场动画没播完就滑
-        // 返回时（p 还在 0.4），第一帧手势进度≈0 会把 p 拉到 1 —— 页面先「跳」到完全覆盖
-        // 再跟手。所以先冻结 gestureBase，再 `p = gestureBase × (1 - 进度)`。
+        // ⚠ 必须按手势起点成比例回落，不能写成 `p = 1 - 手势进度`：入场动画没播完就滑返回时（p 还在 0.4），第一帧手势进度≈0 会把 p 拉到 1，页面先「跳」到完全覆盖再跟手。故先冻结 gestureBase，再 `p = gestureBase × (1 - 进度)`。
         var gestureBase = 1f
         var mainGestureBase = 1f
         var sawGesture = false
@@ -186,8 +181,7 @@ fun AppNavHost(
                 mainGestureBase = mainTransition.value.coerceIn(0f, 1f)
             }
             val remain = (1f - gestureProgress).coerceIn(0f, 1f)
-            // snapTo 会挤掉还在跑的转场动画（NavTransitionState 的 mutation），否则被打断的
-            // 入场动画下一帧就把手势落的值盖回去，跟手不动。
+            // snapTo 会挤掉还在跑的转场动画（NavTransitionState 的 mutation），否则被打断的入场动画下一帧就把手势落的值盖回去，跟手不动。
             progress.snapTo(gestureBase * remain)
             if (router.depth == 1) mainTransition.snapTo(mainGestureBase * remain)
         }
@@ -228,9 +222,7 @@ fun AppNavHost(
 /**
  * 整栈渲染 + 三档绘制策略。
  *
- * ⚠ **所有层都走同一个循环**：每层的组合槽位只由下标决定。把栈顶单独放在循环**外**的话，
- * push 时那层要换槽位 = 新挂一份，新槽位的 `SaveableStateRegistry` 读到的还是空的 →
- * `rememberSaveable` 全部重建。栈只在尾部增删，下标天然稳定。
+ * ⚠ 所有层都走同一个循环：每层的组合槽位只由下标决定。把栈顶单独放在循环外的话，push 时那层要换槽位 = 新挂一份，新槽位的 `SaveableStateRegistry` 读到还是空的 → `rememberSaveable` 全部重建。栈只在尾部增删，下标天然稳定。
  */
 @Composable
 private fun NavLayerStack(
@@ -265,8 +257,7 @@ private fun NavLayerStack(
 
     Box(modifier) {
         //   栈顶     → 常画（全屏圆角裁切 + 黑幕，都在 PageLayer 里）
-        //   直接下层 → p<1 就画，p==1（被完全盖住）才暂停。⚠ 不能用「0<p<1」判：push 起始帧
-        //              p 恰好=0、栈顶还在屏外，那一帧下层必须画，否则会闪出主界面（实测）
+        //   直接下层 → p<1 就画，p==1（被完全盖住）才暂停。⚠ 不能用「0<p<1」判：push 起始帧 p 恰好=0、栈顶还在屏外，那一帧下层必须画，否则会闪出主界面（实测）
         //   更深层   → 永远不画，只保留组合与状态
         val topIndex = layers.lastIndex
         for (index in layers.indices) {
@@ -296,23 +287,19 @@ private fun NavLayerStack(
 }
 
 /**
- * 正在播退出动画的那一层：路由 + 它**在栈里时**用的 [SaveableStateHolder] key。
+ * 正在播退出动画的那一层：路由 + 它在栈里时用的 [SaveableStateHolder] key。
  *
- * ⚠ key 必须随路由一起存下来：销毁可能发生在栈又变过之后（出场途中又 push / 又 pop），
- * 那时按栈重算会算到别的层上，`removeState` 销错层。
+ * ⚠ key 必须随路由一起存下来：销毁可能发生在栈又变过之后（出场途中又 push / 又 pop），那时按栈重算会算到别的层上，`removeState` 销错层。
  */
 internal class ExitingLayer(val route: AppRoute, val key: String)
 
 /**
  * 给「这一帧要渲染的每一层」算 [SaveableStateHolder] 的 key。
  *
- * 栈内重复路由首次保持**裸 id**、其后 `#2`/`#3`：裸 id 才能让重开同一页恢复滚动位置，
- * 而同一帧出现两次同 key 会抛 `IllegalArgumentException` 整屏崩（连点两次同一入口就会）。
+ * 栈内重复路由首次保持裸 id、其后 `#2`/`#3`：裸 id 才能让重开同一页恢复滚动位置，而同一帧出现两次同 key 会抛 `IllegalArgumentException` 整屏崩（连点两次同一入口就会）。
  *
- * ⚠ **边分配边占坑**，别预先把整个栈的 id 塞进 used：那样裸 id 一个都发不出去、每层都变
- * `#2`，与事后按栈复算的 key 对不上 → `removeState` 静默落空，出栈页状态永远销不掉。
- * ⚠ **别把结果包进 remember**：`routes` 是 `SnapshotStateList`，没重写 equals/hashCode →
- * `Composer.changed` 判「没变」→ key 列表跟实际栈对不上。直接算即可。
+ * ⚠ 边分配边占坑，别预先把整个栈的 id 塞进 used：那样裸 id 一个都发不出去、每层都变 `#2`，与事后按栈复算的 key 对不上 → `removeState` 静默落空，出栈页状态永远销不掉。
+ * ⚠ 别把结果包进 remember：`routes` 是 `SnapshotStateList`，没重写 equals/hashCode → `Composer.changed` 判「没变」→ key 列表跟实际栈对不上。直接算即可。
  *
  * 出栈层沿用它在栈里时的那个 key（见 [poppedLayerKey]），所以天然不与栈内 key 撞。
  */
@@ -336,13 +323,9 @@ internal fun poppedLayerKey(stackBeforePop: List<AppRoute>): String =
 /**
  * 按「占自身宽度的比例」横向摆位的一层。
  *
- * ⚠ 用 `Modifier.layout` 自己 place：`offset` 把位移写进 constraints，子节点每帧真正
- * re-measure（整页列表/pager/玻璃采样跟着重测，必掉帧）；`graphicsLayer { translationX }`
- * 不重测但套离屏 layer，可能干扰页内 `layerBackdrop` 采样。
+ * ⚠ 用 `Modifier.layout` 自己 place：`offset` 把位移写进 constraints，子节点每帧真正 re-measure（整页列表/pager/玻璃采样跟着重测，必掉帧）；`graphicsLayer { translationX }` 不重测但套离屏 layer，可能干扰页内 `layerBackdrop` 采样。
  *
- * ⚠ 黑幕与圆角分居 `layout` 两侧，方向相反理由也相反：黑幕放**外**层（内层坐标系跟着页面
- * 平移，放里面黑幕会跟着滑走）；裁切放**内**层（圆角才长在页面自己的角上，放外层则锚在
- * 屏幕四角，页面滑到贴边时才重合、看起来等于没生效）。
+ * ⚠ 黑幕与圆角分居 `layout` 两侧，方向相反理由也相反：黑幕放外层（内层坐标系跟着页面平移，放里面黑幕会跟着滑走）；裁切放内层（圆角才长在页面自己的角上，放外层则锚在屏幕四角，页面滑到贴边时才重合、看起来等于没生效）。
  */
 @Composable
 private fun PageLayer(
@@ -383,9 +366,7 @@ private fun PageLayer(
 /**
  * 暂停绘制（「整栈常驻」策略的一半，另一半是栈内每层都保持组合）。
  *
- * [paused] 在 draw 阶段读 —— 恢复时由快照观察自动失效重画；[SkipDrawElement.update] 里还要
- * 显式 `invalidateDraw()`：pop 刚结束时某层从「更深层」升为「栈顶」，paused lambda 换了引用
- * 但没有任何进度帧在跑，不显式失效就没人重画。
+ * [paused] 在 draw 阶段读，恢复时由快照观察自动失效重画；[SkipDrawElement.update] 里还要显式 `invalidateDraw()`：pop 刚结束时某层从「更深层」升为「栈顶」，paused lambda 换了引用但没有任何进度帧在跑，不显式失效就没人重画。
  */
 private fun Modifier.skipDrawWhen(paused: () -> Boolean): Modifier =
     this then SkipDrawElement(paused)
@@ -410,8 +391,7 @@ private class SkipDrawNode(
 }
 
 /**
- * 在开/关曲线上取从 [fromProgress] 到 [toProgress] 的**剩余段**。
- * 用于打断续播与手势吸附：半路接手时速度连续，而不是从头按一条新曲线重播。
+ * 在开/关曲线上取从 [fromProgress] 到 [toProgress] 的剩余段，用于打断续播与手势吸附：半路接手时速度连续，而不是从头按一条新曲线重播。
  *
  * - [invertGlobal] = false：全局进度 = `fullEasing(u)`（入场 0→1）
  * - [invertGlobal] = true：全局进度 = `1 - fullEasing(u)`（出场 1→0）

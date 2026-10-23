@@ -26,12 +26,9 @@ private val DefaultOnDraw: ContentDrawScope.() -> Unit = { drawContent() }
 fun rememberLayerBackdrop(
     graphicsLayer: GraphicsLayer = rememberGraphicsLayer(),
     /**
-     * 采样层的录制分辨率比例。1f = 与节点同尺寸；< 1 时录进更小的层，
-     * 采样侧按 1/recordScale 放大回全屏坐标。
-     *
-     * 适合「纯采样层」（contentOnlyCapture = false，录完不上屏、上屏走
-     * drawContent）：采样 blit 面积随比例平方下降。⚠ 上屏也走这个层的
-     * （contentOnlyCapture = true）不要降——blit 放大的就是用户直接看的内容。
+     * 采样层的录制分辨率比例。1f = 与节点同尺寸；< 1 时录进更小的层，采样侧按 1/recordScale 放大回全屏坐标。
+     * 适合「纯采样层」（contentOnlyCapture = false，录完不上屏、上屏走 drawContent）：采样 blit 面积随比例平方下降。
+     * ⚠ 上屏也走这个层的（contentOnlyCapture = true）不要降——blit 放大的就是用户直接看的内容。
      */
     recordScale: Float = 1f,
     onDraw: ContentDrawScope.() -> Unit = DefaultOnDraw
@@ -50,8 +47,7 @@ class LayerBackdrop internal constructor(
 ) : Backdrop {
 
     /**
-     * onDraw 是否只是 drawContent()（或等价物）。
-     * 为 true 时 [LayerBackdropNode] 录制后直接把图层画上屏，内容树只走一遍；
+     * onDraw 是否仅为 drawContent()（或等价物）。为 true 时录制后直接把图层画上屏，内容树只走一遍；
      * 为 false 时 onDraw 可能额外画背景等，上屏仍走 drawContent()，录制层单独走 onDraw。
      */
     internal val contentOnlyCapture: Boolean = onDraw === DefaultOnDraw
@@ -83,10 +79,8 @@ class LayerBackdrop internal constructor(
                     // TODO: outer transformations lead to wrong position calculation
                     coordinates.positionInWindow() - layerCoordinates.positionInWindow()
                 }
-            // 先平移到壁纸层原点，再按 1/recordScale 放大回全屏坐标。
-            // 矩阵右乘下 T 在 S 左侧：layer 坐标 d（已按 recordScale 缩小）经
-            // d/rs 还原源坐标后落在窗口 W + d/rs，逐像素对齐。
-            // 顺序反了会错位 offset·(1−rs)，rs=1 时恒等所以旧顺序从不暴露。
+            // 先平移到壁纸层原点，再按 1/recordScale 放大回全屏坐标（矩阵右乘下 T 在 S 左侧）：layer 坐标 d（已缩 rs）
+            // 经 d/rs 还原落在窗口 W + d/rs，逐像素对齐；顺序反了错位 offset·(1−rs)，rs=1 时恒等故旧顺序从不暴露。
             translate(-offset.x, -offset.y)
             if (recordScale != 1f) {
                 scale(1f / recordScale, 1f / recordScale, Offset.Zero)

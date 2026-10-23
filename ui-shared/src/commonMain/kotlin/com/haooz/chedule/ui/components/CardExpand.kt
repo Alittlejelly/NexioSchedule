@@ -1,23 +1,13 @@
 /**
  * 全局「单卡片高度变化」动效。
  *
- * ## 为什么高度动画放在这里，而不是 `Card` 的 `animateContentSize`
+ * 为什么不用 `Card.animateContentSize`：它补间的是占位尺寸、子节点始终按最终尺寸绘制 ——
+ * 收起时内容已按小尺寸摆好，只剩空白在缩（「关闭没有动画」），嵌套卡片还会因两层尺寸不同步而错位。
+ * 故高度变化必须由 `AnimatedVisibility` 自己算：退出期间仍保留内容，逐帧压到 0 高度，才能「收得回去」。
  *
- * `animateContentSize` 补间的是**占位尺寸**，子节点始终按最终尺寸绘制：
- * - 长高时靠裁切露出来，看着还行；
- * - 收起时内容已经按小尺寸摆好，剩下的是空白在缩 —— 观感是「内容瞬间消失、下面留白慢慢收」，
- *   也就是「关闭没有动画」。
- * - 再叠上 `Card` 的裁切，嵌套卡片之间还会因为两层尺寸不同步而错位重叠。
+ * 用法：[CardExpand] 包住卡片里条件出现/消失的内容；[Modifier.cardContentSize] 用于自绘容器自身尺寸变化。
  *
- * 所以高度变化必须由 `AnimatedVisibility` 自己算：它退出期间**仍然保留内容**，
- * 逐帧把内容压到 0 高度，这才是「收得回去」。
- *
- * ## 用法
- *
- * - [CardExpand]：卡片里某段内容条件出现 / 消失。
- * - [Modifier.cardContentSize]：自绘容器（不是 miuix 的 `Card`）自己的测量尺寸变了时使用。
- *
- * ⚠ 同一段内容只用一种：`CardExpand` 里再套 `cardContentSize` 就是「动画的动画」，发肉。
+ * ⚠ 同一段内容只用一种：`CardExpand` 里再套 `cardContentSize` 会变成「动画的动画」，发肉。
  */
 package com.haooz.chedule.ui.components
 
@@ -50,11 +40,8 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 object CardExpandSpec {
 
     /**
-     * 高度补间曲线：**直接复用 `CardDefaults.SizeAnimation`**，与其它地方用的同一条 spring，
-     * 避免两处参数漂移。
-     *
-     * `dampingRatio = 0.9` 只有极轻微回弹；`StiffnessMediumLow` 对 40~120dp 的行高变化
-     * 大致落在 260~320ms，不必再写固定时长。
+     * 高度补间曲线：复用 `CardDefaults.SizeAnimation`（与其它处同一条 spring，避免参数漂移）。
+     * `dampingRatio = 0.9` 仅极轻微回弹；`StiffnessMediumLow` 对 40~120dp 行高变化约 260~320ms，不必写固定时长。
      */
     val HeightSpring: FiniteAnimationSpec<IntSize> = CardDefaults.SizeAnimation
 
@@ -79,17 +66,12 @@ object CardExpandSpec {
 
 /**
  * 卡片里某段内容条件出现 / 消失。
- *
- * 展开：高度从 0 长到实际高度 + 淡入 + **模糊 12dp → 0**（从糊到清，且比高度晚散尽）；
- * 收回：内容一起压到 0 高度 + 淡出 + **模糊 0 → 12**（比高度更早糊满）。
- * 高度走 spring（[CardExpandSpec.HeightSpring]），模糊走两条固定时长
- * （[CardExpandSpec.BLUR_IN_MILLIS] / [CardExpandSpec.BLUR_OUT_MILLIS]），
- * 两者故意错开：进比高度慢、出比高度快。
+ * 展开：高度 0→实际 + 淡入 + 模糊 12dp→0（比高度晚散尽）；收回：内容压到 0 + 淡出 + 模糊 0→12（更早糊满）。
+ * 高度走 spring（[CardExpandSpec.HeightSpring]），模糊走两条固定时长（[CardExpandSpec.BLUR_IN_MILLIS]/[CardExpandSpec.BLUR_OUT_MILLIS]），故意错开（进慢出快）。
  *
  * @param visible 该段内容是否呈现。
- * @param expandFrom 展开 / 收缩的锚点。默认从顶部开始长；文件夹展开这类需要内容跟着
- *   底边下滑的场景传 `Alignment.Bottom`。
- * @param fade 是否淡入淡出。个别地方想更干净可以关掉。
+ * @param expandFrom 展开/收缩锚点；默认顶部，文件夹展开等需内容跟底边下滑的场景传 `Alignment.Bottom`。
+ * @param fade 是否淡入淡出，个别地方想更干净可关。
  */
 @Composable
 fun CardExpand(

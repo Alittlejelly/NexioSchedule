@@ -21,22 +21,11 @@ private val DayOfWeek.isoNumber: Int get() = ordinal + 1
 /**
  * `java.time` ↔ `kotlinx-datetime` 的**差分等价性验证**。
  *
- * ## 为什么必须先有这份测试
- *
- * 计划文档的阶段 2 要把全项目的 `java.time` 换成 `kotlinx-datetime`，但写明：
- * 「该测试文件在提交前被删掉了。**做阶段 2 之前要按记忆里的对照表重新写回来**，
- * 否则日期算错没有安全网」。这个类就是补上那张安全网。
- *
- * 日期算错不会崩，只会静默错位 —— 表现为课表显示的周次/日期整体偏移一天，
+ * 拿 `java.time` 当基准穷举比对：不用「手写期望值」（写期望值的人可能就是算错的人），
+ * 而是同时用两套库算同一个值逐条断言。日期算错不会崩、只会静默错位一天，
  * 而「时间配置丢失」是本项目历史最严重的事故类型。
  *
- * ## 做法：拿 `java.time` 当基准穷举比对
- *
- * 不用「手写期望值」（写期望值的人可能就是算错的人），而是**同时用两套库计算同一个值**，
- * 逐条断言相等。范围覆盖 1900-2099 共 73,049 天，覆盖闰年、世纪年、跨年。
- *
- * 放在 `jvmTest`：只有 JVM 才有 `java.time` 可与 kotlinx-datetime 对照，
- * 而被验证的 kotlinx-datetime 代码在 commonMain。
+ * 放在 `jvmTest`：只有 JVM 才有 `java.time` 可对照，被验证的 kotlinx-datetime 代码在 commonMain。
  */
 class DateMigrationEquivalenceTest {
 

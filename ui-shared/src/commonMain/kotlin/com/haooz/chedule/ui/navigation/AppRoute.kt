@@ -3,16 +3,13 @@ package com.haooz.chedule.ui.navigation
 /**
  * 应用内子页路由表（单宿主 + 显式路由；iOS 无 Activity，导航状态不能活在 Android back stack 里）。
  *
- * ⚠ [id] 是持久化契约（`rememberSaveable` 的进程/配置重建用）：**已发布路由的 id 不要改**，
- * 改了用户多任务切换回来会落回首页；改 id 必须同时写迁移。
+ * ⚠ [id] 是持久化契约（`rememberSaveable` 进程/配置重建用）：已发布路由的 id 不要改，否则多任务切换回来会落回首页；改 id 必须写迁移。
  *
- * ⚠ 这里**没有**主界面路由：主界面是常驻底座、不参与 save/restore，否则切子页再回来
- * 非 saveable 状态（`remember { mutableStateOf }`）全丢。要把某页变主 tab 应改
- * `CourseScheduleApp` 内部 pager，而不是在这里加路由。
+ * ⚠ 主界面不在此处：它是常驻底座、不参与 save/restore，在此加路由会让非 saveable 状态（`remember { mutableStateOf }`）丢失。要加主 tab 改 `CourseScheduleApp` 的 pager。
  */
 sealed interface AppRoute {
 
-    /** 稳定标识。见接口 KDoc：**已发布的不要改**。 */
+    /** 持久化标识。已发布的 id 不要改（见接口 KDoc）。 */
     val id: String
 
     /** 关于页。 */
@@ -119,7 +116,7 @@ sealed interface AppRoute {
 
     /**
      * 教务导入的网页导入页：选完学校/适配器后从右侧推入（独立一层，返回先回选择页）。
-     * 选中项经 `EduImportSelection` 传递 —— 路由只有稳定 id，没有参数通道。
+     * 选中项经 `EduImportSelection` 传递：路由只有稳定 id，没有参数通道。
      */
     data object WebImport : AppRoute {
         override val id: String get() = "web_import"

@@ -36,21 +36,7 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * A [Button] component with Miuix style.
- *
- * @param onClick The callback when the [Button] is clicked.
- * @param modifier The modifier to be applied to the [Button].
- * @param enabled Whether the [Button] is enabled.
- * @param cornerRadius The corner radius of the [Button].
- * @param minWidth The minimum width of the [Button].
- * @param minHeight The minimum height of the [Button].
- * @param colors The [ButtonColors] of the [Button].
- * @param insideMargin The margin inside the [Button].
- * @param interactionSource The [MutableInteractionSource] to be used for the [Button].
- * @param indication The [Indication] to be used for the [Button].
- * @param content The [Composable] content of the [Button].
- */
+/** A Miuix-styled [Button]. */
 @Composable
 fun Button(
     onClick: () -> Unit,
@@ -97,21 +83,7 @@ fun Button(
     }
 }
 
-/**
- * A [TextButton] component with Miuix style.
- *
- * @param text The text of the [TextButton].
- * @param onClick The callback when the [TextButton] is clicked.
- * @param modifier The modifier to be applied to the [TextButton].
- * @param enabled Whether the [TextButton] is enabled.
- * @param cornerRadius The corner radius of the [TextButton].
- * @param minWidth The minimum width of the [TextButton].
- * @param minHeight The minimum height of the [TextButton].
- * @param colors The [TextButtonColors] of the [TextButton].
- * @param insideMargin The margin inside the [TextButton].
- * @param interactionSource The [MutableInteractionSource] to be used for the [TextButton].
- * @param indication The [Indication] to be used for the [TextButton].
- */
+/** A Miuix-styled [TextButton] with a text label. */
 @Composable
 fun TextButton(
     text: String,
@@ -169,31 +141,19 @@ fun TextButton(
 
 object ButtonDefaults {
 
-    /**
-     * The default min width applied for all buttons. Note that you can override it by applying
-     * Modifier.widthIn directly on the button composable.
-     */
+    /** Default min width for buttons (override via Modifier.widthIn). */
     val MinWidth = 58.dp
 
-    /**
-     * The default min height applied for all buttons. Note that you can override it by applying
-     * Modifier.heightIn directly on the button composable.
-     */
+    /** Default min height for buttons (override via Modifier.heightIn). */
     val MinHeight = 40.dp
 
-    /**
-     * The default corner radius applied for all buttons.
-     */
+    /** Default corner radius for buttons. */
     val CornerRadius = 16.dp
 
-    /**
-     * The default inside margin applied for all buttons.
-     */
+    /** Default inside margin for buttons. */
     val InsideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp)
 
-    /**
-     * The default [ButtonColors] for all buttons.
-     */
+    /** Default [ButtonColors] for all buttons. */
     @Composable
     fun buttonColors(
         color: Color = MiuixTheme.colorScheme.secondaryVariant,
@@ -209,9 +169,7 @@ object ButtonDefaults {
         )
     }
 
-    /**
-     * The [ButtonColors] for primary buttons.
-     */
+    /** [ButtonColors] for primary buttons. */
     @Composable
     fun buttonColorsPrimary(
         color: Color = MiuixTheme.colorScheme.primary,
@@ -227,14 +185,11 @@ object ButtonDefaults {
         )
     }
 
-    /**
-     * The default [TextButtonColors] for all text buttons.
-     */
+    /** Default [TextButtonColors] for all text buttons. */
     @Composable
     fun textButtonColors(
-        // 原来读 App 的 isAppDarkTheme()（App 允许强制浅/深，与系统值未必一致）。
-        // 这里改用 MiuixTheme.colorScheme 自身的亮暗 —— 组件跟随所在 MiuixTheme 才正确，
-        // 否则被 App 用 LocalForcedDarkTheme 覆盖主题时，按钮文字色会与背景对不上。
+        // 用 MiuixTheme.colorScheme 自身的亮暗（而非 App 的 isAppDarkTheme），
+        // 否则 App 用 LocalForcedDarkTheme 覆盖主题时，按钮文字色会与背景对不上。
         color: Color = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) Color.White else Color.Black,
         disabledColor: Color = MiuixTheme.colorScheme.disabledSecondaryVariant,
         textColor: Color = MiuixTheme.colorScheme.onSecondaryVariant,
@@ -250,9 +205,7 @@ object ButtonDefaults {
         )
     }
 
-    /**
-     * The [TextButtonColors] for primary text buttons.
-     */
+    /** [TextButtonColors] for primary text buttons. */
     @Composable
     fun textButtonColorsPrimary(
         color: Color = MiuixTheme.colorScheme.primary,

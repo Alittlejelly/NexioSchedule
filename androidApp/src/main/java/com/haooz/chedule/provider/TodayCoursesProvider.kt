@@ -206,10 +206,7 @@ val subText = when {
         } else {
             listOf(course.classroom, course.teacher).filter { it.isNotEmpty() }.joinToString("｜")
         }
-        // App 端按容器宽度测量截断
-        // size=single：单日程 440 设计稿，名称 x=42 size=48，地点 x=92 size=38
-        // size=2x2：日程表卡片内 名称/地点｜教师
-        // 默认 4x2：上课时为右侧倒计时让位
+        // App 端按容器宽度测量截断：single 用 440 稿(名 x42/sz48、地 x92/sz38)；2x2 为卡片内 名/地｜师；默认 4x2 上课时为右侧倒计时让位。
         val isSingle = size == "single"
         val isTwoByTwo = size == "2x2"
         val detailWidthPx = if (isNow == 1) 170f else 255f

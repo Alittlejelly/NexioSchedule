@@ -42,22 +42,20 @@ import kotlin.coroutines.resume
  *
  * ## 与 Android 的分工
  *
- * 卡片本体与全部展示逻辑已迁 `:ui-shared` 的 `TodayAssistantCard.kt`；本文件只负责
- * **取数**：CoreLocation 拿坐标 → 共享 `HttpService`（NSURLSession）拉天气 → 包成共享的
- * [WeatherData] 交给卡片。合约与 Android 完全一致：
- * `Triple<WeatherData, hasLocationPermission, onRequestLocation>`。
+ * 卡片本体与展示逻辑已迁 `:ui-shared` 的 `TodayAssistantCard.kt`；本文件只负责**取数**：
+ * CoreLocation 拿坐标 → 共享 `HttpService`（NSURLSession）拉天气 → 包成共享 [WeatherData]。
+ * 合约与 Android 一致：`Triple<WeatherData, hasLocationPermission, onRequestLocation>`。
  *
  * ## 与 Android 的行为差异（有意为之）
  *
  * Android 有两套源（`caiyun` 按经纬度 / 中国天气网按城市码）。**iOS 只做经纬度那套**：
- * 城市码那套依赖 `getCityCodeMap(context)` 读 Android 的 assets 城市表，iOS 没有这份资产。
- * 而本 app 默认源就是 `caiyun`，且经纬度源精度更高 —— 故 iOS 恒走经纬度源，
- * `weather_prefs` 里的 `weather_source` 在 iOS 上不参与分支（数据格式与卡片渲染完全一致）。
+ * 城市码源依赖 `getCityCodeMap(context)` 读 Android assets 城市表，iOS 没有这份资产；且默认源
+ * 就是 `caiyun`、精度更高 —— 故 iOS 恒走经纬度源，`weather_source` 在 iOS 不参与分支。
  *
  * ## 合规
  *
- * 与 Android 同一条铁律：**用户同意隐私政策前不定位、不请求**。`PrivacyConsent.consented`
- * 是 StateFlow，同意后会自动重跑（`LaunchedEffect` 的 key 里有它）。
+ * 与 Android 同一条铁律：**用户同意隐私政策前不定位、不请求**；`PrivacyConsent.consented`
+ * 是 StateFlow，同意后自动重跑（在 `LaunchedEffect` 的 key 里）。
  */
 
 /** 天气缓存与刷新节流：与 Android 的 `WEATHER_REFRESH_INTERVAL` 同值（30 分钟） */
@@ -131,8 +129,7 @@ fun rememberWeatherIos(): Triple<WeatherData, Boolean, () -> Unit> {
 /**
  * 拉天气（和风/apizero 聚合接口，与 Android `caiyun` 分支同一 URL 与字段）。
  *
- * 失败一律返回 `apiError = true` 的已加载态（与 Android 的 try/catch 兜底一致，
- * 让卡片显示「获取失败」而不是一直转圈）。
+ * 失败一律返回 `apiError = true` 的已加载态（同 Android 兜底：卡片显示「获取失败」而不是一直转圈）。
  */
 private suspend fun fetchWeather(lng: Double, lat: Double): WeatherData {
     val error = WeatherData(loaded = true, apiError = true)
@@ -167,8 +164,7 @@ private suspend fun fetchWeather(lng: Double, lat: Double): WeatherData {
 /**
  * 和风 `skycon`（英文枚举）→ 中国天气网风格的中文描述。
  *
- * 卡片里的 `getWeatherIconRes` 是按**中文关键词**匹配图标的（Android 中国天气网源直接给中文），
- * 所以这里必须转成中文，否则图标会全部落到兜底的「晴」。
+ * 卡片的 `getWeatherIconRes` 按**中文关键词**匹配图标，不转中文会全部落到兜底的「晴」。
  */
 private fun skyconToChinese(skycon: String): String = when (skycon.uppercase()) {
     "CLEAR_DAY" -> "晴"
@@ -228,10 +224,8 @@ private class IosLocationClient {
     }
 
     /**
-     * 取一次当前位置（挂起）。
-     *
-     * 先看系统缓存的 `manager.location`：天气只要城市级精度，缓存通常就够了 ——
-     * 有缓存就先返回，省掉一次几秒的定位等待；没有才发真实请求。
+     * 取一次当前位置（挂起）：先看系统缓存的 `manager.location` —— 天气只要城市级精度，
+     * 缓存通常就够，省掉一次几秒的定位等待；没有才发真实请求。
      */
     suspend fun requestLocation(): Pair<Double, Double>? {
         manager.location?.let { cached ->

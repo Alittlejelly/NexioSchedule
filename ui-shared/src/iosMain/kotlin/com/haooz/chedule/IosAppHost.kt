@@ -107,9 +107,8 @@ class IosAppHost {
 
     fun navigateNativeDocument(routeId: String) {
         val route = AppRoute.fromId(routeId) ?: return
-        // ⚠ guard 只拦 UIKit 自己的转场状态（编辑器开着 / 转场中 / 有待处理的 pop）。
-        // ⚠ 绝不拦 floatingOverlayActive（Compose 弹窗）：弹窗与 pushViewController 互不干扰，
-        // 拦了会让「选适配器」弹窗里点学校被静默吞掉（Android 无此 guard）。
+        // ⚠ 只拦 UIKit 自己的转场状态（编辑器开着 / 转场中 / 有待处理的 pop）；绝不拦
+        // floatingOverlayActive（Compose 弹窗），否则「选适配器」弹窗里点学校会被静默吞掉（Android 无此 guard）。
         if (!route.isNativeDocument() || nativeContentOverlayActive ||
             nativeTransitionInFlight || requestedPopDepth != null
         ) return

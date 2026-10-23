@@ -14,14 +14,11 @@ import kotlin.test.assertTrue
 /**
  * `:core` 的 [DateExt] 补齐层 —— 与 `java.time` 的**差分等价性验证**。
  *
- * ## 为什么必须有这份测试
+ * [DateExt] 里那些是 **kotlinx-datetime 根本没有**、手写的（`lengthOfMonth` /
+ * `plusDays` / `MIN`、`MAX` 哨兵 / `HH:mm` 解析格式化 / `Math.addExact` …）。
+ * 这类手写替换**编译永远绿、错了就是静默算错**，只能靠差分比对兜住。
  *
- * 阶段 2.1 把 `:app` 的 `java.time` 整体换成 kotlinx-datetime。绝大多数 API 是同名替换
- * （`parse` / `plus` / `dayOfWeek` …），但 `DateExt` 里那些是 **kotlinx-datetime 根本没有**、
- * 我手写的（`lengthOfMonth` / `plusDays` / `MIN`、`MAX` 哨兵 / `HH:mm` 解析格式化 /
- * `Math.addExact` …）。这类手写替换**编译永远绿、错了就是静默算错**，只能靠差分比对兜住。
- *
- * 覆盖的是真实会走到的输入域：全项目日期都在 1900-2100 之间，但特意把闰年、世纪年、
+ * 覆盖真实会走到的输入域：全项目日期都在 1900-2100 之间，但特意把闰年、世纪年、
  * 月末、跨年、跨周都塞进去。
  *
  * ⚠ 本文件不入库（用户长期要求），与 `DateMigrationEquivalenceTest` 同属本地安全网。

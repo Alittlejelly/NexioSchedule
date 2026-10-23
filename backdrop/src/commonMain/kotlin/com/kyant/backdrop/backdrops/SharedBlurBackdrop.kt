@@ -29,24 +29,15 @@ import com.kyant.backdrop.isRenderEffectSupported
 import kotlin.math.roundToInt
 
 /**
- * 烘焙层的分辨率比例。1f = 与源层同分辨率。
- *
- * 降采样是安全的，因为模糊**只烘焙一次**：[SharedBlurRecorderNode] 先把源录进
- * 带 RenderEffect 的中间层 blurLayer，再把结果烘进 `renderEffect = null` 的
- * bakedLayer。采样侧 `drawLayer(baked)` 是一次纯纹理 blit，不重跑高斯模糊。
- *
- * **变换顺序**：采样侧必须**先 translate(-offset) 再 scale(1/n)**。
- * 矩阵右乘下调用顺序即右乘顺序：M = M0·T·S 时 baked 坐标 d 落在窗口
- * W + d/n（W = 壁纸层窗口原点）；顺序反过来 M = M0·S·T 会落在
- * C + (d−offset)/n，整体错位 offset·(1−1/n)。n=1 时 S 是恒等、两种顺序等价
+ * 烘焙层的分辨率比例。1f = 与源层同分辨率。降采样安全：模糊只烘焙一次——源先录进带 RenderEffect 的中间层
+ * blurLayer，再烘进 renderEffect=null 的 bakedLayer，采样侧 drawLayer(baked) 是纯纹理 blit，不重跑高斯模糊。
+ * 变换顺序：采样侧必须先 translate(-offset) 再 scale(1/n)。矩阵右乘下 M=M0·T·S 时 baked 坐标 d 落在窗口
+ * W + d/n；反过来 M=M0·S·T 落在 C + (d−offset)/n，整体错位 offset·(1−1/n)。n=1 时 S 恒等、两种等价。
  */
 const val BLUR_BAKE_SCALE = 0.5f
 
 /**
- * 共享预模糊 Backdrop。
- *
- * 壁纸只模糊**一次**（预渲染时把模糊结果烘焙进 [blurredLayer]），
- * 之后所有课程卡片都从这张图上裁剪采样 —— 运行时高斯模糊开销为 0。
+ * 共享预模糊 Backdrop。壁纸只模糊一次（预渲染时烘进 [blurredLayer]），之后所有课程卡片都从这张图采样，运行时高斯模糊开销为 0。
  * @param source 原始壁纸 LayerBackdrop（用于降级和坐标获取）
  */
 @Stable
@@ -56,37 +47,25 @@ class SharedBlurBackdrop(
 
     override val isCoordinatesDependent: Boolean = true
 
-    /**
-     * 烘焙好的模糊壁纸层。模糊已固化，drawLayer 时不再有模糊运算。
-     * 由预渲染 Modifier 在壁纸/模糊半径变化时重录。
-     */
+    /** 烘焙好的模糊壁纸层。模糊已固化，drawLayer 时不再有模糊运算；预渲染 Modifier 在壁纸/模糊半径变化时重录。 */
     override var blurredLayer: GraphicsLayer? by mutableStateOf(null)
         internal set
 
     /**
-     * 烘焙层相对源层的缩放比例（< 1 表示降采样烘焙）。
-     *
-     * 采样侧会按 1/n 放大回全屏坐标，所以它对按压缩放的反向补偿**没有影响**
-     * （那条链路用的是节点尺寸，跟这张层的分辨率无关）。
-     * 降采样的收益是实打实的：几十张卡随机采样同一张层，纹理面积小 → 采样带宽和
-     * cache 局部性一起改善；而内容本来就是模糊的，放大回来看不出差别。
+     * 烘焙层相对源层的缩放比例（< 1 表示降采样烘焙）。采样侧按 1/n 放大回全屏坐标，对按压缩放的反向补偿无影响（那条链路用节点尺寸）。
+     * 降采样收益实打实：几十张卡采样同一层，纹理面积小使采样带宽与 cache 局部性同时改善；内容本就模糊，放大回来看不出差别。
      */
     var blurredScale: Float = BLUR_BAKE_SCALE
         internal set
 
-    // 原 fork 里的 `var sampledBitmap: android.graphics.Bitmap?` 已删除：
-    // 它是平台专属类型，无法进 commonMain；而全项目（:app 与本模块）零引用，
-    // 属于未接线的预留字段。将来若真要做「ImageShader 直采折射」，
-    // 请改用 expect/actual 的平台位图类型再补回来。
+    // 原 fork 的 `var sampledBitmap: android.graphics.Bitmap?` 已删除：平台专属类型无法进 commonMain，且全项目零引用，属未接线预留字段；
+    // 将来若做「ImageShader 直采折射」，改用 expect/actual 平台位图类型再补回。
 
     /** 共享层像素内容版本：每次重录源层时递增，供采样侧跳过无变化重录 */
     override var contentVersion: Int = 0
         internal set
 
-    /**
-     * 源 Backdrop 的坐标（壁纸层在视图树中的位置）。
-     * 供 DrawBackdropNode 计算卡片在壁纸中的偏移量。
-     */
+    /** 源 Backdrop 的坐标（壁纸层在视图树中的位置），供 DrawBackdropNode 计算卡片在壁纸中的偏移量。 */
     val sourceLayerCoordinates: LayoutCoordinates?
         get() = source.layerCoordinates
 
@@ -98,21 +77,14 @@ class SharedBlurBackdrop(
     }
 
     /**
-     * 创建预渲染 Modifier。在指定 Composable 的 draw 阶段
-     * 把壁纸源模糊一次并**烘焙**进 blurredLayer。
-     *
-     * 该 Modifier 应附加到壁纸 Box 之后的不可见 Box 上，
-     * 确保 source.graphicsLayer 已被录制。
-     *
-     * @param blurRadiusPx 模糊半径（px，作用在源层全分辨率空间；
-     *   烘焙时自动 ×downsampleScale 适配降采样缓冲，放大回原尺寸后扩散范围不变）
+     * 创建预渲染 Modifier：在指定 Composable 的 draw 阶段把壁纸源模糊一次并烘焙进 [blurredLayer]。
+     * 应附加到壁纸 Box 之后的不可见 Box 上，确保 source.graphicsLayer 已被录制。
+     * @param blurRadiusPx 模糊半径（px，作用于源层全分辨率；烘焙时 ×downsampleScale 适配降采样缓冲，放大回原尺寸后扩散范围不变）
      * @param downsampleScale 烘焙分辨率比例，默认 [BLUR_BAKE_SCALE]
      */
     /**
-     * @param sourceKey 源内容指纹（壁纸 bitmap / 缩放 / 偏移 / 亮度 / 主题色等）。
-     *   它没变时说明源层内容和上一帧逐像素相同，可以整段跳过重新烘焙——
-     *   滑动课表、开关弹窗这类场景下壁纸是静止的，重烘焙纯属白烧。
-     *   注意：指纹必须覆盖所有会改变源层内容的因素，否则会用到过期采样。
+     * @param sourceKey 源内容指纹（壁纸 bitmap / 缩放 / 偏移 / 亮度 / 主题色等）。值未变时源层内容与上帧逐像素
+     *   相同，可整段跳过重新烘焙（滑动课表/开关弹窗时壁纸静止，重烘焙纯属白烧）；指纹须覆盖所有改变源层内容的因素，否则会用到过期采样。
      */
     fun preRenderModifier(
         blurRadiusPx: Float,
@@ -122,10 +94,7 @@ class SharedBlurBackdrop(
         return SharedBlurRecorderElement(this, blurRadiusPx, downsampleScale, sourceKey)
     }
 
-    /**
-     * 采样入口：画**已烘焙的模糊层**（模糊开销为 0）；
-     * 还没烘焙好时退回原始源层，保证不会出现空白。
-     */
+    /** 采样入口：画已烘焙的模糊层（模糊开销为 0）；未烘焙好时退回原始源层，避免空白。 */
     override fun DrawScope.drawBackdrop(
         density: Density,
         coordinates: LayoutCoordinates?,
@@ -148,9 +117,7 @@ class SharedBlurBackdrop(
                 coordinates.positionInWindow() - layerCoordinates.positionInWindow()
             }
             translate(-offset.x, -offset.y)
-            // 顺序：先平移到壁纸层原点，再按 1/n 放大回全屏坐标。
-            // 矩阵右乘下点变换按「后调用的先作用」：T 在 S 左侧时 baked 坐标 d
-            // 落在窗口 W + d/n，与源层逐像素对齐；
+            // 顺序：先平移到壁纸层原点，再按 1/n 放大回全屏坐标（矩阵右乘下 T 在 S 左侧，baked 坐标 d 落在 W + d/n，逐像素对齐）。
             if (n != 1f) {
                 scale(1f / n, 1f / n, Offset.Zero)
             }
@@ -179,8 +146,7 @@ private class SharedBlurRecorderElement(
     }
 
     override fun update(node: SharedBlurRecorderNode) {
-        // 源内容相关参数变化才需要重录降采样层；
-        // 仅 blur 半径变化时只刷新 renderEffect，避免壁纸层被无意义重录。
+        // 仅源内容相关参数变化才重录降采样层；仅 blur 半径变化时只刷新 renderEffect，避免壁纸层无意义重录。
         val sourceChanged = node.sharedBackdrop !== sharedBackdrop ||
             node.downsampleScale != downsampleScale ||
             node.sourceKey != sourceKey
@@ -225,10 +191,7 @@ private class SharedBlurRecorderNode(
     var sourceKey: Any? = null
 ) : DrawModifierNode, Modifier.Node() {
 
-    /**
-     * 中间层：源内容 + BlurEffect。只用于烘焙，不直接给采样侧用
-     * （RenderEffect 是 drawLayer 时才应用的，直接采样会每张卡重跑一次全屏模糊）。
-     */
+    /** 中间层：源内容 + BlurEffect。只用于烘焙，不直接给采样侧用（RenderEffect 在 drawLayer 时才应用，直接采样会让每张卡重跑一次全屏模糊）。 */
     private var blurLayer: GraphicsLayer? = null
 
     /** 持久层：烘焙结果，模糊已固化，无 RenderEffect。 */

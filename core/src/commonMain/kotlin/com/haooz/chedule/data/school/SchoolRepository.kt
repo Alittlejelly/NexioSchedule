@@ -10,14 +10,9 @@ private const val TAG = "SchoolRepository"
 /**
  * 学校索引仓库。
  *
- * ## 迁移说明
- *
- * 原先依赖 `Context`（`filesDir` + `assets`）与 `java.io.File`，两者都无法进 commonMain。
- * 现改用 [AppFiles] 注入的文件系统，**不再持有 Context**，因此整体下沉 `:core`。
- *
- * 行为保持不变：
- * - `repo/index/school_index.pb`、`repo/schools/resources` 路径逐字未变
- * - 内置索引引导仍是「本地不存在才拷贝」，失败打日志并跳过
+ * 改用 [AppFiles] 注入的文件系统，**不持有 Context**，因此整体在 commonMain。
+ * 行为保持不变：`repo/index/school_index.pb`、`repo/schools/resources` 路径逐字未变；
+ * 内置索引引导仍是「本地不存在才拷贝」，失败打日志并跳过。
  */
 class SchoolRepository {
 

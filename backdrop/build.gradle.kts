@@ -1,10 +1,6 @@
 // Nexio课程表 - 液态玻璃效果库（fork 自 io.github.kyant0:backdrop 2.0.1）
-//
-// fork 而非依赖 artifact：项目对 backdrop 有 671 行定制（DrawBackdropModifier /
-// LayerBackdropModifier / RuntimeShader 等 14 个文件），定制住在源码里，
-// 才能分别落到 KMP 的平台源集上。
-// 源集分工：commonMain 上游 2.0.1 跨平台逻辑 + 定制；androidMain Android actual
-// （RenderEffect / AGSL）；skikoMain iOS/Desktop/Web actual（Skia RuntimeEffect + SkSL）。
+// fork 而非依赖 artifact：项目对 backdrop 有 671 行定制（DrawBackdropModifier / LayerBackdropModifier / RuntimeShader 等 14 个文件），定制住在源码里，才能分别落到 KMP 的平台源集上。
+// 源集分工：commonMain 上游 2.0.1 跨平台逻辑 + 定制；androidMain Android actual（RenderEffect / AGSL）；skikoMain iOS/Desktop/Web actual（Skia RuntimeEffect + SkSL）。
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -22,8 +18,7 @@ kotlin {
     }
     jvm()
     // ── iOS target：**默认关闭**，-Pnexio.ios=true 开启 ──────────────────────
-    // 同理：声明 iOS target 会让 `check` 去解析 iOS 的 klib 依赖，而门禁是
-    // --offline 跑的，本地没这些变体缓存，直接失败。
+    // 同理：声明 iOS target 会让 `check` 去解析 iOS 的 klib 依赖，而门禁是 --offline 跑的，本地没这些变体缓存，直接失败。
     val enableIos = (project.findProperty("nexio.ios") as? String)?.toBoolean() ?: false
     if (enableIos) {
         iosArm64()
@@ -40,8 +35,7 @@ kotlin {
             // @Language("AGSL") 注解（RuntimeShader / Shaders 等共 8 处）
             api("org.jetbrains:annotations:26.1.0")
         }
-        // jvm 复用 skikoMain（Skia 实现）。用 srcDir 而非拷贝，
-        // 同一份 SkSL 代码跨 Skia 后端共享。
+        // jvm 复用 skikoMain（Skia 实现）：用 srcDir 而非拷贝，同一份 SkSL 代码跨 Skia 后端共享。
         jvmMain {
             kotlin.srcDir("src/skikoMain/kotlin")
         }

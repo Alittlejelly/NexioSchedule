@@ -96,10 +96,8 @@ class DampedDragAnimation(
 
     fun release() {
         animationScope.launch {
-            // 原为 kotlinx.coroutines.android.awaitFrame（Android 专有）。
-            // compose runtime 的 withFrameNanos 是同语义的跨平台版：等下一帧。
-            // animationScope 来自 rememberCoroutineScope，带组合的 MonotonicFrameClock
-            // （animateTo 能跑就证明它在），所以 withFrameNanos 在这里合法。
+            // 原为 kotlinx.coroutines.android.awaitFrame（Android 专有）；withFrameNanos
+            // 是同语义的跨平台版，animationScope 带组合的 MonotonicFrameClock，在此合法。
             withFrameNanos { }
             if (value != targetValue) {
                 val threshold = (valueRange.endInclusive - valueRange.start) * 0.025f

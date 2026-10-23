@@ -1,10 +1,5 @@
-// Nexio课程表 - 桌面客户端入口（Compose Multiplatform Desktop / JVM）
-//
-// 目的：**验证 KMP 迁移成果能真跑**。与 :androidApp 共用 :ui-shared 的页面、
-// :core 的数据层；Android 门禁保持零回归（本模块不参与 --offline 红线）。
-//
-// 平台中立性提醒：本模块是**平台宿主**（同 :androidApp），commonMain 规则不适用于它，
-// 但通过它编译的 :ui-shared / :core 代码必须过 checkKmpPurity。
+// Nexio课程表 - 桌面客户端入口（Compose Multiplatform Desktop / JVM）：验证 KMP 迁移成果，与 :androidApp 共用 :ui-shared / :core；本模块不参与 Android 的 --offline 红线。
+// 平台中立性：本模块是平台宿主（同 :androidApp），commonMain 规则不适用，但经它编译的 :ui-shared / :core 代码必须过 checkKmpPurity。
 package com.haooz.chedule.desktop
 
 import androidx.compose.foundation.layout.Arrangement
@@ -62,10 +57,7 @@ import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 桌面端当前阶段的形态：**迁移验证壳**。
- *
- * 每迁入一批页面，这里就多一批可点开的真实页面 —— 它是「迁移可用、可以跑」的
- * 直接证据。全部页面迁完后，本壳由正式的路由（AppRouter）替换。
+ * 桌面端当前阶段的形态：迁移验证壳。每迁入一批页面就多一批可点开的真实页面，作为「迁移可用、可以跑」的直接证据；全部迁完后由正式路由（AppRouter）替换。
  */
 fun main() {
     // ── 启动注入（对应 Android 的 NexioApplication.onCreate 的四个 init）──────────
@@ -80,8 +72,7 @@ fun main() {
     // 2. 版本号：桌面读不到 PackageManager，直接给（上报的 app_version 用）
     AppInfo.init("1.6.4-desktop")
 
-    // 3. 文件系统 + 内置资源：root 指向应用数据目录；readAsset 从 classpath 读
-    //    （Android 侧读 assets，桌面读 resources —— 同一契约，平台各自实现）
+    // 3. 文件系统 + 内置资源：root 指向应用数据目录；readAsset 从 classpath 读（Android 读 assets，桌面读 resources，同一契约、平台各自实现）
     AppFiles.init(
         root = FileAppFile(dataDir),
         readAsset = { path ->
@@ -91,8 +82,7 @@ fun main() {
         },
     )
 
-    // 4. 材质档位：与 Android（NexioApplication）同步从 app_preferences 载入，
-    //    不调的话玻璃/模糊材质永远停在默认档，桌面验证看到的材质效果会失真
+    // 4. 材质档位：与 Android（NexioApplication）同步从 app_preferences 载入；不调则玻璃/模糊材质停在默认档，桌面验证材质效果失真
     AppMaterialSettings.load()
 
     application {
@@ -108,13 +98,9 @@ fun main() {
     }
 }
 
-/** 页面栈（极简：首页 + 若干详情页，够当前验证阶段用）。
- *
- *  ⚠ 与 `:ui-shared` 的 `AppRoute` 是**两份路由知识**：这里没包 AppRoute，是因为
- *  SchoolSelection（桌面无 WebView 导入，直接暴露选校页）与 AddCourse（弹窗演示）
- *  本就没有对应路由，且路由→内容映射在 AppRouteContent 里带着 Android 触点搬不动。
- *  代价：Android 侧新增/改名路由时这里不会告警 —— 每迁一批页面记得回来补入口，
- *  本壳由正式路由替换后这条注释随之删除。
+/**
+ * 页面栈（极简：首页 + 若干详情页，够当前验证阶段用）。
+ * ⚠ 与 `:ui-shared` 的 `AppRoute` 是两份路由知识：本壳未包 AppRoute，因 SchoolSelection（桌面无 WebView 导入，直接暴露选校页）与 AddCourse（弹窗演示）本就无对应路由，且路由→内容映射带着 Android 触点搬不动。代价：Android 侧增改路由时这里不告警，每迁一批页面记得补入口，正式路由替换后本注释删除。
  */
 private enum class DesktopPage(val title: String) {
     Home("Nexio 课程表 · 桌面验证"),
@@ -147,9 +133,7 @@ private fun DesktopShell() {
             if (page == DesktopPage.Home) {
                 HomeContent(onOpen = { page = it })
             } else {
-                // 与 Android 路由页**同一个脚手架**（DocumentPageScaffold）：
-                // 折叠大标题顶栏 + 液态玻璃圆形返回按钮 + 采样层。
-                // 这正是「多平台视觉一致性」的验证点 —— 同一份组件代码在桌面渲染。
+                // 与 Android 路由页同一脚手架（DocumentPageScaffold：折叠大标题顶栏 + 液态玻璃圆形返回按钮 + 采样层），正是「多平台视觉一致性」的验证点——同一份组件代码在桌面渲染。
                 PageContainer(
                     title = page.title,
                     onBack = { page = DesktopPage.Home },
@@ -187,15 +171,12 @@ private fun DesktopShell() {
                             onConfirm = { page = DesktopPage.Home },
                             onDelete = { },
                         )
-                        // 桌面小部件介绍页。
-                        // onRequestWidgetRefresh 是 Android 专有能力（AppWidget + RemoteViews），
-                        // 桌面端没有小组件 —— 宿主给空实现，页面本体照样完整渲染。
+                        // 桌面小部件介绍页。onRequestWidgetRefresh 是 Android 专有能力（AppWidget + RemoteViews），桌面端无小组件，宿主给空实现，页面本体照常渲染。
                         DesktopPage.WidgetIntro -> WidgetIntroScreen(
                             scrollBehavior = scrollBehavior,
                             onRequestWidgetRefresh = { },
                         )
-                        // 课程详情页（morph 转场页，自带全屏 Box 脚手架）。
-                        // 快照为 null 时页面只渲染内容层；空课程列表即空列表页。
+                        // 课程详情页（morph 转场页，自带全屏 Box 脚手架）；快照为 null 时只渲染内容层，空课程列表即空列表页。
                         DesktopPage.CourseDetail -> CourseDetailScreen(
                             courses = emptyList(),
                             cardLeft = 0f,
@@ -212,8 +193,7 @@ private fun DesktopShell() {
                             onBackStart = { },
                             onBack = { page = DesktopPage.Home },
                         )
-                        // 课程编辑页（同为 morph 转场页）。
-                        // liquidGlassBackdrop 必须非空（页面内 `!!`），桌面端自建采样层。
+                        // 课程编辑页（同为 morph 转场页）；liquidGlassBackdrop 必须非空（页内 `!!`），桌面端自建采样层。
                         DesktopPage.CourseEdit -> CourseEditScreen(
                             courses = emptyList(),
                             cardLeft = 0f,
@@ -236,10 +216,7 @@ private fun DesktopShell() {
 }
 
 /**
- * 首页：列出**已迁入 :ui-shared 的页面**。
- *
- * 每个入口渲染的都是与 Android 端完全相同的一份代码（同一个 composable 函数）——
- * 点开能显示，就证明这批迁移在第二个平台上真实可用。
+ * 首页：列出**已迁入 :ui-shared 的页面**。每个入口渲染的都是与 Android 端完全相同的一份代码（同一个 composable 函数）——点开能显示，就证明这批迁移在第二个平台上真实可用。
  */
 @Composable
 private fun HomeContent(onOpen: (DesktopPage) -> Unit) {
@@ -283,8 +260,7 @@ private fun PageContainer(
     onBack: () -> Unit,
     content: @Composable (SharedScrollBehavior?) -> Unit,
 ) {
-    // 共享页面普遍用 `viewModel()` 自取 ViewModel，而桌面端没有 Android 的
-    // Activity/Fragment 提供 ViewModelStoreOwner —— 不补一个会直接崩：
+    // 共享页面普遍用 `viewModel()` 自取 ViewModel，而桌面端没有 Android 的 Activity/Fragment 提供 ViewModelStoreOwner —— 不补一个会直接崩：
     //   UnsupportedOperationException: `Factory.create(String, CreationExtras)` is not implemented
     // 这里给每个页面发一个独立 store，离开页面时 clear（等价于页面销毁）。
     val owner = remember { DesktopViewModelStoreOwner() }

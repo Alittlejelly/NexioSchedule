@@ -42,26 +42,14 @@ import platform.UIKit.popoverPresentationController
 /**
  * iOS 的「分享课表」全流程（对应 Android `ScheduleExport.performScheduleShare`）。
  *
- * ## 流程（与 Android 逐步对齐）
+ * 流程：共享层读课表 → 序列化成 JSON → POST 口令服务（共享 `HttpService` = NSURLSession）
+ * → 口令复制到剪贴板（`UIPasteboard`）→ 模板图绘口令 → PNG → `UIActivityViewController` 分享。
  *
- * 1. `buildShareScheduleMap`（**共享层**，`ShareScheduleCodec.kt`）读课表 → Map
- * 2. 序列化成 JSON（共享 `toJsonElement`，等价 Android 的 Gson）
- * 3. POST 到口令服务（共享 `HttpService`，iOS 实现是 NSURLSession）
- * 4. 口令复制到剪贴板（`UIPasteboard`）
- * 5. 在模板图上绘出口令 → PNG → `UIActivityViewController` 分享
+ * 上传 + JSON 是跨平台的，但 Android 现有 `ShareCodeApi` 还在用 OkHttp + JSONObject；
+ * 为 Android 零回归，这里仅 iOS 侧重写、复用共享网络与 JSON 层，不动 Android 那份。
  *
- * ## 为什么不在 `:ui-shared` commonMain 里做
- *
- * 上传 + JSON 那半确实是跨平台的，但那需要一个共享的 `ShareCodeApi`；Android 现有的
- * 那份（`ScheduleExport.kt` 里的 `ShareCodeApi`）还在用 OkHttp + `JSONObject`。
- * 为了让**Android 零回归**，这里只在 iOS 侧重写一份、复用共享的网络与 JSON 层，
- * 不去动 Android 那份。将来若要把 Android 也切过来，把本文件的上传部分上提即可。
- *
- * ## 出图必须用 skia
- *
- * Android 是 `Canvas` + `TextPaint`；iOS 没有 `android.graphics`，用 skia 在同一张
- * 模板图、同一组坐标上绘字（模板尺寸 1417×1417，口令框 (121,600)-(1296,775)，
- * 与 Android `ShareImageGenerator` 的常量逐字一致，保证两端出图观感一致）。
+ * 出图必须用 skia：iOS 没有 `android.graphics`，在模板 1417×1417、口令框 (121,600)-(1296,775)
+ * 上绘字，常量与 Android `ShareImageGenerator` 逐字一致，保证两端观感一致。
  */
 object IosScheduleShare {
 

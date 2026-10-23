@@ -10,20 +10,15 @@ import com.haooz.chedule.data.Course
 // ════════════════════════════════════════════════════════════════════════
 //  网页内容宿主 —— 教务导入用的 WebView 的平台无关契约
 //
-//  ⚠ 按框架铁律切开：`WebViewScreen` 的**外壳**（顶栏 / 进度条 / 底部胶囊 /
-//  三个对话框 / 目标课表选择）是纯 Compose，进 commonMain；**网页本体**
-//  （`android.webkit.WebView` + PixelCopy 采色 + `addJavascriptInterface` 桥）
-//  留宿主 —— iOS 要整体换 WKWebView，一行都复用不了。
+//  ⚠ 按框架铁律切开：`WebViewScreen` 的外壳（顶栏 / 进度条 / 底部胶囊 / 三个对话框 / 目标课表选择）是纯 Compose，进 commonMain；网页本体（`android.webkit.WebView` + PixelCopy 采色 + `addJavascriptInterface` 桥）留宿主 —— iOS 要整体换 WKWebView，一行都复用不了。
 //
-//  与 todayAssistantCard 的槽位注入不同：那个只注入一段 UI，这里还要注入**行为**
-//  （前进后退 / 执行 JS / 切桌面模式），所以是「接口 + 工厂」而不是纯 @Composable 槽位。
+//  与 todayAssistantCard 的槽位注入不同：那个只注入一段 UI，这里还要注入行为（前进后退 / 执行 JS / 切桌面模式），所以是「接口 + 工厂」而非纯 @Composable 槽位。
 // ════════════════════════════════════════════════════════════════════════
 
 /**
  * 宿主构造 [WebHost] 时需要的配置 —— 全部来自页面状态。
  *
- * ⚠ 这些字段**会变**（桌面模式可切换、`contentTopPadding` 随顶栏高度变），
- * 宿主必须用 `LaunchedEffect` / `rememberUpdatedState` 跟上，不能只在首次读一次。
+ * ⚠ 这些字段会变（桌面模式可切换、`contentTopPadding` 随顶栏高度变），宿主必须用 `LaunchedEffect` / `rememberUpdatedState` 跟上，不能只在首次读一次。
  */
 class WebHostConfig(
     /** 教务系统入口地址；null = 无（页面会兜底 about:blank） */
@@ -48,8 +43,7 @@ class WebHostConfig(
 /**
  * 宿主向页面回报的事件。
  *
- * ⚠ **宿主必须用 `rememberUpdatedState` 持有本对象**：页面会随重组重建它，
- * 而 WebView 的回调是长生命周期对象，持旧闭包会写到过期的 state 上。
+ * ⚠ 宿主必须用 `rememberUpdatedState` 持有本对象：页面会随重组重建它，而 WebView 的回调是长生命周期对象，持旧闭包会写到过期的 state 上。
  */
 class WebHostEvents(
     /** 页面标题 */
@@ -92,9 +86,7 @@ interface WebHost {
     @Composable
     fun Content(modifier: Modifier)
 
-    // ⚠ 刻意**没有** loadUrl / setDesktopMode setter：初始地址与桌面模式都由
-    // [WebHostConfig] 驱动，宿主自己用 `LaunchedEffect(config.xxx)` 跟 ——
-    // 接口上再开一对 setter 就是两个真相源。
+    // ⚠ 刻意没有 loadUrl / setDesktopMode setter：初始地址与桌面模式都由 [WebHostConfig] 驱动，宿主用 `LaunchedEffect(config.xxx)` 跟 —— 接口上再开一对 setter 就是两个真相源。
 
     fun reload()
 

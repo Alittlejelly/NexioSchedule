@@ -60,13 +60,10 @@ object IosWidgetSnapshot {
     private fun queueRefresh() {
         if (!installed || refreshQueued) return
         refreshQueued = true
-        // Always enqueue the export, including main-thread callers. Imports can
-        // commit several settings together; exporting inline sees partial state
-        // and may recursively re-enter through the Swift callback.
-        // ⚠ buildSnapshot 里也是「逐日 DayScheduleResolver + 排序 + 拼 JSON」的重活，
-        // 实测占主线程 ~190ms，而 reschedule() 第一行就会调到这里 —— 切课表时它和
-        // 提醒重排一起把那一帧卡死。计算与写盘都挪到后台队列；Swift 侧的
-        // NativeCourseNotifier 自己用信号量串行化写入，跨线程调用是安全的。
+        // 导出一律入队（含主线程调用方）：导入会一次性提交多个设置，内联导出会看到半成品状态并可能经 Swift 回调递归重入。
+        // ⚠ buildSnapshot 是「逐日 DayScheduleResolver + 排序 + 拼 JSON」重活，实测占主线程 ~190ms，
+        // 而 reschedule() 第一行就调到这里——切课表时与提醒重排一起卡死那一帧。计算与写盘都挪后台；
+        // Swift 侧 NativeCourseNotifier 用信号量串行写入，跨线程安全。
         dispatch_async(dispatch_get_global_queue(0L, 0u)) {
             try {
                 nativeWrite(buildSnapshot(CourseRepository.getInstance()))

@@ -5,10 +5,8 @@ import kotlinx.serialization.json.Json
 /**
  * 本地备份「恢复门禁」—— 跨平台（kotlinx-serialization）实现。
  *
- * 2026-10-11 从 `:androidApp` 的 `activities/LocalBackupScreen.kt` 拆到 `:core`：
- * 原实现用 `Gson().fromJson(json, TypeToken<Map<String,Any>>)`，Gson 走运行时反射、
- * Kotlin/Native（iOS）上不存在 —— 属 R2 序列化通道，换 `kotlinx-serialization`
- * （`JsonSupport.parseJsonObject` + `jsonToPlainValue`，plain 值类型与 Gson 逐类一致）。
+ * 解析走 `JsonSupport.parseJsonObject` + `jsonToPlainValue`（plain 值类型与 Gson 的
+ * `Map<String,Any>` 逐类一致），故下游 `as? Number/String` 判断不受影响。
  *
  * ## 为什么这是「门禁」
  * 全量恢复走 `CourseRepository.importAllPreferences`，它会**先清空现有全部课表数据再写入**。
@@ -44,7 +42,6 @@ data class SemesterSettings(
  * @throws IllegalArgumentException 不是本应用导出的备份 / 结构非法时抛出。
  */
 fun parseBackupPayload(json: String): BackupPayload {
-    // kotlinx：parseJsonObject 对非法 JSON 抛 SerializationException（被上层 try 捕获）；
     // jsonToPlainValue 产出的 plain Map（String/Double/Boolean/LinkedHashMap/List）与
     // 原 Gson TypeToken<Map<String,Any>> 逐类一致，下游 as? Number/String 判断不受影响。
     @Suppress("UNCHECKED_CAST")
@@ -139,9 +136,9 @@ private val prettyBackupJson = Json { prettyPrint = true }
 /**
  * 备份 Map → JSON 文本（跳过 null + pretty）。**等价原 `GsonBuilder().setPrettyPrinting().toJson(data)`**。
  *
- * Gson 默认**跳过值为 null 的字段**，故这里用 [toJsonElementWithoutNulls] 递归剔除 null，
- * 再 pretty 打印。落盘后仍是合法 JSON，能被 [parseBackupPayload]（恢复门禁，已 round-trip 回归）
- * 与旧版 Gson 正确读回 —— 唯一差异是极少数空白/数组缩进的排版，跨版本读写兼容。
+ * Gson 默认**跳过值为 null 的字段**，故用 [toJsonElementWithoutNulls] 递归剔除 null 再
+ * pretty 打印。落盘后仍是合法 JSON，能被 [parseBackupPayload]（恢复门禁，已 round-trip
+ * 回归）与旧版 Gson 正确读回 —— 唯一差异是极少数空白/数组缩进的排版，跨版本读写兼容。
  */
 fun encodeBackupJson(data: Map<String, Any?>): String =
     prettyBackupJson.encodeToString(

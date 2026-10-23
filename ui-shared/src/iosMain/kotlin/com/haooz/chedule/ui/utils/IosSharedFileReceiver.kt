@@ -16,13 +16,13 @@ import platform.Foundation.dataWithContentsOfURL
 /**
  * iOS 侧「外部分享进来一个文件」的接收器 —— Swift 的 `.onOpenURL` 写，`CourseScheduleApp` 读。
  *
- * ⚠ 必须用 Compose 的 `mutableStateOf` 存：Swift 调 [onOpenURL] 时不在组合作用域，
- * 普通字段值会更新但**不触发重组合** → 弹窗永远不出来（表现为「点了打开没反应」）。
- * `version` 单调递增，同一 URL 再次分享时靠它触发 `LaunchedEffect` 重跑。
+ * ⚠ 必须用 Compose 的 `mutableStateOf` 存：Swift 调 [onOpenURL] 不在组合作用域，普通字段
+ * 值会更新但**不触发重组合** → 弹窗永远不出来（表现为「点了打开没反应」）。
+ * `version` 单调递增，同一 URL 再次分享靠它触发 `LaunchedEffect` 重跑。
  */
 object IosSharedFileReceiver {
 
-    /** 待处理的外部分享（null = 无）。Swift 的 `.onOpenURL` 写，Compose 读。 */
+    /** 待处理的外部分享；Swift `.onOpenURL` 写，Compose 读。 */
     var pending: SharedFileIntent? by mutableStateOf(null)
         private set
 
@@ -31,7 +31,7 @@ object IosSharedFileReceiver {
     /**
      * Swift 侧 `.onOpenURL` 入口。
      *
-     * @param url 打开的文件 URL（`file://...`）；传字符串而非 `NSURL`，避免 Foundation 类型进 Swift 签名。
+     * @param url 文件 URL（`file://...`）；传字符串而非 `NSURL`，避免 Foundation 类型进 Swift 签名。
      */
     fun onOpenURL(url: String) {
         if (url.isBlank()) return
@@ -48,9 +48,9 @@ object IosSharedFileReceiver {
     /**
      * 读该 URL 的全部文本（`CourseScheduleApp` 的 `onReadSharedFileText`）。
      *
-     * ⚠ 外部分享进来的文件在 app 沙箱外，必须走安全作用域
+     * ⚠ 外部分享文件在 app 沙箱外，必须走安全作用域
      * （`startAccessingSecurityScopedResource()`），否则读到 null（静默失败）。
-     * 失败时这里已提示过，页面不重复报错。
+     * 失败时此处已提示，页面不重复报错。
      */
     fun readText(urlString: String): String? {
         val url = NSURL.URLWithString(urlString) ?: run {

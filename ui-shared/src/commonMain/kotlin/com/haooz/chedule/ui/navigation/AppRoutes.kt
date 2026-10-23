@@ -143,13 +143,9 @@ import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * 路由宿主的**跨平台**部分：路由跳转、状态接线、Updater 订阅，平台能力一律参数注入。
+ * 路由宿主的跨平台部分：路由跳转、状态接线、Updater 订阅，平台能力一律参数注入。
  *
- * ⚠ 本文件**不能**改名为 `AppRouteContent.kt`：`:androidApp` 同包下已有一个同名文件，
- * 两边会生成同一个 facade 类 `AppRouteContentKt` —— 编译期静默通过，D8/R8 打 dex 时
- * 同名 class 冲突只留一个，本文件的路由全部 `NoSuchMethodError`，Android/iOS 都闪退。
- * ⇒ 往 `:ui-shared` 加文件前先查 `:androidApp` 同包有无同名 `.kt`；Android 侧同名包装
- * 一律加 `Android` 前缀（如 `AndroidWebHost`）。
+ * ⚠ 本文件不能改名 `AppRouteContent.kt`：`:androidApp` 同包已有一个同名文件，两边会生成同一 facade 类 `AppRouteContentKt`，编译期静默通过，但 D8/R8 打 dex 时同名 class 冲突只留一个，本文件路由全部 `NoSuchMethodError`，Android/iOS 都闪退。往 `:ui-shared` 加文件前先查 `:androidApp` 同包有无同名 `.kt`；Android 侧同名包装加 `Android` 前缀（如 `AndroidWebHost`）。
  */
 
 /**
@@ -469,7 +465,7 @@ fun HolidaySettingsRoute(
  * 桌面小部件引导路由。
  *
  * @param onRequestWidgetRefresh Android 注入 `WidgetUpdateCache` 清缓存 + 刷新已安装小部件；桌面/iOS 无 AppWidget 概念，默认空实现。
- * ⚠ 弹窗「添加到桌面」文案是 **Android 措辞**；iOS 若做 WidgetKit 需提成参数（现在走不到这一页）。
+ * ⚠ 弹窗「添加到桌面」文案是 Android 措辞；iOS 若做 WidgetKit 需提成参数（现在走不到这一页）。
  */
 @Composable
 fun WidgetIntroRoute(
@@ -681,10 +677,7 @@ fun WebDavSettingsRoute(
 /**
  * 课表导入 / 导出 / 备份（三者共用 [BackupAndMigrationScreen]，只差 [mode]）。
  *
- * ⚠ 三个入口**必须**走路由，不能是独立 Activity：`BackupAndMigrationScreen` 的「本地备份」
- * 入口读 [LocalAppRouter]，独立 Activity 的 setContent 没有 provide，默认值 `error(...)` 一点就崩。
- * 口令取回 / 第三方抓取 / 分享出图 / 手环推送四条 Android 能力走注入，iOS/桌面默认「当前平台不支持」
- * —— 这一页在 iOS 上仍能打开（WebDAV / 本地备份 / 文件导入导出可用），只是口令通道不可用。
+ * ⚠ 三个入口必须走路由、不能是独立 Activity：`BackupAndMigrationScreen` 的「本地备份」入口读 [LocalAppRouter]，独立 Activity 的 setContent 没 provide，默认值 `error(...)` 一点就崩。口令取回 / 第三方抓取 / 分享出图 / 手环推送四条 Android 能力走注入，iOS/桌面默认「当前平台不支持」—— 这一页在 iOS 上仍能打开（WebDAV / 本地备份 / 文件导入导出可用），只是口令通道不可用。
  *
  * @param scheduleFileController Android 注入 `AndroidScheduleFileController(context)`；iOS/桌面用 [NoopScheduleFileController]（点导入会提示不可用）。
  */
@@ -733,10 +726,9 @@ fun BackupAndMigrationRoute(
  * 课程时间管理。
  *
  * 比普通文档页多两层结构：外层 `Box` 做「背景缩放 + 模糊」动画；
- * ⚠ 二级编辑页 `TimeConfigEditScreen` 必须渲染在 `Scaffold` **外面**，否则会被顶栏裁掉。
+ * ⚠ 二级编辑页 `TimeConfigEditScreen` 必须渲染在 `Scaffold` 外面，否则会被顶栏裁掉。
  *
- * @param isInFreeformWindow Android 读宿主 `MainActivity` 的 Compose 状态（子页拿不到
- *   自己的 Activity 回调）；桌面/iOS 没有这个概念，传 false。
+ * @param isInFreeformWindow Android 读宿主 `MainActivity` 的 Compose 状态（子页拿不到自己的 Activity 回调）；桌面/iOS 没有这个概念，传 false。
  */
 @Composable
 fun CourseTimeSettingsRoute(
@@ -754,7 +746,6 @@ fun CourseTimeSettingsRoute(
     // 圆角：Android 读系统真实圆角（自由小窗固定 20dp）；iOS/桌面返回 0 = 不裁切
     val screenCornerRadius = rememberScreenCornerRadiiPx()
 
-    // 页面状态管理
     var currentPage by remember { mutableStateOf("select") }
     NativeDocumentOverlayEffect(currentPage == "edit")
     val nativeBarInset = (LocalNativeDocumentChrome.current?.barInset ?: 0.0).dp
@@ -939,7 +930,6 @@ fun CourseManageRoute(
     // 打开过编辑的课程 id，避免误删已修改的
     var editedCourseIds by remember { mutableStateOf(setOf<String>()) }
 
-    // 退出本页时清理本次新建但没编辑过的空课程
     DisposableEffect(Unit) {
         onDispose {
             val coursesToDelete = createdCourseIds - editedCourseIds

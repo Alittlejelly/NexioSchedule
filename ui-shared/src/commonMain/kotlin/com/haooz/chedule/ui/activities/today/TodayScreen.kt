@@ -139,9 +139,8 @@ val LocalCardRefraction = staticCompositionLocalOf { CardRefractionLevel.DEFAULT
 
 /**
  * [TodayScreen.todayAssistantCard] 槽位的数据载体（页面算好传给宿主渲染）。
- *
- * 今日助手卡依赖 Android 天气栈（Gson / 定位 / Geocoder），留在 `:androidApp`
- * 的 `TodayAssistant.kt`；本页只负责把它需要的数据打包好，由宿主注入渲染 lambda。
+ * 今日助手卡依赖 Android 天气栈（Gson / 定位 / Geocoder），留在 `:androidApp` 的 `TodayAssistant.kt`；
+ * 本页只负责打包数据，渲染 lambda 由宿主注入。
  */
 class TodayAssistantCardData(
     val courses: List<Course>,
@@ -1967,11 +1966,10 @@ private fun CourseItemWithClick(
                     }
                     drawLayer(cardLayer)
                 }
-                // ⚠ 无壁纸时这里必须用 surfaceContainer，不能用 background：外层 BlurCard 在无壁纸时
-                //   退化成 miuix `Card()`，卡片色正是 surfaceContainer（Card.kt 的 defaultColors）。
-                //   原先写 background 在内置亮/暗方案下是**恰好相等的空操作**（两者都是 #FFFFFF / #242424），
-                //   莫奈下才分家：background 取 MD3 tone 98/6、surfaceContainer 取 tone 94/12，
-                //   差 4 个明度阶 —— 课程条目会比今日助手卡 / 分区卡偏一个色。
+                // ⚠ 无壁纸时必须用 surfaceContainer，不能用 background：外层 BlurCard 此时退化成
+                //   miuix `Card()`，卡片色正是 surfaceContainer（Card.kt defaultColors）。内置方案下
+                //   两者恰好相等（#FFFFFF / #242424），莫奈下才分家：background 取 tone 98/6、
+                //   surfaceContainer 取 tone 94/12，差 4 个明度阶，写错会偏色。
                 .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
                 .onGloballyPositioned { coordinates ->
                     val position = coordinates.localToRoot(Offset.Zero)
