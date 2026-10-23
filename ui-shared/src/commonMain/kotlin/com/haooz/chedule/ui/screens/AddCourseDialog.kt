@@ -649,7 +649,7 @@ fun AddCourseDialog(
         title = "选择颜色",
         show = showColorDialog,
         onDismissRequest = { showColorDialog = false },
-        liquidGlassBackdrop = liquidGlassBackdrop
+        liquidGlassBackdrop = sheetContentBackdropHolder.value ?: liquidGlassBackdrop,
     ) {
         MiuixTheme(controller = appDialogController) {
             CompositionLocalProvider(LocalForcedDarkTheme provides null) {

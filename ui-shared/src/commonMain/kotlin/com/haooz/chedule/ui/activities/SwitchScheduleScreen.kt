@@ -977,7 +977,7 @@ fun SwitchScheduleScreen(
                             // 文件夹卡片与它的课表放同一个 item：展开/收回时下方卡片跟着一起被推走。
                             // key 带序号：即便数据层出现重复 id，也不至于 LazyColumn 闪退。
                             item(key = "folder:${folder.id}#$folderIndex") {
-                                Column(modifier = Modifier.animateItem()) {
+                                Column(modifier = Modifier.animateItem(fadeInSpec = null)) {
                                     FolderItem(folder = folder, itemModifier = Modifier)
                                     CardExpand(
                                         visible = folder.id in expandedFolderIds,
@@ -1027,7 +1027,7 @@ fun SwitchScheduleScreen(
                             ScheduleItem(
                                 scheduleName = rootNames[index],
                                 indent = false,
-                                itemModifier = Modifier.animateItem()
+                                itemModifier = Modifier.animateItem(fadeInSpec = null)
                             )
                         }
                     }

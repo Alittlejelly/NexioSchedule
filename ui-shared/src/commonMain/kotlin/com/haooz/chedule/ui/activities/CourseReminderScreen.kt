@@ -513,12 +513,14 @@ fun CourseReminderScreen(
                         end = tabletHorizontalPadding,
                         bottom = 120.dp
                     ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    // 间距由每张卡自己的 bottom padding 提供：条件卡收起时要连间距一起收掉，
+                    // 用 spacedBy 的话空 item 也会白占 12dp
+                    verticalArrangement = Arrangement.Top
                 ) {
                     // 开启提醒
-                    item {
+                    item(key = "reminder_master") {
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             val masterEnabled = preClassReminder || nextDayReminder
@@ -552,10 +554,10 @@ fun CourseReminderScreen(
                     }
 
                     // 提醒详情
-                    item {
+                    item(key = "reminder_timing") {
                         val masterEnabled = preClassReminder || nextDayReminder
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             SwitchPreference(
@@ -749,10 +751,10 @@ fun CourseReminderScreen(
                     }
 
                     // Live container card: HyperOS super island or iOS Live Activity.
-                    if (showIslandCard && masterEnabled) {
-                        item {
+                    item(key = "reminder_island") {
+                        CardExpand(visible = showIslandCard && masterEnabled) {
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             Column(
@@ -846,8 +848,8 @@ fun CourseReminderScreen(
 
 
                     // 缩略态显示设置
-                    if (masterEnabled) {
-                        item {
+                    item(key = "reminder_thumb_display") {
+                        CardExpand(visible = masterEnabled) {
 
                         val liveRightOptions = listOf(
                             DropdownItem(
@@ -985,7 +987,7 @@ fun CourseReminderScreen(
                         // 同一张 Card 里用 CardExpand 切换，别用 if/else 换两张卡 ——
                         // 换卡是「新节点替换旧节点」，高度直接跳，没有任何动画可言。
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             CardExpand(visible = !showSlotCard) {
@@ -1035,10 +1037,11 @@ fun CourseReminderScreen(
                             }
                         }
                     }
+                    }
 
                     // 上课地点精简：
-                    if (!reminderController.supportsLiveActivity()) {
-                        item {
+                    item(key = "reminder_thumb_label") {
+                        CardExpand(visible = masterEnabled && !reminderController.supportsLiveActivity()) {
                             val scopeOptions = listOf(
                                 ClassroomLabel.SCOPE_OFF to "原始文本",
                                 ClassroomLabel.SCOPE_CLASSROOM to "精简地点",
@@ -1090,7 +1093,7 @@ fun CourseReminderScreen(
                                 ),
                             )
                             Card(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                                 insideMargin = PaddingValues(0.dp)
                             ) {
                                 OverlayDropdownMenu(
@@ -1203,12 +1206,11 @@ fun CourseReminderScreen(
                             }
                         }
                     }
-                    }
 
                     // 权限设置
-                    item {
+                    item(key = "reminder_permissions") {
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             Column(
