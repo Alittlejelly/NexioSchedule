@@ -199,11 +199,15 @@ object ScheduleAppearance {
     /** 参数快照缓存，读多写少 */
     private var cached: CombinationStyle? = null
 
-    /** 壁纸解码是主要瓶颈，按可用内存 1/8 做 Lru 缓存，绝对上限 32MB 防大堆机型占压过大 */
+    /** 壁纸解码是主要瓶颈，按可用内存做 Lru 缓存。
+     *
+     * 上限必须装得下**一张** cover 保存策略下的壁纸：3680×2760 ≈ 40.5MB，
+     * 长边封顶图 5520×2760 ≈ 61MB。此前上限 32MB 装不下，put 进去立即被
+     * 逐出 → 每次冷启动都在 IO 线程全量重解（~100ms + 40MB 分配）。
+     * 48MB 下限不可省：小内存机型 maxMemory/4 可能只有几 MB，等于没缓存。 */
     private val wallpaperCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(
-        // 4MB 下限不可省：小内存机型 maxMemory/8 可能只有几百 KB，等于没缓存
-        minOf(Runtime.getRuntime().maxMemory() / 8, 32L * 1024 * 1024)
-            .coerceAtLeast(4L * 1024 * 1024)
+        minOf(Runtime.getRuntime().maxMemory() / 4, 96L * 1024 * 1024)
+            .coerceAtLeast(48L * 1024 * 1024)
             .toInt()
     ) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
