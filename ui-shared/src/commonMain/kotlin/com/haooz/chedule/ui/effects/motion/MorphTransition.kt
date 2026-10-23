@@ -53,13 +53,13 @@ private val MorphTransOpenEase = OobeFifthpowerOutEasing
 private val MorphTransExitEase = OobeQuadraticOutEasing
 
 /** 预测返回滑到底时，页面缩到全屏的多少倍。 */
-private const val PREDICTIVE_BACK_SCALE = 0.74f
+private const val PREDICTIVE_BACK_SCALE = 0.5f
 
 /**
  * 预测返回时缩放锚点的横向偏移量。
  * 锚点朝「滑动来向的反面」偏，缩小时页面朝手指来的那侧收。
  */
-private const val PREDICTIVE_ANCHOR_SHIFT = 0.32f
+private const val PREDICTIVE_ANCHOR_SHIFT = 1.8f
 
 /** [NavigationBackState.backSwipeEdge] 的取值，与 navigationevent 的 EDGE_* 一致。 */
 private const val EDGE_LEFT = 0
@@ -91,7 +91,8 @@ data class MorphAnimState(
     val gesture: Float,
     /**
      * 缩放锚点的横向比例（0.5 = 屏幕正中）。
-     * 预测返回按手势来向偏左/偏右，其余时候恒为 0.5，直接喂给 `transformOrigin`。
+     * 手势进行中直接取偏移锚点（不从中心渐进）；松手后的收尾按时间轴回中心
+     * （提交走 p、取消走 gesture），落地时必须回到 0.5。直接喂给 `transformOrigin`。
      */
     val anchorX: Float,
 )
@@ -400,17 +401,22 @@ fun rememberMorphTransition(
                 }
 
                 // 缩放锚点：右边缘返回 → 偏左；左边缘 → 偏右。
-                // 手势期间按 gesture 从 0.5 渐进偏出去；
-                // 预测返回提交后改跟 p（1→0），与 translationX 的 (1-p) 同一条时间轴收回中心 ——
-                // 跟 gesture 的话它是 140ms 回落、位移是 320ms，两条曲线错位会左右抖。
+                // 皓 2026-10-23：手势一出现就直接用偏移锚点，不从中心渐进偏过去 ——
+                // 渐进偏的过程中缩放中心在视觉上会「滑」，直接偏移是指跟到哪页面就
+                // 朝那侧收。手势期间位移锁在中心（centerLock=1），偏移锚点不引入位移误差。
+                // 松手后的收尾仍按时间轴收回中心：提交走 p（1→0），与 translationX 的
+                // (1-p) 同轴，且 p=0 落地必须回 0.5 —— 锚点偏移时「缩放+位移」叠加，
+                // 不回中心卡片会落在偏置位置；取消回弹走 gesture 平滑回中心。
                 val anchorShift = when (gestureEdge) {
                     EDGE_LEFT -> PREDICTIVE_ANCHOR_SHIFT
                     EDGE_RIGHT -> -PREDICTIVE_ANCHOR_SHIFT
                     else -> 0f
                 }
-                // ⚠ 用 p 不是 (1-p)：p=1 松手瞬间要保持偏移，p=0 落地时必须回到 0.5
-                val anchorWeight = if (closeFromGesture) p else gesture
-                val anchorX = 0.5f + anchorShift * anchorWeight
+                val anchorX = when {
+                    isGestureActive -> 0.5f + anchorShift
+                    closeFromGesture -> 0.5f + anchorShift * p
+                    else -> 0.5f + anchorShift * gesture
+                }
 
                 // 手势推进期间裁切跟随"当前展开高度×缩放"（打开未完成时也连续，底部不瞬间归位）；
                 // 松手/取消过渡期按 gesture 平滑插值衔接形变的底部收缩
