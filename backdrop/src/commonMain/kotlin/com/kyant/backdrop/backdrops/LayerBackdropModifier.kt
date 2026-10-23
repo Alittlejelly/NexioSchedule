@@ -1,7 +1,9 @@
 package com.kyant.backdrop.backdrops
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -11,6 +13,7 @@ import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.IntSize
 import com.kyant.backdrop.internal.recordLayer
 import kotlin.math.roundToInt
 
@@ -27,18 +30,20 @@ import kotlin.math.roundToInt
 fun Modifier.layerBackdrop(
     backdrop: LayerBackdrop,
     recordKey: Any? = null,
-    mustRecord: (() -> Boolean)? = null
+    mustRecord: (() -> Boolean)? = null,
+    recordScale: Float = backdrop.recordScale
 ): Modifier =
-    this then LayerBackdropElement(backdrop, recordKey, mustRecord)
+    this then LayerBackdropElement(backdrop, recordKey, mustRecord, recordScale)
 
 private class LayerBackdropElement(
     val backdrop: LayerBackdrop,
     val recordKey: Any? = null,
-    val mustRecord: (() -> Boolean)? = null
+    val mustRecord: (() -> Boolean)? = null,
+    val recordScale: Float = backdrop.recordScale
 ) : ModifierNodeElement<LayerBackdropNode>() {
 
     override fun create(): LayerBackdropNode {
-        return LayerBackdropNode(backdrop, recordKey, mustRecord)
+        return LayerBackdropNode(backdrop, recordKey, mustRecord, recordScale)
     }
 
     override fun update(node: LayerBackdropNode) {
@@ -48,6 +53,10 @@ private class LayerBackdropElement(
         }
         node.recordKey = recordKey
         node.mustRecord = mustRecord
+        if (node.recordScale != recordScale) {
+            node.recordScale = recordScale
+            node.markNeedsRecord()
+        }
         node.markNeedsRecord()
         node.invalidateDraw()
     }
@@ -63,6 +72,7 @@ private class LayerBackdropElement(
 
         if (backdrop != other.backdrop) return false
         if (recordKey != other.recordKey) return false
+        if (recordScale != other.recordScale) return false
         // mustRecord 按引用比较：remember 出来的稳定 lambda 才能让 equals 为 true
         if (mustRecord !== other.mustRecord) return false
 
@@ -72,6 +82,7 @@ private class LayerBackdropElement(
     override fun hashCode(): Int {
         var result = backdrop.hashCode()
         result = 31 * result + (recordKey?.hashCode() ?: 0)
+        result = 31 * result + recordScale.hashCode()
         result = 31 * result + (mustRecord?.hashCode() ?: 0)
         return result
     }
@@ -80,7 +91,8 @@ private class LayerBackdropElement(
 private class LayerBackdropNode(
     var backdrop: LayerBackdrop,
     var recordKey: Any? = null,
-    var mustRecord: (() -> Boolean)? = null
+    var mustRecord: (() -> Boolean)? = null,
+    var recordScale: Float = backdrop.recordScale
 ) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
 
     private var needsRecord = true
@@ -102,16 +114,37 @@ private class LayerBackdropNode(
             needsRecord = false
             recordedW = w
             recordedH = h
+            // recordScale < 1 时录进更小的层（block 内 canvas 缩放），采样侧按 1/rs 放大补偿。
+            // contentOnlyCapture 时上屏直接 blit 该层，也要放大回全屏；否则只覆盖左上 1/(rs²)。
+            val rs = recordScale.coerceIn(0.1f, 1f)
             // 先录进图层。contentOnly 时上屏直接 blit 该图层，内容树只走一遍；
             // 否则 onDraw 可能多画背景，上屏仍 drawContent()（内容会走两遍，但保证像素一致）。
             // 拆除期节点可能已 detach，recordLayer 会返回 false，此时退回直绘内容。
-            val recorded = recordLayer(this@LayerBackdropNode, backdrop.graphicsLayer) {
-                backdrop.onDraw(this@draw)
+            val recorded = recordLayer(
+                this@LayerBackdropNode,
+                backdrop.graphicsLayer,
+                size = IntSize((w * rs).roundToInt().coerceAtLeast(1), (h * rs).roundToInt().coerceAtLeast(1))
+            ) {
+                val canvas = drawContext.canvas
+                if (rs != 1f) {
+                    canvas.save()
+                    canvas.scale(rs, rs)
+                    backdrop.onDraw(this@draw)
+                    canvas.restore()
+                } else {
+                    backdrop.onDraw(this@draw)
+                }
             }
             if (recorded) {
                 backdrop.contentVersion++
                 if (backdrop.contentOnlyCapture) {
-                    drawLayer(backdrop.graphicsLayer)
+                    if (rs != 1f) {
+                        withTransform({ scale(1f / rs, 1f / rs, Offset.Zero) }) {
+                            drawLayer(backdrop.graphicsLayer)
+                        }
+                    } else {
+                        drawLayer(backdrop.graphicsLayer)
+                    }
                     return
                 }
             }

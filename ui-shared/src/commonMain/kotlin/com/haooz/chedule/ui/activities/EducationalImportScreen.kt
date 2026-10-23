@@ -138,7 +138,10 @@ fun EducationalImportScreen(
     val chromeTint = MiuixTheme.colorScheme.primary.toArgb().toLong()
 
     val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
+    // 本页 backdrop 是纯采样层（onDraw 画背景+内容，contentOnlyCapture=false，
+    // 上屏本来就双遍历），降采样录制不增加遍历成本，采样 blit 面积降 4 倍。
+    // 顶栏 ProgressiveBlurTopBar 采它；模糊带内容对本就不敏感。
+    val backdrop = rememberLayerBackdrop(recordScale = 0.5f) {
         drawRect(backgroundColor)
         drawContent()
     }

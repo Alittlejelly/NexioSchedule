@@ -202,6 +202,12 @@ fun CourseScheduleApp(
         }
 
         isDark = isAppDarkTheme()
+        // ⚠ 主内容采样层**不能**降采样录制（recordScale）：它 contentOnlyCapture=true，
+        // 录完 blit 上屏，用户直接看的就是这层；且改成双遍历（上屏走 drawContent）
+        // 后实测切 tab 更差（20 帧 / 50% janky / 90th 97ms，基线 192 帧 9.38% 24ms）——
+        // 每帧多遍历整棵三页树的代价超过采样 blit 面积降 4 倍的收益。
+        // recordScale 基础设施（默认 1f）保留给**本来就是双遍历**的纯采样层
+        // （contentOnlyCapture=false 的页级 backdrop，降采样不增加遍历成本）。
         liquidGlassBackdrop = rememberLayerBackdrop()
         // 顶栏/底栏各自再录一层：两者都在内容层之上，只有把它们也录进来，
         // 「比底栏更高一层」的组合采样层才成立
