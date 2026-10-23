@@ -51,6 +51,17 @@ class NavigationBackState(
      * 所以这里只声明语义，不引用常量。
      */
     val backSwipeEdge: () -> Int,
+    /**
+     * 手势开始至今的**垂直**触摸位移（px，= 当前 touchY − 手势首帧 touchY）。
+     * 非手势、非触摸事件（返回键）、无触摸数据时返回 null。
+     * 用途：全屏 Surface 的上下跟随 —— progress 只归一化水平方向，垂直位移要调用方自己算。
+     */
+    val backSwipeOffsetY: () -> Float?,
+    /**
+     * 手势开始至今的**水平**触摸位移（px，= 当前 touchX − 手势首帧 touchX）。
+     * 语义与 [backSwipeOffsetY] 对称；调用方用它驱动缩放进度等。
+     */
+    val backSwipeOffsetX: () -> Float?,
     private val onHandler: @Composable BackHandlerScope.() -> Unit,
 ) {
     /**

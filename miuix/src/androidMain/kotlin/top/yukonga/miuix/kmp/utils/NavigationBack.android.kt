@@ -26,6 +26,10 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 @Composable
 actual fun rememberNavigationBack(): NavigationBackState {
     val navigationEventState = rememberNavigationEventState(currentInfo = NavigationEventInfo.None)
+    // 手势首帧 touchX / touchY：跟手位移的基准（NaN = 无手势）。
+    // 每个 rememberNavigationBack 一份；draw 阶段在主线程读写。
+    val gestureStartY = remember { floatArrayOf(Float.NaN) }
+    val gestureStartX = remember { floatArrayOf(Float.NaN) }
 
     return remember(navigationEventState) {
         NavigationBackState(
@@ -48,6 +52,39 @@ actual fun rememberNavigationBack(): NavigationBackState {
                 if (t is NavigationEventTransitionState.InProgress &&
                     t.direction == NavigationEventTransitionState.TRANSITIONING_BACK
                 ) t.latestEvent.swipeEdge else NavigationEvent.EDGE_NONE
+            },
+            // 垂直跟随：touchY − 首帧 touchY。touchY == 0 是非触摸事件（返回键），返回 null；
+            // 手势结束时清基准，下一次手势重新取起点。
+            backSwipeOffsetY = {
+                val t = navigationEventState.transitionState
+                if (t is NavigationEventTransitionState.InProgress &&
+                    t.direction == NavigationEventTransitionState.TRANSITIONING_BACK
+                ) {
+                    val y = t.latestEvent.touchY
+                    if (y > 0f) {
+                        if (gestureStartY[0].isNaN()) gestureStartY[0] = y
+                        y - gestureStartY[0]
+                    } else null
+                } else {
+                    gestureStartY[0] = Float.NaN
+                    null
+                }
+            },
+            // 水平跟手：touchX − 首帧 touchX，语义与垂直对称
+            backSwipeOffsetX = {
+                val t = navigationEventState.transitionState
+                if (t is NavigationEventTransitionState.InProgress &&
+                    t.direction == NavigationEventTransitionState.TRANSITIONING_BACK
+                ) {
+                    val x = t.latestEvent.touchX
+                    if (x > 0f) {
+                        if (gestureStartX[0].isNaN()) gestureStartX[0] = x
+                        x - gestureStartX[0]
+                    } else null
+                } else {
+                    gestureStartX[0] = Float.NaN
+                    null
+                }
             },
             onHandler = {
                 NavigationBackHandler(

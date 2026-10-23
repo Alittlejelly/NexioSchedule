@@ -27,6 +27,9 @@ actual fun rememberNavigationBack(): NavigationBackState = remember {
         backProgress = { null },
         // 没有手势源：不报边缘（2 = EDGE_NONE）
         backSwipeEdge = { 2 },
+        // 没有触摸坐标源：无垂直/水平跟随
+        backSwipeOffsetY = { null },
+        backSwipeOffsetX = { null },
         onHandler = {},
     )
 }

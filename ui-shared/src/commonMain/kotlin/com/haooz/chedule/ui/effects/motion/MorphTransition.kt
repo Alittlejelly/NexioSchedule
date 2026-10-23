@@ -26,6 +26,7 @@ import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.toShape
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 
 /**
@@ -53,13 +54,13 @@ private val MorphTransOpenEase = OobeFifthpowerOutEasing
 private val MorphTransExitEase = OobeQuadraticOutEasing
 
 /** 预测返回滑到底时，页面缩到全屏的多少倍。 */
-private const val PREDICTIVE_BACK_SCALE = 0.5f
+private const val PREDICTIVE_BACK_SCALE = 0.4f
 
 /**
- * 预测返回时缩放锚点的横向偏移量。
+ * 预测返回时缩放锚点的横向偏移量（占屏宽比例）。
  * 锚点朝「滑动来向的反面」偏，缩小时页面朝手指来的那侧收。
  */
-private const val PREDICTIVE_ANCHOR_SHIFT = 1.8f
+private const val PREDICTIVE_ANCHOR_SHIFT = 1.0f
 
 /** [NavigationBackState.backSwipeEdge] 的取值，与 navigationevent 的 EDGE_* 一致。 */
 private const val EDGE_LEFT = 0
@@ -315,7 +316,15 @@ fun rememberMorphTransition(
                     0f
                 }
                 val targetSp = (PREDICTIVE_BACK_SCALE - cardRatio) / (1f - cardRatio)
-                scaleProgress.snapTo(gestureScaleBase + (targetSp - gestureScaleBase) * progress)
+                // 缩放进度由手指水平位移占屏宽的比例驱动：划一半缩一半、划满一屏缩到底。
+                // 左右边缘的 offsetX 符号相反，取绝对值；无触摸数据时退回 progress。
+                val swipePx = navigationBackState.backSwipeOffsetX()
+                val swipeRatio = if (swipePx != null && screenWidth > 0f) {
+                    (abs(swipePx) / screenWidth).coerceIn(0f, 1f)
+                } else {
+                    progress
+                }
+                scaleProgress.snapTo(gestureScaleBase + (targetSp - gestureScaleBase) * swipeRatio)
             }
     }
 
@@ -345,6 +354,10 @@ fun rememberMorphTransition(
     val screenHeightState = rememberUpdatedState(screenHeight)
 
     val animState = remember {
+        // 跟手位移的冻结值：松手后 backSwipeOffsetY 变 null，若直接归零页面会瞬移回原位。
+        // 记住最后一帧的手指数值，收尾期间按权重衰减。普通 var（draw 阶段读写，主线程），
+        // 不用 state —— 在 derivedStateOf 计算块里写 state 会自触发重算。
+        var lastFollowYRaw = 0f
         derivedStateOf {
             val cardLeft = cardLeftState.value
             val cardTop = cardTopState.value
@@ -369,8 +382,8 @@ fun rememberMorphTransition(
 
                 val gesture = gestureBackProgress.value
                 val normalX = (cardLeft + cardWidth / 2f - screenWidth / 2f) * (1f - p)
-                // 横向位移不依赖 scale（手势期间恒定），起点就是当前值，直接按 gesture 收敛即可。
-                // 预测返回提交时走「屏幕中心 → 卡片中心」的直线，不掺形变位移。
+                // 预测返回期间不做平移：横向位移全部来自「固定锚点 + 缩放」（见 anchorX），
+                // 手指水平位移只驱动缩放进度。提交时走「屏幕中心 → 卡片中心」的直线。
                 val translationX = if (closeFromGesture) {
                     (cardLeft + cardWidth / 2f - screenWidth / 2f) * (1f - p)
                 } else {
@@ -390,23 +403,29 @@ fun rememberMorphTransition(
                 val normalYStart = targetCenterY - screenHeight / 2f * (1f - startScale) -
                     (cardHeight + (screenHeight - cardHeight) * p) / 2f
                 val lockedY = normalYStart * (1f - gesture)
-                // 预测返回提交：位移从 0（屏幕中心）线性收到「内容顶部对齐卡片顶部」的位置。
-                // 终点必须和 normalY 在 p=0/scale=cardRatio 时相等 —— 裁切框是从内容顶部算的
-                //（Outline.Rectangle(0,0,w,clipBottom)），按中心对齐会让裁切整体偏上。
-                // 走直线是为了避开 normalY 的曲线与顶部补偿在路径上的叠加（中途会先上窜）。
-                val translationY = if (closeFromGesture) {
-                    (cardTop - screenHeight / 2f * (1f - cardRatio)) * (1f - p)
-                } else {
-                    normalY * (1f - gesture) * centerLockWeight + lockedY * centerLock.value
+                // 提交位移：从屏幕中心直线收到「内容顶部对齐卡片顶部」。
+                // 终点须与 p=0/scale=cardRatio 时的 normalY 相等（裁切框从内容顶部算，
+                // 按中心对齐会整体偏上）；走直线避开 normalY 曲线与顶部补偿的叠加。
+                // 垂直跟随：touchY − 首帧 touchY（progress 只归一化水平方向）。
+                // 阻尼 = 0.65 × 手势进度（起手垂直不动、越滑介入越多），再按
+                // 1/(1+|o|/6.5·range) 衰减防露白；松手后冻结值按权重收回，落地归零。
+                val rawY = navigationBackState.backSwipeOffsetY()
+                if (rawY != null) lastFollowYRaw = rawY
+                val followRange = screenHeight * 0.25f
+                val damping = 0.65f * gesture
+                val followY = lastFollowYRaw * damping / (1f + abs(lastFollowYRaw) / (followRange * 6.5f))
+                val translationY = when {
+                    isGestureActive -> followY
+                    closeFromGesture -> (cardTop - screenHeight / 2f * (1f - cardRatio)) * (1f - p) + followY * p
+                    else -> normalY * (1f - gesture) * centerLockWeight + lockedY * centerLock.value +
+                        followY * gesture
                 }
 
-                // 缩放锚点：右边缘返回 → 偏左；左边缘 → 偏右。
-                // 皓 2026-10-23：手势一出现就直接用偏移锚点，不从中心渐进偏过去 ——
-                // 渐进偏的过程中缩放中心在视觉上会「滑」，直接偏移是指跟到哪页面就
-                // 朝那侧收。手势期间位移锁在中心（centerLock=1），偏移锚点不引入位移误差。
-                // 松手后的收尾仍按时间轴收回中心：提交走 p（1→0），与 translationX 的
-                // (1-p) 同轴，且 p=0 落地必须回 0.5 —— 锚点偏移时「缩放+位移」叠加，
-                // 不回中心卡片会落在偏置位置；取消回弹走 gesture 平滑回中心。
+                // 缩放锚点：手势首帧按 edge 定好（右边缘返回 → 偏左），手势期间不变 ——
+                // 变化的是缩放进度（由手指水平位移比例驱动）。页面围绕固定锚点缩放，
+                // 横向位移量只有 (1−scale)×偏移，天然有限。
+                // 松手后按时间轴收回中心（提交 p、取消 gesture），落地必须回 0.5，
+                // 否则卡片落在偏置位置。
                 val anchorShift = when (gestureEdge) {
                     EDGE_LEFT -> PREDICTIVE_ANCHOR_SHIFT
                     EDGE_RIGHT -> -PREDICTIVE_ANCHOR_SHIFT
