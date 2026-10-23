@@ -235,10 +235,12 @@ fun MainScheduleScreen(
     onWallpaperScaleChange: (Float) -> Unit = {},
     appearance: AppearanceConfig = AppearanceConfig(),
     liquidGlassBackdrop: Backdrop? = null,
-    // 拖拽落点高亮：Pair(dayOfWeek, sectionRange)，sectionRange 为落点覆盖的节次区间
-    dropHighlight: Pair<Int, IntRange>? = null,
+    // 拖拽落点高亮：Pair(dayOfWeek, sectionRange)，sectionRange 为落点覆盖的节次区间。
+    // 传 lambda 而不是值：求值推迟到落点遮罩自己的组合作用域里，跨格只重组遮罩那一小块
+    // （传值等于在调用方组合期读落点状态，每跨一格整页重组一次）。
+    dropHighlight: () -> Pair<Int, IntRange>? = { null },
     // 落点遮罩出现动画的起点（通常是源课格），避免首次直接闪现在落点
-    dropHighlightOrigin: Pair<Int, IntRange>? = null,
+    dropHighlightOrigin: () -> Pair<Int, IntRange>? = { null },
     onGridGeometryChange: (ScheduleGridGeometry) -> Unit = {},
     scheduleScrollBehavior: SharedScrollBehavior? = null,
     // 由 Activity 层传入：不是防销毁，是液态玻璃重录要在外层读滚动状态 / 弹窗开合
@@ -1247,7 +1249,6 @@ fun MainScheduleScreen(
                                 onCourseDragEnd = onCourseDragEnd,
                                 onCourseDragCancel = onCourseDragCancel,
                                 onCourseMenuDismiss = onCourseMenuDismiss,
-                                dropHighlightSections = if (dropHighlight?.first == dayOfWeek) dropHighlight.second else null,
                                 isDark = scheduleIsDark,
                                 modifier = Modifier
                                     .weight(1f)
@@ -1850,8 +1851,8 @@ private data class DropMaskBox(
  */
 @Composable
 private fun AnimatedDropTargetMask(
-    dropHighlight: Pair<Int, IntRange>?,
-    dropHighlightOrigin: Pair<Int, IntRange>?,
+    dropHighlight: () -> Pair<Int, IntRange>?,
+    dropHighlightOrigin: () -> Pair<Int, IntRange>?,
     pageDayRange: List<Int>,
     grid: SpecialGridLayout,
     cardHeightPerSection: Float,
@@ -1870,9 +1871,14 @@ private fun AnimatedDropTargetMask(
     val alpha = remember { Animatable(0f) }
     val lastTarget = remember { mutableStateOf<DropMaskBox?>(null) }
 
+    // 落点在**这里**求值：调用方只传 lambda，跨格时订阅落在本函数的作用域，
+    // 只重组遮罩这一小块，不会把整页课表拖下水。
+    val highlight = dropHighlight()
+    val originHighlight = dropHighlightOrigin()
+
     // 没有落点且遮罩已淡尽时不挂这棵树：BoxWithConstraints 是 SubcomposeLayout。
     // 判据走 derivedStateOf —— 直接读 alpha.value 会让淡入/淡出的每一帧都重建整棵子组合。
-    val hasTarget = dropHighlight != null || dropHighlightOrigin != null
+    val hasTarget = highlight != null || originHighlight != null
     val mounted by remember(hasTarget) {
         derivedStateOf { hasTarget || alpha.value > 0.01f }
     }
@@ -1921,8 +1927,8 @@ private fun AnimatedDropTargetMask(
                 }
             }
         }
-        val targetBox = remember(dropHighlight, boxOf) { boxOf(dropHighlight) }
-        val originBox = remember(dropHighlightOrigin, boxOf) { boxOf(dropHighlightOrigin) }
+        val targetBox = remember(highlight, boxOf) { boxOf(highlight) }
+        val originBox = remember(originHighlight, boxOf) { boxOf(originHighlight) }
 
         LaunchedEffect(targetBox) {
             if (targetBox == null) {

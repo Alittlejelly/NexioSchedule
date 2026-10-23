@@ -126,8 +126,6 @@ fun DayColumn(
     onCourseDragEnd: (courseId: String) -> Unit = { _ -> },
     onCourseDragCancel: (courseId: String) -> Unit = { _ -> },
     onCourseMenuDismiss: () -> Unit = {},
-    // 当前列需高亮的节次范围（含起止）
-    dropHighlightSections: IntRange? = null,
     // 非 state：滑动中跳过逐帧坐标计算
     touchState: ScheduleTouchState? = null,
     // 页面层统一读取，避免每列挂 prefs 监听

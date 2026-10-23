@@ -273,7 +273,22 @@ class CourseScheduleAppState {
     var gridGeometry by mutableStateOf<ScheduleGridGeometry?>(null)
 
     // (dayOfWeek, startSection)，null=无有效落点
-    var pendingDropTarget by mutableStateOf<Pair<Int, Int>?>(null)
+    //
+    // 普通字段而非 snapshot state：拖拽中每跨一格就变一次，做成 state 会把整个主内容
+    // （4 页 pager + 整张课表）拖进「每跨一格全量重组一次」。读它的都是事件处理与弹窗参数，
+    // 组合期读一次就够；唯一需要逐格重绘的落点遮罩订阅 [dropTargetRevision]。
+    var pendingDropTarget: Pair<Int, Int>? = null
+        private set
+
+    /** 落点变更信号：只给落点遮罩订阅，避免逐格重组课表。 */
+    var dropTargetRevision by mutableIntStateOf(0)
+        private set
+
+    fun setPendingDropTarget(value: Pair<Int, Int>?) {
+        if (pendingDropTarget == value) return
+        pendingDropTarget = value
+        dropTargetRevision++
+    }
     var animateInCourseIds by mutableStateOf(setOf<String>())
     var showRescheduleConflictDialog by mutableStateOf(false)
     var pendingConflictCourse by mutableStateOf<Course?>(null)
@@ -741,7 +756,7 @@ class CourseScheduleAppState {
             draggingCourseSlots = emptySet()
             draggedCardCourse = null
             dragMotion.reset()
-            pendingDropTarget = null
+            setPendingDropTarget(null)
             isSnapping = false
             // 重置入场初值，避免下次首帧残留 1.0 造成抖动
             floatingScale.snapTo(0.94f)
@@ -1046,7 +1061,7 @@ class CourseScheduleAppState {
                     draggingCourseSlots = emptySet()
                     draggedCardCourse = null
                     dragMotion.reset()
-                    pendingDropTarget = null
+                    setPendingDropTarget(null)
                     isSnapping = false
                     floatingScale.snapTo(0.94f)
                     floatingOffsetX.floatValue = 0f
@@ -1160,7 +1175,7 @@ class CourseScheduleAppState {
             draggingCourseSlots = emptySet()
             draggedCardCourse = null
             dragMotion.reset()
-            pendingDropTarget = null
+            setPendingDropTarget(null)
             isSnapping = false
             floatingScale.snapTo(0.94f)
             floatingOffsetX.floatValue = 0f
@@ -1204,7 +1219,7 @@ class CourseScheduleAppState {
             floatingCardVisible = false
             draggingCourseSlots = emptySet()
             draggedCardCourse = null
-            pendingDropTarget = null
+            setPendingDropTarget(null)
             isSnapping = false
             isPasteFlight = false
             floatingOffsetX.floatValue = 0f
@@ -1353,7 +1368,7 @@ class CourseScheduleAppState {
                     floatingCardVisible = false
                     draggingCourseSlots = emptySet()
                     draggedCardCourse = null
-                    pendingDropTarget = null
+                    setPendingDropTarget(null)
                     isSnapping = false
                     isPasteFlight = false
                     floatingOffsetX.floatValue = 0f
@@ -1444,9 +1459,11 @@ class CourseScheduleAppState {
         val firstSectionCenterY = cardTopY + sectionH / 2f
         // 放不下的格子不给落点（与粘贴路径同款校验）：起始节次+跨度
         // 超过总节次时松手会写出 endSection > totalSections 的课，渲染溢出/错位。
-        pendingDropTarget = computeDropTarget(centerX, firstSectionCenterY)?.takeIf {
-            it.second + sectionCount - 1 <= totalSections
-        }
+        setPendingDropTarget(
+            computeDropTarget(centerX, firstSectionCenterY)?.takeIf {
+                it.second + sectionCount - 1 <= totalSections
+            }
+        )
     }
 
     fun openCourseDetail(

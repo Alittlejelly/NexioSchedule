@@ -810,18 +810,13 @@ fun CourseScheduleApp(
                     themeBackdropKey
                 )
             }
-            // 局部 val 不能直接捕获进 remember lambda，一律经 rememberUpdatedState
-            val latestCutoutScale by rememberUpdatedState(cutoutMainScale.value)
-            val latestSheetOffset by rememberUpdatedState(sheetOffsetY.value)
-            val latestShortcutBlur by rememberUpdatedState(shortcutMenuBlurRadius.value)
-            val latestManageBlur by rememberUpdatedState(managePageBlurRadius.value)
-            val latestCustomizeExitScale by rememberUpdatedState(customizeExitScale.value)
-            val latestCustomizeCoverScale by rememberUpdatedState(customizeCoverScale.value)
-            val latestCustomizeCoverAlpha by rememberUpdatedState(customizeCoverAlpha.value)
+            // ⚠ 下面这些动画值**不要**写成 `rememberUpdatedState(x.value)`：那是在组合期读
+            //   `Animatable.value`，长按菜单模糊 / 开洞缩放 / 面板位移这些动画期间外壳会逐帧
+            //   重组（实测长按后每 11~14ms 一次，整张课表跟着重跑）。lambda 里直接读
+            //   `x.value` 就行 —— 它只在 draw 阶段执行，订阅落在 draw 上。
             val latestIsWindowCutout by rememberUpdatedState(isWindowCutoutActive)
             val latestShowCustomize by rememberUpdatedState(showCustomizePage)
             val latestIsCustomizeExiting by rememberUpdatedState(isCustomizeExiting)
-            val latestRailBlurEpoch by rememberUpdatedState(railBlurResampleEpoch.intValue)
             // ⚠ 必须 remember 缓存：asImageBitmap() 每次调用都新建包装对象，每帧新建会让
             // Image 的位图纹理反复重建。Bitmap 生命周期管理里的 `===` 身份比较一律不动。
             val wallpaperImage = remember(wallpaperBitmap) { wallpaperBitmap }
@@ -851,8 +846,8 @@ fun CourseScheduleApp(
                     val expand = TabletNavSideState.expandProgress.floatValue
                     val expandMoving = expand != lastRailExpand
                     lastRailExpand = expand
-                    val epochBumped = latestRailBlurEpoch != lastBlurEpoch
-                    lastBlurEpoch = latestRailBlurEpoch
+                    val epochBumped = railBlurResampleEpoch.intValue != lastBlurEpoch
+                    lastBlurEpoch = railBlurResampleEpoch.intValue
                     val forceRail = railForceRecordFrames[0] > 0
                     if (forceRail) railForceRecordFrames[0] = railForceRecordFrames[0] - 1
                     // 今日页落页：draw 期读，不触发组合，也不逐帧重录
@@ -871,14 +866,14 @@ fun CourseScheduleApp(
                             latestIsWindowCutout ||
                             (latestShowCustomize && latestIsCustomizeExiting) ||
                             // Morph progress does not change the source backdrop.
-                            latestShortcutBlur > 0.01f ||
-                            latestManageBlur > 0.01f ||
+                            shortcutMenuBlurRadius.value > 0.01f ||
+                            managePageBlurRadius.value > 0.01f ||
                             // 非静止端点视为动画进行中
-                            (latestCutoutScale != 1f && latestCutoutScale != 0.75f) ||
-                            latestSheetOffset != 0f ||
-                            latestCustomizeExitScale != 1f ||
-                            latestCustomizeCoverScale != 1f ||
-                            latestCustomizeCoverAlpha != 1f
+                            (cutoutMainScale.value != 1f && cutoutMainScale.value != 0.75f) ||
+                            sheetOffsetY.value != 0f ||
+                            customizeExitScale.value != 1f ||
+                            customizeCoverScale.value != 1f ||
+                            customizeCoverAlpha.value != 1f
                     // ⚠ 拖课卡（isDraggingCard）也刻意不在此列：浮动卡片画在录制层**之上**，
                     //   根本不进 backdrop 像素；原卡隐藏/落点高亮由 recordKey 里的
                     //   isDraggingCard 在起手、收手各补一帧。

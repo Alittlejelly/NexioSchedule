@@ -33,6 +33,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -1038,7 +1039,7 @@ internal fun CourseScheduleAppMainContent(
                                                                 onCourseDragStart = { _ ->
                                                                     // 拖过位移阈值才到这里（卡片侧 moved > slop 才回调），
                                                                     // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单
-                                                                    pendingDropTarget = null
+                                                                    setPendingDropTarget(null)
                                                                     isFloatingCardDragging = true
                                                                 },
                                                                 onCourseMenuDismiss = {
@@ -1090,7 +1091,7 @@ internal fun CourseScheduleAppMainContent(
                                                                     val source = if (dropAborted) null else draggedCardCourse
                                                                     val target = pendingDropTarget
                                                                     val week = draggedWeek
-                                                                    pendingDropTarget = null
+                                                                    setPendingDropTarget(null)
                                                                     // 翻周动画还在跑时落点仍属于上一页：此时写库会写进错的周，
                                                                     // 宁可吸回原位让用户重拖
                                                                     if (source != null && target != null &&
@@ -1178,8 +1179,9 @@ internal fun CourseScheduleAppMainContent(
                                                                                 // 浮层连贯移到目标卡上方悬停等用户选择
                                                                                 pendingConflictCourse =
                                                                                     conflicts.first()
-                                                                                pendingDropTarget =
+                                                                                setPendingDropTarget(
                                                                                     target.first to targetStart
+                                                                                )
                                                                                 // 新冲突从第一步开始，清掉上一轮可能残留的两步状态
                                                                                 pendingConflictResolution = null
                                                                                 conflictConfirmResolution = null
@@ -1320,7 +1322,7 @@ internal fun CourseScheduleAppMainContent(
                                                                     // 手指已经跟丢了，绝不能按最后的落点写库。
                                                                     isFloatingCardDragging = false
                                                                     stopEdgeAutoPage()
-                                                                    pendingDropTarget = null
+                                                                    setPendingDropTarget(null)
                                                                     stopConflictHover()
                                                                     dismissFloatingCard()
                                                                 },
@@ -1348,7 +1350,13 @@ internal fun CourseScheduleAppMainContent(
                                                                         refreshPendingDropTarget()
                                                                     }
                                                                 },
-                                                                dropHighlight = run {
+                                                                // 落点高亮按 **lambda** 传：组合期不在这里求值，
+                                                                // 只有落点遮罩自己去读。写成 `run { }` 会在每次跨格时
+                                                                // 把整个主内容（4 页 pager + 整张课表）重组一遍 ——
+                                                                // 实测单帧 73ms（41ms 重组 + 32ms 遍历）。
+                                                                dropHighlight = {
+                                                                    // 订阅落点变更信号：pendingDropTarget 是普通字段
+                                                                    dropTargetRevision
                                                                     val emptyTarget =
                                                                         emptyCellMenuTarget
                                                                     if (emptyTarget != null && shortcutMenuVisible) {
@@ -1363,7 +1371,8 @@ internal fun CourseScheduleAppMainContent(
                                                                         } else null
                                                                     }
                                                                 },
-                                                                dropHighlightOrigin = run {
+                                                                dropHighlightOrigin = {
+                                                                    dropTargetRevision
                                                                     val source = draggedCardCourse
                                                                     if (floatingCardVisible && source != null && !isPasteFlight) {
                                                                         // 高亮画在网格列上：调课日列要用列星期，不能用数据星期
