@@ -4,8 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
@@ -33,7 +31,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -79,22 +76,22 @@ import com.haooz.chedule.data.Notice
 import com.haooz.chedule.data.NoticeFetcher
 import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
-import com.haooz.chedule.ui.activities.today.TodayScreen
-import com.haooz.chedule.ui.components.BackToNowFloatingButton
 import com.haooz.chedule.ui.activities.classschedule.LandRippleSpec
 import com.haooz.chedule.ui.activities.classschedule.LocalLandRipple
-import com.haooz.chedule.ui.components.ScheduleBottomBar
+import com.haooz.chedule.ui.activities.classschedule.MainScheduleScreen
 import com.haooz.chedule.ui.activities.classschedule.ScheduleTopBar
+import com.haooz.chedule.ui.activities.today.TodayScreen
+import com.haooz.chedule.ui.components.BackToNowFloatingButton
+import com.haooz.chedule.ui.components.LiquidNavigationRail
+import com.haooz.chedule.ui.components.ScheduleBottomBar
 import com.haooz.chedule.ui.components.ShareImportDialog
 import com.haooz.chedule.ui.components.TabletNavSideState
 import com.haooz.chedule.ui.components.UpdateDialog
 import com.haooz.chedule.ui.components.tabletNavExpandSampleTrack
+import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.screens.AddCourseDialog
-import com.haooz.chedule.ui.activities.classschedule.MainScheduleScreen
-import com.haooz.chedule.ui.components.LiquidNavigationRail
-import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.screens.ShiftScheduleScreen
 import com.haooz.chedule.ui.screens.TabletCourseManagePane
 import com.haooz.chedule.ui.screens.TabletSettingsChromeOverlay
@@ -332,7 +329,7 @@ internal fun CourseScheduleAppMainContent(
             if (otherGlassWanted && !otherGlassActive) otherGlassActive = true
             LaunchedEffect(otherGlassWanted) {
                 if (otherGlassWanted) return@LaunchedEffect
-                delay(OVERLAY_GLASS_RELEASE_DELAY_MS)
+                delay(OVERLAY_GLASS_RELEASE_DELAY_MS.milliseconds)
                 otherGlassActive = false
             }
             val overlayGlassActive = menuGlassActive || otherGlassActive
@@ -671,7 +668,7 @@ internal fun CourseScheduleAppMainContent(
                         // 弹窗排在「更多」之后 → 始终盖在它之上，遮罩能压暗「更多」
                         MiuixPopupHost()
                     }
-                ) { paddingValues ->
+                ) {
                     // Keep the real source rendered underneath the detail morph.
                     // 不门控 combinations.isEmpty()：网格只依赖 viewModel，与壁纸加载解耦
                     // backdrop 挂在未 padding 的全屏层：录制原点固定在屏幕
@@ -1385,6 +1382,8 @@ internal fun CourseScheduleAppMainContent(
                                                                         } else null
                                                                     }
                                                                 },
+                                                                // 边缘驻留（即将自动翻周）：周 pager 据此在空闲驻留期预组合邻页
+                                                                edgeDwellHint = { edgeAutoPageDirection != 0 },
                                                                 scheduleScrollBehavior = scheduleScrollBehavior,
                                                                 externalScrollState = scheduleScrollState,
                                                                 externalShowCourseDetail = scheduleShowCourseDetail,

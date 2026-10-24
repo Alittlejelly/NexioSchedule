@@ -91,7 +91,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 真课表主界面。平台能力全部走注入参数，缺能力的入口不渲染；
- * 位图统一 [ImageBitmap]，快照裁剪走 [TransitionLayerSnapshot]（GraphicsLayer + clipRect，零位图分配），
+ * 位图统一 [ImageBitmap]，快照裁剪走 [com.haooz.chedule.ui.utils.TransitionLayerSnapshot]（GraphicsLayer + clipRect，零位图分配），
  * 壁纸存储走 `WallpaperStore`。
  */
 
@@ -330,7 +330,7 @@ fun CourseScheduleApp(
                 withContext(ioDispatcher) { buildCombination(WallpaperStore.load()) }
             }
             // 单搭配恒为下标 0
-            combinations = if (comb != null) listOf(comb) else emptyList()
+            combinations = listOf(comb)
             currentCombinationIndex = 0
 
             val curr = combinations.getOrNull(0)
@@ -720,11 +720,7 @@ fun CourseScheduleApp(
         }
     }
 
-    // UI 仍在本文件，后续按需再拆；这里统一 `with(state)` 让旧代码零改动。
     with(state) {
-        // 局部别名（同初始化区）：让 `density.xxx` 不被 graphicsLayer 作用域的 density 遮蔽
-        val density = densityProvider
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -733,10 +729,6 @@ fun CourseScheduleApp(
                     drawContent()
 
                 }) {
-            // ⚠ 必须 remember：`AppearanceConfig` 来自 :core（无 Compose 编译器），对外层
-            //   是**不稳定类型**，每次重组都新建实例会让 MainContent/浮层组整棵不可跳过 ——
-            //   拖拽期间 isDraggingCard / floatingCardVisible / shortcutMenuVisible 各变一次，
-            //   每次都把整个课表页重跑一遍。
             val displayAppearance = remember(
                 showCustomizePage,
                 isWindowCutoutActive,
@@ -760,8 +752,6 @@ fun CourseScheduleApp(
 
             // liquidGlass 录制跳帧指纹：结构量变了才 update→markNeedsRecord。
             // 必须 remember 出稳定 List，否则 equals 失败会强制录制。
-            // 用 pager 当前页而非 selectedTab：点击后 selectedTab 先变，真正像素落定在 currentPage。
-            // pagerState.currentPage：无壁纸周滑跳过 mustRecord 后，靠落页变 key 补录。
             val themeBackdropKey = listOf(
                 MiuixTheme.isDynamicColor, MiuixTheme.colorScheme.background,
                 MiuixTheme.colorScheme.primary, MiuixTheme.colorScheme.secondaryContainer,
@@ -785,7 +775,7 @@ fun CourseScheduleApp(
                 wallpaperBitmap,
                 TabletNavSideState.expanded,
                 scheduleShowCourseDetail.value,
-                pagerState.currentPage,
+                pagerState.settledPage,
                 themeBackdropKey
             ) {
                 listOf(
@@ -806,7 +796,7 @@ fun CourseScheduleApp(
                     wallpaperBitmap,
                     TabletNavSideState.expanded,
                     scheduleShowCourseDetail.value,
-                    pagerState.currentPage,
+                    pagerState.settledPage,
                     themeBackdropKey
                 )
             }
