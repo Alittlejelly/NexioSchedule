@@ -7,10 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -85,6 +83,12 @@ data class LandRippleSpec(
     val token: Int = 0,
 )
 
+/** 课程卡动画量惰性持有：静止卡永不实例化。 */
+private class CardAnims {
+    val sinkScale by lazy { Animatable(1f) }
+    val rippleScale by lazy { Animatable(1f) }
+}
+
 val LocalLandRipple = compositionLocalOf { LandRippleSpec() }
 
 @Composable
@@ -152,12 +156,12 @@ fun CourseCard(
 
     // 近处几乎立刻、远处按距离铺开；token=0（常态）不挂协程，降低新周页首帧组合成本
     val landRipple = LocalLandRipple.current
-    val rippleScale = remember { Animatable(1f) }
+    // 缩放 / 涟漪两个动画量惰性持有，静止卡不建
+    val anims = remember { CardAnims() }
     // 涟漪动画期间为 true；token 不会归零，不能直接拿 token 判层
     var rippleAnimating by remember { mutableStateOf(false) }
     val cardBoundsPx = remember { FloatArray(4) }
-    // 最近一次布局坐标：滑动中 onGloballyPositioned 跳过计算会留下过期/零点，
-    // 长按瞬间按需重算一次，保证浮层/菜单锚点准确（无需每帧算，开销只在长按时）
+    // 只缓存布局坐标，root 位置按需现算
     val cardCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val refreshCardBounds = {
         val c = cardCoords[0]
@@ -172,10 +176,11 @@ fun CourseCard(
     // Sink：仅缩放反馈
     var sinkPressed by remember { mutableStateOf(false) }
     var sinkActive by remember { mutableStateOf(false) }
-    val sinkScale = remember { Animatable(1f) }
     LaunchedEffect(sinkPressed) {
+        // 首帧是非按压态，直接收摊：否则每张卡会白跑一次 spring + 两次重组 + 加/撤图层
+        if (!sinkPressed && !sinkActive) return@LaunchedEffect
         sinkActive = true
-        sinkScale.animateTo(
+        anims.sinkScale.animateTo(
             targetValue = if (sinkPressed) 0.94f else 1f,
             animationSpec = spring(dampingRatio = 0.8f, stiffness = 600f)
         )
@@ -187,6 +192,8 @@ fun CourseCard(
         LaunchedEffect(landRipple.token) {
             if (landRipple.token == lastRippleToken.intValue) return@LaunchedEffect
             lastRippleToken.intValue = landRipple.token
+            // 边界按需现算（见 onGloballyPositioned 的注释）
+            refreshCardBounds()
             val cx = cardBoundsPx[0]
             val cy = cardBoundsPx[1]
             if (cx == 0f && cy == 0f) return@LaunchedEffect
@@ -199,8 +206,8 @@ fun CourseCard(
             if (delayMs > 0) delay(delayMs.milliseconds)
             rippleAnimating = true
             try {
-                rippleScale.animateTo(1.08f, tween(80, easing = FastOutSlowInEasing))
-                rippleScale.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+                anims.rippleScale.animateTo(1.08f, tween(80, easing = FastOutSlowInEasing))
+                anims.rippleScale.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
             } finally {
                 rippleAnimating = false
             }
@@ -344,7 +351,7 @@ fun CourseCard(
                     .then(
                         if (needTransformLayer) {
                             Modifier.graphicsLayer {
-                                val s = sinkScale.value * rippleScale.value
+                                val s = anims.sinkScale.value * anims.rippleScale.value
                                 scaleX = s
                                 scaleY = s
                                 alpha = if (isDragging) 0f else 1f
@@ -353,20 +360,8 @@ fun CourseCard(
                             Modifier
                         }
                     )
-                    .onGloballyPositioned { coordinates ->
-                        cardCoords[0] = coordinates
-                        if (touchState?.scrolling == true) return@onGloballyPositioned
-                        val center = coordinates.localToRoot(
-                            Offset(
-                                coordinates.size.width / 2f,
-                                coordinates.size.height / 2f
-                            )
-                        )
-                        cardBoundsPx[0] = center.x
-                        cardBoundsPx[1] = center.y
-                        cardBoundsPx[2] = coordinates.size.width.toFloat()
-                        cardBoundsPx[3] = coordinates.size.height.toFloat()
-                    }
+                    // 只存坐标：布局期不再逐卡 localToRoot，消费点自己 refreshCardBounds
+                    .onGloballyPositioned { cardCoords[0] = it }
                     // 垫底纯色画在采样层之前（更靠外=更早画），被玻璃采样盖住属预期
                     .then(
                         if (solidBackingColor != null) {
@@ -441,6 +436,11 @@ fun CourseCard(
         // 静止卡不挂 graphicsLayer：几十张×两页的合成层是左右滑 draw 热点。
         // 仅按压/拖拽/落地涟漪动画时挂；松手即撤，缩放回弹让位给无层路径。
         val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
+        // 垫底纯色 + 课程色两次填充压成一次（链条越靠前越先画，与 flattenStackedFills 同向）
+        val filledCardColor = remember(solidBackingColor, cardColor) {
+            if (solidBackingColor != null) flattenStackedFills(solidBackingColor, cardColor)
+            else cardColor
+        }
         // 纯色模式（无壁纸）不画描边：底色本身就和页面背景分得开，那圈线只会显脏
         Box(
             modifier = modifier
@@ -455,7 +455,7 @@ fun CourseCard(
                 .then(
                     if (needTransformLayer) {
                         Modifier.graphicsLayer {
-                            val s = sinkScale.value * rippleScale.value
+                            val s = anims.sinkScale.value * anims.rippleScale.value
                             scaleX = s
                             scaleY = s
                             alpha = if (isDragging) 0f else 1f
@@ -466,27 +466,9 @@ fun CourseCard(
                         Modifier
                     }
                 )
-                // 垫底纯色在下、课程色在上（链条越靠前越先画）
-                .then(
-                    if (solidBackingColor != null) Modifier.background(solidBackingColor, cardShape)
-                    else Modifier
-                )
-                .background(cardColor, cardShape)
-                .onGloballyPositioned { coordinates ->
-                    // 与 hasBlur 分支一致：滑动中跳过 localToRoot，避免几十张卡每帧算坐标
-                    cardCoords[0] = coordinates
-                    if (touchState?.scrolling == true) return@onGloballyPositioned
-                    val center = coordinates.localToRoot(
-                        Offset(
-                            coordinates.size.width / 2f,
-                            coordinates.size.height / 2f
-                        )
-                    )
-                    cardBoundsPx[0] = center.x
-                    cardBoundsPx[1] = center.y
-                    cardBoundsPx[2] = coordinates.size.width.toFloat()
-                    cardBoundsPx[3] = coordinates.size.height.toFloat()
-                }
+                .background(filledCardColor, cardShape)
+                // 与 hasBlur 分支一致：只存坐标，root 位置按需现算
+                .onGloballyPositioned { cardCoords[0] = it }
                 .courseCardGesture(
                     course = course,
                     touchState = touchState,
@@ -739,7 +721,7 @@ private fun Modifier.courseCardGesture(
 }
 
 @Composable
-private fun CardContent(
+private fun BoxScope.CardContent(
     course: Course,
     sectionCount: Int,
     textColor: Color,
@@ -779,30 +761,32 @@ private fun CardContent(
             (if (effectiveShowClassroom) 1 else 0) +
             (if (effectiveShowTeacher) 1 else 0)
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        val verticalArrangement = when (cardContentAlignment) {
-            CardContentAlignment.TOP_START,
-            CardContentAlignment.TOP_CENTER -> Arrangement.Top
+    val textAlign = when (cardContentAlignment) {
+        CardContentAlignment.TOP_START,
+        CardContentAlignment.CENTER_START -> TextAlign.Start
 
-            CardContentAlignment.CENTER_START,
-            CardContentAlignment.CENTER_CENTER -> Arrangement.Center
-        }
-        val horizontalAlignment = when (cardContentAlignment) {
-            CardContentAlignment.TOP_START,
-            CardContentAlignment.CENTER_START -> Alignment.Start
+        CardContentAlignment.TOP_CENTER,
+        CardContentAlignment.CENTER_CENTER -> TextAlign.Center
+    }
+    // 只定竖直贴顶/居中 + 水平锚点：宽度由 fillMaxWidth 撑满，水平对齐交给 textAlign
+    val contentAlignment = when (cardContentAlignment) {
+        CardContentAlignment.TOP_START -> Alignment.TopStart
+        CardContentAlignment.TOP_CENTER -> Alignment.TopCenter
+        CardContentAlignment.CENTER_START -> Alignment.CenterStart
+        CardContentAlignment.CENTER_CENTER -> Alignment.Center
+    }
 
-            CardContentAlignment.TOP_CENTER,
-            CardContentAlignment.CENTER_CENTER -> Alignment.CenterHorizontally
-        }
-        val textAlign = when (cardContentAlignment) {
-            CardContentAlignment.TOP_START,
-            CardContentAlignment.CENTER_START -> TextAlign.Start
-
-            CardContentAlignment.TOP_CENTER,
-            CardContentAlignment.CENTER_CENTER -> TextAlign.Center
-        }
-        // 课名+地点+教师合成一段 Text：省掉每卡 2 个 Text + 2 个 Spacer 的测量/绘制节点
-        val bodyText = buildAnnotatedString {
+    // 课名+地点+教师合成一段 Text（省 2 个 Text + 2 个 Spacer）；必须 remember，别每次重组重建
+    val bodyText = remember(
+        course.name,
+        course.classroom,
+        course.teacher,
+        effectiveShowClassroom,
+        effectiveShowTeacher,
+        courseNameFontSize,
+        infoFontSize,
+    ) {
+        buildAnnotatedString {
             pushStyle(
                 SpanStyle(
                     fontWeight = FontWeight.Bold,
@@ -824,101 +808,98 @@ private fun CardContent(
                 pop()
             }
         }
+    }
+
+    // 正文直接挂在课卡 Box 上（原来的 Box + Column 两层只干居中+内边距），每卡省 2 个节点
+    Text(
+        text = bodyText,
+        modifier = Modifier
+            .fillMaxWidth()
+            .align(contentAlignment)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         // 行高用课名（较大者），保证换行间距与原多 Text 布局接近
-        val bodyLineHeight = courseNameLineHeight
-        Column(
+        lineHeight = courseNameLineHeight,
+        color = textColor,
+        textAlign = textAlign,
+        maxLines = bodyMaxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+
+    if (hasMultipleCourses) {
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 6.dp),
-            horizontalAlignment = horizontalAlignment,
-            verticalArrangement = verticalArrangement
-        ) {
-            Text(
-                text = bodyText,
-                lineHeight = bodyLineHeight,
-                color = textColor,
-                textAlign = textAlign,
-                maxLines = bodyMaxLines,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        if (hasMultipleCourses) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(if (isTablet) 6.dp else 5.dp)
-                    .size(8.dp)
-                    .background(color = textColor, shape = CircleShape)
-            )
-        }
-
-        val badge = resolveCourseCardBadge(
-            isHoliday = isHoliday,
-            isCourseCancelled = isCourseCancelled,
-            isWorkSwap = isWorkSwap,
-            isCurrentWeek = isCurrentWeek,
+                .align(Alignment.BottomEnd)
+                .padding(if (isTablet) 6.dp else 5.dp)
+                .size(8.dp)
+                .background(color = textColor, shape = CircleShape)
         )
-        if (badge != null) {
-            val badgeBackground = if (badge.usesWorkSwapStyle) {
-                courseTint.copy(alpha = 0.32f)
-            } else {
-                if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f)
-            }
-            Text(
-                text = badge.text,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (badge.usesWorkSwapStyle) {
-                    if (MiuixTheme.isDynamicColor) textColor
-                    else if (isDark) Color.White.copy(alpha = 0.8f) else Color.White
-                } else {
-                    if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(if (isTablet) 6.dp else 5.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(badgeBackground)
-                    .padding(horizontal = 2.dp, vertical = 1.dp),
-                maxLines = 1,
-                textAlign = TextAlign.End,
-            )
-        }
+    }
 
-        if (course.hasValidCustomTime() && cardHeightDp >= 2 * cardHeightPerSection) {
-            Text(
-                text = course.customStartTime ?: "",
-                fontSize = 8.sp,
-                color = textColor,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(if (isTablet) 6.dp else 5.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(textColor.copy(alpha = 0.1f))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                // 跨午夜标注「次日」，否则 23:00 / 00:30 两个角标看着像两节课
-                text = if (course.crossesMidnightCustomTime()) {
-                    "次日${course.customEndTime ?: ""}"
-                } else {
-                    course.customEndTime ?: ""
-                },
-                fontSize = 8.sp,
-                color = textColor,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(if (isTablet) 6.dp else 5.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(textColor.copy(alpha = 0.1f))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-            )
+    val badge = resolveCourseCardBadge(
+        isHoliday = isHoliday,
+        isCourseCancelled = isCourseCancelled,
+        isWorkSwap = isWorkSwap,
+        isCurrentWeek = isCurrentWeek,
+    )
+    if (badge != null) {
+        val badgeBackground = if (badge.usesWorkSwapStyle) {
+            courseTint.copy(alpha = 0.32f)
+        } else {
+            if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f)
         }
+        Text(
+            text = badge.text,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (badge.usesWorkSwapStyle) {
+                if (MiuixTheme.isDynamicColor) textColor
+                else if (isDark) Color.White.copy(alpha = 0.8f) else Color.White
+            } else {
+                if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(if (isTablet) 6.dp else 5.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(badgeBackground)
+                .padding(horizontal = 2.dp, vertical = 1.dp),
+            maxLines = 1,
+            textAlign = TextAlign.End,
+        )
+    }
+
+    if (course.hasValidCustomTime() && cardHeightDp >= 2 * cardHeightPerSection) {
+        Text(
+            text = course.customStartTime ?: "",
+            fontSize = 8.sp,
+            color = textColor,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(if (isTablet) 6.dp else 5.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(textColor.copy(alpha = 0.1f))
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            // 跨午夜标注「次日」，否则 23:00 / 00:30 两个角标看着像两节课
+            text = if (course.crossesMidnightCustomTime()) {
+                "次日${course.customEndTime ?: ""}"
+            } else {
+                course.customEndTime ?: ""
+            },
+            fontSize = 8.sp,
+            color = textColor,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(if (isTablet) 6.dp else 5.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(textColor.copy(alpha = 0.1f))
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

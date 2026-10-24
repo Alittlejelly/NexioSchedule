@@ -8,7 +8,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,12 +36,14 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.CardContentAlignment
 import com.haooz.chedule.data.CardRefractionLevel
@@ -51,6 +51,7 @@ import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseTimeSpan
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.SpecialBlock
 import com.haooz.chedule.data.SpecialItem
@@ -465,53 +466,49 @@ private fun CourseCardsLayer(
                 grid = grid
             )
             if (layout != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = layout.topDp.dp)
-                ) {
-                    CourseCard(
-                        course = course,
-                        touchState = touchState,
-                        isDark = isDark,
-                        isCurrentWeek = isCurrentWeekCourse,
-                        isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
-                        isCourseCancelled = course.id in holidayCancelledCourseIds,
-                        isWorkSwap = isWorkSwap,
-                        hasMultipleCourses = renderData.hasHiddenCourses,
-                        wallpaperBackdrop = wallpaperBackdrop,
-                        cardBlurRadius = cardBlurRadius,
-                        cardAlpha = cardAlpha,
-                        cardSurfaceAlpha = cardSurfaceAlpha,
-                        solidBackingColor = solidBackingColor,
-                        cardHeightPerSection = cardHeightPerSection,
-                        customCardHeightDp = layout.heightDp,
-                        cardCornerRadius = cardCornerRadius,
-                        isTablet = isTablet,
-                        cardContentAlignment = cardContentAlignment,
-                        cardTextColor = cardTextColor,
-                        cardTextScale = cardTextScale,
-                        showClassroom = showClassroom,
-                        showTeacher = showTeacher,
-                        cardRefraction = cardRefraction,
-                        isDragging = isDragging,
-                        // 自定义时间课不支持拖动调课（按时间轴定位，没有「挪到第几节」的落点），
-                        // 长按只弹「编辑 / 删除」菜单
-                        dragEnabled = false,
-                        onClick = {
-                            onPendingChange(-1, -1)
-                            onCourseClick(course)
-                        },
-                        onLongPressStart = { left, top, width, height ->
-                            if (isCurrentWeekCourse) {
-                                onCourseLongPress(course, left, top, width, height, wallpaperBackdrop, currentWeek)
-                            }
-                        },
-                        onMenuDismiss = {
-                            onCourseMenuDismiss()
-                        },
-                    )
-                }
+                // offset 落到课卡自身节点，省掉每卡一个 Box 包装层
+                CourseCard(
+                    modifier = Modifier.offset(y = layout.topDp.dp),
+                    course = course,
+                    touchState = touchState,
+                    isDark = isDark,
+                    isCurrentWeek = isCurrentWeekCourse,
+                    isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
+                    isCourseCancelled = course.id in holidayCancelledCourseIds,
+                    isWorkSwap = isWorkSwap,
+                    hasMultipleCourses = renderData.hasHiddenCourses,
+                    wallpaperBackdrop = wallpaperBackdrop,
+                    cardBlurRadius = cardBlurRadius,
+                    cardAlpha = cardAlpha,
+                    cardSurfaceAlpha = cardSurfaceAlpha,
+                    solidBackingColor = solidBackingColor,
+                    cardHeightPerSection = cardHeightPerSection,
+                    customCardHeightDp = layout.heightDp,
+                    cardCornerRadius = cardCornerRadius,
+                    isTablet = isTablet,
+                    cardContentAlignment = cardContentAlignment,
+                    cardTextColor = cardTextColor,
+                    cardTextScale = cardTextScale,
+                    showClassroom = showClassroom,
+                    showTeacher = showTeacher,
+                    cardRefraction = cardRefraction,
+                    isDragging = isDragging,
+                    // 自定义时间课不支持拖动调课（按时间轴定位，没有「挪到第几节」的落点），
+                    // 长按只弹「编辑 / 删除」菜单
+                    dragEnabled = false,
+                    onClick = {
+                        onPendingChange(-1, -1)
+                        onCourseClick(course)
+                    },
+                    onLongPressStart = { left, top, width, height ->
+                        if (isCurrentWeekCourse) {
+                            onCourseLongPress(course, left, top, width, height, wallpaperBackdrop, currentWeek)
+                        }
+                    },
+                    onMenuDismiss = {
+                        onCourseMenuDismiss()
+                    },
+                )
             }
             return@forEach
         }
@@ -524,61 +521,57 @@ private fun CourseCardsLayer(
             }
             val segOffset = (grid.sectionTop[segStartSection] ?: 0f).toInt()
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .offset(y = segOffset.dp)
-                ) {
-                    CourseCard(
-                        course = displayCourse,
-                        touchState = touchState,
-                        isDark = isDark,
-                        isCurrentWeek = isCurrentWeekCourse,
-                        isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
-                        isCourseCancelled = course.id in holidayCancelledCourseIds,
-                        isWorkSwap = isWorkSwap,
-                        hasMultipleCourses = idx == 0 && renderData.hasHiddenCourses,
-                        wallpaperBackdrop = wallpaperBackdrop,
-                        cardBlurRadius = cardBlurRadius,
-                        cardAlpha = cardAlpha,
-                        cardSurfaceAlpha = cardSurfaceAlpha,
-                        solidBackingColor = solidBackingColor,
-                        cardHeightPerSection = cardHeightPerSection,
-                        cardCornerRadius = cardCornerRadius,
-                        isTablet = isTablet,
-                        cardContentAlignment = cardContentAlignment,
-                        cardTextColor = cardTextColor,
-                        cardTextScale = cardTextScale,
-                        showClassroom = showClassroom,
-                        showTeacher = showTeacher,
-                        cardRefraction = cardRefraction,
-                        isDragging = isDragging,
-                        onClick = {
-                            onPendingChange(-1, -1)
-                            onCourseClick(course)
-                        },
-                        onLongPressStart = { left, top, width, height ->
-                            if (isCurrentWeekCourse) {
-                                onCourseLongPress(course, left, top, width, height, wallpaperBackdrop, currentWeek)
-                            }
-                        },
-                        onDragStart = {
-                            onCourseDragStart(course.id)
-                        },
-                        onDrag = { offsetX, offsetY ->
-                            onCourseDrag(course.id, offsetX, offsetY)
-                        },
-                        onDragEnd = {
-                            onCourseDragEnd(course.id)
-                        },
-                        onDragCancel = {
-                            onCourseDragCancel(course.id)
-                        },
-                        onMenuDismiss = {
-                            onCourseMenuDismiss()
-                        }
-                    )
+            // 同上：offset 落在课卡自身节点
+            CourseCard(
+                modifier = Modifier.offset(y = segOffset.dp),
+                course = displayCourse,
+                touchState = touchState,
+                isDark = isDark,
+                isCurrentWeek = isCurrentWeekCourse,
+                isHoliday = isHoliday && course.id !in holidayExemptCourseIds,
+                isCourseCancelled = course.id in holidayCancelledCourseIds,
+                isWorkSwap = isWorkSwap,
+                hasMultipleCourses = idx == 0 && renderData.hasHiddenCourses,
+                wallpaperBackdrop = wallpaperBackdrop,
+                cardBlurRadius = cardBlurRadius,
+                cardAlpha = cardAlpha,
+                cardSurfaceAlpha = cardSurfaceAlpha,
+                solidBackingColor = solidBackingColor,
+                cardHeightPerSection = cardHeightPerSection,
+                cardCornerRadius = cardCornerRadius,
+                isTablet = isTablet,
+                cardContentAlignment = cardContentAlignment,
+                cardTextColor = cardTextColor,
+                cardTextScale = cardTextScale,
+                showClassroom = showClassroom,
+                showTeacher = showTeacher,
+                cardRefraction = cardRefraction,
+                isDragging = isDragging,
+                onClick = {
+                    onPendingChange(-1, -1)
+                    onCourseClick(course)
+                },
+                onLongPressStart = { left, top, width, height ->
+                    if (isCurrentWeekCourse) {
+                        onCourseLongPress(course, left, top, width, height, wallpaperBackdrop, currentWeek)
+                    }
+                },
+                onDragStart = {
+                    onCourseDragStart(course.id)
+                },
+                onDrag = { offsetX, offsetY ->
+                    onCourseDrag(course.id, offsetX, offsetY)
+                },
+                onDragEnd = {
+                    onCourseDragEnd(course.id)
+                },
+                onDragCancel = {
+                    onCourseDragCancel(course.id)
+                },
+                onMenuDismiss = {
+                    onCourseMenuDismiss()
                 }
+            )
         }
     }
 }
@@ -985,46 +978,59 @@ private fun SpecialBandBody(
     }
 
     val segments = remember(items, dayRange) { buildSpecialBandSegments(items, dayRange) }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val dayCount = dayRange.size
-        val dayWidth = maxWidth / dayCount
-        val itemShape = remember(cornerRadius) { ContinuousRoundedRectangle((cornerRadius * 0.8f).dp) }
-        val itemBgColor = if (isDark) {
-            Color.White.copy(alpha = (0.06f * alphaFactor).coerceIn(0f, 1f))
-        } else {
-            Color.Black.copy(alpha = (0.06f * alphaFactor).coerceIn(0f, 1f))
-        }
-        val itemTextColor = if (isDark) Color.White.copy(alpha = 0.78f) else Color.Black.copy(alpha = 0.74f)
+    // 只画有安排的段：没排安排的星期不画任何东西（曾试过常驻 "+" 提示，太吵）。
+    // 横带自身的底色是整条连续的，空格子读作「这段还没排」而不是「条带子断了」；
+    // 点击层仍铺满空格子，点一下就是新增安排，弹窗会预选该星期。
+    val drawn = remember(segments) { segments.filter { it.item != null } }
+    val dayCount = dayRange.size
+    val itemShape = remember(cornerRadius) { ContinuousRoundedRectangle((cornerRadius * 0.8f).dp) }
+    val itemBgColor = if (isDark) {
+        Color.White.copy(alpha = (0.06f * alphaFactor).coerceIn(0f, 1f))
+    } else {
+        Color.Black.copy(alpha = (0.06f * alphaFactor).coerceIn(0f, 1f))
+    }
+    val itemTextColor = if (isDark) Color.White.copy(alpha = 0.78f) else Color.Black.copy(alpha = 0.74f)
 
-        segments.forEach { seg ->
-            val item = seg.item ?: return@forEach
-            // 没排安排的星期不画任何东西（曾试过常驻 "+" 提示，太吵）。
-            // 横带自身的底色是整条连续的，空格子读作「这段还没排」而不是「条带子断了」；
-            // 点击层仍铺满空格子，点一下就是新增安排，弹窗会预选该星期。
-            val lastIdx = dayRange.size - 1
-            Box(
-                modifier = Modifier
-                    .offset(x = dayWidth * seg.startIndex)
-                    .width(dayWidth * (seg.endIndex - seg.startIndex + 1))
-                    .fillMaxHeight()
-                    // 首/尾卡外侧 +2，与内侧相邻间距 4dp 均衡
-                    .padding(
-                        start = if (seg.startIndex == 0) 4.dp else 2.dp,
-                        end = if (seg.endIndex == lastIdx) 4.dp else 2.dp,
-                        top = 4.dp,
-                        bottom = 4.dp
+    // 自绘 Layout 取代 BoxWithConstraints：这里只需按列宽比例摆位，没必要付 SubcomposeLayout 的子组合
+    Layout(
+        modifier = Modifier.fillMaxSize(),
+        content = {
+            drawn.forEach { seg ->
+                val item = seg.item ?: return@forEach
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        // 首/尾卡外侧 +2，与内侧相邻间距 4dp 均衡
+                        .padding(
+                            start = if (seg.startIndex == 0) 4.dp else 2.dp,
+                            end = if (seg.endIndex == dayCount - 1) 4.dp else 2.dp,
+                            top = 4.dp,
+                            bottom = 4.dp
+                        )
+                        .clip(itemShape)
+                        .background(itemBgColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = item.name.ifBlank { "未命名" },
+                        style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
+                        color = itemTextColor,
+                        maxLines = 2,
+                        textAlign = TextAlign.Center
                     )
-                    .clip(itemShape)
-                    .background(itemBgColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = item.name.ifBlank { "未命名" },
-                    style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
-                    color = itemTextColor,
-                    maxLines = 2,
-                    textAlign = TextAlign.Center
-                )
+                }
+            }
+        }
+    ) { measurables, constraints ->
+        val h = if (constraints.hasBoundedHeight) constraints.maxHeight else 0
+        val dayWidthPx = constraints.maxWidth.toFloat() / dayCount
+        val placeables = measurables.mapIndexed { i, measurable ->
+            val span = drawn[i].endIndex - drawn[i].startIndex + 1
+            measurable.measure(Constraints.fixed((dayWidthPx * span).roundToInt(), h))
+        }
+        layout(constraints.maxWidth, h) {
+            placeables.forEachIndexed { i, placeable ->
+                placeable.place((dayWidthPx * drawn[i].startIndex).roundToInt(), 0)
             }
         }
     }
@@ -1041,39 +1047,58 @@ fun SpecialBandClickLayer(
     if (dayRange.isEmpty()) return
 
     val segments = remember(items, dayRange) { buildSpecialBandSegments(items, dayRange) }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val dayWidth = maxWidth / dayRange.size
-
-        segments.forEach { seg ->
-            val item = seg.item
-            Box(
-                modifier = Modifier
-                    .offset(x = dayWidth * seg.startIndex)
-                    .width(dayWidth * (seg.endIndex - seg.startIndex + 1))
-                    .fillMaxHeight()
-                    .clickable(
-                        enabled = item != null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { item?.let(onItemClick) }
-            )
+    val dayCount = dayRange.size
+    // 有安排段 / 空白列各自一条 place 序列，同样用自绘 Layout 取代 BoxWithConstraints
+    val filled = remember(segments) { segments.filter { it.item != null } }
+    val blankDays = remember(segments) {
+        buildList {
+            segments.forEach { seg ->
+                if (seg.item != null) return@forEach
+                for (idx in seg.startIndex..seg.endIndex) add(idx)
+            }
         }
-
-        // 未被覆盖的星期可点击新增；填满后无空白格即天然禁止再加
-        segments.forEach { seg ->
-            if (seg.item != null) return@forEach
-            for (idx in seg.startIndex..seg.endIndex) {
+    }
+    Layout(
+        modifier = Modifier.fillMaxSize(),
+        content = {
+            filled.forEach { seg ->
+                val item = seg.item ?: return@forEach
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .clickable(
+                            enabled = true,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onItemClick(item) }
+                )
+            }
+            // 未被覆盖的星期可点击新增；填满后无空白格即天然禁止再加
+            blankDays.forEach { idx ->
                 val day = dayRange[idx]
                 Box(
                     modifier = Modifier
-                        .offset(x = dayWidth * idx)
-                        .width(dayWidth)
                         .fillMaxHeight()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onEmptyClick(day) }
                 )
+            }
+        }
+    ) { measurables, constraints ->
+        val h = if (constraints.hasBoundedHeight) constraints.maxHeight else 0
+        val dayWidthPx = constraints.maxWidth.toFloat() / dayCount
+        val placeables = measurables.mapIndexed { i, measurable ->
+            val span = if (i < filled.size) {
+                filled[i].endIndex - filled[i].startIndex + 1
+            } else 1
+            measurable.measure(Constraints.fixed((dayWidthPx * span).roundToInt(), h))
+        }
+        layout(constraints.maxWidth, h) {
+            placeables.forEachIndexed { i, placeable ->
+                val startIndex = if (i < filled.size) filled[i].startIndex else blankDays[i - filled.size]
+                placeable.place((dayWidthPx * startIndex).roundToInt(), 0)
             }
         }
     }

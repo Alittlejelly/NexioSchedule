@@ -1,5 +1,6 @@
 package com.haooz.chedule.ui.activities.classschedule
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.SpecialBlock
+import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 
@@ -72,44 +75,51 @@ fun SectionColumn(
 
     val sectionWidth = scheduleSectionColumnWidth(isTablet)
 
-    Box(
-        modifier = modifier
-            .width(sectionWidth)
-            .height(totalHeight.dp)
-    ) {
-        (1..morningSections).forEach { section ->
-            val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
-        }
+    // 时间列是静态标签，整列关掉文字动效机器（每页省下 节次数×3 个动画循环 + Animatable）
+    CompositionLocalProvider(LocalTextMotionInstant provides true) {
+        Box(
+            modifier = modifier
+                .width(sectionWidth)
+                .height(totalHeight.dp)
+        ) {
+            // 上界只能用 timePairs 的同一来源（参数 totalSections），自己按起止节次现算会多一节越界
+            for (section in 1..totalSections) {
+                SectionItem(
+                    section = section,
+                    timePairs = timePairs,
+                    grid = effectiveGrid,
+                    cardHeightPerSection = cardHeightPerSection,
+                    currentSection = currentSection,
+                    sectionNames = sectionNames,
+                )
+            }
 
-        val afternoonStart = morningSections + 1
-        val afternoonEnd = morningSections + afternoonSections
-        (afternoonStart..afternoonEnd).forEach { section ->
-            val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
-        }
-
-        val eveningStart = morningSections + afternoonSections + 1
-        val eveningEnd = morningSections + afternoonSections + eveningSections
-        (eveningStart..eveningEnd).forEach { section ->
-            val (startTime, endTime) = timePairs[section - 1]
-            SectionItem(section, startTime, endTime, effectiveGrid.sectionTop[section]?.toInt() ?: 0, cardHeightPerSection, section == currentSection, sectionNames)
-        }
-
-        effectiveGrid.specialBands.forEach { band ->
-            SpecialTimeLabel(
-                startTime = band.startTime,
-                endTime = band.endTime,
-                top = band.top,
-                height = band.height,
-                sectionWidth = sectionWidth
-            )
+            effectiveGrid.specialBands.forEach { band ->
+                SpecialTimeLabel(
+                    startTime = band.startTime,
+                    endTime = band.endTime,
+                    top = band.top,
+                    height = band.height,
+                    sectionWidth = sectionWidth
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SectionItem(section: Int, startTime: String, endTime: String, yOffset: Int, cardHeightPerSection: Float = 54f, isCurrentSection: Boolean = false, sectionNames: Map<Int, String> = emptyMap()) {
+private fun SectionItem(
+    section: Int,
+    timePairs: List<Pair<String, String>>,
+    grid: SpecialGridLayout,
+    cardHeightPerSection: Float = 54f,
+    currentSection: Int = -1,
+    sectionNames: Map<Int, String> = emptyMap(),
+) {
+    val (startTime, endTime) = timePairs[section - 1]
+    val yOffset = grid.sectionTop[section]?.toInt() ?: 0
+    val isCurrentSection = section == currentSection
+
     val onSurfaceColor = MiuixTheme.colorScheme.onSurface
     val onSurfaceVariantColor = MiuixTheme.colorScheme.onSurfaceVariantActions
     val highlightColor = scheduleAccentColor()
@@ -132,20 +142,18 @@ private fun SectionItem(section: Int, startTime: String, endTime: String, yOffse
     val timeStyle = remember(baseFootnote2) { baseFootnote2.copy(fontSize = 10.sp) }
     val timeColor = if (isCurrentSection) highlightColor else onSurfaceVariantColor
 
-    Box(
+    // Column 直接承担定位 + 居中，别再套一层 Box（每节次一个节点）
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .height(cardHeightPerSection.dp)
             .offset(y = yOffset.dp),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(text = displayText, style = nameStyle, color = sectionColor, textAlign = TextAlign.Center)
-            Text(text = startTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
-            Text(text = endTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
-        }
+        Text(text = displayText, style = nameStyle, color = sectionColor, textAlign = TextAlign.Center)
+        Text(text = startTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
+        Text(text = endTime, style = timeStyle, color = timeColor, textAlign = TextAlign.Center)
     }
 }
 

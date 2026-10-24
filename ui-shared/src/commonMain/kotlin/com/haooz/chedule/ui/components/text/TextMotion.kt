@@ -73,9 +73,16 @@ private const val TEXT_MOTION_BLUR_RELEASE_MILLIS = 180
 private val TEXT_MOTION_BLUR = 8.dp
 
 /**
- * 让范围内所有文字**直接换**、不走交叉模糊
+ * 让范围内所有文字直接换、不走交叉模糊，同时**不建动效机器**（无状态 / 无 Animatable / 无循环）。
+ * 借位页换数据、时间列这类静态标签都用它。
  */
 val LocalTextMotionInstant = staticCompositionLocalOf { false }
+
+/** 动画量惰性持有：不换字就永不实例化。 */
+private class TextMotionAnims {
+    val progress by lazy { Animatable(1f) }
+    val blurLevel by lazy { Animatable(0f) }
+}
 
 /**
  * 把文字包成「变化时有交叉模糊过渡」的容器，[key] 是判断「文字是否变了」的依据。
@@ -100,22 +107,23 @@ internal fun <T : Any> TextMotionBox(
     textAlign: TextAlign? = null,
     content: @Composable (text: T, modifier: Modifier) -> Unit,
 ) {
+    // 组合期读静态 local：值翻转时本子树整体重组，正好在此收摊/重开
+    if (LocalTextMotionInstant.current) {
+        content(key, modifier)
+        return
+    }
+
     // 当前该画的新文字。
     var displayed by remember { mutableStateOf(key) }
     // 正在淡出的旧文字；非 null 即处于交叉淡入态。
     var outgoing by remember { mutableStateOf<T?>(null) }
     // 模糊包络是否还在（含保持 / 散焦阶段）。只在「起 / 收」两处翻转，不逐帧重组。
     var blurActive by remember { mutableStateOf(false) }
-    // 交叉淡入进度。
-    val progress = remember { Animatable(1f) }
-    // 模糊包络 0..1，与交叉淡入解耦：淡入可以一次次走完，模糊要一直吊着。
-    val blurLevel = remember { Animatable(0f) }
+    val anims = remember { TextMotionAnims() }
     // 平台不支持 RenderEffect（Android 12 以下）时全程退化为直接换字。
     val supported = remember { isRenderEffectSupported() }
     // 用 State 承接最新的 key，动画循环只起一次，新值由 snapshotFlow 送进来。
     val latestKey by rememberUpdatedState(key)
-    // 借位页整页换数据：文字直接换，不播交叉模糊
-    val latestInstant by rememberUpdatedState(LocalTextMotionInstant.current)
 
     // 动画循环只起一次（单位是 Unit）
     // 单循环 + collectLatest：新值到达时掐掉上一段，模糊停在当前值，再由下一段接住。
@@ -130,14 +138,16 @@ internal fun <T : Any> TextMotionBox(
                 return@collectLatest
             }
             if (newKey == displayed) return@collectLatest
-            // 不支持模糊、借位页整页换数据、或并发配额已满：直接换字，不播动效（批量降级）。
-            if (latestInstant || !supported || !TextMotionBudget.tryAcquire()) {
+            // 不支持模糊、或并发配额已满：直接换字，不播动效（批量降级）。
+            if (!supported || !TextMotionBudget.tryAcquire()) {
                 displayed = newKey
                 outgoing = null
                 blurActive = false
                 return@collectLatest
             }
             try {
+                val progress = anims.progress
+                val blurLevel = anims.blurLevel
                 // 交叉淡入：上一段已经播完（稳态）才从 0 起；半途换字接着当前进度走
                 if (progress.value >= 1f) progress.snapTo(0f)
                 outgoing = displayed
@@ -185,6 +195,8 @@ internal fun <T : Any> TextMotionBox(
     // 过渡态：旧字与新字各画一份，叠在同一原点；模糊只在**最外层**套一次。
     // outgoing 可能已经清掉（淡入走完）而模糊还在散 —— 这时只画一条，但模糊层不能撤。
     val out = outgoing
+    val progress = anims.progress
+    val blurLevel = anims.blurLevel
     Layout(
         modifier = modifier.then(
             Modifier.graphicsLayer {
