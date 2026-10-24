@@ -97,6 +97,7 @@ import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberCardEdgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.pagerAxisTakeoverGesture
@@ -451,13 +452,15 @@ fun TodayScreen(
     var datePickerYear by remember { mutableIntStateOf(todayLocalDate().year) }
     var datePickerMonth by remember { mutableIntStateOf(todayLocalDate().monthNumber - 1) }
     var datePickerDay by remember { mutableIntStateOf(todayLocalDate().dayOfMonth) }
+    // 手势接管状态：借位跳日被手势打断时，jumpToPageSmoothly 借它同步平移松手落页基准
+    val takeoverGestureState = rememberPagerTakeoverGestureState()
 
     LaunchedEffect(scrollToTodayTrigger) {
         if (scrollToTodayTrigger > 0 && pagerState.currentPage != MAX_DATE_OFFSET) {
             // 相邻一天直接滑；跨多天借位后也只滑一页，全程连续
             pendingDatePage = MAX_DATE_OFFSET
             try {
-                pagerState.jumpToPageSmoothly(MAX_DATE_OFFSET, jumpNeighbor)
+                pagerState.jumpToPageSmoothly(MAX_DATE_OFFSET, jumpNeighbor, takeoverGestureState)
             } finally {
                 // 落点不是目标（被打断）就立刻撤掉覆盖，别让标题卡在今天
                 if (pagerState.currentPage != MAX_DATE_OFFSET) pendingDatePage = -1
@@ -623,7 +626,7 @@ fun TodayScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     // 与课表周 pager 共用的横竖主导翻页手势；纵向仍归页内 LazyColumn
-                    .pagerAxisTakeoverGesture(pagerState = pagerState),
+                    .pagerAxisTakeoverGesture(pagerState = pagerState, gestureState = takeoverGestureState),
                 userScrollEnabled = false,
             ) { physicalPage ->
                 // 借位页：长距跳日期间这一页按目标日期出内容，于是跨 N 天也只是一页连续位移
@@ -1071,7 +1074,7 @@ fun TodayScreen(
                                 // 标题日期立刻切到目标日
                                 pendingDatePage = dest
                                 try {
-                                    pagerState.jumpToPageSmoothly(dest, jumpNeighbor)
+                                    pagerState.jumpToPageSmoothly(dest, jumpNeighbor, takeoverGestureState)
                                 } finally {
                                     if (pagerState.currentPage != dest) pendingDatePage = -1
                                 }

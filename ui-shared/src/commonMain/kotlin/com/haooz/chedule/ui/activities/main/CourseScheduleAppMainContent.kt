@@ -103,6 +103,7 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.addScreenCornerRect
 import com.haooz.chedule.ui.utils.bottomFloatingPadding
+import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.kyant.backdrop.Backdrop
@@ -909,11 +910,16 @@ internal fun CourseScheduleAppMainContent(
                                                                 token = landRippleToken
                                                             )
                                                         ) {
+                                                            // 手势状态提升并注入 state：借位跳周被手势打断时，
+                                                            // jumpToPageSmoothly 借它同步平移松手落页基准
+                                                            val weekGestureState = rememberPagerTakeoverGestureState()
+                                                            weekPagerGestureState = weekGestureState
                                                             MainScheduleScreen(
                                                                 viewModel = viewModel,
                                                                 settingsViewModel = settingsViewModel,
                                                                 pagerState = pagerState,
                                                                 jumpNeighbor = weekJumpNeighbor,
+                                                                pagerGestureState = weekGestureState,
                                                                 hiddenCourseIds = hiddenCourseIds,
                                                                 draggingCourseSlots = draggingCourseSlots,
                                                                 onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->

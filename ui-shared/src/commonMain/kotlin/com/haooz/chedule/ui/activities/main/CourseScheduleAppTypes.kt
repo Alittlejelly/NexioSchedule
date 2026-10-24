@@ -18,6 +18,7 @@ import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.WallpaperTransform
 import com.haooz.chedule.ui.screens.SettingsScreen
+import com.haooz.chedule.ui.utils.PagerTakeoverGestureState
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -233,6 +234,7 @@ class PagerJumpNeighbor {
 internal suspend fun PagerState.jumpToPageSmoothly(
     target: Int,
     neighbor: PagerJumpNeighbor? = null,
+    gestureState: PagerTakeoverGestureState? = null,
 ) {
     val lastPage = (pageCount - 1).coerceAtLeast(0)
     if (lastPage <= 0) return
@@ -261,9 +263,28 @@ internal suspend fun PagerState.jumpToPageSmoothly(
     runCatching { withFrameNanos { } }
     try {
         animateScrollToPage(virtualPage, animationSpec = JumpLandingSpec)
-    } finally {
-        // 落点换成真身：借位期间显示的内容与真身逐像素相同，这一下看不出切换
+        // 正常走完才把落点换成真身：借位内容与真身逐像素相同，看不出切换。
+        // 写在 try 里而不是 finally —— 被打断（CancellationException）时跳过
+        // 这步不抢落点，手势永远优先
         runCatching { scrollToPage(dest) }
+    } catch (c: CancellationException) {
+        // 被更高优先级打断（用户手势 / cancelScroll）：手势优先。但借位让物理位置
+        // 停在跳转前的邻页（例：回本周时停在原周旁边），直接放任手势会被甩回原周。
+        // 这里把位置平移回逻辑页：借位页与目标页像素相同 → 屏上这一侧不跳；
+        // 另一侧从「跳转前的周」直接替换成真实邻周；手势从逻辑位置继续接管。
+        // 松手落页基准（startScrollOffset）同步平移，见 PagerTakeoverGestureState
+        runCatching {
+            val viewportPx = layoutInfo.viewportSize.width.toFloat()
+            if (viewportPx > 0f) {
+                // dispatchRawDelta 不走 mutateMutex：手势持锁期间也能即时平移；
+                // 返回实际消费的像素（边界处会截断），按实际值平移落页基准
+                val appliedPages = dispatchRawDelta((dest - virtualPage) * viewportPx) / viewportPx
+                gestureState?.requestStartOffsetShift(appliedPages)
+            }
+        }
+        throw c
+    } finally {
+        // 打断/完成都执行：借位页立即还原成正常周（平移后已在屏外，屏上无感）
         neighbor.clear()
     }
 }

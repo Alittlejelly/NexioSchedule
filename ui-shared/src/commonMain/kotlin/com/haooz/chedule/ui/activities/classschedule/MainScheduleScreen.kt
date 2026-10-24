@@ -113,11 +113,13 @@ import com.haooz.chedule.ui.components.rememberCardRevealState
 import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import com.haooz.chedule.ui.components.text.material.Text
 import com.haooz.chedule.ui.utils.LocalHostNavigation
+import com.haooz.chedule.ui.utils.PagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.pagerAxisTakeoverGesture
+import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
 import com.haooz.chedule.ui.utils.screenHeightDp
 import com.haooz.chedule.ui.utils.screenWidthDp
@@ -241,6 +243,9 @@ fun MainScheduleScreen(
     // 拖课卡停在屏幕边缘热区（即将自动翻周）时为 true；供周 pager 在驻留空闲期
     // 预组合翻页要用的邻页（beyond 1→3），把组合成本挪出翻页动画帧
     edgeDwellHint: () -> Boolean = { false },
+    // 周 pager 的手势接管状态：借位跳周被手势打断时，jumpToPageSmoothly 借它
+    // 同步平移松手落页基准，避免手势被旧起点拉回跳转前的周
+    pagerGestureState: PagerTakeoverGestureState = rememberPagerTakeoverGestureState(),
     onGridGeometryChange: (ScheduleGridGeometry) -> Unit = {},
     scheduleScrollBehavior: SharedScrollBehavior? = null,
     // 由 Activity 层传入：不是防销毁，是液态玻璃重录要在外层读滚动状态 / 弹窗开合
@@ -955,6 +960,7 @@ fun MainScheduleScreen(
                 // 横竖主导手势（与今日页共用）：横向接管 pager，纵向仍归页内滚动
                 .pagerAxisTakeoverGesture(
                     pagerState = pagerState,
+                    gestureState = pagerGestureState,
                     // 拖课卡那根手指由 blockedPointer 屏蔽；整页禁用会连「另一只手翻周」一起挡掉
                     blockGesture = { latestIsWallpaperEditing },
                     blockedPointer = { touchState.draggingPointerId },

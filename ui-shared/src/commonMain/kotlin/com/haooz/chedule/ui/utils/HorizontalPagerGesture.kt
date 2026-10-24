@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
+import kotlin.concurrent.Volatile
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,7 +47,27 @@ import kotlin.math.sign
 /** 持有手势 settle Job，避免与下一次拖动抢 PagerState 写锁 */
 class PagerTakeoverGestureState internal constructor(
     internal val scope: CoroutineScope,
-)
+) {
+    /**
+     * 待平移的手势起点（页）。程序化借位跳周被手势打断时，pager 位置会被
+     * dispatchRawDelta 平移回逻辑页（借位页↔真身像素相同，屏上不跳），
+     * 松手落页计算用的本轮起点也要同步平移同一距离，否则落页目标会被
+     * 旧基准拉回跳转前的页。手势在事件循环/松手计算前消费并清零。
+     */
+    @Volatile
+    internal var pendingStartOffsetShiftPages = 0f
+
+    internal fun requestStartOffsetShift(pages: Float) {
+        if (pages != 0f) pendingStartOffsetShiftPages += pages
+    }
+
+    /** 取走并清零待平移量（手势侧消费） */
+    internal fun consumeStartOffsetShift(): Float {
+        val v = pendingStartOffsetShiftPages
+        if (v != 0f) pendingStartOffsetShiftPages = 0f
+        return v
+    }
+}
 
 @Composable
 fun rememberPagerTakeoverGestureState(): PagerTakeoverGestureState {
@@ -242,6 +263,9 @@ fun Modifier.pagerAxisTakeoverGesture(
                 var isAltPointer = false
                 val tracker = VelocityTracker()
                 val dragState = PagerDragState()
+                // 新手势起点即将按当前位置重新捕获：丢弃上一轮残留的平移量，
+                // 否则会错误地平移这一轮的落页基准
+                gestureState.consumeStartOffsetShift()
                 dragState.startScrollOffset =
                     pagerState.currentPage + pagerState.currentPageOffsetFraction
                 var dragChannel: Channel<Float>? = null
@@ -289,6 +313,9 @@ fun Modifier.pagerAxisTakeoverGesture(
                         abs(moveAvgVelocity.x) > abs(trackedVelocity.x) -> moveAvgVelocity
                         else -> trackedVelocity
                     }
+                    // 程序化借位跳周被打断时的位置平移：松手落页基准同步平移，
+                    // 否则会被旧起点拉回跳转前的页
+                    dragState.startScrollOffset += gestureState.consumeStartOffsetShift()
                     val startOffset = dragState.startScrollOffset
                     // scrollBy 坐标：负位移 = 下一页
                     val fingerDragPages = -accX / viewportPx

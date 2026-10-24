@@ -61,6 +61,7 @@ import com.haooz.chedule.ui.navigation.AppRouter
 import com.haooz.chedule.ui.activities.classschedule.ScheduleGridGeometry
 import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.HostNavigationState
+import com.haooz.chedule.ui.utils.PagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.captureScreenWithNativeChrome
@@ -144,6 +145,9 @@ class CourseScheduleAppState {
 
     /** 长距跳转的借位页：让相邻页临时显示目标周，滑一页就到位（见 [PagerJumpNeighbor]） */
     val weekJumpNeighbor = PagerJumpNeighbor()
+
+    /** 周 pager 的手势接管状态：借位跳周被手势打断时同步平移落页基准（组合期由 MainContent 注入） */
+    var weekPagerGestureState: PagerTakeoverGestureState? = null
 
     /** 同上，今日页按天 */
     val todayJumpNeighbor = PagerJumpNeighbor()
@@ -988,7 +992,7 @@ class CourseScheduleAppState {
         // 目标周按落点页算，避免「总周数」与 pageCount 不一致时标题落到界外
         pendingViewingWeek = dest + 1
         try {
-            pagerState.jumpToPageSmoothly(dest, weekJumpNeighbor)
+            pagerState.jumpToPageSmoothly(dest, weekJumpNeighbor, weekPagerGestureState)
         } catch (e: CancellationException) {
             pendingViewingWeek = 0
             throw e
