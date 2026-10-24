@@ -64,10 +64,7 @@ fun DocumentPageScaffold(
         nativeChrome?.tintArgb = tintArgb
     }
     val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
+    // 采样层本身（recordKey 由调用方给）；顶栏玻璃采它，页面内容不再另录一份没人采的层。
     val liquidGlassBackdrop = rememberLayerBackdrop()
     val scrollBehavior = rememberSharedScrollBehavior()
     // 本页独立的 overscroll 作用域：内容的 overScrollVertical 节点把越界量写进这个实例，
@@ -128,11 +125,7 @@ fun DocumentPageScaffold(
                 }
             }
         ) { _ ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .layerBackdrop(backdrop, recordKey = recordKey, mustRecord = docMustRecord)
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 // 采样层只包内容；顶栏玻璃按钮放在层外，避免循环采样
                 Box(
                     modifier = Modifier.fillMaxSize().then(

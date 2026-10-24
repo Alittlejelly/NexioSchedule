@@ -88,8 +88,6 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -502,11 +500,6 @@ fun TimeConfigEditScreen(
         )
     )
 
-    val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
     val isDark = isAppDarkTheme()
     val isLiquidGlass = liquidGlassBackdrop != null
     val isTablet = isTabletWidth()
@@ -605,7 +598,6 @@ fun TimeConfigEditScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .layerBackdrop(backdrop)
                             .then(
                                 if (isLiquidGlass) Modifier.liquidGlassLayerBackdrop(
                                     liquidGlassBackdrop

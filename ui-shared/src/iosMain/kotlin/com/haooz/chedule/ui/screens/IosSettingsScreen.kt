@@ -73,7 +73,6 @@ internal fun IosSettingsScreen(
         onExitShiftMode = args.onExitShiftMode,
         onEnterShiftMode = args.onEnterShiftMode,
         navBarStyle = args.navBarStyle,
-        onScrollYChanged = args.onScrollYChanged,
         settingsScrollBehavior = args.settingsScrollBehavior,
         liquidGlassBackdrop = args.liquidGlassBackdrop,
         showUpdateSettings = args.showUpdateSettings,

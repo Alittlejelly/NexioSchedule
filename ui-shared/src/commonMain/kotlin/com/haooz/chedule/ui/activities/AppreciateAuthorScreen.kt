@@ -56,8 +56,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import top.yukonga.miuix.kmp.layout.isTabletWidth
@@ -104,11 +102,6 @@ fun AppreciateAuthorScreen(
 
     val donationList = donations
 
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
@@ -118,7 +111,6 @@ fun AppreciateAuthorScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             // 单列滚动：赞赏码在上、领奖台与捐赠明细在下（pad 也不做页内左右分栏）
             val listState = rememberLazyListState()

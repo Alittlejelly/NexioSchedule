@@ -28,7 +28,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,8 +57,6 @@ import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -82,7 +79,6 @@ fun PreferenceSettingsScreen(
     /** 隐藏最近任务卡片（Android 专有能力；宿主注入） */
     onSetTaskExcludedFromRecents: (Boolean) -> Unit = {},
 ) {
-    var listScrollY by remember { mutableIntStateOf(0) }
 
     val eduPrefs = remember { AppStorage.store("edu_import_prefs") }
     var repoUrl by remember {
@@ -152,11 +148,6 @@ fun PreferenceSettingsScreen(
 
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
     // 液态玻璃效果的透明下拉颜色
     val liquidGlassDropdownColors = DropdownDefaults.dropdownColors(
         containerColor = Color.Transparent,
@@ -169,15 +160,8 @@ fun PreferenceSettingsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             val listState = rememberLazyListState()
-            LaunchedEffect(listState) {
-                snapshotFlow { listState.firstVisibleItemScrollOffset }
-                    .collect { offset ->
-                        listScrollY = offset
-                    }
-            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier

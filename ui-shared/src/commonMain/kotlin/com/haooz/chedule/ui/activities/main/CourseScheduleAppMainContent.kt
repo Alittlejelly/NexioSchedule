@@ -1436,7 +1436,6 @@ internal fun CourseScheduleAppMainContent(
                                                                         isExitingShift = false
                                                                     },
                                                                     navBarStyle = navBarStyle,
-                                                                    onScrollYChanged = { _ -> },
                                                                     settingsScrollBehavior = settingsScrollBehavior,
                                                                     liquidGlassBackdrop = liquidGlassBackdrop,
                                                                     showUpdateSettings = showUpdateSettings,
@@ -1493,7 +1492,6 @@ internal fun CourseScheduleAppMainContent(
                                                     pagerState = pagerState,
                                                     scheduleDataVersion = dataVersion,
                                                     cardHeightPerSection = currentAppearance().cardHeight,
-                                                    liquidGlassBackdrop = liquidGlassBackdrop,
                                                     scheduleScrollBehavior = scheduleScrollBehavior,
                                                     isInFreeformWindow = isInFreeformWindow,
                                                     titleBarHeight = 56.dp,
@@ -1527,7 +1525,6 @@ internal fun CourseScheduleAppMainContent(
                                                             isExitingShift = false
                                                         },
                                                         navBarStyle = navBarStyle,
-                                                        onScrollYChanged = { _ -> },
                                                         settingsScrollBehavior = settingsScrollBehavior,
                                                         liquidGlassBackdrop = liquidGlassBackdrop,
                                                         showUpdateSettings = showUpdateSettings,

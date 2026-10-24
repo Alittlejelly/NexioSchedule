@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +108,17 @@ import org.jetbrains.compose.resources.painterResource
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.ic_github
 import com.haooz.chedule.uishared.resources.ic_gitee
+
+/**
+ * 关于页展示的最近几条更新日志。
+ *
+ * 提到文件级：`changelogData.take(3)` 每次组合都新建一个 List，而调用点用它当
+ * 展开状态表的长度依据。
+ */
+private val RecentChangelog = changelogData.take(3)
+
+/** 顶部留白高度（图标/名称/版本号区域下方） */
+private val LogoSpacerHeight = 340.dp
 
 @Composable
 fun AboutScreen(
@@ -191,23 +203,23 @@ fun AboutScreen(
         canShareRecording = diagnosticRecorder.hasReadyRecording
     }
 
-    val scrollProgress by remember {
+    // 顶部留白高度：spacer 与滚动进度共用同一个来源，别再两处各写一个 340
+    val logoSpacerHeightPx = with(LocalDensity.current) { LogoSpacerHeight.toPx() }
+    val scrollProgress by remember(lazyListState, logoSpacerHeightPx) {
         derivedStateOf {
-            when {
-                lazyListState.firstVisibleItemIndex > 0 -> 1f
-                else -> {
-                    val spacer = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "logoSpacer" }
-                    if (spacer != null && spacer.size > 0) {
-                        (lazyListState.firstVisibleItemScrollOffset.toFloat() / spacer.size).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-                }
+            if (lazyListState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                // 只读 index + offset 两个 Int：读 layoutInfo 会在每次滚动时拉一份可见项列表，
+                // 而首项恒为 logoSpacer，分母本身就是常量
+                (lazyListState.firstVisibleItemScrollOffset / logoSpacerHeightPx).coerceIn(0f, 1f)
             }
         }
     }
     
-    var dynamicBackground by remember { mutableStateOf(true) }
+    // 背景动效常开（没有任何入口会关它）。用 mutableStateOf 只会让 BgEffectBackground 的
+    // LaunchedEffect key 与每次读取都多一层快照开销
+    val dynamicBackground = true
     var showRepoDialog by remember { mutableStateOf(false) }
     var showRevokeDialog by remember { mutableStateOf(false) }
 
@@ -346,9 +358,7 @@ fun AboutScreen(
                                         backdrop = backdrop,
                                         shape = ContinuousRoundedRectangle(16.dp),
                                         blurRadius = 150f,
-                                        colors = BlurDefaults.blurColors(
-                                            blendColors = logoBlend,
-                                        ),
+                                        colors = BlurDefaults.blurColors(blendColors = logoBlend),
                                         contentBlendMode = ComposeBlendMode.DstIn,
                                     )
                                 } else {
@@ -401,23 +411,20 @@ fun AboutScreen(
                         Spacer(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(340.dp),
+                                .height(LogoSpacerHeight),
                         )
                     }
                     item(key = "about") {
                         Card(
                             modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .padding(top = 16.dp)
+                                .padding(start = 16.dp, end = 16.dp, top = 16.dp)
                                 .then(
                                     if (backdrop != null) {
                                         Modifier.textureBlur(
                                             backdrop = backdrop,
                                             shape = ContinuousRoundedRectangle(20.dp),
                                             blurRadius = 60f,
-                                            colors = BlurDefaults.blurColors(
-                                                blendColors = cardBlend,
-                                            ),
+                                            colors = BlurDefaults.blurColors(blendColors = cardBlend),
                                         )
                                     } else {
                                         Modifier
@@ -465,7 +472,7 @@ fun AboutScreen(
                     }
 
                     item(key = "changelog") {
-                            Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Card(
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
@@ -475,9 +482,7 @@ fun AboutScreen(
                                             backdrop = backdrop,
                                             shape = ContinuousRoundedRectangle(20.dp),
                                             blurRadius = 60f,
-                                            colors = BlurDefaults.blurColors(
-                                                blendColors = cardBlend,
-                                            ),
+                                            colors = BlurDefaults.blurColors(blendColors = cardBlend),
                                         )
                                     } else {
                                         Modifier
@@ -519,10 +524,11 @@ fun AboutScreen(
                                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions
                                     )
                                 }
-                                val recentChangelog = changelogData.take(3)
-                                val expandedStates = List(recentChangelog.size) { index ->
-                                    val expandedState = remember { mutableStateOf(index == 0) }
-                                    expandedState
+                                val recentChangelog = RecentChangelog
+                                // 一次 remember 拿整张状态表：原来在 List{} 的 lambda 里逐个 remember，
+                                // 位置依赖 size，changelog 一变就会把展开态错位到别的版本上
+                                val expandedStates = remember {
+                                    List(RecentChangelog.size) { index -> mutableStateOf(index == 0) }
                                 }
                                 val rotations = List(recentChangelog.size) { index ->
                                     val rotation by animateFloatAsState(
@@ -650,9 +656,7 @@ fun AboutScreen(
                                                 backdrop = backdrop,
                                                 shape = ContinuousRoundedRectangle(20.dp),
                                                 blurRadius = 60f,
-                                                colors = BlurDefaults.blurColors(
-                                                    blendColors = cardBlend,
-                                                ),
+                                                colors = BlurDefaults.blurColors(blendColors = cardBlend),
                                             )
                                         } else {
                                             Modifier
@@ -858,9 +862,7 @@ fun AboutScreen(
                                                 backdrop = backdrop,
                                                 shape = ContinuousRoundedRectangle(20.dp),
                                                 blurRadius = 60f,
-                                                colors = BlurDefaults.blurColors(
-                                                    blendColors = cardBlend,
-                                                ),
+                                                colors = BlurDefaults.blurColors(blendColors = cardBlend),
                                             )
                                         } else {
                                             Modifier

@@ -121,8 +121,6 @@ import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.VerticalDivider
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.Background
@@ -255,12 +253,6 @@ fun CustomizeScheduleScreen(
         containerColor = Color.Transparent,
         selectedContainerColor = Color.Transparent,
     )
-
-    // 不采样自身图层：含自身的 backdrop 会导致渲染树无限递归（SIGSEGV）
-    val sheetBackdropColor = MiuixTheme.colorScheme.surface
-    val sheetBackdrop = rememberLayerBackdrop {
-        drawRect(sheetBackdropColor)
-    }
 
     val primaryColor = MiuixTheme.colorScheme.primary
     val exitContainerColor = Color(0xFF363636).copy(0.8f)
@@ -682,7 +674,6 @@ fun CustomizeScheduleScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(sheetBackdrop)
                 .drawBehind {
                     val snapshotW = snapshot?.width?.toFloat() ?: size.width
                     val snapshotH = snapshot?.height?.toFloat() ?: size.height
@@ -1653,7 +1644,6 @@ fun CustomizeScheduleScreen(
                     BlurBottomSheetTablet(
                         show = showEffectSheet,
                         title = "效果",
-                        sheetBackgroundAlpha = 1f,
                         sheetMaxHeight = 320.dp,
                         isBottomAligned = true,
                         onDismissRequest = { showEffectSheet = false },
@@ -1679,7 +1669,6 @@ fun CustomizeScheduleScreen(
                     BlurBottomSheet(
                         show = showEffectSheet,
                         title = "效果",
-                        sheetBackgroundAlpha = 1f,
                         onDismissRequest = { showEffectSheet = false },
                         startAction = { sheetCloseButton({ showEffectSheet = false }, 18.dp) }
                     ) {
@@ -1705,7 +1694,6 @@ fun CustomizeScheduleScreen(
                     BlurBottomSheetTablet(
                         show = showCustomizeSheet,
                         title = "自定义",
-                        sheetBackgroundAlpha = 1f,
                         sheetMaxHeight = 320.dp,
                         isBottomAligned = true,
                         onDismissRequest = { showCustomizeSheet = false },
@@ -1731,7 +1719,6 @@ fun CustomizeScheduleScreen(
                     BlurBottomSheet(
                         show = showCustomizeSheet,
                         title = "自定义",
-                        sheetBackgroundAlpha = 1f,
                         onDismissRequest = { showCustomizeSheet = false },
                         startAction = { sheetCloseButton({ showCustomizeSheet = false }, 16.dp) }
                     ) {

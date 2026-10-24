@@ -42,8 +42,6 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -55,11 +53,6 @@ fun ChangelogScreen(
     initialExpandCount: Int = 3
 ) {
 
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
     val isTablet = screenWidthDp() >= 600
     val tabletHorizontalPadding = if (isTablet) {
         val widthDp = screenWidthDp()
@@ -89,7 +82,6 @@ fun ChangelogScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             val listState = rememberLazyListState()
 

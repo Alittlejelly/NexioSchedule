@@ -68,7 +68,6 @@ fun AndroidSettingsScreen(
     onExitShiftMode: () -> Unit = {},
     onEnterShiftMode: () -> Unit = {},
     navBarStyle: String = "standard",
-    onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     /** 是否显示「更新设置」入口（Android 恒 true；iOS 走 App Store 传 false） */
@@ -89,7 +88,6 @@ fun AndroidSettingsScreen(
         onEnterShiftMode = onEnterShiftMode,
         showUpdateSettings = showUpdateSettings,
         navBarStyle = navBarStyle,
-        onScrollYChanged = onScrollYChanged,
         settingsScrollBehavior = settingsScrollBehavior,
         liquidGlassBackdrop = liquidGlassBackdrop,
         androidPane = { dest ->

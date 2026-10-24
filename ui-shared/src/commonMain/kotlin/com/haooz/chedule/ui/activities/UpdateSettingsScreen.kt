@@ -32,7 +32,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,8 +59,6 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -87,7 +84,6 @@ fun UpdateSettingsScreen(
     updateController: UpdateController = NoopUpdateController,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
-    var listScrollY by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     val prefs = remember { AppStorage.store("update_settings") }
     // 液态玻璃效果的透明下拉颜色
@@ -196,11 +192,6 @@ fun UpdateSettingsScreen(
         }
     }
 
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
@@ -210,15 +201,8 @@ fun UpdateSettingsScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             val listState = rememberLazyListState()
-            LaunchedEffect(listState) {
-                snapshotFlow { listState.firstVisibleItemScrollOffset }
-                    .collect { offset ->
-                        listScrollY = offset
-                    }
-            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier

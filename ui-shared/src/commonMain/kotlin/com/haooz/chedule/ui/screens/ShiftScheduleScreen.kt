@@ -70,7 +70,6 @@ fun ShiftScheduleScreen(
     pagerState: androidx.compose.foundation.pager.PagerState,
     scheduleDataVersion: Int = 0,
     cardHeightPerSection: Float = 54f,
-    liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     scheduleScrollBehavior: SharedScrollBehavior? = null,
     /** 是否自由形态窗口（小米平板分屏/PC 模式）；Android 宿主注入，桌面/iOS 恒 false */
     isInFreeformWindow: Boolean = false,
@@ -285,7 +284,6 @@ fun ShiftScheduleScreen(
             title = "课表详情",
             dimBackground = true,
             isBottomAligned = true,
-            liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showDetail = false },
             content = detailContent
         )
@@ -293,7 +291,6 @@ fun ShiftScheduleScreen(
         BlurBottomSheet(
             show = showDetail,
             title = "课表详情",
-            liquidGlassBackdrop = liquidGlassBackdrop,
             dimBackground = true,
             onDismissRequest = { showDetail = false },
             content = detailContent

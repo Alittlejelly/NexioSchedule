@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -26,8 +24,6 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -35,11 +31,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun CommunicationScreen(
     scrollBehavior: SharedScrollBehavior? = null,
 ) {
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
     val isTablet = screenWidthDp() >= 600
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
@@ -49,13 +40,8 @@ fun CommunicationScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             val listState = rememberLazyListState()
-            LaunchedEffect(listState) {
-                snapshotFlow { listState.firstVisibleItemScrollOffset }
-                    .collect { }
-            }
             val hapticFeedback = LocalHapticFeedback.current
             val uriHandler = LocalUriHandler.current
             val communicationGroupUrl =

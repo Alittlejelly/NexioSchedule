@@ -629,7 +629,6 @@ fun AddEditCourseBottomSheet(
             dimBackground = true,
             enableContentHeightSnap = true,
             onDismissRequest = onDismissRequest,
-            liquidGlassBackdrop = null,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
             startAction = startAction,
             endAction = endAction,
@@ -640,7 +639,6 @@ fun AddEditCourseBottomSheet(
         BlurBottomSheet(
             show = show,
             title = if (isEditMode) "编辑课程" else "添加课程",
-            liquidGlassBackdrop = null,
             dimBackground = true,
             enableContentHeightSnap = true,
             onDismissRequest = onDismissRequest,

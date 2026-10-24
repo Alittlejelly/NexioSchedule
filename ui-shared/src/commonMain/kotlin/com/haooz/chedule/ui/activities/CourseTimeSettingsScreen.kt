@@ -35,6 +35,7 @@ import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
@@ -60,8 +61,6 @@ import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -133,10 +132,6 @@ fun CourseTimeSettingsScreen(
     }
 
     val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
@@ -169,7 +164,6 @@ fun CourseTimeSettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdrop(backdrop)
             ) {
                 val listState = rememberLazyListState()
                 LazyColumn(
@@ -231,9 +225,9 @@ fun CourseTimeSettingsScreen(
                                     val routineLayer = routineLayers.getOrPut(routine.id) {
                                         graphicsContext.createGraphicsLayer()
                                     }
-                                    var bounds by remember {
-                                        mutableStateOf(TimeConfigCardBounds(0f, 0f, 0f, 0f))
-                                    }
+                                    // 只缓存布局坐标，点击时再换算：每次 placement 写一个新 Bounds
+                                    // 都是一次分配 + 一次快照写，滚动期间每帧都会发生
+                                    val cardCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
                                     val isActive = config.effectiveRoutineId() == routine.id
                                     val isMorphing = morphingRoutineId == routine.id
                                     ArrowPreference(
@@ -272,6 +266,18 @@ fun CourseTimeSettingsScreen(
                                             hapticFeedback.performHapticFeedback(
                                                 HapticFeedbackType.Confirm
                                             )
+                                            val coords = cardCoords[0]
+                                            val bounds = if (coords != null && coords.isAttached) {
+                                                val pos = coords.positionInWindow()
+                                                TimeConfigCardBounds(
+                                                    left = pos.x,
+                                                    top = pos.y,
+                                                    width = coords.size.width.toFloat(),
+                                                    height = coords.size.height.toFloat(),
+                                                )
+                                            } else {
+                                                TimeConfigCardBounds(0f, 0f, 0f, 0f)
+                                            }
                                             onEditRoutine(routine, config, bounds.copy(
                                                 snapshot = TransitionLayerSnapshot(routineLayer)
                                             ))
@@ -288,15 +294,7 @@ fun CourseTimeSettingsScreen(
                                                 }
                                                 drawLayer(routineLayer)
                                             }
-                                            .onGloballyPositioned { coordinates ->
-                                                val pos = coordinates.positionInWindow()
-                                                bounds = TimeConfigCardBounds(
-                                                    left = pos.x,
-                                                    top = pos.y,
-                                                    width = coordinates.size.width.toFloat(),
-                                                    height = coordinates.size.height.toFloat()
-                                                )
-                                            }
+                                            .onGloballyPositioned { cardCoords[0] = it }
                                     )
                                 }
                             }

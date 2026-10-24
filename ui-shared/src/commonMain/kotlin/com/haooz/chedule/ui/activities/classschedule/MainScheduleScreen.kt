@@ -1824,7 +1824,6 @@ private fun CourseDetailSheet(
             dimBackground = true,
             isBottomAligned = true,
             onDismissRequest = onDismiss,
-            liquidGlassBackdrop = liquidGlassBackdrop,
             endAction = endAction,
             content = content,
         )
@@ -1832,7 +1831,6 @@ private fun CourseDetailSheet(
         BlurBottomSheet(
             show = show,
             title = "课程详情",
-            liquidGlassBackdrop = liquidGlassBackdrop,
             dimBackground = true,
             onDismissRequest = onDismiss,
             endAction = endAction,

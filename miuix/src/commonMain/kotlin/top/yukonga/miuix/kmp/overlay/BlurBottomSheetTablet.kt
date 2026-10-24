@@ -93,32 +93,26 @@ import androidx.compose.foundation.layout.fillMaxHeight as fillMaxHeightModifier
  *
  * @param show 是否显示
  * @param title 标题文字
- * @param blurRadius 模糊半径
  * @param dimBackground 是否压暗背景
  * @param sheetMaxWidth 弹窗最大宽度
  * @param sheetBackgroundColor 弹窗背景颜色，null 则使用默认颜色
- * @param sheetBackgroundAlpha 弹窗背景透明度，null 则使用默认值
  * @param onDismissRequest 关闭回调
  * @param startAction 标题栏左侧操作按钮
  * @param endAction 标题栏右侧操作按钮
- * @param liquidGlassBackdrop 液态玻璃 backdrop
  * @param content 内容区域
  */
 @Composable
 fun BlurBottomSheetTablet(
     show: Boolean,
     title: String,
-    blurRadius: Float = 18f,
     dimBackground: Boolean = false,
     sheetMaxWidth: Dp = 560.dp,
     sheetMaxHeight: Dp = Dp.Unspecified,
     sheetBackgroundColor: Color? = null,
-    sheetBackgroundAlpha: Float? = null,
     isBottomAligned: Boolean = false,
     onDismissRequest: () -> Unit,
     startAction: @Composable (() -> Unit)? = null,
     endAction: @Composable (() -> Unit)? = null,
-    liquidGlassBackdrop: Backdrop? = null,
     onSheetContentBackdropCreated: ((Backdrop?) -> Unit)? = null,
     enableContentHeightSnap: Boolean = false,
     content: @Composable () -> Unit,

@@ -34,8 +34,6 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import com.haooz.chedule.ui.components.text.miuix.Text as Text
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
@@ -217,11 +215,6 @@ private val POLICY_SECTIONS: List<PolicySection> = listOf(
 fun PrivacyPolicyScreen(
     scrollBehavior: SharedScrollBehavior? = null,
 ) {
-    val backdropColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backdropColor)
-        drawContent()
-    }
 
     val listState = rememberLazyListState()
     val isTablet = screenWidthDp() >= 600
@@ -237,7 +230,6 @@ fun PrivacyPolicyScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop)
         ) {
             LazyColumn(
                 state = listState,

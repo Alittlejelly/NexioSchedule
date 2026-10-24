@@ -113,7 +113,6 @@ data class SettingsPaneArgs(
     val onExitShiftMode: () -> Unit,
     val onEnterShiftMode: () -> Unit,
     val navBarStyle: String,
-    val onScrollYChanged: (Int) -> Unit,
     val settingsScrollBehavior: SharedScrollBehavior?,
     val liquidGlassBackdrop: Backdrop?,
     /** 是否显示「更新设置」入口（iOS 走 App Store → false） */
@@ -142,7 +141,6 @@ internal fun RenderSettingsPane(
             onExitShiftMode = args.onExitShiftMode,
             onEnterShiftMode = args.onEnterShiftMode,
             navBarStyle = args.navBarStyle,
-            onScrollYChanged = args.onScrollYChanged,
             settingsScrollBehavior = args.settingsScrollBehavior,
             liquidGlassBackdrop = args.liquidGlassBackdrop,
             showUpdateSettings = args.showUpdateSettings,

@@ -139,11 +139,8 @@ class BackdropHolder {
  *
  * @param show 是否显示
  * @param title 标题文字
- * @param liquidGlassBackdrop 液态玻璃 backdrop
- * @param blurRadius 模糊半径
  * @param dimBackground 是否压暗背景
  * @param sheetBackgroundColor 弹窗背景颜色，null 则使用默认颜色
- * @param sheetBackgroundAlpha 弹窗背景透明度，null 则使用默认值
  * @param onDismissRequest 关闭回调
  * @param startAction 标题栏左侧操作按钮
  * @param endAction 标题栏右侧操作按钮
@@ -155,11 +152,8 @@ fun BlurBottomSheet(
     show: Boolean,
     title: String,
     fillMaxHeight: Boolean = false,
-    liquidGlassBackdrop: Backdrop? = null,
-    blurRadius: Float = 18f,
     dimBackground: Boolean = false,
     sheetBackgroundColor: Color? = null,
-    sheetBackgroundAlpha: Float? = null,
     sheetOffsetDp: Dp = Dp.Unspecified,
     sheetMaxWidth: Dp = Dp.Unspecified,
     onDismissRequest: () -> Unit,

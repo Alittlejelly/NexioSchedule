@@ -25,9 +25,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,8 +57,6 @@ import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -108,7 +104,6 @@ fun SettingsScreen(
     onExitShiftMode: () -> Unit = {},
     onEnterShiftMode: () -> Unit = {},
     navBarStyle: String = "standard",
-    onScrollYChanged: (Int) -> Unit = {},
     settingsScrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     // ── 平台注入（宿主提供；桌面/iOS 用默认空实现）──
@@ -198,10 +193,6 @@ fun SettingsScreen(
         )
         return
     }
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
     val isDark = isAppDarkTheme()
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
@@ -213,20 +204,7 @@ fun SettingsScreen(
         Scaffold(
         topBar = {}
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(backdrop)
-        ) {
             val listState = rememberLazyListState()
-            // rememberUpdatedState：LaunchedEffect 只依赖 listState，避免持旧闭包
-            val currentOnScrollYChanged by rememberUpdatedState(onScrollYChanged)
-            LaunchedEffect(listState) {
-                snapshotFlow { listState.firstVisibleItemScrollOffset }
-                    .collect { offset ->
-                        currentOnScrollYChanged(offset)
-                    }
-            }
             // 折叠高度在布局阶段补齐，避免组合期读 currentHeightPx 导致动画每帧重组
             val scrollBehaviorModifier = remember(settingsScrollBehavior) {
                 settingsScrollBehavior?.let {
@@ -301,7 +279,9 @@ fun SettingsScreen(
                                 },
                                 onClick = {
                                     FeatureLog.t("设置", "current_week_dialog")
-                                    tempCurrentWeek = currentWeek.coerceAtMost(totalWeeks)
+                                    // 未开始学期时 currentWeek 可能是 0：滚轮会被 coerce 到 1 显示，
+                                    // 这里也必须抬到 1，否则「看着是第 1 周、点确定却写回 0」
+                                    tempCurrentWeek = currentWeek.coerceIn(1, totalWeeks)
                                     showCurrentWeekDialog = true
                                 },
                                 holdDownState = showCurrentWeekDialog
@@ -559,7 +539,6 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
 
         // 即使 iOS 没有入口打开它也要挡：showShiftModeConfirmDialog 可能被别的路径置 true。
         OverlayDialog(
@@ -645,11 +624,14 @@ fun SettingsScreen(
                         text = "创建",
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            if (newSemesterName.isNotBlank()) {
-                                val name = newSemesterName
-                                if (name in scheduleViewModel.scheduleNames.value) {
+                            val name = newSemesterName.trim()
+                            when {
+                                // 名称空着点「创建」以前是静默无反应，看着像按钮坏了
+                                name.isEmpty() -> showToast("请输入课表名称")
+                                name in scheduleViewModel.scheduleNames.value ->
                                     showToast("该课表名称已存在")
-                                } else {
+
+                                else -> {
                                     scheduleViewModel.createNewSemesterSchedule(name)
                                     showNewSemesterDialog = false
                                     newSemesterName = ""
@@ -690,7 +672,9 @@ fun SettingsScreen(
                     NumberPicker(
                         value = tempYear,
                         onValueChange = { tempYear = it },
-                        range = 2024..2030,
+                        // 当年份超出 2024..2030 时滚轮会把值静默夹到边界，
+                        // 点确定就写回一个不是用户选的年份，所以按当前值把范围撑开
+                        range = minOf(2024, tempYearInit)..maxOf(2030, tempYearInit),
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
                         textStyle = MiuixTheme.textStyles.title2,

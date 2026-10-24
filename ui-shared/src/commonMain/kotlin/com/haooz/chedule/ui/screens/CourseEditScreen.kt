@@ -94,8 +94,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
@@ -214,11 +212,6 @@ fun CourseEditScreen(
 
     // ---- UI State ----
     val isDark = isAppDarkTheme()
-    val backgroundColor = MiuixTheme.colorScheme.surface
-    val backdrop = rememberLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
     var listScrollY by remember { mutableIntStateOf(0) }
     val scrollBehavior = rememberSharedScrollBehavior()
 
@@ -399,7 +392,6 @@ fun CourseEditScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .layerBackdrop(backdrop)
                             .liquidGlassLayerBackdrop(liquidGlassBackdrop!!)
                     ) {
                         Card(
