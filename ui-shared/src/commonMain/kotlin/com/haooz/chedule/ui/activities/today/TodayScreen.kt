@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -296,27 +297,22 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
             courseStatus = if (pageDate < today) "已结束" else "未开始"
             return@LaunchedEffect
         }
+        if (startTime == null || endTime == null) {
+            if (courseStatus != "未知") courseStatus = "未知"
+            return@LaunchedEffect
+        }
+        // 睡到下一个状态边界再醒：原来每秒轮询，每行常驻一个 1Hz 协程，一页下来白烧电
         while (true) {
             val now = nowLocalTime()
-            when {
-                startTime == null || endTime == null -> {
-                    if (courseStatus != "未知") courseStatus = "未知"
-                    // 本组合内时间来源固定，未知状态不会自行变化
-                    return@LaunchedEffect
-                }
-                now < startTime -> {
-                    if (courseStatus != "未开始") courseStatus = "未开始"
-                }
-                now > endTime -> {
-                    if (courseStatus != "已结束") courseStatus = "已结束"
-                    // 当天内状态不会再变
-                    return@LaunchedEffect
-                }
-                else -> {
-                    if (courseStatus != "进行中") courseStatus = "进行中"
-                }
+            val next = when {
+                now < startTime -> "未开始"
+                now > endTime -> "已结束"
+                else -> "进行中"
             }
-            delay(1000L.milliseconds)
+            if (courseStatus != next) courseStatus = next
+            if (next == "已结束") return@LaunchedEffect
+            val boundary = if (next == "未开始") startTime else endTime
+            delay(millisBetween(now, boundary, allowRollover = true).coerceAtLeast(1_000L).milliseconds)
         }
     }
 
@@ -657,12 +653,13 @@ fun TodayScreen(
                 val isPageToday = pageDate == currentLocalDate
                 val countdownNow = currentLocalDateTime
                 // Minute ticks and the resume tick both reread in-app holiday changes.
+                // key 用日期而不是整个 LocalDateTime：分钟 tick 不该每分钟重读一次 SP
                 val holidayVersion = remember(
                     dataVersion,
                     classStartTime,
                     holidayDataTick,
                     holidayDataRevision,
-                    countdownNow,
+                    countdownNow.date,
                 ) {
                     HolidayManager.getVersion()
                 }
@@ -699,12 +696,21 @@ fun TodayScreen(
                     }
                 }
                 val pageWeek = displayWeek
-                val coursePeriods = pageCourses.associateWith {
-                    it.periodIndex(sectionTimes, morningSections, afternoonSections)
+                // 分组结果按课程/节次表缓存：原来每次重组都重建 map + 三次过滤
+                val coursePeriods = remember(pageCourses, sectionTimes, morningSections, afternoonSections) {
+                    pageCourses.associateWith {
+                        it.periodIndex(sectionTimes, morningSections, afternoonSections)
+                    }
                 }
-                val morningCourses = pageCourses.filter { coursePeriods[it] == Course.PERIOD_MORNING }
-                val afternoonCourses = pageCourses.filter { coursePeriods[it] == Course.PERIOD_AFTERNOON }
-                val eveningCourses = pageCourses.filter { coursePeriods[it] == Course.PERIOD_EVENING }
+                val morningCourses = remember(pageCourses, coursePeriods) {
+                    pageCourses.filter { coursePeriods[it] == Course.PERIOD_MORNING }
+                }
+                val afternoonCourses = remember(pageCourses, coursePeriods) {
+                    pageCourses.filter { coursePeriods[it] == Course.PERIOD_AFTERNOON }
+                }
+                val eveningCourses = remember(pageCourses, coursePeriods) {
+                    pageCourses.filter { coursePeriods[it] == Course.PERIOD_EVENING }
+                }
 
                 val holidayCountdownSnapshot = remember(
                     isPageToday,
@@ -819,7 +825,7 @@ fun TodayScreen(
                     }
                 }
 
-                val dateText = pageDate.formatChineseDate()
+                val dateText = remember(pageDate) { pageDate.formatChineseDate() }
 
                 if (isTablet) {
                     Row(
@@ -1624,14 +1630,15 @@ private fun QuoteCard(
         )
     }
     var hour by remember { mutableIntStateOf(nowLocalTime().hour) }
-    // 与助手同频：场景/整点切换时立刻换池
+    // 与助手同频：场景/整点切换时立刻换池。
+    // 按「睡到下一分钟」而不是每秒轮询 —— 这个循环每页一个，且 computeQuoteScene 会做时间解析+排序
     LaunchedEffect(isPageToday, todayCourses, sectionTimes) {
         while (true) {
             val nextScene = computeQuoteScene(isPageToday, todayCourses, sectionTimes)
             if (nextScene != scene) scene = nextScene
             val nextHour = nowLocalTime().hour
             if (nextHour != hour) hour = nextHour
-            delay(1_000L.milliseconds)
+            delay(HolidayCountdown.millisUntilNextMinute(Clock.System.now().toEpochMilliseconds()))
         }
     }
 
@@ -1950,9 +1957,16 @@ private fun CourseItemWithClick(
     showClassroom: Boolean = true,
     showTeacher: Boolean = true
 ) {
-    var itemBounds by remember { mutableStateOf<Rect?>(null) }
+    // 只存布局坐标，root 位置点击时现算。原来用 mutableStateOf<Rect> 接 onGloballyPositioned：
+    // 滚动时每次 placement 都写入不等的新 Rect → 每帧一次行重组（列表滚动的隐形大头）
+    val itemCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val isHidden = course.id in hiddenCourseIds
     val cardLayer = rememberGraphicsLayer()
+    val scope = rememberCoroutineScope()
+    // 只有真要打开详情时才把这一行录进图层：record 是每帧一次离屏重绘，一行一层；
+    // 有壁纸路径下上层改用 section 裁剪，这份录制 100% 白费。
+    val captureToken = remember { mutableIntStateOf(0) }
+    val recordedToken = remember { intArrayOf(0) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1963,30 +1977,44 @@ private fun CourseItemWithClick(
             modifier = Modifier
                 .fillMaxWidth()
                 .drawWithContent {
-                    // Keep the card recording independent of its hidden source ancestor.
-                    if (!isHidden) {
+                    // 录好的那几帧走图层，其余时候直画（行内状态字会变，不能一直放旧快照）
+                    if (!isHidden && captureToken.intValue != 0) {
                         cardLayer.record { this@drawWithContent.drawContent() }
+                        recordedToken[0] = captureToken.intValue
+                        drawLayer(cardLayer)
+                    } else {
+                        drawContent()
                     }
-                    drawLayer(cardLayer)
                 }
                 // ⚠ 无壁纸时必须用 surfaceContainer，不能用 background：外层 BlurCard 此时退化成
                 //   miuix `Card()`，卡片色正是 surfaceContainer（Card.kt defaultColors）。内置方案下
                 //   两者恰好相等（#FFFFFF / #242424），莫奈下才分家：background 取 tone 98/6、
                 //   surfaceContainer 取 tone 94/12，差 4 个明度阶，写错会偏色。
                 .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
-                .onGloballyPositioned { coordinates ->
-                    val position = coordinates.localToRoot(Offset.Zero)
-                    val size = coordinates.size
-                    itemBounds = Rect(
-                        left = position.x, top = position.y,
-                        right = position.x + size.width, bottom = position.y + size.height
-                    )
-                }
+                .onGloballyPositioned { itemCoords[0] = it }
                 .clickable {
-                    val bounds = itemBounds
-                    if (bounds != null) {
+                    val coordinates = itemCoords[0]
+                    if (coordinates != null && coordinates.isAttached && captureToken.intValue == 0) {
+                        val position = coordinates.localToRoot(Offset.Zero)
+                        val size = coordinates.size
                         val sameNameCourses = allCourses.filter { it.name == course.name }
-                        onCourseClick(sameNameCourses, bounds.left, bounds.top, bounds.width, bounds.height, TransitionLayerSnapshot(cardLayer), course.id, pageWeek)
+                        captureToken.intValue += 1
+                        val token = captureToken.intValue
+                        scope.launch {
+                            // 等这一行真录进图层（draw 期回写 recordedToken）再抛快照
+                            while (recordedToken[0] < token) withFrameNanos { }
+                            onCourseClick(
+                                sameNameCourses,
+                                position.x,
+                                position.y,
+                                size.width.toFloat(),
+                                size.height.toFloat(),
+                                TransitionLayerSnapshot(cardLayer),
+                                course.id,
+                                pageWeek,
+                            )
+                            captureToken.intValue = 0
+                        }
                     }
                 }
         ) {
