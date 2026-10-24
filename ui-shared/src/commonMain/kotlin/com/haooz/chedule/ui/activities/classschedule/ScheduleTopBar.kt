@@ -251,13 +251,12 @@ private fun DayOfWeekRow(
     contentEndPadding: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
-    // 列数 5↔6↔7 过渡：整条文字带按动画中的列数摊开/收拢（见 AnimatedDayCount）。
+    // 列数 5 ↔ 6 ↔ 7 过渡：整条文字带按动画中的列数摊开/收拢
     // 只有这一条 40dp 的星期行参与，课表网格仍是原来的瞬时重排。
     val dayCount = rememberAnimatedDayCount(dayRange.size)
 
     // 每格内容：日期文字 + 是否今天高亮。
-    // 退场的格子必须渲染「退场前」的那份内容 —— 翻页瞬间 isCurrentWeek 就变 false，
-    // 拿现值重算会让「今天」的周六先闪回白色、再模糊淡出。
+    // 退场的格子必须渲染「退场前」的那份内容
     val cells = remember(dayRange, weekDates, currentDayOfWeek, isCurrentWeek, isReorganized) {
         dayRange.map { dayOfWeek ->
             val index = dayOfWeek - 1
@@ -270,19 +269,26 @@ private fun DayOfWeekRow(
             )
         }
     }
-    // 列表缩短时被去掉的那几天不能当场消失：留到过渡结束，让它们滑出去 + 淡出
+    // 列表缩短时被去掉的那几天不能当场消失：留到过渡结束，让它们滑出去 + 淡出。
+    // exitCells 的写入走 SideEffect（下一帧才生效），缩短那一帧先用算出的同一份尾巴
+    // 补画，否则会闪一帧「新内容按旧列数宽度排、右侧空一截」再弹回
     var exitCells by remember { mutableStateOf(emptyList<DayCellContent>()) }
     val previousCells = remember { arrayOfNulls<List<DayCellContent>>(1) }
     val previous = previousCells[0]
-    if (previous != null && previous.size > cells.size) {
-        val removed = previous.drop(cells.size)
-        SideEffect { exitCells = removed }
+    val removedCells =
+        if (previous != null && previous.size > cells.size) previous.drop(cells.size) else emptyList()
+    if (removedCells.isNotEmpty()) {
+        SideEffect { exitCells = removedCells }
     }
     SideEffect { previousCells[0] = cells }
     LaunchedEffect(dayCount.settleTick) {
         if (exitCells.isNotEmpty()) exitCells = emptyList()
     }
-    val drawnCells = if (exitCells.isEmpty()) cells else cells + exitCells
+    val drawnCells = when {
+        exitCells.isNotEmpty() -> cells + exitCells
+        removedCells.isNotEmpty() -> cells + removedCells
+        else -> cells
+    }
     // 只有末尾两格可能露一半（其余恒为全露出），淡入淡出图层只挂给它们
     val revealFrom = drawnCells.size - 2
     val revealBlurPx = with(LocalDensity.current) {
