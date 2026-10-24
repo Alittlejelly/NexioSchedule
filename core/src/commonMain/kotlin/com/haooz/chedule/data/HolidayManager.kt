@@ -591,8 +591,14 @@ object HolidayManager {
         return hit != null
     }
 
-    fun workSwap(date: LocalDate): HolidayEntry? =
-        entriesForDate(loadAllByYear(), date)
+    fun workSwap(date: LocalDate): HolidayEntry? = workSwap(date, loadAllByYear())
+
+    /**
+     * 同 [workSwap]，但假期数据由调用方供给：连查多次（如智能周末周六/周日各查一次）
+     * 共用一份 [loadAllByYear] 快照，避免重复全量解析（每次都是 SharedPreferences 全量快照 + 逐年反序列化）。
+     */
+    fun workSwap(date: LocalDate, entriesByYear: Map<Int, List<HolidayEntry>>): HolidayEntry? =
+        entriesForDate(entriesByYear, date)
             .firstOrNull { it.type == TYPE_WORKSWAP }
 
     fun mergeApiEntries(year: Int, apiEntries: List<HolidayEntry>): Boolean {

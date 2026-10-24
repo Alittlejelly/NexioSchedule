@@ -99,16 +99,20 @@ class SettingsViewModel : ViewModel() {
             }
         }
         val today = todayLocalDate()
+        // 周六/周日两次判定共用一份假期快照：loadAllByYear 无缓存，每次都是全量
+        // SharedPreferences 解析；不共享的话「两天都无课」最坏一次判定跑两遍。
+        // lazy 保证当天有直接课时整段不加载（本方法在主线程 remember 链路上）
+        val holidayEntriesByYear = lazy { HolidayManager.loadAllByYear() }
         val hasCourses = if (isBeforeHolidayExclusionActive(today)) {
             DayScheduleResolver
                 .resolveDaySchedule(today, repository).courses.isNotEmpty()
         } else {
-            repository.hasDisplayableCoursesOnDay(todayDayOfWeek, week)
+            repository.hasDisplayableCoursesOnDay(todayDayOfWeek, week, holidayEntriesByYear)
         }
         if (hasCourses) return false
         // 周六只是本周第六天：周日排了课就说明本周还没结束。
         // 只判「今天有没有课」的话，「周六空、周日满」会被当成一周已过完
-        if (todayDayOfWeek == 6 && repository.hasDisplayableCoursesOnDay(7, week)) return false
+        if (todayDayOfWeek == 6 && repository.hasDisplayableCoursesOnDay(7, week, holidayEntriesByYear)) return false
         return true
     }
 

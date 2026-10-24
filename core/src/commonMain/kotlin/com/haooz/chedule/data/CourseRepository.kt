@@ -958,20 +958,30 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 该课表日「有没有课可上」：当天有课，或已配置调休且映射日/周有课。
      * 智能周末跳周用：无课可上（含未配置 followWeekday）→ 跳下周。
      */
-    fun hasDisplayableCoursesOnDay(dayOfWeek: Int, week: Int): Boolean {
+    fun hasDisplayableCoursesOnDay(
+        dayOfWeek: Int,
+        week: Int,
+        // 一次判定连查几天（如周六+周日）时传入共享快照，避免每天各跑一遍 loadAllByYear；
+        // 懒加载：当天有直接课时整段不碰假期数据
+        holidayEntriesByYear: Lazy<Map<Int, List<HolidayEntry>>> = lazy { HolidayManager.loadAllByYear() },
+    ): Boolean {
         if (dayOfWeek !in 1..7) return false
         if (getAllCourses().any { it.dayOfWeek == dayOfWeek && it.isActiveInWeek(week) }) return true
-        val swap = workSwapEntryOnDay(dayOfWeek, week) ?: return false
+        val swap = workSwapEntryOnDay(dayOfWeek, week, holidayEntriesByYear) ?: return false
         val follow = resolveWorkSwapFollow(swap) ?: return false
         return getAllCourses().any {
             it.dayOfWeek == follow.weekday && it.isActiveInWeek(follow.week)
         }
     }
 
-    private fun workSwapEntryOnDay(dayOfWeek: Int, week: Int): HolidayEntry? {
+    private fun workSwapEntryOnDay(
+        dayOfWeek: Int,
+        week: Int,
+        holidayEntriesByYear: Lazy<Map<Int, List<HolidayEntry>>> = lazy { HolidayManager.loadAllByYear() },
+    ): HolidayEntry? {
         if (dayOfWeek !in 1..7) return null
         val date = runCatching { dateForTeachingWeekDay(week, dayOfWeek) }.getOrNull() ?: return null
-        return HolidayManager.workSwap(date)
+        return HolidayManager.workSwap(date, holidayEntriesByYear.value)
     }
 
     fun getShowNonCurrentWeek(): Boolean {
