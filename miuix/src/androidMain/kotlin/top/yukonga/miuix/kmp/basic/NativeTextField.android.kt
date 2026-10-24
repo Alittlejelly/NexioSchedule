@@ -1,12 +1,15 @@
 /** 原生 EditText 包装，使用系统原生长按菜单样式 —— [NativeTextField] 的 Android actual（默认值声明在 expect 侧）。 */
 package top.yukonga.miuix.kmp.basic
 
+import android.content.Context
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -75,8 +78,16 @@ actual fun NativeTextField(
                 }
 
                 imeOptions = EditorInfo.IME_ACTION_DONE
+                // 声明了 IME_ACTION_DONE 就必须自己收尾：不挂这个监听，"完成"按下去
+                // 系统什么都不做 —— 输入框既不失焦、键盘也不收。多行框留 Enter 换行，只对单行生效。
+                if (singleLine) {
+                    setOnEditorActionListener { view, _, _ ->
+                        view.finishEditing()
+                        true
+                    }
+                }
 
-                // 设置背景为透明，去掉默认内边距
+                // 背景为透明，去掉默认内边距
                 background = null
                 setPadding(0, 0, 0, 0)
 
@@ -102,4 +113,11 @@ actual fun NativeTextField(
         },
         modifier = modifier
     )
+}
+
+/** 单行输入框「完成」：失焦并收起键盘。 */
+private fun View.finishEditing() {
+    clearFocus()
+    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+        ?.hideSoftInputFromWindow(windowToken, 0)
 }

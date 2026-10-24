@@ -25,6 +25,7 @@ import com.haooz.chedule.ui.components.CardReveal
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,12 +43,16 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.showToast
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.WeekRangeSelectGrid
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.rememberImeDismiss
+import com.haooz.chedule.ui.utils.rememberOpenKey
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.backdrop.Backdrop
 import kotlinx.datetime.Clock
@@ -87,11 +92,16 @@ fun AddEditCourseBottomSheet(
     sectionTimes: Map<Int, String> = emptyMap(),
 ) {
     val hapticFeedback = LocalHapticFeedback.current
+    // 弹窗要关的时候先收键盘：键盘托在关闭动画上会残留到下一个界面。
+    // 输入框是 AndroidView 里的原生 EditText，Compose 侧清不掉它的焦点，交给平台实现。
+    val dismissKeyboard = rememberImeDismiss()
     val totalWeeks = 20
     val totalSections = 12
     // 二级弹窗在弹窗作用域外读不到 LocalSheetContentBackdrop，用非快照 holder 接收
     val sheetContentBackdropHolder = remember { BackdropHolder() }
     val isEditMode = editCourse != null
+    // 表单状态只随「打开」重建，不能随 show 重置：关闭时还有退出动画
+    val openKey = rememberOpenKey(show)
 
     val latestCourse = remember(courses) {
         courses.maxByOrNull { it.endWeek }
@@ -99,33 +109,40 @@ fun AddEditCourseBottomSheet(
     val defaultClassroom = latestCourse?.classroom ?: ""
     val defaultTeacher = latestCourse?.teacher ?: ""
 
-    var classroom by remember(show) { mutableStateOf(editCourse?.classroom ?: defaultClassroom) }
-    var teacher by remember(show) { mutableStateOf(editCourse?.teacher ?: defaultTeacher) }
-    var dayOfWeek by remember(show) { mutableIntStateOf(editCourse?.dayOfWeek ?: 0) }
-    var startSection by remember(show) {
+    // 地点 / 教师用 MutableState 直接交给输入行自己读：本组合作用域**不读**它们，
+    // 于是每敲一个字只重组那一行，不会把 4 张卡 + 20 格周次整片重来（见 SheetTextFieldRow）
+    val classroomState = remember(openKey) {
+        mutableStateOf(editCourse?.classroom ?: defaultClassroom)
+    }
+    val teacherState = remember(openKey) {
+        mutableStateOf(editCourse?.teacher ?: defaultTeacher)
+    }
+
+    var dayOfWeek by remember(openKey) { mutableIntStateOf(editCourse?.dayOfWeek ?: 0) }
+    var startSection by remember(openKey) {
         mutableIntStateOf(
             editCourse?.startSection ?: latestCourse?.startSection ?: 0
         )
     }
-    var endSection by remember(show) {
+    var endSection by remember(openKey) {
         mutableIntStateOf(
             editCourse?.endSection ?: latestCourse?.endSection ?: 0
         )
     }
 
-    var showSectionDialog by remember(show) { mutableStateOf(false) }
-    var tempStartSection by remember(show) { mutableIntStateOf(if (startSection > 0) startSection else 1) }
-    var tempEndSection by remember(show) { mutableIntStateOf(if (endSection > 0) endSection else 1) }
+    var showSectionDialog by remember(openKey) { mutableStateOf(false) }
+    var tempStartSection by remember(openKey) { mutableIntStateOf(if (startSection > 0) startSection else 1) }
+    var tempEndSection by remember(openKey) { mutableIntStateOf(if (endSection > 0) endSection else 1) }
 
-    var isCustomTime by remember(show) { mutableStateOf(editCourse?.isCustomTime ?: false) }
-    var customStartTime by remember(show) { mutableStateOf(editCourse?.customStartTime ?: "") }
-    var customEndTime by remember(show) { mutableStateOf(editCourse?.customEndTime ?: "") }
-    var showTimeDialog by remember(show) { mutableStateOf(false) }
-    var timeError by remember(show) { mutableStateOf(false) }
-    var tempStartHour by remember(show) { mutableIntStateOf(parseTimeHour(editCourse?.customStartTime)) }
-    var tempStartMinute by remember(show) { mutableIntStateOf(parseTimeMinute(editCourse?.customStartTime)) }
-    var tempEndHour by remember(show) { mutableIntStateOf(parseTimeHour(editCourse?.customEndTime)) }
-    var tempEndMinute by remember(show) { mutableIntStateOf(parseTimeMinute(editCourse?.customEndTime)) }
+    var isCustomTime by remember(openKey) { mutableStateOf(editCourse?.isCustomTime ?: false) }
+    var customStartTime by remember(openKey) { mutableStateOf(editCourse?.customStartTime ?: "") }
+    var customEndTime by remember(openKey) { mutableStateOf(editCourse?.customEndTime ?: "") }
+    var showTimeDialog by remember(openKey) { mutableStateOf(false) }
+    var timeError by remember(openKey) { mutableStateOf(false) }
+    var tempStartHour by remember(openKey) { mutableIntStateOf(parseTimeHour(editCourse?.customStartTime)) }
+    var tempStartMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(editCourse?.customStartTime)) }
+    var tempEndHour by remember(openKey) { mutableIntStateOf(parseTimeHour(editCourse?.customEndTime)) }
+    var tempEndMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(editCourse?.customEndTime)) }
 
     // 勾选自定义时间时自动从节次时间预填
     LaunchedEffect(isCustomTime) {
@@ -156,7 +173,7 @@ fun AddEditCourseBottomSheet(
         )
     }
 
-    val selectedWeeks = remember(show) {
+    val selectedWeeks = remember(openKey) {
         mutableStateSetOf<Int>().apply {
             if (editCourse != null) {
                 if (editCourse.selectedWeeks.isNotEmpty()) {
@@ -196,6 +213,14 @@ fun AddEditCourseBottomSheet(
     val isDark = isAppDarkTheme()
     val isTablet = isTabletWidth()
 
+    // 4 张卡共用一套配色，别各建一次。卡底色莫奈下取 surfaceContainerHigh（比 sheet 底亮一档，
+    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码。
+    val sheetCardColors = CardDefaults.defaultColors(
+        color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+        else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
+        contentColor = MiuixTheme.colorScheme.onSurface
+    )
+
     val hasOccupiedOddWeeks =
         remember(selectableOddWeeks, oddWeeks) { selectableOddWeeks.size != oddWeeks.size }
     val hasOccupiedEvenWeeks =
@@ -224,8 +249,8 @@ fun AddEditCourseBottomSheet(
             val course = Course(
                 id = editCourse?.id ?: randomUuidV4(),
                 name = editCourse?.name ?: courses.firstOrNull()?.name ?: "",
-                classroom = classroom.trim(),
-                teacher = teacher.trim(),
+                classroom = classroomState.value.trim(),
+                teacher = teacherState.value.trim(),
                 dayOfWeek = dayOfWeek,
                 startSection = startSection,
                 endSection = endSection,
@@ -242,8 +267,13 @@ fun AddEditCourseBottomSheet(
                 // 改用 kotlinx-datetime —— 返回值同为 epoch millis，与 :core 的 Course.lastModified 口径一致
                 lastModified = Clock.System.now().toEpochMilliseconds()
             )
+            // 先收键盘再回调：onConfirm 会立刻触发关闭/跳转，晚一步键盘就托在动画上
+            dismissKeyboard()
             onConfirm(course)
             onDismissRequest()
+        } else {
+            // 一节课都没选就点确定：以前是静默不动（看起来像点了没反应）
+            showToast("请先选择上课周次")
         }
     }
 
@@ -251,6 +281,7 @@ fun AddEditCourseBottomSheet(
         val material = LocalSheetTopBarMaterial.current
         LiquidTopBarButton(
             onClick = {
+                dismissKeyboard()
                 onDismissRequest()
             },
             backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
@@ -298,79 +329,29 @@ fun AddEditCourseBottomSheet(
             CardReveal(index = 0) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.defaultColors(
-                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
-                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
-                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
-                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
-                    contentColor = MiuixTheme.colorScheme.onSurface
-                ),
+                colors = sheetCardColors,
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 17.dp, bottom = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "地点",
-                        modifier = Modifier.weight(1f),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface
-                    )
-                    NativeTextField(
-                        value = classroom,
-                        onValueChange = { classroom = it },
-                        modifier = Modifier.fillMaxWidth(0.65f),
-                        hint = "非必填",
-                        singleLine = true,
-                        textAlign = TextAlign.End,
-                        textStyle = TextStyle(
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    )
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 17.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "教师",
-                        modifier = Modifier.weight(1f),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface
-                    )
-                    NativeTextField(
-                        value = teacher,
-                        onValueChange = { teacher = it },
-                        modifier = Modifier.fillMaxWidth(0.65f),
-                        hint = "非必填",
-                        singleLine = true,
-                        textAlign = TextAlign.End,
-                        textStyle = TextStyle(
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    )
-                }
+                SheetTextFieldRow(
+                    label = "地点",
+                    state = classroomState,
+                    hint = "非必填",
+                    topPadding = 17.dp,
+                    bottomPadding = 14.dp,
+                )
+                SheetTextFieldRow(
+                    label = "教师",
+                    state = teacherState,
+                    hint = "非必填",
+                    topPadding = 14.dp,
+                    bottomPadding = 17.dp,
+                )
             }
             }
 
             CardReveal(index = 1) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.defaultColors(
-                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
-                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
-                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
-                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
-                    contentColor = MiuixTheme.colorScheme.onSurface
-                ),
+                colors = sheetCardColors,
             ) {
                 Column(
                     modifier = Modifier
@@ -449,13 +430,7 @@ fun AddEditCourseBottomSheet(
             CardReveal(index = 2) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.defaultColors(
-                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
-                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
-                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
-                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
-                    contentColor = MiuixTheme.colorScheme.onSurface
-                ),
+                colors = sheetCardColors,
             ) {
                 CardExpand(visible = isCustomTime) {
                     ArrowPreference(
@@ -507,13 +482,7 @@ fun AddEditCourseBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .alpha(if (noDaySelected) 0.5f else 1f),
-                colors = CardDefaults.defaultColors(
-                    // 卡底色：莫奈取色下跟随 surfaceContainerHigh（比 sheet 底亮一档的角色，
-                    // 与 DayColumn 待放格同一套）；非莫奈保持原硬编码
-                    color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
-                    else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
-                    contentColor = MiuixTheme.colorScheme.onSurface
-                ),
+                colors = sheetCardColors,
             ) {
                 Column(
                     modifier = Modifier
@@ -841,6 +810,45 @@ fun AddEditCourseBottomSheet(
     }
 }
 
+
+/**
+ * 一行「标签 + 原生输入框」。
+ *
+ * 文本状态由 [state] 持有、**只在这里读**：父级组合期不订阅它，敲字只重组这一行，
+ * 不会带动整张弹窗（4 张卡 + 20 格周次）一起重来。
+ */
+@Composable
+private fun SheetTextFieldRow(
+    label: String,
+    state: MutableState<String>,
+    hint: String,
+    topPadding: Dp,
+    bottomPadding: Dp,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = topPadding, bottom = bottomPadding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onSurface
+        )
+        NativeTextField(
+            value = state.value,
+            onValueChange = { state.value = it },
+            modifier = Modifier.fillMaxWidth(0.65f),
+            hint = hint,
+            singleLine = true,
+            textAlign = TextAlign.End,
+            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        )
+    }
+}
 
 /** 时间段 时:分 双滚轮选择器 */
 @Composable

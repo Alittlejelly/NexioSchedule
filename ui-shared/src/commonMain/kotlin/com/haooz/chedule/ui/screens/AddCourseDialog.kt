@@ -60,6 +60,8 @@ import com.haooz.chedule.ui.components.WeekRangeSelectGrid
 import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.utils.rememberImeDismiss
+import com.haooz.chedule.ui.utils.rememberOpenKey
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.kyant.backdrop.Backdrop
@@ -163,7 +165,15 @@ fun AddCourseDialog(
     sectionTimes: Map<Int, String> = emptyMap(),
 ) {
     val isEdit = course != null
+    // 表单状态只随「打开」重建，不能随 show 重置：关闭时还有退出动画
+    val openKey = rememberOpenKey(show)
     val hapticFeedback = LocalHapticFeedback.current
+    // 关弹窗一律先收键盘：三个输入框都是原生 EditText，键盘不会跟着弹窗一起走
+    val dismissKeyboard = rememberImeDismiss()
+    val dismissSheet: () -> Unit = {
+        dismissKeyboard()
+        onDismiss()
+    }
     val isDark = isAppDarkTheme()
     // 嵌套弹窗在 root popup host，强制跟随应用主题而非壁纸主题
     val appDialogDark = rememberAppSettingDark()
@@ -174,17 +184,17 @@ fun AddCourseDialog(
     // 卡片入场错开交给 CardReveal 的 index，页面不再自己维护 reveal 步进。
 
     // 父级组合期不解引用 form 字段，读取下沉到各卡片内部
-    val form = remember(show) {
+    val form = remember(openKey) {
         AddCourseFormState(course, selectedDay, defaultStartSection, defaultEndSection, defaultWeeks)
     }
 
     // 自定义上课时间弹窗暂存值（只在时间弹窗内被读取）
-    var showTimeDialog by remember(show) { mutableStateOf(false) }
-    var timeError by remember(show) { mutableStateOf(false) }
-    var tempStartHour by remember(show) { mutableIntStateOf(parseTimeHour(course?.customStartTime)) }
-    var tempStartMinute by remember(show) { mutableIntStateOf(parseTimeMinute(course?.customStartTime)) }
-    var tempEndHour by remember(show) { mutableIntStateOf(parseTimeHour(course?.customEndTime)) }
-    var tempEndMinute by remember(show) { mutableIntStateOf(parseTimeMinute(course?.customEndTime)) }
+    var showTimeDialog by remember(openKey) { mutableStateOf(false) }
+    var timeError by remember(openKey) { mutableStateOf(false) }
+    var tempStartHour by remember(openKey) { mutableIntStateOf(parseTimeHour(course?.customStartTime)) }
+    var tempStartMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(course?.customStartTime)) }
+    var tempEndHour by remember(openKey) { mutableIntStateOf(parseTimeHour(course?.customEndTime)) }
+    var tempEndMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(course?.customEndTime)) }
 
     // 勾选自定义时间时自动从节次时间预填
     LaunchedEffect(form.isCustomTime) {
@@ -246,8 +256,8 @@ fun AddCourseDialog(
     var showSectionDialog by remember { mutableStateOf(false) }
     var showColorDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var tempStartSection by remember(show) { mutableIntStateOf(defaultStartSection) }
-    var tempEndSection by remember(show) { mutableIntStateOf(defaultEndSection) }
+    var tempStartSection by remember(openKey) { mutableIntStateOf(defaultStartSection) }
+    var tempEndSection by remember(openKey) { mutableIntStateOf(defaultEndSection) }
     // 初值无关紧要：每次打开调色板前都会用当前课程色重新赋值
     var customColor by remember { mutableStateOf(Color.Transparent) }
 
@@ -294,6 +304,8 @@ fun AddCourseDialog(
                 customEndTime = if (form.isCustomTime) form.customEndTime else null
             )
 
+            // 先收键盘再回调：onConfirm 之后弹窗就开始关闭动画，晚一步键盘会托在动画上
+            dismissKeyboard()
             onConfirm(newCourse)
             onDismiss()
         }
@@ -306,14 +318,14 @@ fun AddCourseDialog(
             show = show,
             title = if (isEdit) "编辑课程" else "添加课程",
             dimBackground = true,
-            onDismissRequest = onDismiss,
+            onDismissRequest = dismissSheet,
             liquidGlassBackdrop = null,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
             startAction = {
                 val material = LocalSheetTopBarMaterial.current
                 LiquidTopBarButton(
                     onClick = {
-                        onDismiss()
+                        dismissSheet()
                     },
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Normal.Close,
@@ -377,13 +389,13 @@ fun AddCourseDialog(
             dimBackground = true,
             fillMaxHeight = true,
             sheetOffsetDp = statusBarsPadding + 5.dp,
-            onDismissRequest = onDismiss,
+            onDismissRequest = dismissSheet,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
             startAction = {
                 val material = LocalSheetTopBarMaterial.current
                 LiquidTopBarButton(
                     onClick = {
-                        onDismiss()
+                        dismissSheet()
                     },
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Normal.Close,
@@ -470,7 +482,7 @@ fun AddCourseDialog(
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             course?.id?.let { onDelete(it) }
                             showDeleteDialog = false
-                            onDismiss()
+                            dismissSheet()
                         },
                         textColor = Color(0xFFF44336),
                         modifier = Modifier.weight(1f)
