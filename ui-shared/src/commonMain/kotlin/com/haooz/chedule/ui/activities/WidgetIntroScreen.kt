@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -38,6 +41,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toIntSize
 import com.haooz.chedule.data.CourseRepository
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
@@ -58,9 +62,25 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import org.jetbrains.compose.resources.painterResource
 import com.haooz.chedule.uishared.resources.Res
-import com.haooz.chedule.uishared.resources.ic_miuix_logo
 import com.haooz.chedule.uishared.resources.ic_widget_clock
 import com.haooz.chedule.uishared.resources.ic_widget_location
+import kotlin.math.abs
+import kotlin.math.min
+
+/** 4×2 组件预览统一宽高比，锁定后不随设备屏宽变化 */
+private const val WidgetPreviewRatio4x2 = 2.15f
+
+/** 预览卡上下的内边距（dp） */
+private val WidgetPreviewVerticalPadding = 12.dp
+
+/** 翻转卡最大模糊半径（dp），翻转进度越过起始阈值后 0 → 此值线性渐入 */
+private val WidgetPreviewFlipBlurRadius = 8.dp
+
+/** 模糊起始阈值：翻转进度（0–1）小于此值完全清晰，越过后才开始加模糊 */
+private const val WidgetPreviewBlurStartProgress = 0.12f
+
+/** 模糊出血（dp）：RenderEffect 会把图层强制裁到自身边界 */
+private val WidgetPreviewBlurBleed = 8.dp
 
 /**
  * @param onRequestWidgetRefresh 小组件边距改完后通知宿主刷新已添加的小组件。
@@ -96,7 +116,6 @@ fun WidgetIntroScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = tabletHorizontalPadding)
                     .overScrollVertical()
                     .collapsibleTopInset(scrollBehavior)
                     .then(
@@ -105,21 +124,55 @@ fun WidgetIntroScreen(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + (if (isTablet) 24.dp else 12.dp)))
+                Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + (if (isTablet) 12.dp else 0.dp)))
 
-                val pagerState = rememberPagerState(pageCount = { 2 })
+                // 今明课程是 Android 桌面专属组件，iOS 端不展示该预览页
+                val pageCount = if (isIosPlatform) 2 else 3
+                val pagerState = rememberPagerState(pageCount = { pageCount })
 
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    beyondViewportPageCount = 1
                 ) { page ->
-                    when (page) {
-                        0 -> WidgetPreviewToday()
-                        1 -> WidgetPreviewSmall2x2()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = tabletHorizontalPadding - WidgetPreviewBlurBleed,
+                                vertical = WidgetPreviewVerticalPadding - WidgetPreviewBlurBleed
+                            )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    val off = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                                    val absOff = min(abs(off), 1f)
+                                    cameraDistance = 48f
+                                    rotationY = -off * 56f
+                                    val scale = 1f - 0.2f * absOff
+                                    scaleX = scale
+                                    scaleY = scale
+                                    val blurProgress = ((absOff - WidgetPreviewBlurStartProgress) /
+                                        (1f - WidgetPreviewBlurStartProgress)).coerceIn(0f, 1f)
+                                    renderEffect = if (blurProgress > 0.01f) {
+                                        val blur = blurProgress * WidgetPreviewFlipBlurRadius.toPx()
+                                        BlurEffect(blur, blur)
+                                    } else null
+                                }
+                                // 出血必须在 graphicsLayer 内侧：扩大离屏缓冲的采样范围，
+                                // 外层槽内边距已等量减回，静止布局不变
+                                .padding(WidgetPreviewBlurBleed)
+                        ) {
+                            when (page) {
+                                0 -> WidgetPreviewToday()
+                                1 -> if (isIosPlatform) WidgetPreviewSmall2x2() else WidgetPreviewTodayTomorrow()
+                                2 -> WidgetPreviewSmall2x2()
+                            }
+                        }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
 
                 // 页面指示器
                 Row(
@@ -127,7 +180,7 @@ fun WidgetIntroScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    repeat(2) { index ->
+                    repeat(pageCount) { index ->
                         val isSelected = pagerState.currentPage == index
                         Box(
                             modifier = Modifier
@@ -147,7 +200,7 @@ fun WidgetIntroScreen(
                 Spacer(modifier = Modifier.height(48.dp))
 
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = tabletHorizontalPadding + 18.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     FeatureItem("今日课程一目了然", "桌面显示当天课程、时间、地点和教师信息")
@@ -164,16 +217,18 @@ fun WidgetIntroScreen(
                 if (!isIosPlatform) {
                     val repository = remember { CourseRepository() }
                     var paddingMode by remember { mutableIntStateOf(repository.getWidgetPaddingMode()) }
-                    WidgetPaddingSelector(
-                        selectedMode = paddingMode,
-                        liquidGlassBackdrop = liquidGlassBackdrop,
-                        onSelect = { mode ->
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                            paddingMode = mode
-                            repository.setWidgetPaddingMode(mode)
-                            onRequestWidgetRefresh()
-                        }
-                    )
+                    Box(modifier = Modifier.padding(horizontal = tabletHorizontalPadding)) {
+                        WidgetPaddingSelector(
+                            selectedMode = paddingMode,
+                            liquidGlassBackdrop = liquidGlassBackdrop,
+                            onSelect = { mode ->
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                paddingMode = mode
+                                repository.setWidgetPaddingMode(mode)
+                                onRequestWidgetRefresh()
+                            }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(120.dp))
@@ -199,12 +254,12 @@ private fun WidgetPreviewToday() {
 
     Card(
         cornerRadius = 22.dp,
-        modifier = Modifier.fillMaxWidth().border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
         insideMargin = PaddingValues(0.dp)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .background(bgColor)
                 .padding(horizontal = 11.dp, vertical = 9.dp)
         ) {
@@ -212,20 +267,13 @@ private fun WidgetPreviewToday() {
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(Res.drawable.ic_miuix_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp).padding(end = 6.dp).graphicsLayer(scaleY = -1f),
-                    alpha = 0.8f
-                )
-                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = titleColor, fontFamily = FontFamily.SansSerif)
-                Spacer(modifier = Modifier.weight(1f))
-                Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = titleColor, fontFamily = FontFamily.SansSerif)
+                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
+                Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
             }
 
-            CourseCardPreview("08:00", "09:35", "高等数学", "第1-2节｜A301｜张老师", ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor)
+            CourseCardPreview("08:00", "09:35", "高等数学", "第1-2节｜A301｜张老师", ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
             Spacer(modifier = Modifier.height(8.dp))
-            CourseCardPreview("14:00", "15:35", "大学英语", "第5-6节｜B205｜李老师", ComposeColor(0xFF2196F3), "25分钟结束", ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor)
+            CourseCardPreview("14:00", "15:35", "大学英语", "第5-6节｜B205｜李老师", ComposeColor(0xFF2196F3), "25分钟结束", ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
             Spacer(modifier = Modifier.height(2.dp))
         }
     }
@@ -241,14 +289,15 @@ private fun WidgetPreviewSmall2x2() {
     val infoColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
     val remainingColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
 
+    // 外层与 4×2 预览同高，2×2 正方形 fillMaxHeight 居中，保证三页 pager 高度一致
     Box(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .width(166.dp)
-                .height(166.dp)
+                .fillMaxHeight()
+                .aspectRatio(1f)
                 .border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
                 .background(bgColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
         ) {
@@ -263,15 +312,6 @@ private fun WidgetPreviewSmall2x2() {
                         .padding(start = 4.dp, end = 4.dp, bottom = 4.dp, top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(Res.drawable.ic_miuix_logo),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .graphicsLayer(scaleY = -1f),
-                        alpha = 0.8f
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     // Title: 14sp bold
                     Text("周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
                     Spacer(modifier = Modifier.weight(1f))
@@ -363,15 +403,102 @@ private fun WidgetPreviewSmall2x2() {
 }
 
 @Composable
+private fun WidgetPreviewTodayTomorrow() {
+    val isDark = isAppDarkTheme()
+    val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor(0xFFF7F7F7)
+    val cardBg = if (isDark) ComposeColor(0xFF262626) else ComposeColor.White
+    val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
+    val titleColor = if (isDark) ComposeColor(0x77FFFFFF) else ComposeColor(0x77000000)
+    val nameColor = if (isDark) ComposeColor(0xFFEEEEEE) else ComposeColor(0xFF1A1A1A)
+    val timeColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
+    val infoColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
+
+    Card(
+        cornerRadius = 22.dp,
+        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bgColor)
+                .padding(start = 9.dp, end = 9.dp, top = 9.dp, bottom = 9.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 与真实组件一致：两个各占一半的表头槽位，明天槽位左移 4dp 起点
+                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f))
+                Text("明天 / 周六", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 4.dp))
+            }
+
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    TodayTomorrowCardPreview("高等数学", "08:00-09:35", "A301｜张老师", ComposeColor(0xFF4CAF50), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview("大学英语", "14:00-15:35", "B205｜李老师", ComposeColor(0xFF2196F3), ComposeColor(0x1A2196F3), nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    TodayTomorrowCardPreview("线性代数", "08:00-09:35", "C102｜王老师", ComposeColor(0xFFFF9800), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview("大学物理", "10:00-11:35", "D203｜赵老师", ComposeColor(0xFF9C27B0), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayTomorrowCardPreview(
+    name: String, time: String, info: String,
+    barColor: ComposeColor, cardBg: ComposeColor,
+    nameColor: ComposeColor, timeColor: ComposeColor, infoColor: ComposeColor,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        cornerRadius = 14.dp,
+        modifier = modifier,
+        insideMargin = PaddingValues(0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(cardBg)
+                .padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(vertical = 6.dp)
+                    .width(4.dp)
+                    .background(barColor, com.kyant.capsule.ContinuousRoundedRectangle(2.dp))
+            )
+            Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
+                Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nameColor, maxLines = 1)
+                Text(time, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeColor, fontFamily = FontFamily.SansSerif, maxLines = 1)
+                Text(info, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = infoColor, fontFamily = FontFamily.SansSerif, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
 private fun CourseCardPreview(
     startTime: String, endTime: String, name: String, info: String,
     barColor: ComposeColor, remaining: String?,
     cardBg: ComposeColor, nameColor: ComposeColor, infoColor: ComposeColor,
-    timeStartColor: ComposeColor, timeEndColor: ComposeColor, nowColor: ComposeColor
+    timeStartColor: ComposeColor, timeEndColor: ComposeColor, nowColor: ComposeColor,
+    modifier: Modifier = Modifier
 ) {
     Card(
         cornerRadius = 12.dp,
-        modifier = Modifier.fillMaxWidth().height(54.dp),
+        modifier = modifier,
         insideMargin = PaddingValues(0.dp)
     ) {
         Row(
