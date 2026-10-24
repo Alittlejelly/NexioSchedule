@@ -7,8 +7,8 @@ data class ChangelogEntry(
 )
 val changelogData = listOf(
     ChangelogEntry(
-        version = "v1.6.7-1017",
-        date = "2026-10-17",
+        version = "v1.6.7-1025",
+        date = "2026-10-25",
         changes = listOf(
             "新增自定义时间课程支持长按编辑与删除",
             "新增 WebDAV 支持自定义备份路径"

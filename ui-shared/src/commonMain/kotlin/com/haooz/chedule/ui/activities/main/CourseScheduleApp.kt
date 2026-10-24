@@ -15,12 +15,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -148,8 +152,16 @@ fun CourseScheduleApp(
     val shiftViewModel: ShiftViewModel = shiftViewModel()
     val defaultHomepage by settingsViewModel.defaultHomepage.collectAsState()
 
-    // 状态与交互逻辑全在 CourseScheduleAppState；这里只负责注入上下文、跑组合副作用、画 UI。
-    // `with(state)` 让下面几千行 UI 代码的变量名一个都不用改（成员解析到 state 上）。
+    // 状态与交互逻辑全在 CourseScheduleAppState；这里只负责注入上下文、跑组合副作用、画 UI
+    // 底栏选中 tab 必须和主 pager 一样能跨进程回收恢复
+    val selectedTabState = rememberSaveable(
+        saver = Saver<MutableIntState, Int>(
+            save = { it.intValue },
+            restore = { mutableIntStateOf(it) },
+        )
+    ) {
+        mutableIntStateOf(if (defaultHomepage == "今日") 0 else 1)
+    }
     val state = remember {
         CourseScheduleAppState().apply {
             this.viewModel = viewModel
@@ -157,7 +169,7 @@ fun CourseScheduleApp(
             this.settingsViewModel = settingsViewModel
             this.shiftViewModel = shiftViewModel
             // 首屏默认 tab：与原来的 remember { mutableIntStateOf(...) } 初值一致
-            selectedTab = if (defaultHomepage == "今日") 0 else 1
+            attachSelectedTabState(selectedTabState)
         }
     }
     // 宿主参数每次重组同步（值变化极罕见，但保持与原实现一致）
@@ -505,6 +517,15 @@ fun CourseScheduleApp(
             initialPage = selectedTab.coerceIn(0, mainPagerPageCount - 1),
             pageCount = { mainPagerPageCount }
         )
+
+        LaunchedEffect(mainPagerPageCount) {
+            if (shiftModeInitialized && isShiftMode) return@LaunchedEffect
+            val lastIndex = (mainPagerPageCount - 1).coerceAtLeast(0)
+            if (mainPagerState.currentPage > lastIndex) {
+                mainPagerState.scrollToPage(lastIndex)
+                selectedTab = lastIndex
+            }
+        }
 
         // 当前可见页背后是不是壁纸，决定高光亮度（见 InteractiveHighlight 的 peak）。
         // 必须在组合期算再交给 SideEffect：只在 SideEffect 里读 currentPage 不会订阅，切页不更新。

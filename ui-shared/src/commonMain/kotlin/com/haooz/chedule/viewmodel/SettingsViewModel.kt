@@ -80,6 +80,7 @@ class SettingsViewModel : ViewModel() {
     /**
      * 智能周末：当前日是否应自动跳到下周课表。
      * 当天有课，或已配置调休且映射日/周有课 → 停留本周；
+     * 周六还要看周日 —— 周日有课说明本周没走完，同样停留本周；
      * 无课可上（含 API 导入未配置 followWeekday、映射日无课）→ 跳下周。
      */
     fun shouldAdvanceToNextWeek(todayDayOfWeek: Int, week: Int): Boolean {
@@ -104,7 +105,11 @@ class SettingsViewModel : ViewModel() {
         } else {
             repository.hasDisplayableCoursesOnDay(todayDayOfWeek, week)
         }
-        return !hasCourses
+        if (hasCourses) return false
+        // 周六只是本周第六天：周日排了课就说明本周还没结束。
+        // 只判「今天有没有课」的话，「周六空、周日满」会被当成一周已过完
+        if (todayDayOfWeek == 6 && repository.hasDisplayableCoursesOnDay(7, week)) return false
+        return true
     }
 
     private fun isBeforeHolidayExclusionActive(date: LocalDate): Boolean {

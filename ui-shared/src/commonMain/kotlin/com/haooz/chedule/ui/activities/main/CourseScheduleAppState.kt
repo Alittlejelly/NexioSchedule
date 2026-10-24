@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -216,7 +217,21 @@ class CourseScheduleAppState {
     var showUpdateSettings: Boolean = true
 
     // ── 4. 界面状态与交互逻辑（原主函数体）──────────────────────────────────
-    var selectedTab by mutableIntStateOf(1)
+    /**
+     * 当前选中的主 tab。值存在 [selectedTabState] 里 —— 宿主注入的是**可保存**的
+     * `rememberSaveable` 状态，进程被系统回收后重建时能跟着主 pager 一起恢复。
+     */
+    private var selectedTabState: MutableIntState = mutableIntStateOf(1)
+    var selectedTab: Int
+        get() = selectedTabState.intValue
+        set(value) {
+            selectedTabState.intValue = value
+        }
+
+    fun attachSelectedTabState(state: MutableIntState) {
+        selectedTabState = state
+    }
+
     var showShiftLoading by mutableStateOf(false)
     var shiftLoadingActive by mutableStateOf(false)
     var isExitingShift by mutableStateOf(false)

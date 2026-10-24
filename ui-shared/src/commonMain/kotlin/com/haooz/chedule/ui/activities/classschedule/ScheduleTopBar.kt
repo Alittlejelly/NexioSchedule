@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,12 +17,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +46,7 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import kotlinx.datetime.LocalDate
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.isRenderEffectSupported
 import com.haooz.chedule.ui.components.text.miuix.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.FastForward
@@ -53,6 +61,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
 private val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+/** 星期行一格的内容：日期文字 + 是否今天高亮（都不参与列数动画）。 */
+private data class DayCellContent(
+    val dayOfWeek: Int,
+    val dateText: String?,
+    val isToday: Boolean,
+)
 
 // 不用 Scaffold paddingValues：随当前 tab 顶栏高度变化，切页时内容位移，
 // 叠加 SharedBlur 层 draw 阶段写入滞后一帧，表现为顶部慢一帧就位
@@ -236,6 +251,43 @@ private fun DayOfWeekRow(
     contentEndPadding: Dp = 0.dp,
     modifier: Modifier = Modifier
 ) {
+    // 列数 5↔6↔7 过渡：整条文字带按动画中的列数摊开/收拢（见 AnimatedDayCount）。
+    // 只有这一条 40dp 的星期行参与，课表网格仍是原来的瞬时重排。
+    val dayCount = rememberAnimatedDayCount(dayRange.size)
+
+    // 每格内容：日期文字 + 是否今天高亮。
+    // 退场的格子必须渲染「退场前」的那份内容 —— 翻页瞬间 isCurrentWeek 就变 false，
+    // 拿现值重算会让「今天」的周六先闪回白色、再模糊淡出。
+    val cells = remember(dayRange, weekDates, currentDayOfWeek, isCurrentWeek, isReorganized) {
+        dayRange.map { dayOfWeek ->
+            val index = dayOfWeek - 1
+            val date = weekDates.getOrNull(index)
+            DayCellContent(
+                dayOfWeek = dayOfWeek,
+                dateText = date?.formatMonthDay(),
+                isToday = dayOfWeek == currentDayOfWeek && isCurrentWeek &&
+                    (!isReorganized || date == todayLocalDate()),
+            )
+        }
+    }
+    // 列表缩短时被去掉的那几天不能当场消失：留到过渡结束，让它们滑出去 + 淡出
+    var exitCells by remember { mutableStateOf(emptyList<DayCellContent>()) }
+    val previousCells = remember { arrayOfNulls<List<DayCellContent>>(1) }
+    val previous = previousCells[0]
+    if (previous != null && previous.size > cells.size) {
+        val removed = previous.drop(cells.size)
+        SideEffect { exitCells = removed }
+    }
+    SideEffect { previousCells[0] = cells }
+    LaunchedEffect(dayCount.settleTick) {
+        if (exitCells.isNotEmpty()) exitCells = emptyList()
+    }
+    val drawnCells = if (exitCells.isEmpty()) cells else cells + exitCells
+    // 只有末尾两格可能露一半（其余恒为全露出），淡入淡出图层只挂给它们
+    val revealFrom = drawnCells.size - 2
+    val revealBlurPx = with(LocalDensity.current) {
+        if (isRenderEffectSupported()) DAY_CELL_REVEAL_BLUR_DP.dp.toPx() else 0f
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -251,21 +303,32 @@ private fun DayOfWeekRow(
                 }
             )
     ) {
-        Spacer(modifier = Modifier.width(if (isTablet) 56.dp else 36.dp))
-        dayRange.forEach { dayOfWeek ->
-            val index = dayOfWeek - 1
-            val name = DAY_NAMES[index]
-            val isToday = dayOfWeek == currentDayOfWeek && isCurrentWeek &&
-                (!isReorganized || weekDates.getOrNull(index) == todayLocalDate())
+        Spacer(modifier = Modifier.width(scheduleSectionColumnWidth(isTablet)))
+        DayColumnsLayout(
+            count = { dayCount.value.value },
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        ) {
+            drawnCells.forEachIndexed { cellIndex, cell ->
+                val name = DAY_NAMES[cell.dayOfWeek - 1]
+                val isToday = cell.isToday
+                val dateText = cell.dateText
 
-            val todayHighlightColor = scheduleAccentColor()
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val todayHighlightColor = scheduleAccentColor()
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .then(
+                            if (cellIndex >= revealFrom) {
+                                Modifier.dayCellReveal(dayCount, cellIndex, revealBlurPx)
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
                     Text(
                         text = name,
                         style = MiuixTheme.textStyles.footnote1.copy(
@@ -275,10 +338,7 @@ private fun DayOfWeekRow(
                         else MiuixTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
                     )
-                    if (weekDates.isNotEmpty() && index < weekDates.size) {
-                        val dateText = remember(weekDates[index]) {
-                            weekDates[index].formatMonthDay()
-                        }
+                    if (dateText != null) {
                         Text(
                             text = dateText,
                             style = MiuixTheme.textStyles.footnote2,
