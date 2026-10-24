@@ -129,7 +129,9 @@ fun DocumentPageScaffold(
                 // 采样层只包内容；顶栏玻璃按钮放在层外，避免循环采样
                 Box(
                     modifier = Modifier.fillMaxSize().then(
-                        Modifier.layerBackdrop(
+                        // 无材质档：玻璃全关，采样录屏层不挂
+                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                        else Modifier.layerBackdrop(
                             liquidGlassBackdrop,
                             recordKey = recordKey,
                             mustRecord = docMustRecord

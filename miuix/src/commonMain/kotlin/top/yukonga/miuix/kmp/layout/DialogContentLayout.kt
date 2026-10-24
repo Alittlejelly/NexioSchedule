@@ -67,6 +67,7 @@ import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.anim.DecelerateEasing
 import top.yukonga.miuix.kmp.anim.folmeSpring
@@ -352,6 +353,13 @@ internal fun DialogContent(
         if (isLargeScreen) 0f else with(density) { bottomOutsideMargin.toPx() }
     }
 
+    // 液态玻璃：实时折射 + 档位模糊（通透玻璃档更薄）。能力探测用 backdrop 的
+    // isRenderEffectSupported()（跨平台，含 skiko）；无材质档整体关玻璃，
+    // 关掉后底色走半透明而非实心——模糊不可用也不降级纯色。
+    val glassActive = liquidGlassBackdrop != null &&
+        isRenderEffectSupported() &&
+        !LocalMaterialNoneEnabled.current
+
     val contentModifier = modifier
         .widthIn(max = DialogDefaults.MaxWidth)
         .heightIn(max = if (isLargeScreen) windowHeight * (2f / 3f) else Dp.Unspecified)
@@ -379,9 +387,7 @@ internal fun DialogContent(
         }
         .clip(ContinuousRoundedRectangle(bottomCornerRadius))
         .then(
-            // 液态玻璃：实时折射 + 档位模糊（通透玻璃档更薄）。原判断是 Build.VERSION.SDK_INT >= 33，
-            // 改用 backdrop 的能力探测 isRenderEffectSupported()（跨平台，含 skiko）。
-            if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
+            if (glassActive) {
                 val dialogBlur = LocalGlassDialogBlurDp.current
                 val chromeLens = LocalChromeLensEnabled.current
                 Modifier.drawBackdrop(
@@ -402,8 +408,9 @@ internal fun DialogContent(
             edgeLight = rememberDefaultEdgeLight(baseColor = backgroundColor),
         )
         .background(
-            color = if (liquidGlassBackdrop != null && isRenderEffectSupported()) {
-                // 玻璃层之上再压一层半透明底色，保证文字对比度；深色下压得更暗
+            // 玻璃开：玻璃层之上压半透明底色保证文字对比度（深色压得更暗）；
+            // 玻璃关（无材质档 / 无 backdrop）：实色。模糊不可用不挂半透明「假玻璃」。
+            color = if (glassActive) {
                 backgroundColor.copy(alpha = if (isDark) 0.87f else 0.78f)
             } else {
                 backgroundColor

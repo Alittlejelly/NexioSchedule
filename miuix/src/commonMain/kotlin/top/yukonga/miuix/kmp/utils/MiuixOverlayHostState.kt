@@ -19,6 +19,7 @@ import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import top.yukonga.miuix.kmp.material.LocalMiuixTextMotion
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.material.MiuixTextMotion
@@ -103,6 +104,8 @@ internal data class MiuixOverlayTheme(
     val monetColorEnabled: Boolean,
     val dismiss: (() -> Unit)?,
     val chromeLensEnabled: Boolean,
+    /** 无材质档快照：玻璃关 + 渐进模糊走渐变遮罩，root host 读不到声明页面的 CompositionLocal。 */
+    val materialNoneEnabled: Boolean,
     val useFakeProgressiveBlur: Boolean,
     /** 玻璃件模糊半径（dp）快照：root host 读不到声明页面的 CompositionLocal。 */
     val glassBlurDp: Float,
@@ -133,6 +136,7 @@ internal data class MiuixOverlayTheme(
             LocalMonetColorEnabled provides monetColorEnabled,
             LocalDismissState provides dismiss,
             LocalChromeLensEnabled provides chromeLensEnabled,
+            LocalMaterialNoneEnabled provides materialNoneEnabled,
             LocalUseFakeProgressiveBlur provides useFakeProgressiveBlur,
             LocalGlassBlurDp provides glassBlurDp,
             LocalGlassPanelBlurDp provides glassPanelBlurDp,
@@ -158,6 +162,7 @@ internal fun currentMiuixOverlayTheme(): MiuixOverlayTheme = MiuixOverlayTheme(
     monetColorEnabled = LocalMonetColorEnabled.current,
     dismiss = LocalDismissState.current,
     chromeLensEnabled = LocalChromeLensEnabled.current,
+    materialNoneEnabled = LocalMaterialNoneEnabled.current,
     useFakeProgressiveBlur = LocalUseFakeProgressiveBlur.current,
     glassBlurDp = LocalGlassBlurDp.current,
     glassPanelBlurDp = LocalGlassPanelBlurDp.current,

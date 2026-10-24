@@ -392,7 +392,14 @@ fun CourseEditScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .liquidGlassLayerBackdrop(liquidGlassBackdrop!!)
+                            .then(
+                                // 无材质档：玻璃全关，采样录屏层不挂
+                                if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                                    Modifier
+                                } else {
+                                    Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop!!)
+                                }
+                            )
                     ) {
                         Card(
                             modifier = Modifier

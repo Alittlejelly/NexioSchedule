@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -387,10 +388,12 @@ private fun BlurBottomSheetTabletContent(
                     onSheetContentBackdropCreated?.invoke(sheetContentBackdrop)
                 }
 
-                // 进入动画早期挂载，避免 AGSL 编译卡顿落在动画刚结束、用户准备点遮罩的窗口
+                // 进入动画早期挂载，避免 AGSL 编译卡顿落在动画刚结束、用户准备点遮罩的窗口。
+                // 无材质档：内容录屏层不挂（采样侧退回纯色 placeholder）
+                val materialNone = LocalMaterialNoneEnabled.current
                 var sheetBackdropMounted by remember { mutableStateOf(false) }
-                LaunchedEffect(show) {
-                    if (show) {
+                LaunchedEffect(show, materialNone) {
+                    if (show && !materialNone) {
                         delay(80.milliseconds)
                         sheetBackdropMounted = true
                     }

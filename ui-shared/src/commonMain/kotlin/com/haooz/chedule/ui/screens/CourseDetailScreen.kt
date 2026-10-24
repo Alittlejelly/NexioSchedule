@@ -240,9 +240,14 @@ fun CourseDetailScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .then(
-                                    Modifier.liquidGlassLayerBackdrop(
-                                        liquidGlassBackdrop
-                                    )
+                                    // 无材质档：玻璃全关，采样录屏层不挂
+                                    if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                                        Modifier
+                                    } else {
+                                        Modifier.liquidGlassLayerBackdrop(
+                                            liquidGlassBackdrop
+                                        )
+                                    }
                                 )
                         ) {
                             val listState = rememberLazyListState()

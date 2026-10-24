@@ -71,6 +71,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -121,6 +122,8 @@ fun SearchBar(
     val chromeLens = chromeLensEnabled
     // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
     val glassBlur = LocalGlassBlurDp.current
+    // 无材质档：玻璃材质整体关闭（模糊 / 折射 / vibrancy 全跳过，只剩半透明底色）
+    val materialNone = LocalMaterialNoneEnabled.current
 
     Column(
         modifier = modifier,
@@ -172,11 +175,13 @@ fun SearchBar(
                     ) {
                         if (backdrop != null) {
                             // 记得住引用：drawBackdrop 按引用比较 effects，每帧新建会导致重新录制采样层
-                            val actionEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
+                            val actionEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur, materialNone) {
                                 {
-                                    vibrancy()
-                                    blur(glassBlur.dp.toPx())
-                                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                                    if (!materialNone) {
+                                        vibrancy()
+                                        blur(glassBlur.dp.toPx())
+                                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                                    }
                                 }
                             }
                             Box(
@@ -199,7 +204,8 @@ fun SearchBar(
                                 .matchParentSize()
                                 .background(
                                     color = if (backdrop != null) {
-                                        MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
+                                        MiuixTheme.colorScheme.surfaceContainerHigh
+                                            .copy(alpha = if (materialNone) 1f else 0.6f)
                                     } else MiuixTheme.colorScheme.surfaceContainerHigh,
                                     shape = CircleShape,
                                 ),
@@ -297,6 +303,8 @@ fun InputField(
     val chromeLens = chromeLensEnabled
     // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
     val glassBlur = LocalGlassBlurDp.current
+    // 无材质档：玻璃材质整体关闭（模糊 / 折射 / vibrancy 全跳过，只剩半透明底色）
+    val materialNone = LocalMaterialNoneEnabled.current
 
     val actualLeadingIcon = leadingIcon ?: {
         Box(
@@ -379,16 +387,20 @@ fun InputField(
         interactionSource = internalInteractionSource,
         decorationBox = { innerTextField ->
             val isLightTheme = resolveIsLightTheme()
-            val containerColor = if (isLightTheme) Color(0xFFFAFAFA).copy(0.76f)
-                else Color(0xFF242424).copy(0.84f)
+            // 无材质档玻璃面改实色
+            val containerColor = if (isLightTheme) Color(0xFFFAFAFA)
+                .copy(if (materialNone) 1f else 0.76f)
+            else Color(0xFF242424).copy(if (materialNone) 1f else 0.84f)
             // 与原 android.graphics.Color.parseColor("#12000000"/"#20000000") 等价（同 ARGB 值）
             val shadowColor = if (isLightTheme) Color(0x12000000) else Color(0x20000000)
             // 记得住引用：drawBackdrop 按引用比较 effects，每帧新建会导致重新录制采样层
-            val containerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
+            val containerEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur, materialNone) {
                 {
-                    vibrancy()
-                    blur(glassBlur.dp.toPx())
-                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                    if (!materialNone) {
+                        vibrancy()
+                        blur(glassBlur.dp.toPx())
+                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                    }
                 }
             }
 

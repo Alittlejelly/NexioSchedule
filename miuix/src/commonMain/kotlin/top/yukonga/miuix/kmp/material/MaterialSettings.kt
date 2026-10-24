@@ -19,6 +19,9 @@ import androidx.compose.runtime.compositionLocalOf
 /** chrome 透镜（折射）开关：通透玻璃档开，清透磨砂及更省档关。 */
 val LocalChromeLensEnabled = compositionLocalOf { false }
 
+/** 无材质档：玻璃材质（模糊 / 折射 / vibrancy）整体关闭，渐进模糊降级为渐变遮罩。 */
+val LocalMaterialNoneEnabled = compositionLocalOf { false }
+
 /** 渐进模糊是否用「假」实现（等值 blur + alpha 淡出，不跑 AGSL 多重采样）：仅性能优先档为真。 */
 val LocalUseFakeProgressiveBlur = compositionLocalOf { false }
 

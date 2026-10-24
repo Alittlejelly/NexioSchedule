@@ -240,11 +240,11 @@ fun LiquidGlassDropdownMenu(
     val blurStep = (f.coerceIn(0f, 1f) * 8f).roundToInt()
     val expandStep = blurStep / 8f
     // 通透玻璃档：面板模糊恒定，不随展开渐变（折射已经把「厚度」做出来了，再叠模糊只会糊掉边缘）。
-    // 其余档保持 8 → 24 的渐变。
-    val blurDp = if (AppMaterialSettings.isBestTier()) {
-        AppMaterialSettings.glassPanelBlurDp()
-    } else {
-        AppMaterialSettings.glassBlurDp() + 16f * expandStep
+    // 其余档保持 8 → 24 的渐变；无材质档恒 0（玻璃效果整体关）。
+    val blurDp = when {
+        AppMaterialSettings.isNoneTier() -> 0f
+        AppMaterialSettings.isBestTier() -> AppMaterialSettings.glassPanelBlurDp()
+        else -> AppMaterialSettings.glassBlurDp() + 16f * expandStep
     }
     // 折射随展开连贯变大：折叠 (7, 28) → 展开 (12, 48)。折叠态是 42dp 小圆，折射带相对不能太厚；
     // 长成面板后同步加厚，边缘的水灵感才跟得上尺寸。
@@ -346,14 +346,16 @@ fun LiquidGlassDropdownMenu(
                 }
                 .clip(ContinuousRoundedRectangle(PanelCornerRadius))
         ) {
-            // 与顶栏液态玻璃按钮同一套采样效果；blur 随展开档位过渡（8dp → 24dp）
+            // 与顶栏液态玻璃按钮同一套采样效果；blur 随展开档位过渡（8dp → 24dp）；无材质档整体关
             val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
                 remember(chromeLens, blurStep, blurDp) {
                     {
-                        vibrancy()
-                        blur(blurDp.dp.toPx())
-                        // 折射随展开步进（与 blur 同一组 8 档，不额外增加 effects 重建次数）
-                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                        if (AppMaterialSettings.glassEffectsEnabled()) {
+                            vibrancy()
+                            blur(blurDp.dp.toPx())
+                            // 折射随展开步进（与 blur 同一组 8 档，不额外增加 effects 重建次数）
+                            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                        }
                     }
                 }
             // 玻璃单独一层：只有它跟材质 alpha（layerBlock 作用于整个节点，挂容器上会连图标一起透明）

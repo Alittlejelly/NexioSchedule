@@ -525,6 +525,8 @@ fun TodayScreen(
         drawRect(backgroundColor)
         drawContent()
     }
+    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效），
+    // 壁纸采样录屏层照常挂载
     val cardBackdrop: Backdrop =
         if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
         else localCardBackdrop

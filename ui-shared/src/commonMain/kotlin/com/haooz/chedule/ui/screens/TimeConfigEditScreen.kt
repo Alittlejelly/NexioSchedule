@@ -599,10 +599,14 @@ fun TimeConfigEditScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .then(
-                                if (isLiquidGlass) Modifier.liquidGlassLayerBackdrop(
-                                    liquidGlassBackdrop
-                                )
-                                else Modifier
+                                // 无材质档：玻璃全关，采样录屏层不挂
+                                if (isLiquidGlass &&
+                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
+                                ) {
+                                    Modifier.liquidGlassLayerBackdrop(
+                                        liquidGlassBackdrop
+                                    )
+                                } else Modifier
                             )
                     ) {
                         val listState = rememberLazyListState()

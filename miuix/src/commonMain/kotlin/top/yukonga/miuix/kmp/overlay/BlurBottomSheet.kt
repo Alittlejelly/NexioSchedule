@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -509,9 +510,11 @@ private fun BlurBottomSheetContent(
 
                 // 进入动画早期挂载 backdrop/AGSL：原先等 enterDone 再挂，卡顿落在「动画刚结束、用户要点遮罩」的窗口，
                 // 表现为遮罩暂时点不动而返回键可用。
+                // 无材质档：内容录屏层不挂（采样侧退回纯色 placeholder）
+                val materialNone = LocalMaterialNoneEnabled.current
                 var sheetBackdropMounted by remember { mutableStateOf(false) }
-                LaunchedEffect(show) {
-                    if (show) {
+                LaunchedEffect(show, materialNone) {
+                    if (show && !materialNone) {
                         delay(80.milliseconds)
                         sheetBackdropMounted = true
                     }

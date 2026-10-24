@@ -141,9 +141,16 @@ fun PreferenceSettingsScreen(
             )
         )
     }
+    // 统一限制：模糊能力不可用（Android API < 31）一律锁进无材质档；桌面 / iOS 恒支持不锁
+    val materialLocked = !com.kyant.backdrop.isRenderEffectSupported()
+    val effectiveMaterialLevel = if (materialLocked) {
+        com.haooz.chedule.ui.utils.AppMaterialSettings.NONE
+    } else {
+        appMaterialLevel
+    }
     // 启动时同步到全局，后续材质效果直接读 AppMaterialSettings.level
     LaunchedEffect(Unit) {
-        com.haooz.chedule.ui.utils.AppMaterialSettings.apply(appMaterialLevel)
+        com.haooz.chedule.ui.utils.AppMaterialSettings.apply(effectiveMaterialLevel)
     }
 
     val isTablet = isTabletWidth()
@@ -256,11 +263,20 @@ fun PreferenceSettingsScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             val appMaterialEntry = DropdownEntry(
-                                items = com.haooz.chedule.ui.utils.AppMaterialSettings.entries
-                                    .map { (value, label) ->
+                                items = (if (materialLocked) {
+                                    // 锁定态只留无材质一项，其余档位点不到
+                                    listOf(
+                                        com.haooz.chedule.ui.utils.AppMaterialSettings.NONE to
+                                            com.haooz.chedule.ui.utils.AppMaterialSettings.labelOf(
+                                                com.haooz.chedule.ui.utils.AppMaterialSettings.NONE
+                                            )
+                                    )
+                                } else {
+                                    com.haooz.chedule.ui.utils.AppMaterialSettings.entries
+                                }).map { (value, label) ->
                                         DropdownItem(
                                             text = label,
-                                            selected = appMaterialLevel == value,
+                                            selected = effectiveMaterialLevel == value,
                                             onClick = {
                                                 com.haooz.chedule.ui.utils.FeatureLog.preference(
                                                     "app_material=$value"
@@ -279,8 +295,8 @@ fun PreferenceSettingsScreen(
                             )
                             OverlayDropdownMenu(
                                 title = "应用材质效果",
-                                // summary 为空时自动显示当前选中档位
-                                summary = null,
+                                // summary 为空时自动显示当前选中档位；锁定态给出原因
+                                summary = if (materialLocked) "当前系统版本不支持模糊效果，已锁定为无材质" else null,
                                 entry = appMaterialEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,

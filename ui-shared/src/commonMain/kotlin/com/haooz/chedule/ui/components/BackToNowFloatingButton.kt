@@ -74,11 +74,11 @@ fun BackToNowFloatingButton(
     val animationScope = rememberCoroutineScope()
     val hapticFeedback = LocalHapticFeedback.current
     val isLightTheme = !isAppDarkTheme()
-    // 主题色半透明叠在玻璃上
+    // 主题色半透明叠在玻璃上；无材质档改实色
     val resolvedContainerColor = if (isLightTheme) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.72f)
+        MiuixTheme.colorScheme.primary.copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.72f))
     } else {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.62f)
+        MiuixTheme.colorScheme.primary.copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.62f))
     }
 
     val interactiveHighlight = remember(animationScope) {
@@ -92,14 +92,17 @@ fun BackToNowFloatingButton(
 
     val buttonShapeBlock: () -> Shape = remember { { buttonShape } }
     val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
-    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8；无材质档整体关
     val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
-    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
+    val glassEffectsOn = com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()
+    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur, glassEffectsOn) {
         {
-            vibrancy()
-            blur(glassBlur.dp.toPx())
-            // 均衡及以下关闭折射
-            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+            if (glassEffectsOn) {
+                vibrancy()
+                blur(glassBlur.dp.toPx())
+                // 均衡及以下关闭折射
+                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+            }
         }
     }
     val buttonOnDrawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =

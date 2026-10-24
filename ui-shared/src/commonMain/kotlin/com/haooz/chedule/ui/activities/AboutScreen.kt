@@ -293,14 +293,21 @@ fun AboutScreen(
                 .fillMaxSize()
                 .background(MiuixTheme.colorScheme.background)
                 .then(
-                    Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                    // 无材质档：玻璃全关，采样录屏层不挂
+                    if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                    else Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
                 )
         ) {
             BgEffectBackground(
                 dynamicBackground = dynamicBackground,
                 isFullSize = true,
                 modifier = Modifier.fillMaxSize(),
-                bgModifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
+                // 背景特效采的是内容模糊录屏层，无材质档一并停录
+                bgModifier = if (backdrop != null &&
+                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
+                ) {
+                    Modifier.layerBackdrop(backdrop)
+                } else Modifier,
                 alpha = { 1f - scrollProgress },
             ) {
                 Column(

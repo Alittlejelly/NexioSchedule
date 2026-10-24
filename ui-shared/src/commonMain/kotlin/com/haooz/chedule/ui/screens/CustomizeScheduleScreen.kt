@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.AppearanceConfig
+import com.haooz.chedule.data.AppearanceStore
 import com.haooz.chedule.data.CardContentAlignment
 import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
@@ -255,7 +256,8 @@ fun CustomizeScheduleScreen(
     )
 
     val primaryColor = MiuixTheme.colorScheme.primary
-    val exitContainerColor = Color(0xFF363636).copy(0.8f)
+    val exitContainerColor = Color(0xFF363636)
+        .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f))
     val exitIconColor = Color.White
 
     var showApplyLoading by remember { mutableStateOf(false) }
@@ -345,8 +347,12 @@ fun CustomizeScheduleScreen(
         }
     }
 
+    // 无材质档：卡片模糊/折射设置锁死，写回时保留存档原值——
+    // 屏内这两个值来自钳制后的 appearance（恒 0/OFF），直接写回会把用户的存档清掉
+    val materialNone = com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
+
     fun buildAppearance() = AppearanceConfig(
-        cardBlurRadius = effectValue,
+        cardBlurRadius = if (materialNone) AppearanceStore.getCardBlur() else effectValue,
         cardAlpha = cardAlphaValue,
         cardSurfaceAlpha = cardSurfaceAlphaValue,
         cardHeight = cardHeightValue,
@@ -358,7 +364,7 @@ fun CustomizeScheduleScreen(
         cardTextScale = cardTextScaleValue,
         showClassroom = showClassroomValue,
         showTeacher = showTeacherValue,
-        cardRefraction = cardRefractionValue,
+        cardRefraction = if (materialNone) AppearanceStore.getCardRefraction() else cardRefractionValue,
         wallpaperBlur = wallpaperBlurValue
     )
     LaunchedEffect(effectValue, cardAlphaValue, cardSurfaceAlphaValue) { onAppearanceChange(buildAppearance()) }
@@ -754,9 +760,15 @@ fun CustomizeScheduleScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        // 弹窗打开时不录 liquidGlassBackdrop，只依赖 anySheetOpen 布尔，避免 backdrop 就绪引发结构变更重组
-                        if (anySheetOpen) Modifier
-                        else Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop),
+                        // 弹窗打开时不录 liquidGlassBackdrop，只依赖 anySheetOpen 布尔，避免 backdrop 就绪引发结构变更重组；
+                        // 无材质档玻璃全关，录屏层不挂
+                        if (anySheetOpen ||
+                            com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
+                        ) {
+                            Modifier
+                        } else {
+                            Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                        },
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -1008,7 +1020,9 @@ fun CustomizeScheduleScreen(
                                     backdrop = liquidGlassBackdrop,
                                     shape = { ContinuousCapsule() },
                                     effects = {
-                                        vibrancy()
+                                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                                            vibrancy()
+                                        }
                                     },
                                     highlight = null,
                                     shadow = { Shadow(alpha = 0.3f) },
@@ -1062,7 +1076,9 @@ fun CustomizeScheduleScreen(
                                     backdrop = liquidGlassBackdrop,
                                     shape = { ContinuousCapsule() },
                                     effects = {
-                                        vibrancy()
+                                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                                            vibrancy()
+                                        }
                                     },
                                     highlight = null,
                                     shadow = { Shadow(alpha = 0.3f) },
@@ -1140,7 +1156,9 @@ fun CustomizeScheduleScreen(
                                     backdrop = liquidGlassBackdrop,
                                     shape = { ContinuousCapsule() },
                                     effects = {
-                                        vibrancy()
+                                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                                            vibrancy()
+                                        }
                                     },
                                     highlight = null,
                                     shadow = { Shadow(alpha = 0.3f) },
@@ -1156,7 +1174,7 @@ fun CustomizeScheduleScreen(
                                             size.minDimension * 0.05f * offset.y / size.maxDimension
                                     },
                                     onDrawSurface = {
-                                        drawRect(primaryColor.copy(0.8f))
+                                        drawRect(primaryColor.copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f)))
                                         drawRect(Color.Black.copy(alpha = 0.03f * applyHighlight.pressProgress))
                                     }
                                 )
@@ -1482,18 +1500,31 @@ fun CustomizeScheduleScreen(
                                 value = effectValue,
                                 valueRange = 0f..20f,
                                 keyPoints = listOf(4f),
-                                enabled = hasWallpaper,
+                                // 无材质档锁死：卡片模糊/折射整体关（渲染侧同步强制 0）
+                                enabled = hasWallpaper &&
+                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier(),
                                 // 整数吸附，避免留下显示为 0 却仍有一丝模糊的小数
                                 onValueChange = { if (hasWallpaper) effectValue = it },
                                 quantize = { it.roundToInt().coerceIn(0, 20).toFloat() },
                                 suffix = "dp",
                                 displayValue = { it.roundToInt().toString() },
-                                parseInput = { it.toFloatOrNull()?.coerceIn(0f, 20f) }
+                                parseInput = { it.toFloatOrNull()?.coerceIn(0f, 20f) },
+                                disabledText = if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                                    "无材质"
+                                } else {
+                                    "需设置壁纸"
+                                }
                             )
                             RefractionItem(
                                 value = cardRefractionValue,
-                                enabled = hasWallpaper,
-                                onValueChange = { if (hasWallpaper) cardRefractionValue = it }
+                                enabled = hasWallpaper &&
+                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier(),
+                                onValueChange = { if (hasWallpaper) cardRefractionValue = it },
+                                disabledText = if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                                    "无材质"
+                                } else {
+                                    "需设置壁纸"
+                                }
                             )
                         }
                     }
@@ -1776,6 +1807,8 @@ private fun SliderItem(
     suffix: String = "",
     displayValue: (Float) -> String = { it.roundToInt().toString() },
     parseInput: (String) -> Float? = { it.toFloatOrNull() },
+    /** 禁用时的右侧文案（默认「需设置壁纸」；无材质档传「无材质」） */
+    disabledText: String = "需设置壁纸",
 ) {
     // 聚焦编辑期间不回写外部 value，避免打断输入
     var textInput by remember { mutableStateOf(displayValue(value)) }
@@ -1837,7 +1870,7 @@ private fun SliderItem(
                 }
             } else {
                 Text(
-                    text = "需设置壁纸",
+                    text = disabledText,
                     fontSize = 14.sp,
                     color = textColor
                 )
@@ -1871,6 +1904,8 @@ private fun RefractionItem(
     value: CardRefractionLevel,
     enabled: Boolean,
     onValueChange: (CardRefractionLevel) -> Unit,
+    /** 禁用时的右侧文案（默认「需设置壁纸」；无材质档传「无材质」） */
+    disabledText: String = "需设置壁纸",
 ) {
     val levels = CardRefractionLevel.entries
     val lastIndex = levels.lastIndex
@@ -1910,7 +1945,7 @@ private fun RefractionItem(
                 )
             } else {
                 Text(
-                    text = "需设置壁纸",
+                    text = disabledText,
                     fontSize = 14.sp,
                     color = textColor
                 )

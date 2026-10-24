@@ -129,7 +129,11 @@ fun TabletCourseManagePane(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .layerBackdrop(leftBackdrop)
+                        // 无材质档：玻璃全关，采样录屏层不挂
+                        .then(
+                            if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                            else Modifier.layerBackdrop(leftBackdrop)
+                        )
                 ) {
                     CourseManageScreen(
                         scrollBehavior = null,

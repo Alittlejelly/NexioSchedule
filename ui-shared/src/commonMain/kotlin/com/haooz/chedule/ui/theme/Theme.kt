@@ -39,6 +39,7 @@ import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -182,6 +183,7 @@ fun CourseScheduleTheme(
                 // :miuix 需要的 App 能力注入点（避免 :miuix → :app 反向依赖）；
                 // 效果与迁移前一致，调用点无需逐个改。
                 LocalChromeLensEnabled provides AppMaterialSettings.chromeLensEnabled(),
+                LocalMaterialNoneEnabled provides AppMaterialSettings.isNoneTier(),
                 LocalUseFakeProgressiveBlur provides AppMaterialSettings.progressiveBlurUseFake(),
                 LocalGlassBlurDp provides AppMaterialSettings.glassBlurDp(),
                 LocalGlassPanelBlurDp provides AppMaterialSettings.glassPanelBlurDp(),

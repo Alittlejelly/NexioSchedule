@@ -227,9 +227,10 @@ fun TabletNavSideBar(
     val topPadding = if (statusBarPadding > 0.dp) statusBarPadding else 36.dp
     val isLightTheme = !isAppDarkTheme()
     val textColor = if (isLightTheme) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.8f)
+    // 无材质档实色
     val containerColor =
-        if (isLightTheme) Color(0xFFFFFFFF).copy(0.8f) else Color(0xFF242424).copy(0.8f)
-    val solidContainer = if (isLightTheme) Color(0xFFFBFBFB) else Color(0xFF1C1C1E)
+        if (isLightTheme) Color(0xFFFFFFFF).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f))
+        else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f))
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
     // 按压高光：跟手光晕，按哪亮哪。
     val animationScope = rememberCoroutineScope()
@@ -323,8 +324,10 @@ fun TabletNavSideBar(
                                 backdrop = backdrop,
                                 shape = { ContinuousRoundedRectangle(sideCorner) },
                                 effects = {
-                                    vibrancy()
-                                    blur(12f.dp.toPx())
+                                    if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                                        vibrancy()
+                                        blur(12f.dp.toPx())
+                                    }
                                 },
                                 highlight = null,
                                 onDrawSurface = { drawRect(containerColor) },
@@ -332,9 +335,10 @@ fun TabletNavSideBar(
                             .edgeLight(shape = ContinuousRoundedRectangle(sideCorner), edgeLight = defaultEdgeLight)
                     } else {
                         // 无玻璃分支没有 drawBackdrop 的 clipPath 兜底：
-                        // 高光是矩形 drawRect，不自己裁会溢出圆角画成方光块
+                        // 高光是矩形 drawRect，不自己裁会溢出圆角画成方光块。
+                        // 底色走玻璃路径同一档半透明，不降级实心。
                         Modifier
-                            .background(solidContainer, ContinuousRoundedRectangle(sideCorner))
+                            .background(containerColor, ContinuousRoundedRectangle(sideCorner))
                             .clip(ContinuousRoundedRectangle(sideCorner))
                     }
                 )

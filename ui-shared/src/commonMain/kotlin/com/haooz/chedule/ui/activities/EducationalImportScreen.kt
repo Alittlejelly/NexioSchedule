@@ -233,15 +233,20 @@ fun EducationalImportScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdrop(
-                        backdrop,
-                        recordKey = eduRecordKey,
-                        mustRecord = eduMustRecord
+                    .then(
+                        // 无材质档：顶栏走渐变遮罩、玻璃全关，录屏层不挂
+                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                        else Modifier.layerBackdrop(
+                            backdrop,
+                            recordKey = eduRecordKey,
+                            mustRecord = eduMustRecord
+                        )
                     )
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize().then(
-                        Modifier.layerBackdrop(
+                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                        else Modifier.layerBackdrop(
                             liquidGlassBackdrop,
                             recordKey = eduRecordKey,
                             mustRecord = eduMustRecord

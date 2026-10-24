@@ -57,7 +57,8 @@ fun CrossWeekDropHint(
 ) {
     val crossWeek = fromWeek > 0 && toWeek > 0 && fromWeek != toWeek
     val isLightTheme = !isAppDarkTheme()
-    val baseAlpha = if (isLightTheme) 0.72f else 0.62f
+    // 无材质档实色
+    val baseAlpha = AppMaterialSettings.solidSurfaceAlpha(if (isLightTheme) 0.72f else 0.62f)
     val containerColor = MiuixTheme.colorScheme.primary.copy(alpha = baseAlpha)
     val textColor = Color.White
     val hintShape: Shape = ContinuousCapsule()
@@ -75,9 +76,11 @@ fun CrossWeekDropHint(
                     backdrop = backdrop,
                     shape = { hintShape },
                     effects = {
-                        vibrancy()
-                        blur(glassBlur.dp.toPx())
-                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                        if (AppMaterialSettings.glassEffectsEnabled()) {
+                            vibrancy()
+                            blur(glassBlur.dp.toPx())
+                            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                        }
                     },
                     highlight = null,
                     shadow = null,

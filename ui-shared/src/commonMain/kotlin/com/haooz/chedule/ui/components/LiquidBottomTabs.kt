@@ -127,11 +127,13 @@ fun LiquidBottomTabs(
         if (isLightTheme) Color.Black
         else Color.White
     // 胶囊底色：莫奈取色下跟随 surfaceContainer（与 DayColumn 待放格、教务导入胶囊同一套）；
-    // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）
+    // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）；无材质档实色
     val containerColor = if (MiuixTheme.isDynamicColor) {
-        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.5f)
-    } else if (isLightTheme) Color(0xFFFAFAFA).copy(0.5f)
-    else Color(0xFF242424).copy(0.6f)
+        MiuixTheme.colorScheme.surfaceContainer
+            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
+    } else if (isLightTheme) Color(0xFFFAFAFA)
+        .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
+    else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -209,16 +211,19 @@ fun LiquidBottomTabs(
 
         // 可见层：不缩放（源库只缩放下面的捕获层，滑块外的放大不可见）
         val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
-        // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+        // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8；无材质档整体关
         val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
-        val panelEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
+        val glassEffectsOn = com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()
+        val panelEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur, glassEffectsOn) {
             {
-                vibrancy()
-                // Mirror：Clamp（blur 默认）会把胶囊边缘的采样钳到最外一行，边缘一圈模糊退化
-                blur(glassBlur.dp.toPx(), TileMode.Mirror)
-                padding = 0f
-                // 均衡及以下：低栏背景板关闭折射
-                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                if (glassEffectsOn) {
+                    vibrancy()
+                    // Mirror：Clamp（blur 默认）会把胶囊边缘的采样钳到最外一行，边缘一圈模糊退化
+                    blur(glassBlur.dp.toPx(), TileMode.Mirror)
+                    padding = 0f
+                    // 均衡及以下：低栏背景板关闭折射
+                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                }
             }
         }
         val panelSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =
@@ -258,21 +263,26 @@ fun LiquidBottomTabs(
                 Modifier
                     .clearAndSetSemantics {}
                     .alpha(0f)
-                    .layerBackdrop(tabsBackdrop)
+                    // 无材质档：滑块玻璃关，捕获层录屏不挂
+                    .then(
+                        if (glassEffectsOn) Modifier.layerBackdrop(tabsBackdrop) else Modifier
+                    )
                     .graphicsLayer { translationX = panelOffset }
                     .drawBackdrop(
                         backdrop = backdrop,
                         shape = { ContinuousCapsule() },
                         effects = {
-                            val progress = dampedDragAnimation.pressProgress
-                            vibrancy()
-                            // 捕获层与可见层用同一个模糊，否则滑块放大时玻璃底不一致
-                            blur(glassBlur.dp.toPx(), TileMode.Mirror)
-                            padding = 0f
-                            lens(
-                                24f.dp.toPx() * progress,
-                                24f.dp.toPx() * progress
-                            )
+                            if (glassEffectsOn) {
+                                val progress = dampedDragAnimation.pressProgress
+                                vibrancy()
+                                // 捕获层与可见层用同一个模糊，否则滑块放大时玻璃底不一致
+                                blur(glassBlur.dp.toPx(), TileMode.Mirror)
+                                padding = 0f
+                                lens(
+                                    24f.dp.toPx() * progress,
+                                    24f.dp.toPx() * progress
+                                )
+                            }
                         },
                         highlight = {
                             val progress = dampedDragAnimation.pressProgress

@@ -7,9 +7,13 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
+import com.kyant.backdrop.isRenderEffectSupported
 
 /**
- * 应用材质质量档（通透玻璃 / 清透磨砂 / 性能优先），玻璃模糊、折射、边光都读它；默认清透磨砂。
+ * 应用材质质量档（通透玻璃 / 清透磨砂 / 性能优先 / 无材质），玻璃模糊、折射、边光都读它；默认清透磨砂。
+ *
+ * 统一限制：RenderEffect 不可用（Android API < 31）的设备锁死无材质档（见 [normalize]），
+ * 模糊相关的按能力降级分支不在这里出现——能力不足时档位本身就是无材质。
  */
 object AppMaterialSettings {
 
@@ -19,6 +23,7 @@ object AppMaterialSettings {
     const val BEST = "best"
     const val BALANCED = "balanced"
     const val PERFORMANCE = "performance"
+    const val NONE = "none"
 
     /** 性能优先档描边同色系提亮幅度（向白混合比例） */
     private const val STROKE_LIGHTEN = 0.2f
@@ -43,6 +48,7 @@ object AppMaterialSettings {
         BEST to "通透玻璃",
         BALANCED to "清透磨砂",
         PERFORMANCE to "性能优先",
+        NONE to "无材质",
     )
 
     /** 当前档位；组合期可读，写入走 [apply]。 */
@@ -57,32 +63,51 @@ object AppMaterialSettings {
     /** 是否通透玻璃档（折射 + 低模糊那一档）。 */
     fun isBestTier(): Boolean = level == BEST
 
+    /** 是否无材质档：玻璃模糊 / 折射 / vibrancy 全关，渐进模糊降级为渐变遮罩。 */
+    fun isNoneTier(): Boolean = level == NONE
+
+    /** 玻璃材质总开关（无材质档 false）：玻璃件的 vibrancy / 硬编码模糊与折射一并关闭。 */
+    fun glassEffectsEnabled(): Boolean = level != NONE
+
     /**
      * 玻璃件采样模糊半径（dp）。通透玻璃档有折射（[chromeLensEnabled]）撑着玻璃的「厚度」，
-     * 模糊压得很低让折射纹理透出来；清透磨砂 / 性能优先没有折射，靠 8 的磨砂顶住质感。
+     * 模糊压得很低让折射纹理透出来；清透磨砂 / 性能优先没有折射，靠 8 的磨砂顶住质感；无材质档 0（不模糊）。
      */
-    fun glassBlurDp(): Float = if (level == BEST) GLASS_BLUR_BEST else GLASS_BLUR_MILLED
+    fun glassBlurDp(): Float = when (level) {
+        NONE -> 0f
+        BEST -> GLASS_BLUR_BEST
+        else -> GLASS_BLUR_MILLED
+    }
 
     /**
      * 弹出面板（下拉菜单）采样模糊半径（dp）。
      * 通透玻璃档取恒定值、**不随展开渐变**（折射已经做出「厚度」，再叠模糊只会糊掉边缘）；
-     * 其余档取展开态的 24（小玻璃件 8 + 16 跨度）。
+     * 其余档取展开态的 24（小玻璃件 8 + 16 跨度）；无材质档 0（不模糊）。
      */
-    fun glassPanelBlurDp(): Float =
-        if (level == BEST) GLASS_PANEL_BLUR_BEST else glassBlurDp() + GLASS_PANEL_BLUR_SPAN
+    fun glassPanelBlurDp(): Float = when (level) {
+        NONE -> 0f
+        BEST -> GLASS_PANEL_BLUR_BEST
+        else -> glassBlurDp() + GLASS_PANEL_BLUR_SPAN
+    }
 
-    /** 对话框 / 贴底弹窗玻璃的采样模糊半径（dp）：通透玻璃档更薄，其余档维持 24。 */
-    fun glassDialogBlurDp(): Float =
-        if (level == BEST) GLASS_DIALOG_BLUR_BEST else GLASS_DIALOG_BLUR_MILLED
+    /** 对话框 / 贴底弹窗玻璃的采样模糊半径（dp）：通透玻璃档更薄，其余档维持 24，无材质档 0。 */
+    fun glassDialogBlurDp(): Float = when (level) {
+        NONE -> 0f
+        BEST -> GLASS_DIALOG_BLUR_BEST
+        else -> GLASS_DIALOG_BLUR_MILLED
+    }
 
     /**
-     * 玻璃底色 alpha：通透玻璃档比常态低一档，让折射和背后的内容透出来（折射要「看进去」才像玻璃，
-     * 底色太实会把它盖成一层膜）；清透磨砂 / 性能优先档原值返回。
+     * 玻璃底色 alpha：无材质档返回 1f（玻璃面改实色），通透玻璃档比常态低一档让折射和背后的内容
+     * 透出来；清透磨砂 / 性能优先档原值返回。
      *
      * @param milledAlpha 清透磨砂 / 性能优先档原本使用的 alpha
      */
     fun glassSurfaceAlpha(milledAlpha: Float, isLight: Boolean): Float =
-        (milledAlpha - glassSurfaceAlphaDrop(isLight)).coerceAtLeast(0f)
+        if (level == NONE) 1f else (milledAlpha - glassSurfaceAlphaDrop(isLight)).coerceAtLeast(0f)
+
+    /** 无材质档玻璃面实色化：半透明底色换成不透明（[baseAlpha] 其余档原样返回）。 */
+    fun solidSurfaceAlpha(baseAlpha: Float): Float = if (level == NONE) 1f else baseAlpha
 
     /**
      * 通透玻璃档的底色 alpha 降幅（浅色 / 深色各一档）；清透磨砂 / 性能优先档 0。
@@ -98,7 +123,7 @@ object AppMaterialSettings {
     fun progressiveBlurUseFake(): Boolean = level == PERFORMANCE
 
     /**
-     * 性能优先档把高光描边降级为普通纯色描边（无模糊、SrcOver）；[baseColor] 非空时按同色系
+     * 性能优先 / 无材质档把高光描边降级为普通纯色描边（无模糊、SrcOver）；[baseColor] 非空时按同色系
      * 提亮一档作描边，否则按主题回退（浅色白 / 深色灰）。通透玻璃 / 清透磨砂保留原高光。
      */
     fun resolveEdgeLight(
@@ -106,7 +131,7 @@ object AppMaterialSettings {
         isLightTheme: Boolean,
         baseColor: Color? = null,
     ): com.kyant.backdrop.edgelight.EdgeLight {
-        if (level != PERFORMANCE) return source
+        if (level != PERFORMANCE && level != NONE) return source
         val stroke = baseColor?.let(::lightenSameHue)
             ?: if (isLightTheme) Color.White else Color(0xFF333333)
         return com.kyant.backdrop.edgelight.EdgeLight(
@@ -143,9 +168,12 @@ object AppMaterialSettings {
         level = normalize(AppStorage.store(PREFS_NAME).getString(KEY_APP_MATERIAL, BALANCED))
     }
 
-    /** 旧值 / 非法值落到清透磨砂档。 */
-    private fun normalize(level: String): String = when (level) {
-        BEST, BALANCED, PERFORMANCE -> level
-        else -> BALANCED
+    /** 旧值 / 非法值落到清透磨砂档；模糊能力不可用（Android API < 31）一律锁进无材质档。 */
+    private fun normalize(level: String): String {
+        val resolved = when (level) {
+            BEST, BALANCED, PERFORMANCE, NONE -> level
+            else -> BALANCED
+        }
+        return if (resolved != NONE && !isRenderEffectSupported()) NONE else resolved
     }
 }

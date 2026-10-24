@@ -631,12 +631,13 @@ fun SwitchScheduleScreen(
                         )
                     }
                     // 胶囊底色：莫奈取色下跟随 surfaceContainer（与首页底栏、教务导入胶囊同一套）；
-                    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）
+                    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）；无材质档实色
                     val containerColor = if (MiuixTheme.isDynamicColor) {
                         MiuixTheme.colorScheme.surfaceContainer
-                            .copy(alpha = if (isAppDarkTheme()) 0.54f else 0.6f)
-                    } else if (!isAppDarkTheme()) Color(0xFFFFFFFF).copy(0.6f)
-                    else Color(0xFF121212).copy(0.54f)
+                            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(if (isAppDarkTheme()) 0.54f else 0.6f))
+                    } else if (!isAppDarkTheme()) Color(0xFFFFFFFF)
+                        .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
+                    else Color(0xFF121212).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.54f))
 
                     // 按压高光：整条胶囊按哪亮哪。触发挂整条胶囊；下面的总手势会消费事件，
                     // 但 gestureModifier 是 observeConsumed=true 的纯视觉观察者，照常跟手。
@@ -690,9 +691,12 @@ fun SwitchScheduleScreen(
                                     backdrop = liquidGlassBackdrop,
                                     shape = { ContinuousCapsule() },
                                     effects = {
-                                        vibrancy()
-                                        blur(4f.dp.toPx())
-                                        lens(6f.dp.toPx(), 36f.dp.toPx())
+                                        // 无材质档整体关（这组是硬编码参数，不读档位模糊值）
+                                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                                            vibrancy()
+                                            blur(4f.dp.toPx())
+                                            lens(6f.dp.toPx(), 36f.dp.toPx())
+                                        }
                                     },
                                     highlight = null,
                                     onDrawSurface = { drawRect(containerColor) }
@@ -886,7 +890,11 @@ fun SwitchScheduleScreen(
                             drawContent()
                         }
                     }
-                    .liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                    .then(
+                        // 无材质档：玻璃全关，采样录屏层不挂
+                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                        else Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
+                    )
             ) {
                 // 注意：这里不要再 collect firstVisibleItemScrollOffset 写 state ——
                 // 那会让整页在滚动时每像素重组一次（listScrollY 之前根本没被读取，纯属白烧）。

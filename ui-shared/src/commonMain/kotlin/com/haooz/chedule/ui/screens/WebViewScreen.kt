@@ -176,24 +176,28 @@ fun WebViewScreen(
     var showCourseTablePicker by remember { mutableStateOf(false) }
     val webDockShapeBlock: () -> Shape = remember { { ContinuousCapsule() } }
     // 与 LiquidBottomTabs 可见层同一套玻璃参数
-    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8；无材质档整体关
     val webDockGlassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
-    val webDockEffects: BackdropEffectScope.() -> Unit = remember(webDockGlassBlur) {
-        {
-            vibrancy()
-            blur(webDockGlassBlur.dp.toPx())
-            lens(6f.dp.toPx(), 36f.dp.toPx())
+    val webDockEffects: BackdropEffectScope.() -> Unit =
+        remember(webDockGlassBlur, com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+            {
+                if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                    vibrancy()
+                    blur(webDockGlassBlur.dp.toPx())
+                    lens(6f.dp.toPx(), 36f.dp.toPx())
+                }
+            }
         }
-    }
     val isLightTheme = !isAppDarkTheme()
     // 底部胶囊底色：莫奈取色下跟随 surfaceContainer（与首页底栏、切换课表底栏同一套）；
-    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）
+    // 非莫奈保持原硬编码（亮 #FFFFFF/0.6、暗 #121212/0.54）；无材质档实色
     val webDockSurfaceColor = if (MiuixTheme.isDynamicColor) {
-        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = if (isLightTheme) 0.6f else 0.54f)
+        MiuixTheme.colorScheme.surfaceContainer
+            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(if (isLightTheme) 0.6f else 0.54f))
     } else if (isLightTheme) {
-        Color(0xFFFFFFFF).copy(alpha = 0.6f)
+        Color(0xFFFFFFFF).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
     } else {
-        Color(0xFF121212).copy(alpha = 0.54f)
+        Color(0xFF121212).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.54f))
     }
     val webDockOnDrawSurface: DrawScope.() -> Unit = remember(webDockSurfaceColor) {
         {
@@ -398,7 +402,11 @@ fun WebViewScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MiuixTheme.colorScheme.surface)
-                .layerBackdrop(webContentBackdrop)
+                // 无材质档：底部胶囊玻璃全关，页面采样录屏层不挂
+                .then(
+                    if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                    else Modifier.layerBackdrop(webContentBackdrop)
+                )
         ) {
             // 顶栏区域：宿主采到的上屏色铺满 contentTopPadding。
             // ⚠ 必须 animateColorAsState 连续过渡：宿主采样已节流到 8Hz 且只报目标色

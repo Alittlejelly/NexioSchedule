@@ -26,13 +26,14 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.ObserverModifierNode
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.observeReads
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.isRuntimeShaderSupported
 import com.kyant.backdrop.effects.blur
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import top.yukonga.miuix.kmp.material.LocalUseFakeProgressiveBlur
 import com.kyant.backdrop.effects.runtimeShaderEffect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -114,11 +115,14 @@ private class InvalidateDrawOnStateNode(
 /**
  * 顶部栏渐进模糊：模糊半径随 Y 从顶部最大（[BlurMaxRadius]）连续收到 0。
  *
- * 三条渲染路径，按能力从高到低：
- * 1. **AGSL 两趟**（`isRenderEffectSupported()` 且非性能档）：抖动采样 + 环形去噪，
+ * 四条渲染路径，按能力从高到低：
+ * 1. **渐变遮罩**（无材质档）：无模糊，表面色 alpha 纵向渐变淡出。
+ * 2. **AGSL 两趟**（`isRuntimeShaderSupported()`，API 33+ 且非性能档）：抖动采样 + 环形去噪，
  *    shader 与参数说明见 `ProgressiveBlurShaders.kt`。
- * 2. **假渐进**（性能档）：等值 `blur` + alpha 纵向淡出，观感接近、成本低一截。
- * 3. **纯色渐变**（无 RenderEffect）：只有表面色 alpha 渐变，没有模糊。
+ * 3. **假渐进**（性能档，或 AGSL 不可用但 RenderEffect 可用——即 API 31–32）：
+ *    等值 `blur` + alpha 纵向淡出，观感接近、成本低一截。
+ * 4. **渐变遮罩兜底**（无 RenderEffect）：统一限制后理论上不可达——API < 31 已被材质档锁进
+ *    无材质（走 1），桌面 / iOS 恒支持。保留遮罩兜底，模糊不可用时不降级为纯色。
  */
 @Composable
 fun ProgressiveBlurTopBar(
@@ -138,6 +142,11 @@ fun ProgressiveBlurTopBar(
      * （App 在根部 provide，28 个调用点无需逐个改）；也可显式传参覆盖。
      */
     useFakeProgressiveBlur: Boolean = LocalUseFakeProgressiveBlur.current,
+    /**
+     * 无材质档渐变遮罩：整条糊带换成无模糊的半透明渐变（不采样 backdrop）。
+     * 默认从 [LocalMaterialNoneEnabled] 读，App 在根部 provide；也可显式传参覆盖。
+     */
+    useGradientMask: Boolean = LocalMaterialNoneEnabled.current,
     /** 底端透明淡出起点（0–1，相对糊层高度）。越小过渡越长。 */
     edgeFadeStart: Float = 0.88f,
     /** 侧栏伸缩等导致采样源位移后自增，强制重建糊层采样 */
@@ -157,7 +166,6 @@ fun ProgressiveBlurTopBar(
     noTopStatusBar: Boolean = false,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val density = LocalDensity.current
     val totalHeight = if (height != Dp.Unspecified) {
         height
     } else {
@@ -204,93 +212,112 @@ fun ProgressiveBlurTopBar(
 
     Box(modifier = modifier) {
         // 只重建糊层，不 remount content
-        key(resampleKey, useFakeProgressiveBlur) {
-            if (isRenderEffectSupported() && !useFakeProgressiveBlur) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(totalHeight)
-                        .graphicsLayer { alpha = blurAlpha }
-                        .invalidateDrawOnSampleTrack(sampleTrack)
-                        .drawBackdrop(
-                            backdrop = backdrop,
-                            shape = blurShapeBlock,
-                            effects = blurEffects,
-                            highlight = null,
-                            shadow = null
-                        )
-                )
-            } else if (isRenderEffectSupported()) {
-                // 性能档假渐进：等值 blur + alpha 渐变淡出，观感接近真渐进，成本低一截
-                val fadeBrush = remember(totalHeight, edgeFadeStart) {
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.0f to Color.White,
-                            (edgeFadeStart * 0.55f).coerceIn(0.2f, 0.9f) to Color.White,
-                            edgeFadeStart.coerceIn(0.4f, 0.95f) to Color.White.copy(alpha = 0.45f),
-                            1.0f to Color.Transparent,
-                        ),
+        key(resampleKey, useFakeProgressiveBlur, useGradientMask) {
+            when {
+                // 无材质档：渐变遮罩，不采样 backdrop，无模糊
+                useGradientMask -> {
+                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha)
+                }
+                // 真渐进：AGSL 守 API 33+（31–32 上 runtimeShaderEffect 会静默 no-op，掉进这分支会整条糊带消失）
+                isRuntimeShaderSupported() && !useFakeProgressiveBlur -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(totalHeight)
+                            .graphicsLayer { alpha = blurAlpha }
+                            .invalidateDrawOnSampleTrack(sampleTrack)
+                            .drawBackdrop(
+                                backdrop = backdrop,
+                                shape = blurShapeBlock,
+                                effects = blurEffects,
+                                highlight = null,
+                                shadow = null
+                            )
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(totalHeight)
-                        .graphicsLayer {
-                            alpha = blurAlpha
-                            compositingStrategy =
-                                androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                            clip = true
-                        }
-                        .invalidateDrawOnSampleTrack(sampleTrack)
-                        .drawWithContent {
-                            drawContent()
-                            // 只淡出糊层自身，不盖到 content()
-                            drawRect(fadeBrush, blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
-                        }
-                        .drawBackdrop(
-                            backdrop = backdrop,
-                            shape = blurShapeBlock,
-                            effects = {
-                                // Mirror：`TileMode.Clamp`（blur 的默认）会把顶边的采样钳到第一行，
-                                // 12dp 半径下顶栏最上沿会被拉平成一条「没糊」的带子 —— 设置页最明显。
-                                // 镜像发生在节点边界内，和真模糊那套镜像采样同思路。
-                                blur(BlurMaxRadius.toPx(), TileMode.Mirror)
-                                // ⚠ Mirror 会让 blur() 把 padding 撑到 radius，而外扩的那圈缓冲
-                                // 录的是屏幕外（空），镜像过去仍是空 —— 压回 0，让镜像只发生在节点内。
-                                padding = 0f
-                            },
-                            highlight = null,
-                            shadow = null,
-                            onDrawSurface = {
-                                drawRect(tintColor.copy(alpha = tintIntensity))
-                            },
+                // 假渐进：性能档，或 AGSL 不可用但 RenderEffect 可用（API 31–32）
+                isRenderEffectSupported() -> {
+                    // 等值 blur + alpha 渐变淡出，观感接近真渐进，成本低一截
+                    val fadeBrush = remember(totalHeight, edgeFadeStart) {
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.White,
+                                (edgeFadeStart * 0.55f).coerceIn(0.2f, 0.9f) to Color.White,
+                                edgeFadeStart.coerceIn(0.4f, 0.95f) to Color.White.copy(alpha = 0.45f),
+                                1.0f to Color.Transparent,
+                            ),
                         )
-                )
-            } else {
-                val gradientColor = MiuixTheme.colorScheme.surface
-                val endY = totalHeight.value * density.density
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(totalHeight)
-                        .graphicsLayer { alpha = blurAlpha }
-                        .invalidateDrawOnSampleTrack(sampleTrack)
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to gradientColor.copy(alpha = 0.9f),
-                                    0.4f to gradientColor.copy(alpha = 0.82f),
-                                    0.7f to gradientColor.copy(alpha = 0.6f),
-                                    1.0f to gradientColor.copy(alpha = 0.0f)
-                                ),
-                                startY = 0f,
-                                endY = endY
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(totalHeight)
+                            .graphicsLayer {
+                                alpha = blurAlpha
+                                compositingStrategy =
+                                    androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                                clip = true
+                            }
+                            .invalidateDrawOnSampleTrack(sampleTrack)
+                            .drawWithContent {
+                                drawContent()
+                                // 只淡出糊层自身，不盖到 content()
+                                drawRect(fadeBrush, blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+                            }
+                            .drawBackdrop(
+                                backdrop = backdrop,
+                                shape = blurShapeBlock,
+                                effects = {
+                                    // Mirror：`TileMode.Clamp`（blur 的默认）会把顶边的采样钳到第一行，
+                                    // 12dp 半径下顶栏最上沿会被拉平成一条「没糊」的带子 —— 设置页最明显。
+                                    // 镜像发生在节点边界内，和真模糊那套镜像采样同思路。
+                                    blur(BlurMaxRadius.toPx(), TileMode.Mirror)
+                                    // ⚠ Mirror 会让 blur() 把 padding 撑到 radius，而外扩的那圈缓冲
+                                    // 录的是屏幕外（空），镜像过去仍是空 —— 压回 0，让镜像只发生在节点内。
+                                    padding = 0f
+                                },
+                                highlight = null,
+                                shadow = null,
+                                onDrawSurface = {
+                                    drawRect(tintColor.copy(alpha = tintIntensity))
+                                },
                             )
-                        )
-                )
+                    )
+                }
+                // 兜底仍走渐变遮罩：模糊能力缺失时不降级为纯色（统一限制后理论不可达，见顶部文档）
+                else -> {
+                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha)
+                }
             }
         }
         content()
     }
+}
+
+/**
+ * 渐变遮罩：无模糊，表面色 alpha 纵向渐变淡出。
+ * 无材质档的渐进模糊形态，也是能力缺失时的兜底（替代旧「纯色渐变」降级）。
+ */
+@Composable
+private fun ProgressiveBlurGradientMask(
+    totalHeight: Dp,
+    fillColor: Color,
+    blurAlpha: Float,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(totalHeight)
+            .graphicsLayer { alpha = blurAlpha }
+            .background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.0f to fillColor.copy(alpha = 0.9f),
+                        0.4f to fillColor.copy(alpha = 0.82f),
+                        0.7f to fillColor.copy(alpha = 0.6f),
+                        1.0f to fillColor.copy(alpha = 0.0f)
+                    ),
+                )
+            )
+    )
 }

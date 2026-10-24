@@ -776,7 +776,9 @@ fun MainScheduleScreen(
         if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
         else localCourseCardBackdrop
 
-    // 仅壁纸路径需要共享模糊层
+    // 仅壁纸路径需要共享模糊层。
+    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效），
+    // 壁纸采样录屏层与共享层照常挂载
     val sharedBlurManager = if (wallpaperBitmap != null) {
         remember(courseCardBackdrop) { SharedBlurBackdrop(courseCardBackdrop) }
     } else null

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppearanceConfig
+import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.AppearanceStore
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
@@ -283,7 +284,8 @@ fun CourseScheduleApp(
                     .size(1.dp)
                     .graphicsLayer { alpha = 0f }
                     .then(
-                        if (isRenderEffectSupported()) {
+                        // 无材质档玻璃全关，预热没有意义，直接跳过
+                        if (isRenderEffectSupported() && com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
                             Modifier.drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 shape = { RoundedCornerShape(36.dp) },
@@ -758,11 +760,21 @@ fun CourseScheduleApp(
                 currentCombinationIndex,
             ) {
                 // 开洞前显示已应用外观，避免快照过渡期闪编辑值
-                if (showCustomizePage && !isWindowCutoutActive) {
+                val base = if (showCustomizePage && !isWindowCutoutActive) {
                     originalCombination?.let { AppearanceConfig.fromCombination(it) }
                         ?: currentAppearance()
                 } else {
                     currentAppearance()
+                }
+                // 无材质档：卡片模糊/折射渲染强制关（设置项已锁死，存档保留原值）。
+                // 卡片仍采壁纸——着色程度/不透明度照常生效；只有玻璃采样录屏层不挂
+                if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                    base.copy(
+                        cardBlurRadius = 0f,
+                        cardRefraction = CardRefractionLevel.OFF,
+                    )
+                } else {
+                    base
                 }
             }
             // 顶栏/底栏必须采主内容 liquidGlass，否则玻璃退化成纯色

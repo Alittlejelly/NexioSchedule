@@ -89,6 +89,7 @@ import com.kyant.backdrop.isRenderEffectSupported
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import top.yukonga.miuix.kmp.internal.drawBlurredRingShadow
 import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.anim.SinOutEasing
@@ -888,17 +889,21 @@ fun ListPopupContent(
     val overshootRoom = 14.dp
     val overshootRoomPx = with(localDensity) { overshootRoom.toPx() }
     val chromeLens = chromeLensEnabled
+    // 无材质档：玻璃材质整体关闭，面板只剩半透明底色 + 描边（模糊 / 折射 / vibrancy 全跳过）
+    val materialNone = LocalMaterialNoneEnabled.current
     // 面板玻璃模糊随材质档位（通透玻璃档与其余档取值不同；弹窗跑在 root host，值来自主题快照）
     val panelBlur = LocalGlassPanelBlurDp.current
 
     val glassEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit =
-        remember(chromeLens, panelBlur) {
+        remember(chromeLens, panelBlur, materialNone) {
             {
-                vibrancy()
-                blur(panelBlur.dp.toPx())
-                // 与 LiquidGlassDropdownMenu 面板同一套折射：作用在边缘 SDF 上，
-                // 必须保持常量 —— 随面板变大反而会把边缘拉变形。
-                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                if (!materialNone) {
+                    vibrancy()
+                    blur(panelBlur.dp.toPx())
+                    // 与 LiquidGlassDropdownMenu 面板同一套折射：作用在边缘 SDF 上，
+                    // 必须保持常量 —— 随面板变大反而会把边缘拉变形。
+                    if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                }
             }
         }
 
@@ -1268,10 +1273,15 @@ private fun BoxScope.PopupMaterialLayer(
     canvasH: Float,
     rect: (Float, Float) -> FloatArray,
 ) {
-    // 底色 alpha 随材质档位：通透玻璃档压低一档，折射才透得出来（与顶栏按钮 / 顶栏下拉同源）
+    // 底色 alpha 随材质档位：通透玻璃档压低一档，折射才透得出来（与顶栏按钮 / 顶栏下拉同源）；
+    // 无材质档玻璃面改实色
+    val materialNone = LocalMaterialNoneEnabled.current
     val alphaDrop = LocalGlassSurfaceAlphaDrop.current
-    val surfaceAlpha = (if (style.isDark) 0.8f - alphaDrop.dark else 0.72f - alphaDrop.light)
-        .coerceAtLeast(0f)
+    val surfaceAlpha = if (materialNone) {
+        1f
+    } else {
+        (if (style.isDark) 0.8f - alphaDrop.dark else 0.72f - alphaDrop.light).coerceAtLeast(0f)
+    }
     // 每帧换新实例：edgeLight 的 outline 缓存按引用比较，记住实例会让描边冻结在第一帧尺寸上
     val panelShape: Shape = ContinuousRoundedRectangle(style.cornerRadius)
     Box(

@@ -85,9 +85,10 @@ fun ShortcutMenu(
 
     val containerColor =
         if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainer
-            .copy(alpha = if (isLightTheme) 0.6f else 0.54f)
-        else if (isLightTheme) Color(0xFFFFFFFF).copy(0.6f)
-        else Color(0xFF121212).copy(0.54f)
+            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(if (isLightTheme) 0.6f else 0.54f))
+        else if (isLightTheme) Color(0xFFFFFFFF)
+            .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
+        else Color(0xFF121212).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.54f))
 
     val scale = remember { Animatable(0f) }
     val alpha = remember { Animatable(0f) }
@@ -226,9 +227,12 @@ fun ShortcutMenu(
                     backdrop = backdrop,
                     shape = { ContinuousRoundedRectangle(18.dp) },
                     effects = {
-                        vibrancy()
-                        blur(4f.dp.toPx())
-                        lens(6f.dp.toPx(), 36f.dp.toPx())
+                        // 无材质档整体关（这组是硬编码参数，不读档位模糊值）
+                        if (com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()) {
+                            vibrancy()
+                            blur(4f.dp.toPx())
+                            lens(6f.dp.toPx(), 36f.dp.toPx())
+                        }
                     },
                     highlight = null,
                     shadow = null,

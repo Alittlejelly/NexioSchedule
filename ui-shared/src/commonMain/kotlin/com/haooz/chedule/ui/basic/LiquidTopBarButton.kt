@@ -86,15 +86,18 @@ fun LiquidTopBarButton(
     // drawBackdrop 的 element 按引用比较 shape / effects / onDrawSurface；lambda 每帧新建
     // 会让节点每帧 invalidateDraw、重新录制采样层并重跑采样
     val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
-    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8
+    // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8；无材质档整体关
     val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
+    val glassEffectsOn = com.haooz.chedule.ui.utils.AppMaterialSettings.glassEffectsEnabled()
     val buttonShapeBlock: () -> androidx.compose.ui.graphics.Shape = remember { { CircleShape } }
-    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur) {
+    val buttonEffects: com.kyant.backdrop.BackdropEffectScope.() -> Unit = remember(chromeLens, glassBlur, glassEffectsOn) {
         {
-            vibrancy()
-            blur(glassBlur.dp.toPx())
-            // 均衡及以下关闭折射
-            if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+            if (glassEffectsOn) {
+                vibrancy()
+                blur(glassBlur.dp.toPx())
+                // 均衡及以下关闭折射
+                if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+            }
         }
     }
     val buttonOnDrawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit =

@@ -333,7 +333,9 @@ internal fun CourseScheduleAppMainContent(
                 delay(OVERLAY_GLASS_RELEASE_DELAY_MS.milliseconds)
                 otherGlassActive = false
             }
-            val overlayGlassActive = menuGlassActive || otherGlassActive
+            // 无材质档：玻璃全关，顶栏/底栏采样加层不挂
+            val overlayGlassActive = (menuGlassActive || otherGlassActive) &&
+                !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
             val scaffoldContent = @Composable {
                 Scaffold(
                     modifier = Modifier
@@ -677,10 +679,17 @@ internal fun CourseScheduleAppMainContent(
                         modifier = Modifier
                             .fillMaxSize()
                             // 开洞时 mustRecord 恒 true：停录会让顶栏/底栏玻璃采样空内容
-                            .liquidGlassLayerBackdrop(
-                                backdrop = liquidGlassBackdrop,
-                                recordKey = liquidGlassRecordKey,
-                                mustRecord = liquidGlassMustRecord
+                            .then(
+                                // 无材质档：玻璃全关，内容采样录屏层不挂
+                                if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                                    Modifier
+                                } else {
+                                    Modifier.liquidGlassLayerBackdrop(
+                                        backdrop = liquidGlassBackdrop,
+                                        recordKey = liquidGlassRecordKey,
+                                        mustRecord = liquidGlassMustRecord
+                                    )
+                                }
                             )
                     ) {
                         // 共享壁纸层：铺满全屏（含侧栏下），与 rail 让位无关，侧栏伸缩时像素不动。
@@ -766,6 +775,8 @@ internal fun CourseScheduleAppMainContent(
                                     contentDescription = null,
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        // 卡片（含无材质档：模糊/折射关但保留壁纸采样与着色/不透明度）
+                                        // 从这里实时采样
                                         .liquidGlassLayerBackdrop(
                                             backdrop = sharedWallpaperBackdrop,
                                             recordKey = listOf(

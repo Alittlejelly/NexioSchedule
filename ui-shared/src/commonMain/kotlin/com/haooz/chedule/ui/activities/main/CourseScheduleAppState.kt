@@ -481,7 +481,9 @@ class CourseScheduleAppState {
     var isApplyingCustomize by mutableStateOf(false)
     var pendingEnterCutout by mutableStateOf(false)
 
-    // 外观从当前搭配派生，编辑只写 combinations；未加载时回退启动缓存防冷启动闪默认值
+    // 外观从当前搭配派生，编辑只写 combinations；未加载时回退启动缓存防冷启动闪默认值。
+    // ⚠ 保持未钳制的纯派生：存档保存（AppearanceStore.saveCardBlur 等）与外观编辑页都走它；
+    // 无材质档的「卡片模糊/折射渲染强制关」在 CourseScheduleApp 的 displayAppearance 处做。
     fun currentAppearance(): AppearanceConfig =
         combinations.getOrNull(currentCombinationIndex)
             ?.let { AppearanceConfig.fromCombination(it) }
