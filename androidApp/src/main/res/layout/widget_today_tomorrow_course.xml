@@ -22,7 +22,7 @@
         android:paddingStart="9dp"
         android:paddingEnd="9dp"
         android:paddingTop="9dp"
-        android:paddingBottom="3dp"
+        android:paddingBottom="2dp"
         android:background="@drawable/widget_background"
         tools:ignore="UselessParent">
 

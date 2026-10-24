@@ -336,7 +336,7 @@ class TodayTomorrowCourseWidgetProvider : AppWidgetProvider() {
             views.setLayoutMarginCompat(id, type, dp * scale, unit)
         }
 
-        padding(R.id.widget_container, 9f, 9f, 9f, 3f)
+        padding(R.id.widget_container, 9f, 9f, 9f, 2f)
         // 列表头行：左右两个 slot 平分，左 slot 右侧留 8dp 缝（与卡片列间缝一致）
         margin(R.id.widget_day_header, RemoteViews.MARGIN_START, 4f)
         margin(R.id.widget_day_header, RemoteViews.MARGIN_END, 4f)
