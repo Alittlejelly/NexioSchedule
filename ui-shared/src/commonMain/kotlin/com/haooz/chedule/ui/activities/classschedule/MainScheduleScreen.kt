@@ -92,6 +92,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.AppearanceConfig
+import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
@@ -828,14 +829,12 @@ fun MainScheduleScreen(
                 )
             }
     ) {
-        if (wallpaperBitmap != null) {
+        if (wallpaperBitmap != null && !useSharedWallpaper) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        // 共享层已录制；本页不再录，避免用透明内容覆盖共享 backdrop
-                        if (useSharedWallpaper) Modifier
-                        else Modifier.kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
+                        Modifier.kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
                     )
             ) {
                 val brightnessFilter = remember(wallpaperBrightness) {
@@ -871,8 +870,8 @@ fun MainScheduleScreen(
                             val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
                             scaleX = effectiveScale
                             scaleY = effectiveScale
-                            // 共享层负责显示；这里只录 backdrop，保持不可见
-                            alpha = if (useSharedWallpaper) 0f else 1f
+                            // 只有非共享路径才可见（共享层负责显示）
+                            alpha = 1f
                             translationX = wallpaperOffset.x
                             translationY = wallpaperOffset.y
                             renderEffect = wallpaperBlurEffect
@@ -881,9 +880,11 @@ fun MainScheduleScreen(
                     colorFilter = brightnessFilter
                 )
             }
-        } else {
+        } else if (wallpaperBitmap == null) {
             // 无壁纸：无人采样 courseCardBackdrop，跳过 LayerBackdrop 录制
             //（每帧把整页课表录进 GPU 层是左右滑白烧）
+            // ⚠ 共享壁纸分支（wallpaperBitmap != null && useSharedWallpaper）走不到这里：
+            // 那层壁纸由主 pager 后的共享层绘制，本页必须保持透明
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1416,28 +1417,36 @@ fun MainScheduleScreen(
                                 .then(
                                     if (hasWallpaperDivider) {
                                         val dividerBackdrop = activeCardBackdrop ?: courseCardBackdrop
-                                        val dividerEffects: BackdropEffectScope.() -> Unit =
-                                            remember(dividerBackdrop, dividerBlurPx, dividerLensRadiusPx, dividerLensStrengthPx) {
-                                                {
-                                                    if (dividerBackdrop !is SharedBlurBackdrop) {
-                                                        blur(dividerBlurPx)
+                                        // 同课程卡：模糊 0 且无折射时，采样回来的就是分界带正下方的
+                                        // 壁纸像素，退化成一次圆角填充（每个周页 2 条，3 个周页常驻）
+                                        val dividerNeedsSampling =
+                                            cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
+                                        if (dividerNeedsSampling) {
+                                            val dividerEffects: BackdropEffectScope.() -> Unit =
+                                                remember(dividerBackdrop, dividerBlurPx, dividerLensRadiusPx, dividerLensStrengthPx) {
+                                                    {
+                                                        if (dividerBackdrop !is SharedBlurBackdrop) {
+                                                            blur(dividerBlurPx)
+                                                        }
+                                                        lens(dividerLensRadiusPx, dividerLensStrengthPx)
                                                     }
-                                                    lens(dividerLensRadiusPx, dividerLensStrengthPx)
                                                 }
-                                            }
-                                        Modifier.drawBackdrop(
-                                            backdrop = dividerBackdrop,
-                                            shape = { dividerBlurShape },
-                                            effects = dividerEffects,
-                                            highlight = null,
-                                            shadow = null,
-                                            viewport = LocalBackdropViewport.current,
-                                            onDrawSurface = remember(dividerFgSurface) {
-                                                {
-                                                    drawRect(dividerFgSurface)
+                                            Modifier.drawBackdrop(
+                                                backdrop = dividerBackdrop,
+                                                shape = { dividerBlurShape },
+                                                effects = dividerEffects,
+                                                highlight = null,
+                                                shadow = null,
+                                                viewport = LocalBackdropViewport.current,
+                                                onDrawSurface = remember(dividerFgSurface) {
+                                                    {
+                                                        drawRect(dividerFgSurface)
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        } else {
+                                            Modifier.background(dividerFgSurface, dividerBlurShape)
+                                        }
                                     } else Modifier
                                 )
                                 .then(

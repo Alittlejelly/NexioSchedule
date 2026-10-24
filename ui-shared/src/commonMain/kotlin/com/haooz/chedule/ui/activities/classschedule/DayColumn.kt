@@ -623,18 +623,28 @@ private fun PendingSectionBox(
                 val pendingOnSurface: DrawScope.() -> Unit = remember(surfaceColor) {
                     { drawRect(surfaceColor) }
                 }
+                // 与 CourseCard 同口径：模糊 0 且无折射时采样回来的就是格子正下方的壁纸像素，
+                // 退化成一次圆角填充。空格子数量比有课的格子还多，这里是采样次数的大头。
+                val pendingNeedsSampling =
+                    cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 2.dp, vertical = 2.dp)
-                        .drawBackdrop(
-                            backdrop = wallpaperBackdrop!!,
-                            shape = { backdropShape },
-                            effects = pendingEffects,
-                            highlight = null,
-                            shadow = null,
-                            viewport = LocalBackdropViewport.current,
-                            onDrawSurface = pendingOnSurface
+                        .then(
+                            if (pendingNeedsSampling) {
+                                Modifier.drawBackdrop(
+                                    backdrop = wallpaperBackdrop!!,
+                                    shape = { backdropShape },
+                                    effects = pendingEffects,
+                                    highlight = null,
+                                    shadow = null,
+                                    viewport = LocalBackdropViewport.current,
+                                    onDrawSurface = pendingOnSurface
+                                )
+                            } else {
+                                Modifier.background(surfaceColor, backdropShape)
+                            }
                         )
                         .drawWithContent {
                             drawContent()
@@ -887,18 +897,27 @@ fun SpecialBandOverlay(
             val outlineColor = remember(bgColor, isDark) { scheduleOutlineColor(bgColor, isDark) }
             val outlineWidthPx = remember(density) { with(density) { SCHEDULE_OUTLINE_WIDTH.toPx() } }
             val outlineCache = remember { OutlineCache() }
+            // 同 pending 格：模糊 0 且无折射时采样是纯冗余，退化成圆角填充
+            val bandNeedsSampling =
+                cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 2.dp, vertical = 2.dp)
-                    .drawBackdrop(
-                        backdrop = wallpaperBackdrop,
-                        shape = { backdropShape },
-                        effects = bandEffects,
-                        highlight = null,
-                        shadow = null,
-                        viewport = LocalBackdropViewport.current,
-                        onDrawSurface = onBandSurface
+                    .then(
+                        if (bandNeedsSampling) {
+                            Modifier.drawBackdrop(
+                                backdrop = wallpaperBackdrop,
+                                shape = { backdropShape },
+                                effects = bandEffects,
+                                highlight = null,
+                                shadow = null,
+                                viewport = LocalBackdropViewport.current,
+                                onDrawSurface = onBandSurface
+                            )
+                        } else {
+                            Modifier.background(bandSurfaceColor, backdropShape)
+                        }
                     )
                     .drawWithContent {
                         drawContent()

@@ -187,26 +187,33 @@ fun BlurCard(
                     }
                 }
             }
+        val flatSurfaceColor = remember(isDark, surfaceOpacity) {
+            if (isDark) Color.Black.copy(alpha = surfaceOpacity)
+            else Color.White.copy(alpha = surfaceOpacity)
+        }
         val glassSurface: DrawScope.() -> Unit =
             remember(isDark, surfaceOpacity) {
-                {
-                    drawRect(
-                        if (isDark) Color.Black.copy(alpha = surfaceOpacity)
-                        else Color.White.copy(alpha = surfaceOpacity)
-                    )
-                }
+                { drawRect(flatSurfaceColor) }
             }
+        // 同课程卡：模糊 0 且无折射时采样回来的就是卡片正下方的壁纸像素，退化成一次圆角填充
+        val needsSampling = blurRadius > 0f || refraction != CardRefractionLevel.OFF
         Box(
             modifier = modifier
                 .clip(shape)
                 // Record inside the source clip so its live subtree cannot replace retained rows.
                 .then(transitionRecording)
-                .drawBackdrop(
-                    backdrop = wallpaperBackdrop,
-                    shape = { shape },
-                    effects = glassEffects,
-                    highlight = null,
-                    onDrawSurface = glassSurface
+                .then(
+                    if (needsSampling) {
+                        Modifier.drawBackdrop(
+                            backdrop = wallpaperBackdrop,
+                            shape = { shape },
+                            effects = glassEffects,
+                            highlight = null,
+                            onDrawSurface = glassSurface
+                        )
+                    } else {
+                        Modifier.background(flatSurfaceColor, shape)
+                    }
                 )
                 .then(
                     if (showEdgeLight) {
@@ -563,14 +570,12 @@ fun TodayScreen(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            if (wallpaperBitmap != null) {
+            if (wallpaperBitmap != null && !useSharedWallpaper) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .then(
-                            // 共享层已负责显示并录制；本页不再录透明占位
-                            if (useSharedWallpaper) Modifier
-                            else Modifier.kyantLayerBackdrop(localCardBackdrop)
+                            Modifier.kyantLayerBackdrop(localCardBackdrop)
                         )
                 ) {
                     val brightnessFilter = if (wallpaperBrightness != 0f) {
@@ -604,8 +609,8 @@ fun TodayScreen(
                                 val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
                                 scaleX = effectiveScale
                                 scaleY = effectiveScale
-                                // 共享层负责显示；这里只录 backdrop，保持不可见
-                                alpha = if (useSharedWallpaper) 0f else 1f
+                                // 只有非共享路径才可见（共享层负责显示）
+                                alpha = 1f
                                 translationX = wallpaperOffset.x
                                 translationY = wallpaperOffset.y
                                 renderEffect = todayWallpaperBlurEffect
@@ -1705,25 +1710,31 @@ private fun CourseSectionTitle(
                     }
                 }
             }
+        val flatTitleColor = remember(isDark, surfaceOpacity) {
+            if (isDark) Color.Black.copy(alpha = surfaceOpacity)
+            else Color.White.copy(alpha = surfaceOpacity)
+        }
         val titleSurface: DrawScope.() -> Unit =
             remember(isDark, surfaceOpacity) {
-                {
-                    drawRect(
-                        if (isDark) Color.Black.copy(alpha = surfaceOpacity)
-                        else Color.White.copy(alpha = surfaceOpacity)
-                    )
-                }
+                { drawRect(flatTitleColor) }
             }
+        val titleNeedsSampling = blurRadius > 0f || refraction != CardRefractionLevel.OFF
         Box(
             modifier = modifier
                 .padding(vertical = 6.dp)
                 .clip(shape)
-                .drawBackdrop(
-                    backdrop = wallpaperBackdrop,
-                    shape = { shape },
-                    effects = titleEffects,
-                    highlight = null,
-                    onDrawSurface = titleSurface
+                .then(
+                    if (titleNeedsSampling) {
+                        Modifier.drawBackdrop(
+                            backdrop = wallpaperBackdrop,
+                            shape = { shape },
+                            effects = titleEffects,
+                            highlight = null,
+                            onDrawSurface = titleSurface
+                        )
+                    } else {
+                        Modifier.background(flatTitleColor, shape)
+                    }
                 )
                 // 标题与课程卡一致用淡描边；亮版只留给今日助手/格言
                 .edgeLight(shape = shape, edgeLight = rememberCardEdgeLight(baseColor = if (isDark) Color.Black else Color.White))

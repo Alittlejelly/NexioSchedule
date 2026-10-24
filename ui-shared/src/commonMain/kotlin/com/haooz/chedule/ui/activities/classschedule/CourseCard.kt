@@ -150,6 +150,16 @@ fun CourseCard(
     val sectionCount = course.endSection - course.startSection + 1
     val cardHeight = (customCardHeightDp ?: (sectionCount * cardHeightPerSection)).dp
     val hasBlur = wallpaperBackdrop != null
+    /**
+     * 是否真的需要做 backdrop 采样。
+     *
+     * 模糊半径 0 且无折射时，`drawBackdrop` 采回来的就是卡片正下方那层壁纸的像素 —— 与
+     * 「不采样、直接把半透明表面叠在壁纸层上」逐像素等价，却要为每张卡每帧付一次全屏图层
+     * 重放（`drawLayer` + `localPositionOf` + `clipPath` 序列化）。课表一屏几十张卡、切主 tab
+     * 时两页同时在场，这条在无材质档（模糊 0 + 折射 OFF）下是主线程 draw 阶段的大头。
+     */
+    val needsBackdropSampling = hasBlur &&
+            (cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF)
     val effectiveCornerRadius = if (isTablet) (cardCornerRadius * 1.3f) else cardCornerRadius
     val scope = rememberCoroutineScope()
     val localDensity = LocalDensity.current
@@ -370,14 +380,21 @@ fun CourseCard(
                             Modifier
                         }
                     )
-                    .drawBackdrop(
-                        backdrop = wallpaperBackdrop,
-                        shape = { backdropShape },
-                        effects = backdropEffects,
-                        highlight = null,
-                        shadow = null,
-                        viewport = LocalBackdropViewport.current,
-                        onDrawSurface = onCardSurface
+                    .then(
+                        // 不采样时退化成一次圆角纯色填充：下面就是同一张壁纸，视觉等价
+                        if (needsBackdropSampling) {
+                            Modifier.drawBackdrop(
+                                backdrop = wallpaperBackdrop,
+                                shape = { backdropShape },
+                                effects = backdropEffects,
+                                highlight = null,
+                                shadow = null,
+                                viewport = LocalBackdropViewport.current,
+                                onDrawSurface = onCardSurface
+                            )
+                        } else {
+                            Modifier.background(surfaceColor, backdropShape)
+                        }
                     )
                     .drawWithContent {
                         drawContent()
