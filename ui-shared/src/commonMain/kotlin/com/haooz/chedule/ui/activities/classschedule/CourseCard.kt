@@ -425,25 +425,37 @@ fun CourseCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                CardContent(
-                    course,
-                    sectionCount,
-                    textColor,
-                    hasMultipleCourses,
-                    isTablet,
-                    cardContentAlignment,
-                    cardHeight.value,
-                    cardHeightPerSection,
-                    isHoliday,
-                    isWorkSwap,
-                    isCurrentWeek,
-                    showClassroom,
-                    showTeacher,
-                    cardTextScale,
-                    isDark,
-                    isCourseCancelled,
-                    courseTint = courseColors.tint
-                )
+                // 内容单独成层：采样节点每帧失效会触发整页 draw pass，
+                // 有层的子树只需 drawLayer，不必重建文字/路径（卡片文字+圆角是重录大头）。
+                // 实测（release 包，切 tab 4 轮）：janky 3.7%→2.3%，draw p90 8.7→7.0ms；
+                // debug 包更明显（40%→30%），因为解释执行放大了重录成本。
+                // 与上面 needTransformLayer 不冲突：那是拖拽缩放的**变换层**（按需挂），
+                // 这是常驻的**内容缓存层**，位置不同（内容层在采样层内侧），职责也不同。
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer { }
+                ) {
+                    CardContent(
+                        course,
+                        sectionCount,
+                        textColor,
+                        hasMultipleCourses,
+                        isTablet,
+                        cardContentAlignment,
+                        cardHeight.value,
+                        cardHeightPerSection,
+                        isHoliday,
+                        isWorkSwap,
+                        isCurrentWeek,
+                        showClassroom,
+                        showTeacher,
+                        cardTextScale,
+                        isDark,
+                        isCourseCancelled,
+                        courseTint = courseColors.tint
+                    )
+                }
             }
         }
     } else {
