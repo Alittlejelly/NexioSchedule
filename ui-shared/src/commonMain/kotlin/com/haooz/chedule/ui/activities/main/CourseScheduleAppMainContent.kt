@@ -205,6 +205,19 @@ internal fun CourseScheduleAppMainContent(
                         sheetOffsetY.value != 0f
             }
         }
+
+        // 只认「几何变换」
+        val mainContentTransformed by remember {
+            derivedStateOf {
+                isCustomizeExiting ||
+                        isWindowCutoutActive ||
+                        showSwitchSchedule ||
+                        showCustomizePage ||
+                        cutoutMainScale.value != 1f ||
+                        customizeExitScale.value != 1f ||
+                        sheetOffsetY.value != 0f
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1354,20 +1367,15 @@ internal fun CourseScheduleAppMainContent(
                                                                 },
                                                                 appearance = displayAppearance,
                                                                 liquidGlassBackdrop = liquidGlassBackdrop,
+                                                                pageGlassSuppressed = mainContentTransformed,
                                                                 onGridGeometryChange = { geom ->
                                                                     gridGeometry = geom
-                                                                    // 翻周停下 / 页内滚停后几何换页：浮层没动，
-                                                                    // 但它底下的格子变了，落点必须跟着重算。
-                                                                    // 只在真拖着时算：长按刚弹菜单还没拖，
-                                                                    // 重算会把落点高亮提前画出来。
+                                                                    // 翻周停下 / 页内滚停后几何换页
                                                                     if (isFloatingCardDragging) {
                                                                         refreshPendingDropTarget()
                                                                     }
                                                                 },
-                                                                // 落点高亮按 **lambda** 传：组合期不在这里求值，
-                                                                // 只有落点遮罩自己去读。写成 `run { }` 会在每次跨格时
-                                                                // 把整个主内容（4 页 pager + 整张课表）重组一遍 ——
-                                                                // 实测单帧 73ms（41ms 重组 + 32ms 遍历）。
+                                                                // 落点高亮按 **lambda** 传：组合期不在这里求值
                                                                 dropHighlight = {
                                                                     // 订阅落点变更信号：pendingDropTarget 是普通字段
                                                                     dropTargetRevision
@@ -1592,7 +1600,7 @@ internal fun CourseScheduleAppMainContent(
                     // 上方 64dp，底栏间距变了这里必须跟着变，否则按钮会陷进底栏里
                     val backToNowBottomPadding = if (nativeBottomBar) {
                         hostNavigation!!.bottomBarInset.toFloat().dp + 8.dp
-                    } else bottomFloatingPadding() + 64.dp
+                    } else bottomFloatingPadding() + 56.dp
                     Box(modifier = Modifier.fillMaxSize()) {
                         // 对齐切换课表底栏：None 转场 + 手动 appear + graphicsLayer clip=false，
                         // 避免 AnimatedVisibility 收拢尺寸时把阴影裁掉

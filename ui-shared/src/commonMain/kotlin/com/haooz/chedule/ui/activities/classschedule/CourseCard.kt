@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +76,7 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -361,6 +363,24 @@ fun CourseCard(
             // 静止卡不挂 graphicsLayer：几十张×两页的合成层是周滑 draw 热点
             val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
             val glassRadiusPx = with(localDensity) { effectiveCornerRadius.dp.toPx() }
+            // 按压/涟漪是绘制期 graphicsLayer 变换，`onGloballyPositioned` 动画期不会重跑，
+            // 所以矩形得逐帧重取（`boundsInRoot` 含变换，缩放后的位置和尺寸一次给全）。
+            // 稳态下这个 effect 立刻返回，一次都不跑。
+            val glassScaleAnimating = sinkActive || rippleAnimating
+            LaunchedEffect(glassScaleAnimating) {
+                val glass = externalGlass ?: return@LaunchedEffect
+                if (!usesExternalGlass) return@LaunchedEffect
+                if (!glassScaleAnimating) {
+                    glass.setCard(glassSlot, cardCoords[0], glassRadiusPx)
+                    return@LaunchedEffect
+                }
+                snapshotFlow {
+                    // 读缩放量只是为了「每帧唤醒」；矩形取值仍由 setCard 内部现算 boundsInRoot
+                    anims.sinkScale.value * anims.rippleScale.value
+                }.collect {
+                    glass.setCard(glassSlot, cardCoords[0], glassRadiusPx)
+                }
+            }
             // 拖拽期本卡被 alpha=0 隐藏（改由浮层呈现），玻璃不能跟着留下；
             // 这个分支不会走 onGloballyPositioned（位置没变），所以必须用 SideEffect 兜住。
             SideEffect {

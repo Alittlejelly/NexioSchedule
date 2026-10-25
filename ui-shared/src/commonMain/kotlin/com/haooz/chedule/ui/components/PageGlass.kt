@@ -5,7 +5,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.findRootCoordinates
 import com.kyant.backdrop.backdrops.SharedBlurBackdrop
 
 /**
@@ -108,32 +108,37 @@ class GlassCardRegistry {
     /**
      * 写入卡片几何。只在数值真的变化时递增版本（静止时零成本）。
      *
-     * 坐标用 `positionInRoot`：翻页/滚动期 pager 是 graphicsLayer 位移、滚动是布局位移，
-     * 两种情况都会反映在 root 坐标里；页级玻璃节点自己也用同一坐标系，相减得相对偏移，
-     * 两边同步位移时差值不变，所以翻页过程不需要额外补偿。
+     * 坐标必须取「含图形变换的完整边界」，**不能**用 `positionInRoot()` + `size`：
+     * 前者位置已按 `graphicsLayer` 的缩放算过、后者尺寸却还是布局值，两者一混矩形就是歪的
+     * （按压时卡片缩小 6%，玻璃窗口却按「缩放后的左上角 + 原始尺寸」铺开，表面色与玻璃就此脱开）。
+     *
+     * 用 `localBoundingBoxOf(clipBounds = false)` 而不是 `boundsInRoot()`：后者会把边界裁到
+     * 祖先裁剪框里，翻周时露出半边的页会把边缘卡片的矩形压小。
+     * 圆角按「边界宽 / 布局宽」同步缩放，保证与卡片轮廓同源。
      */
     fun setCard(slot: Int, coordinates: LayoutCoordinates?, radiusPx: Float) {
         if (slot < 0 || slot >= CAPACITY) return
         if (coordinates == null || !coordinates.isAttached) return
-        val pos = try {
-            coordinates.positionInRoot()
+        val bounds = try {
+            coordinates.findRootCoordinates().localBoundingBoxOf(coordinates, clipBounds = false)
         } catch (_: Exception) {
             return
         }
-        val w = coordinates.size.width.toFloat()
-        val h = coordinates.size.height.toFloat()
+        val layoutWidth = coordinates.size.width.toFloat()
+        val scale = if (layoutWidth > 0f) bounds.width / layoutWidth else 1f
         val base = slot * 4
-        val l = pos.x
-        val t = pos.y
-        val r = l + w
-        val b = t + h
+        val l = bounds.left
+        val t = bounds.top
+        val r = bounds.right
+        val b = bounds.bottom
+        val radius = radiusPx * scale
         var changed = false
         if (rects[base] != l) { rects[base] = l; changed = true }
         if (rects[base + 1] != t) { rects[base + 1] = t; changed = true }
         if (rects[base + 2] != r) { rects[base + 2] = r; changed = true }
         if (rects[base + 3] != b) { rects[base + 3] = b; changed = true }
         for (i in 0 until 4) {
-            if (radii[base + i] != radiusPx) { radii[base + i] = radiusPx; changed = true }
+            if (radii[base + i] != radius) { radii[base + i] = radius; changed = true }
         }
         if (changed) {
             version++

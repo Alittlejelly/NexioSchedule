@@ -117,6 +117,7 @@ actual fun PageGlass(
                     val ny = nodeRoot[1]
                     for (i in 0 until count) {
                         val base = i * 4
+                        // 注册的矩形已是「含变换的边界」，缩放/位置都由 Compose 算好，这里只做坐标平移
                         localRects[base] = registry.rects[base] - nx
                         localRects[base + 1] = registry.rects[base + 1] - ny
                         localRects[base + 2] = registry.rects[base + 2] - nx

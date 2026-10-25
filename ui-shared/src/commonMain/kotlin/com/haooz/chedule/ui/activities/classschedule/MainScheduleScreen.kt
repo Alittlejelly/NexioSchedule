@@ -239,6 +239,14 @@ fun MainScheduleScreen(
     onWallpaperScaleChange: (Float) -> Unit = {},
     appearance: AppearanceConfig = AppearanceConfig(),
     liquidGlassBackdrop: Backdrop? = null,
+    /**
+     * 主内容正被外层 `graphicsLayer` 缩放/位移（进课表外观页、窗口开洞、退场、导航切页）。
+     *
+     * 页级玻璃把卡片的**布局**矩形喂给 shader，而这段期间卡片实际是被绘制期变换缩小过的；
+     * 两者一旦错开就是「材质跟卡片不在一个位置」。这期间退回每张卡各自 `drawBackdrop`
+     * （改动前的旧路径，缩放态下已验证），稳定态再交回页级玻璃。
+     */
+    pageGlassSuppressed: Boolean = false,
     // 拖拽落点高亮：Pair(dayOfWeek, sectionRange)，sectionRange 为落点覆盖的节次区间。
     // 传 lambda 而不是值：求值推迟到落点遮罩自己的组合作用域里，跨格只重组遮罩那一小块
     // （传值等于在调用方组合期读落点状态，每跨一格整页重组一次）。
@@ -817,8 +825,10 @@ fun MainScheduleScreen(
      *
      * 条件必须满足「有共享烘焙层」+「AGSL 可用」：前者是玻璃层的纹理来源，后者是折射位移的唯一实现。
      * 任一不满足就整页退回旧路径（每张卡各自 drawBackdrop），行为与本次改动前完全一致。
+     *
+     * [pageGlassSuppressed] 是第三种退回原因：主内容正被外层缩放（见参数注释）。
      */
-    val pageGlassActive = hasSharedBlur && isRuntimeShaderSupported()
+    val pageGlassActive = hasSharedBlur && isRuntimeShaderSupported() && !pageGlassSuppressed
     // OFF 档两个值都是 0，传下去等于不折射
     val pageGlassRefractionHeightPx =
         with(density) { cardRefraction.lensRadiusDp.dp.toPx() }
