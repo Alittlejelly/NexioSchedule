@@ -40,6 +40,11 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.LanguagePref
+import com.haooz.chedule.i18n.LanguageStore
+import com.haooz.chedule.i18n.PreferenceStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.activities.today.ClassEndEffectSettings
 import com.haooz.chedule.ui.theme.LocalSystemDarkTheme
@@ -96,10 +101,10 @@ fun PreferenceSettingsScreen(
     val weatherHasPermission = hasLocationPermission()
     val weatherLocationSummary = when {
         weatherHasPermission ->
-            if (lastLocationName != null) "当前定位：$lastLocationName"
-            else "当前定位：未获取"
-        lastLocationName != null -> "上次定位：$lastLocationName"
-        else -> "未获取定位，开启定位权限后显示天气"
+            if (lastLocationName != null) PreferenceStr.currentLocationS(lastLocationName)
+            else PreferenceStr.currentLocationNone()
+        lastLocationName != null -> PreferenceStr.lastLocationS(lastLocationName)
+        else -> PreferenceStr.weatherNeedsLocation()
     }
 
     val themePrefs = remember { AppStorage.store("app_theme_prefs") }
@@ -197,7 +202,7 @@ fun PreferenceSettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         ThemeSelectionBox(
-                            label = "浅色模式",
+                            label = PreferenceStr.lightMode(),
                             drawableRes = Res.drawable.theme_preview_light,
                             selected = !effectiveDark,
                             onClick = onClick@ {
@@ -209,7 +214,7 @@ fun PreferenceSettingsScreen(
                             modifier = Modifier.weight(1f)
                         )
                         ThemeSelectionBox(
-                            label = "深色模式",
+                            label = PreferenceStr.darkMode(),
                             drawableRes = Res.drawable.theme_preview_night,
                             selected = effectiveDark,
                             onClick = onClick@ {
@@ -227,7 +232,7 @@ fun PreferenceSettingsScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             SwitchPreference(
-                                title = "自动切换深色模式",
+                                title = PreferenceStr.autoDarkMode(),
                                 checked = themeMode == "system",
                                 onCheckedChange = { on ->
                                     if (on) {
@@ -240,11 +245,11 @@ fun PreferenceSettingsScreen(
                                 }
                             )
                             SwitchPreference(
-                                title = "莫奈取色",
+                                title = PreferenceStr.monetColor(),
                                 summary = if (isMonetColorAvailable()) {
-                                    "跟随系统壁纸对应用进行配色"
+                                    PreferenceStr.monetColorSummary()
                                 } else {
-                                    "需要 Android 12 及以上版本"
+                                    PreferenceStr.monetColorUnavailable()
                                 },
                                 checked = monetEnabled && isMonetColorAvailable(),
                                 enabled = isMonetColorAvailable(),
@@ -294,9 +299,9 @@ fun PreferenceSettingsScreen(
                                     }
                             )
                             OverlayDropdownMenu(
-                                title = "应用材质效果",
+                                title = PreferenceStr.appMaterialEffect(),
                                 // summary 为空时自动显示当前选中档位；锁定态给出原因
-                                summary = if (materialLocked) "当前系统版本不支持模糊效果，已锁定为无材质" else null,
+                                summary = if (materialLocked) PreferenceStr.materialLockedSummary() else null,
                                 entry = appMaterialEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,
@@ -304,8 +309,8 @@ fun PreferenceSettingsScreen(
                             )
                             CardExpand(visible = islandNotification) {
                                 SwitchPreference(
-                                    title = "小米超级岛光效",
-                                    summary = "在小米超级岛展开态显示流动光效",
+                                    title = PreferenceStr.superIslandGlow(),
+                                    summary = PreferenceStr.superIslandGlowSummary(),
                                     checked = islandExpandGlowEnabled,
                                     onCheckedChange = {
                                         islandExpandGlowEnabled = it
@@ -319,17 +324,58 @@ fun PreferenceSettingsScreen(
 
                 item {
                     SmallTitle(
-                        text = "应用设置",
+                        text = PreferenceStr.appSettings(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         insideMargin = PaddingValues(0.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // 直接读 AppLanguage 的快照状态：切换后本行的选中态即时刷新
+                            val languagePref = AppLanguage.pref
+                            val languageEntry = DropdownEntry(
+                                items = listOf(
+                                    DropdownItem(
+                                        text = CommonStr.followSystem(),
+                                        selected = languagePref == LanguagePref.SYSTEM,
+                                        onClick = {
+                                            AppLanguage.set(LanguagePref.SYSTEM)
+                                            LanguageStore.save(LanguagePref.SYSTEM)
+                                        }
+                                    ),
+                                    DropdownItem(
+                                        text = CommonStr.simplifiedChinese(),
+                                        selected = languagePref == LanguagePref.ZH,
+                                        onClick = {
+                                            AppLanguage.set(LanguagePref.ZH)
+                                            LanguageStore.save(LanguagePref.ZH)
+                                        }
+                                    ),
+                                    DropdownItem(
+                                        text = CommonStr.english(),
+                                        selected = languagePref == LanguagePref.EN,
+                                        onClick = {
+                                            AppLanguage.set(LanguagePref.EN)
+                                            LanguageStore.save(LanguagePref.EN)
+                                        }
+                                    ),
+                                )
+                            )
+
+                            OverlayDropdownMenu(
+                                title = CommonStr.language(),
+                                summary = CommonStr.languageSummary(),
+                                entry = languageEntry,
+                                collapseOnSelection = true,
+                                liquidGlassBackdrop = liquidGlassBackdrop,
+                                dropdownColors = liquidGlassDropdownColors,
+                            )
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             val homepageEntry = DropdownEntry(
                                 items = listOf(
                                     DropdownItem(
-                                        text = "今日",
+                                        text = CommonStr.today(),
                                         selected = defaultHomepage == "今日",
                                         onClick = {
                                             com.haooz.chedule.ui.utils.FeatureLog.preference("default_homepage=今日")
@@ -337,7 +383,7 @@ fun PreferenceSettingsScreen(
                                         }
                                     ),
                                     DropdownItem(
-                                        text = "课程表",
+                                        text = PreferenceStr.schedule(),
                                         selected = defaultHomepage == "课程表",
                                         onClick = {
                                             com.haooz.chedule.ui.utils.FeatureLog.preference("default_homepage=课程表")
@@ -348,8 +394,8 @@ fun PreferenceSettingsScreen(
                             )
 
                             OverlayDropdownMenu(
-                                title = "默认首页",
-                                summary = "首次启动时默认显示的页面",
+                                title = PreferenceStr.defaultHomepage(),
+                                summary = PreferenceStr.defaultHomepageSummary(),
                                 entry = homepageEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,
@@ -366,8 +412,8 @@ fun PreferenceSettingsScreen(
                                 )
                             }
                             SwitchPreference(
-                                title = "预测性返回动画",
-                                summary = "返回手势时页面跟随手指的动画效果",
+                                title = PreferenceStr.predictiveBack(),
+                                summary = PreferenceStr.predictiveBackSummary(),
                                 checked = predictiveBackEnabled,
                                 onCheckedChange = {
                                     predictiveBackEnabled = it
@@ -381,8 +427,8 @@ fun PreferenceSettingsScreen(
                                 }
                             )
                             SwitchPreference(
-                                title = "应用触感反馈",
-                                summary = "点击、滑动、底栏切换等操作的震动反馈",
+                                title = PreferenceStr.hapticFeedback(),
+                                summary = PreferenceStr.hapticFeedbackSummary(),
                                 checked = hapticFeedbackEnabled,
                                 onCheckedChange = {
                                     hapticFeedbackEnabled = it
@@ -395,8 +441,8 @@ fun PreferenceSettingsScreen(
                                 }
                             )
                             SwitchPreference(
-                                title = "下课烟花",
-                                summary = "今日页每天最后一节课结束后播放烟花",
+                                title = PreferenceStr.classEndFireworks(),
+                                summary = PreferenceStr.classEndFireworksSummary(),
                                 checked = classEndFireworks,
                                 onCheckedChange = {
                                     classEndFireworks = it
@@ -404,8 +450,8 @@ fun PreferenceSettingsScreen(
                                 }
                             )
                             SwitchPreference(
-                                title = "隐藏后台",
-                                summary = "返回桌面时，隐藏应用的最近任务卡片",
+                                title = PreferenceStr.hideFromRecents(),
+                                summary = PreferenceStr.hideFromRecentsSummary(),
                                 checked = hideBackground,
                                 onCheckedChange = {
                                     hideBackground = it
@@ -419,7 +465,7 @@ fun PreferenceSettingsScreen(
 
                 item {
                     SmallTitle(
-                        text = "数据源",
+                        text = PreferenceStr.dataSources(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -429,7 +475,7 @@ fun PreferenceSettingsScreen(
                             val repoEntry = DropdownEntry(
                                 items = listOf(
                                     DropdownItem(
-                                        text = "Fork源",
+                                        text = PreferenceStr.forkSource(),
                                         selected = repoUrl == "https://gitee.com/com_haooz_account/shiguang_warehouse",
                                         onClick = {
                                             repoUrl = "https://gitee.com/com_haooz_account/shiguang_warehouse"
@@ -456,8 +502,8 @@ fun PreferenceSettingsScreen(
                             )
 
                             OverlayDropdownMenu(
-                                title = "教务数据仓库源",
-                                summary = "更新教务系统数据源的仓库",
+                                title = PreferenceStr.eduRepoSource(),
+                                summary = PreferenceStr.eduRepoSourceSummary(),
                                 entry = repoEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,
@@ -467,7 +513,7 @@ fun PreferenceSettingsScreen(
                             val weatherSourceEntry = DropdownEntry(
                                 items = listOf(
                                     DropdownItem(
-                                        text = "聚合接口",
+                                        text = PreferenceStr.aggregateApi(),
                                         selected = weatherSource == "itboy",
                                         onClick = {
                                             weatherSource = "itboy"
@@ -476,7 +522,7 @@ fun PreferenceSettingsScreen(
                                         }
                                     ),
                                     DropdownItem(
-                                        text = "彩云天气",
+                                        text = PreferenceStr.caiyunWeather(),
                                         selected = weatherSource == "caiyun",
                                         onClick = {
                                             weatherSource = "caiyun"
@@ -488,7 +534,7 @@ fun PreferenceSettingsScreen(
                             )
 
                             OverlayDropdownMenu(
-                                title = "天气数据源",
+                                title = PreferenceStr.weatherDataSource(),
                                 summary = weatherLocationSummary,
                                 entry = weatherSourceEntry,
                                 collapseOnSelection = true,
@@ -499,7 +545,7 @@ fun PreferenceSettingsScreen(
                             val holidaySourceEntry = DropdownEntry(
                                 items = listOf(
                                     DropdownItem(
-                                        text = "国务院",
+                                        text = PreferenceStr.stateCouncil(),
                                         selected = holidaySource == HolidayManager.SOURCE_HOLIDAY_CALENDAR,
                                         onClick = {
                                             holidaySource = HolidayManager.SOURCE_HOLIDAY_CALENDAR
@@ -518,8 +564,8 @@ fun PreferenceSettingsScreen(
                             )
 
                             OverlayDropdownMenu(
-                                title = "节假日数据源",
-                                summary = "假期与调休安排的获取来源",
+                                title = PreferenceStr.holidayDataSource(),
+                                summary = PreferenceStr.holidayDataSourceSummary(),
                                 entry = holidaySourceEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,

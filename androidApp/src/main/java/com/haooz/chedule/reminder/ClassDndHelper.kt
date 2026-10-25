@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.core.content.edit
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidNotifStr
 import java.util.Calendar
 
 object ClassDndHelper {
@@ -517,7 +518,7 @@ object ClassDndHelper {
     fun toggleFromNotification(context: Context) {
         val repository = CourseRepository()
         if (!repository.getPreClassReminder() && !repository.getNextDayReminder()) {
-            Toast.makeText(context, "请先在「课程提醒」中开启课程提醒", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, AndroidNotifStr.dndNeedReminderOn(), Toast.LENGTH_LONG).show()
             return
         }
 
@@ -526,14 +527,14 @@ object ClassDndHelper {
 
         if (!next) {
             handBack(context, requireConsistency = false)
-            Toast.makeText(context, "已关闭上课勿扰", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, AndroidNotifStr.dndDisabled(), Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!canWriteState(context)) {
             // 回滚开关：否则它停在开启态却永远不生效
             repository.setClassDndEnabled(false)
-            Toast.makeText(context, "请先在「课程提醒」中授予勿扰权限", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, AndroidNotifStr.dndNeedPermission(), Toast.LENGTH_LONG).show()
             return
         }
         val mode = repository.getClassDndMode()
@@ -543,7 +544,7 @@ object ClassDndHelper {
         if (isDndAppliedByApp(context)) handBack(context, requireConsistency = false)
         if (!takeOver(context)) {
             repository.setClassDndEnabled(false)
-            Toast.makeText(context, "开启失败，请检查勿扰权限", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, AndroidNotifStr.dndEnableFailed(), Toast.LENGTH_SHORT).show()
             return
         }
         // 课堂内交给课堂生命周期（下课自动恢复）；课堂外保持到用户再点一次
@@ -553,12 +554,12 @@ object ClassDndHelper {
         scheduleClassDndAlarms(context, alarmManager)
 
         val what = when (mode) {
-            MODE_SILENT -> "静音"
-            MODE_PRIORITY -> "勿扰模式"
-            else -> "勿扰"
+            MODE_SILENT -> AndroidNotifStr.dndModeSilent()
+            MODE_PRIORITY -> AndroidNotifStr.dndModePriority()
+            else -> AndroidNotifStr.dndModeNormal()
         }
-        val tail = if (inClass) "，下课自动恢复" else "，再次点击可关闭"
-        Toast.makeText(context, "已开启$what$tail", Toast.LENGTH_SHORT).show()
+        val tail = if (inClass) AndroidNotifStr.dndTailInClass() else AndroidNotifStr.dndTailManual()
+        Toast.makeText(context, AndroidNotifStr.dndEnabledN(what, tail), Toast.LENGTH_SHORT).show()
     }
 
     // ————————————————————————— 闹钟排期 —————————————————————————

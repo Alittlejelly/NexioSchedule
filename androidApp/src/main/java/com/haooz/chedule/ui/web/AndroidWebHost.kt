@@ -38,6 +38,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.SchedStr
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -193,7 +195,7 @@ fun rememberAndroidWebHost(
             onTaskCompleted = {
                 currentEvents.onTaskCompleted()
                 if (!importCompleted) {
-                    showToast("导入完成", longDuration = true)
+                    showToast(SchedStr.importDone(), longDuration = true)
                 }
             },
             onShowAlert = { title, content, confirmText, onResult ->
@@ -323,7 +325,7 @@ fun rememberAndroidWebHost(
     val tryForwardAndReload: () -> Unit = remember(webView) {
         {
             if (WebForwardHosts.enable(webView.url?.toUri()?.host)) {
-                showToast("正在换一种方式重新加载该站点…", longDuration = true)
+                showToast(AndroidMiscStr.reloadSiteDifferently(), longDuration = true)
                 webView.postDelayed({
                     // 延迟期间用户可能已退出导入页（WebView 被 destroy）：detach 后不重载
                     if (!webView.isAttachedToWindow) return@postDelayed
@@ -375,7 +377,7 @@ fun rememberAndroidWebHost(
                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                     // ⚠ 子资源证书错误 Chromium 不回调这里（只回调主框架）、直接静默丢弃，
                     // 只能靠 onReceivedHttpError 与 onConsoleMessage 兜。
-                    NexioLog.w("EduImport", "SSL 错误已放行: ${error.url} primaryError=${error.primaryError}")
+                    NexioLog.w("EduImport", AndroidMiscStr.logSslProceedN(error.url, error.primaryError))
                     handler.proceed()
                 }
 
@@ -390,7 +392,7 @@ fun rememberAndroidWebHost(
                             }
                         } else {
                             view.post {
-                                showToast("加载失败: ${error.description}", longDuration = true)
+                                showToast(AndroidMiscStr.loadFailedN(error.description), longDuration = true)
                             }
                         }
                     } else {
@@ -398,7 +400,7 @@ fun rememberAndroidWebHost(
                         // 而日志一个字都没有。
                         NexioLog.w(
                             "EduImport",
-                            "子资源加载失败[${error.errorCode}]: ${request.url} —— ${error.description}"
+                            AndroidMiscStr.logSubresourceFailedN(error.errorCode, request.url, error.description)
                         )
                     }
                 }

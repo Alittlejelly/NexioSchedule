@@ -91,6 +91,8 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.formatOneDecimal
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
@@ -879,7 +881,7 @@ fun CustomizeScheduleScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "搭配 ${combIdx + 1}",
+                                            text = SchedStr.combinationN(combIdx + 1),
                                             color = Color.White.copy(alpha = 0.6f),
                                             fontSize = 16.sp,
                                             textAlign = TextAlign.Center,
@@ -1061,7 +1063,7 @@ fun CustomizeScheduleScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "取消",
+                                text = CommonStr.cancel(),
                                 color = exitIconColor,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium
@@ -1116,7 +1118,7 @@ fun CustomizeScheduleScreen(
                                     ) {
                                         Icon(
                                             imageVector = MiuixIcons.Album,
-                                            contentDescription = "今日",
+                                            contentDescription = CommonStr.today(),
                                             modifier = Modifier.size(20.dp),
                                             tint = if (resolvedPreview == 0) Color.White
                                             else Color.White.copy(alpha = 0.75f)
@@ -1139,7 +1141,7 @@ fun CustomizeScheduleScreen(
                                     ) {
                                         Icon(
                                             imageVector = MiuixIcons.Months,
-                                            contentDescription = "课程表",
+                                            contentDescription = SchedStr.schedule(),
                                             modifier = Modifier.size(20.dp),
                                             tint = if (resolvedPreview == 1) Color.White
                                             else Color.White.copy(alpha = 0.75f)
@@ -1199,7 +1201,7 @@ fun CustomizeScheduleScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "应用",
+                                SchedStr.applyChanges(),
                                 color = Color.White,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium
@@ -1225,7 +1227,7 @@ fun CustomizeScheduleScreen(
                                 orbitingDotSize = 2.7.dp,
                             )
                             Text(
-                                text = "正在应用",
+                                text = SchedStr.applying(),
                                 color = Color.White,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
@@ -1292,7 +1294,7 @@ fun CustomizeScheduleScreen(
                             ) {
                                 Icon(
                                     imageVector = if (hasWallpaper) MiuixIcons.Normal.Close else MiuixIcons.Image,
-                                    contentDescription = if (hasWallpaper) "清除壁纸" else "壁纸",
+                                    contentDescription = if (hasWallpaper) SchedStr.clearWallpaper() else SchedStr.wallpaper(),
                                     modifier = Modifier.size(26.dp),
                                     tint = Color.White
                                 )
@@ -1328,7 +1330,7 @@ fun CustomizeScheduleScreen(
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.Background,
-                                    contentDescription = "效果",
+                                    contentDescription = SchedStr.effects(),
                                     modifier = Modifier.size(28.dp),
                                     tint = Color.White
                                 )
@@ -1350,7 +1352,7 @@ fun CustomizeScheduleScreen(
                             ) {
                                 Icon(
                                     imageVector = MiuixIcons.GridView,
-                                    contentDescription = "自定义",
+                                    contentDescription = SchedStr.customize(),
                                     tint = Color.White
                                 )
                             }
@@ -1391,7 +1393,7 @@ fun CustomizeScheduleScreen(
                         backdrop = LocalSheetContentBackdrop.current
                             ?: liquidGlassBackdrop,
                         icon = MiuixIcons.Normal.Close,
-                        contentDescription = "关闭",
+                        contentDescription = CommonStr.close(),
                         modifier = Modifier.padding(start = startPad),
                         iconSize = 24.dp,
                         containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
@@ -1421,11 +1423,11 @@ fun CustomizeScheduleScreen(
                             )
                         } else {
                             DropdownEntry(
-                                items = listOf(DropdownItem(text = "跟随应用", selected = true, onClick = {}))
+                                items = listOf(DropdownItem(text = SchedStr.followApp(), selected = true, onClick = {}))
                             )
                         }
                         OverlayDropdownMenu(
-                            title = "默认主题",
+                            title = SchedStr.defaultTheme(),
                             entry = themeModeEntry,
                             collapseOnSelection = true,
                             enabled = hasWallpaper,
@@ -1437,7 +1439,7 @@ fun CustomizeScheduleScreen(
                     SheetCard {
                         Column {
                             SliderItem(
-                                label = "壁纸亮度",
+                                label = SchedStr.wallpaperBrightness(),
                                 value = wallpaperBrightnessValue,
                                 valueRange = -50f..50f,
                                 keyPoints = listOf(0f),
@@ -1455,7 +1457,7 @@ fun CustomizeScheduleScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "壁纸模糊",
+                                    text = SchedStr.wallpaperBlur(),
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 17.sp,
                                     color = if (hasWallpaper) MiuixTheme.colorScheme.onSurface
@@ -1472,7 +1474,7 @@ fun CustomizeScheduleScreen(
                     SheetCard {
                         Column {
                             SliderItem(
-                                label = "卡片着色程度",
+                                label = SchedStr.cardTint(),
                                 value = cardAlphaValue,
                                 valueRange = 0f..1f,
                                 keyPoints = listOf(0.15f),
@@ -1484,7 +1486,7 @@ fun CustomizeScheduleScreen(
                                 parseInput = { it.toFloatOrNull()?.let { v -> (v / 100f).coerceIn(0f, 1f) } }
                             )
                             SliderItem(
-                                label = "卡片不透明度",
+                                label = SchedStr.cardOpacity(),
                                 value = cardSurfaceAlphaValue,
                                 valueRange = 0f..1f,
                                 keyPoints = listOf(0.15f),
@@ -1496,7 +1498,7 @@ fun CustomizeScheduleScreen(
                                 parseInput = { it.toFloatOrNull()?.let { v -> (v / 100f).coerceIn(0f, 1f) } }
                             )
                             SliderItem(
-                                label = "卡片模糊",
+                                label = SchedStr.cardBlur(),
                                 value = effectValue,
                                 valueRange = 0f..20f,
                                 keyPoints = listOf(4f),
@@ -1510,9 +1512,9 @@ fun CustomizeScheduleScreen(
                                 displayValue = { it.roundToInt().toString() },
                                 parseInput = { it.toFloatOrNull()?.coerceIn(0f, 20f) },
                                 disabledText = if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
-                                    "无材质"
+                                    SchedStr.noMaterial()
                                 } else {
-                                    "需设置壁纸"
+                                    SchedStr.wallpaperRequired()
                                 }
                             )
                             RefractionItem(
@@ -1521,9 +1523,9 @@ fun CustomizeScheduleScreen(
                                     !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier(),
                                 onValueChange = { if (hasWallpaper) cardRefractionValue = it },
                                 disabledText = if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
-                                    "无材质"
+                                    SchedStr.noMaterial()
                                 } else {
-                                    "需设置壁纸"
+                                    SchedStr.wallpaperRequired()
                                 }
                             )
                         }
@@ -1533,7 +1535,7 @@ fun CustomizeScheduleScreen(
                     SheetCard {
                         Column {
                             SliderItem(
-                                label = "课程卡片高度",
+                                label = SchedStr.courseCardHeight(),
                                 value = cardHeightValue,
                                 valueRange = 34f..92f,
                                 keyPoints = listOf(54f),
@@ -1545,7 +1547,7 @@ fun CustomizeScheduleScreen(
                                 parseInput = { it.toFloatOrNull()?.coerceIn(34f, 92f) }
                             )
                             SliderItem(
-                                label = "课程卡片圆角",
+                                label = SchedStr.courseCardCornerRadius(),
                                 value = cardCornerRadiusValue,
                                 valueRange = 0f..48f,
                                 keyPoints = listOf(10f),
@@ -1570,7 +1572,7 @@ fun CustomizeScheduleScreen(
                                 }
                             )
                             OverlayDropdownMenu(
-                                title = "卡片内容对齐方式",
+                                title = SchedStr.cardContentAlignment(),
                                 entry = contentAlignmentEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = LocalSheetContentBackdrop.current
@@ -1587,7 +1589,7 @@ fun CustomizeScheduleScreen(
                                 }
                             )
                             OverlayDropdownMenu(
-                                title = "卡片文字颜色",
+                                title = SchedStr.cardTextColor(),
                                 entry = textColorEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = LocalSheetContentBackdrop.current
@@ -1595,7 +1597,7 @@ fun CustomizeScheduleScreen(
                                 dropdownColors = liquidGlassDropdownColors,
                             )
                             SliderItem(
-                                label = "卡片文字缩放比例",
+                                label = SchedStr.cardTextScale(),
                                 value = cardTextScaleValue,
                                 valueRange = 0.5f..2.0f,
                                 keyPoints = listOf(1.0f),
@@ -1619,7 +1621,7 @@ fun CustomizeScheduleScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "显示地点",
+                                    text = SchedStr.showClassroom(),
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 17.sp,
                                     color = MiuixTheme.colorScheme.onSurface
@@ -1637,7 +1639,7 @@ fun CustomizeScheduleScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "显示教师",
+                                    text = SchedStr.showTeacher(),
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 17.sp,
                                     color = MiuixTheme.colorScheme.onSurface
@@ -1658,7 +1660,7 @@ fun CustomizeScheduleScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "午休晚休分界线",
+                                text = SchedStr.breakDividers(),
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 17.sp,
                                 color = MiuixTheme.colorScheme.onSurface
@@ -1674,7 +1676,7 @@ fun CustomizeScheduleScreen(
                 if (isTablet) {
                     BlurBottomSheetTablet(
                         show = showEffectSheet,
-                        title = "效果",
+                        title = SchedStr.effects(),
                         sheetMaxHeight = 320.dp,
                         isBottomAligned = true,
                         onDismissRequest = { showEffectSheet = false },
@@ -1699,7 +1701,7 @@ fun CustomizeScheduleScreen(
                 } else {
                     BlurBottomSheet(
                         show = showEffectSheet,
-                        title = "效果",
+                        title = SchedStr.effects(),
                         onDismissRequest = { showEffectSheet = false },
                         startAction = { sheetCloseButton({ showEffectSheet = false }, 18.dp) }
                     ) {
@@ -1724,7 +1726,7 @@ fun CustomizeScheduleScreen(
                 if (isTablet) {
                     BlurBottomSheetTablet(
                         show = showCustomizeSheet,
-                        title = "自定义",
+                        title = SchedStr.customize(),
                         sheetMaxHeight = 320.dp,
                         isBottomAligned = true,
                         onDismissRequest = { showCustomizeSheet = false },
@@ -1749,7 +1751,7 @@ fun CustomizeScheduleScreen(
                 } else {
                     BlurBottomSheet(
                         show = showCustomizeSheet,
-                        title = "自定义",
+                        title = SchedStr.customize(),
                         onDismissRequest = { showCustomizeSheet = false },
                         startAction = { sheetCloseButton({ showCustomizeSheet = false }, 16.dp) }
                     ) {
@@ -1808,7 +1810,7 @@ private fun SliderItem(
     displayValue: (Float) -> String = { it.roundToInt().toString() },
     parseInput: (String) -> Float? = { it.toFloatOrNull() },
     /** 禁用时的右侧文案（默认「需设置壁纸」；无材质档传「无材质」） */
-    disabledText: String = "需设置壁纸",
+    disabledText: String = SchedStr.wallpaperRequired(),
 ) {
     // 聚焦编辑期间不回写外部 value，避免打断输入
     var textInput by remember { mutableStateOf(displayValue(value)) }
@@ -1905,7 +1907,7 @@ private fun RefractionItem(
     enabled: Boolean,
     onValueChange: (CardRefractionLevel) -> Unit,
     /** 禁用时的右侧文案（默认「需设置壁纸」；无材质档传「无材质」） */
-    disabledText: String = "需设置壁纸",
+    disabledText: String = SchedStr.wallpaperRequired(),
 ) {
     val levels = CardRefractionLevel.entries
     val lastIndex = levels.lastIndex
@@ -1929,7 +1931,7 @@ private fun RefractionItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "卡片折射",
+                text = SchedStr.cardRefraction(),
                 fontWeight = FontWeight.Medium,
                 fontSize = 17.sp,
                 color = textColor,

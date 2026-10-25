@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Nexio Schedule</string>
+    <string name="import_schedule">Import Schedule</string>
+    <string name="widget_course_reminder">Course Reminders</string>
+    <string name="widget_today_tomorrow">Today &amp; Tomorrow</string>
+    <string name="widget_today_course">Today\'s Courses</string>
+    <string name="widget_course_reminder_pad">Course Reminders (Pad)</string>
+    <string name="widget_today_course_pad">Today\'s Courses (Pad)</string>
+    <string name="widget_no_classes_today">No classes today</string>
+</resources>

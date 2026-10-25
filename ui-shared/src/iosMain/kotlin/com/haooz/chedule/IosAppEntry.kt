@@ -32,6 +32,7 @@ import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.activities.main.CourseScheduleApp
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
@@ -96,14 +97,17 @@ fun bootstrapNexioIos() {
     // ⚠ 合并成一张表会篡改存量数据的落盘位置，见 UserDefaultsStore 的类注释。
     AppStorage.init { name -> UserDefaultsStore(name) }
 
+    // 语言镜像尽早就位：core 数据类的显示变体（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值
+    com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
+
     AppFiles.init(
         root = NsFileAppFile(defaultDocumentsDir()),
         readAsset = { path ->
             // 内置学校索引引导用；失败需**抛**，由 SchoolRepository 捕获日志并跳过引导。
             val resolved = NSBundle.mainBundle.pathForResource(path, null)
-                ?: error("内置资源缺失: $path")
+                ?: error(L("内置资源缺失：%s", "Missing built-in resource: %s")(path))
             NSData.dataWithContentsOfFile(resolved)?.toByteArray()
-                ?: error("内置资源读取失败: $path")
+                ?: error(L("内置资源读取失败：%s", "Failed to read built-in resource: %s")(path))
         },
     )
 
@@ -341,14 +345,14 @@ internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
             CourseReminderRoute(
                 router = router,
                 reminderController = reminderController,
-                testActionLabel = if (islandNotification) "测试灵动岛" else "测试通知",
+                testActionLabel = if (islandNotification) L("测试灵动岛", "Test Dynamic Island")() else L("测试通知", "Test Notification")(),
                 onSendTestNotification = {
                     if (islandNotification) {
                         IosCourseLiveActivity.startTest()
-                        showToast("已启动灵动岛测试")
+                        showToast(L("已启动灵动岛测试", "Dynamic Island test started")())
                     } else {
                         IosCourseNotifier.sendTestNotification()
-                        showToast("已发送测试通知")
+                        showToast(L("已发送测试通知", "Test notification sent")())
                     }
                 },
             )

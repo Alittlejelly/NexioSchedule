@@ -60,6 +60,7 @@ import com.haooz.chedule.data.CardContentAlignment
 import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.theme.rememberCourseColors
 import com.haooz.chedule.ui.theme.readableCourseTextColor
 import com.haooz.chedule.data.hsvToRgb
@@ -961,7 +962,7 @@ private fun BoxScope.CardContent(
         Text(
             // 跨午夜标注「次日」，否则 23:00 / 00:30 两个角标看着像两节课
             text = if (course.crossesMidnightCustomTime()) {
-                "次日${course.customEndTime ?: ""}"
+                SchedStr.nextDayTime(course.customEndTime ?: "")
             } else {
                 course.customEndTime ?: ""
             },

@@ -76,6 +76,8 @@ import com.haooz.chedule.data.Notice
 import com.haooz.chedule.data.NoticeFetcher
 import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.classschedule.LandRippleSpec
 import com.haooz.chedule.ui.activities.classschedule.LocalLandRipple
 import com.haooz.chedule.ui.activities.classschedule.MainScheduleScreen
@@ -1595,7 +1597,7 @@ internal fun CourseScheduleAppMainContent(
                                 1 -> !isViewingCurrentWeek
                                 else -> false
                             }
-                    val backToNowLabel = "今"
+                    val backToNowLabel = ChromeStr.todayBadge()
                     // ⚠ 必须与底栏同一套间距算法（bottomFloatingPadding）：按钮悬在底栏胶囊
                     // 上方 64dp，底栏间距变了这里必须跟着变，否则按钮会陷进底栏里
                     val backToNowBottomPadding = if (nativeBottomBar) {
@@ -1674,7 +1676,7 @@ internal fun CourseScheduleAppMainContent(
                         }
                     }
                     OverlayDialog(
-                        title = "跳转周数",
+                        title = ChromeStr.jumpToWeek(),
                         show = showJumpWeekDialog,
                         liquidGlassBackdrop = overlayGlassBackdrop,
                         onDismissRequest = { viewModel.hideJumpWeekDialog() }
@@ -1690,7 +1692,7 @@ internal fun CourseScheduleAppMainContent(
                                 visibleItemCount = 3,
                                 itemHeight = 60.dp,
                                 textStyle = MiuixTheme.textStyles.title2,
-                                label = { "第${it}周" },
+                                label = { CommonStr.weekN(it) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(bottom = 20.dp)
@@ -1700,7 +1702,7 @@ internal fun CourseScheduleAppMainContent(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 TextButton(
-                                    text = "取消",
+                                    text = CommonStr.cancel(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         viewModel.hideJumpWeekDialog()
@@ -1708,7 +1710,7 @@ internal fun CourseScheduleAppMainContent(
                                     modifier = Modifier.weight(1f)
                                 )
                                 TextButton(
-                                    text = "确定",
+                                    text = CommonStr.ok(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         viewModel.hideJumpWeekDialog()
@@ -1799,7 +1801,7 @@ internal fun CourseScheduleAppMainContent(
                                 // 「当前周」=该格所属教学周；调课日为 followWeek
                                 val pasteWeek = target.dataWeek
                                 if (endSection > totalSections) {
-                                    showToast("空间不足，无法粘贴")
+                                    showToast(ChromeStr.pasteNoSpace())
                                 } else {
                                     val conflicts = viewModel.getCoursesAtSlot(
                                         pasteWeek,
@@ -1809,7 +1811,7 @@ internal fun CourseScheduleAppMainContent(
                                     )
                                         .filter { it.isActiveInWeek(pasteWeek) }
                                     if (conflicts.isNotEmpty()) {
-                                        showToast("目标位置有课，无法粘贴")
+                                        showToast(ChromeStr.pasteTargetOccupied())
                                     } else {
                                         val pasted = if (allWeeks) {
                                             meta.copy(
@@ -2009,7 +2011,7 @@ internal fun CourseScheduleAppMainContent(
                         ) {
                             notice?.let { n ->
                                 TextButton(
-                                    text = "完成",
+                                    text = CommonStr.done(),
                                     modifier = Modifier.weight(1f),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)

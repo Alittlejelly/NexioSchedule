@@ -4,6 +4,8 @@ package com.haooz.chedule.ui.activities
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NoopUpdateController
 import com.haooz.chedule.data.UpdateController
@@ -237,7 +239,7 @@ fun UpdateSettingsScreen(
                                     .padding(horizontal = 16.dp, vertical = 14.dp)
                             ) {
                                 Text(
-                                    text = "当前版本",
+                                    text = AboutStr.currentVersion(),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MiuixTheme.colorScheme.onSurface
@@ -257,7 +259,7 @@ fun UpdateSettingsScreen(
                                         .padding(bottom = 12.dp)
                                 ) {
                                     Text(
-                                        text = "最新版本: ${latestRelease!!.tagName}",
+                                        text = AboutStr.latestVersionN(latestRelease!!.tagName),
                                         fontSize = 14.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                     )
@@ -273,11 +275,11 @@ fun UpdateSettingsScreen(
                             }
 
                             ArrowPreference(
-                                title = "检查更新",
+                                title = AboutStr.checkForUpdates(),
                                 endActions = {
                                     if (hasUpdate) {
                                         Text(
-                                            text = "有新版本",
+                                            text = AboutStr.newVersionAvailable(),
                                             fontSize = 14.sp,
                                             color = MiuixTheme.colorScheme.primary
                                         )
@@ -329,9 +331,9 @@ fun UpdateSettingsScreen(
                                                 isInstalling = false
                                             } else if (!update) {
                                                 if (release == null) {
-                                                    showToast("检查更新失败，请检查网络连接")
+                                                    showToast(AboutStr.checkUpdateFailedNetwork())
                                                 } else {
-                                                    showToast("当前已是最新版本")
+                                                    showToast(AboutStr.upToDate())
                                                 }
                                             }
                                         }
@@ -344,7 +346,7 @@ fun UpdateSettingsScreen(
 
                 item {
                     SmallTitle(
-                        text = "更多设置",
+                        text = AboutStr.moreSettings(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -354,7 +356,7 @@ fun UpdateSettingsScreen(
                             val channelEntry = DropdownEntry(
                                 items = listOf(
                                     DropdownItem(
-                                        text = "稳定版",
+                                        text = AboutStr.stableChannel(),
                                         selected = updateChannel == "stable",
                                         onClick = {
                                             updateChannel = "stable"
@@ -372,7 +374,7 @@ fun UpdateSettingsScreen(
                                 )
                             )
                             OverlayDropdownMenu(
-                                title = "更新通道",
+                                title = AboutStr.updateChannel(),
                                 entry = channelEntry,
                                 collapseOnSelection = true,
                                 liquidGlassBackdrop = liquidGlassBackdrop,
@@ -399,8 +401,8 @@ fun UpdateSettingsScreen(
                                 )
                             )
                             OverlayDropdownMenu(
-                                title = "下载源",
-                                summary = if (updateChannel == "beta") "Beta 通道已锁定 Gitee" else "选择应用更新的下载仓库",
+                                title = AboutStr.downloadSource(),
+                                summary = if (updateChannel == "beta") AboutStr.betaLockedGitee() else AboutStr.downloadSourceSummary(),
                                 entry = downloadSourceEntry,
                                 enabled = updateChannel != "beta",
                                 collapseOnSelection = true,
@@ -418,8 +420,8 @@ fun UpdateSettingsScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             SwitchPreference(
-                                title = "自动检查更新",
-                                summary = "启动时自动检查是否有新版本",
+                                title = AboutStr.autoCheckUpdates(),
+                                summary = AboutStr.autoCheckUpdatesSummary(),
                                 checked = autoCheckUpdate,
                                 onCheckedChange = {
                                     autoCheckUpdate = it
@@ -427,8 +429,8 @@ fun UpdateSettingsScreen(
                                 }
                             )
                             SwitchPreference(
-                                title = "更新提醒",
-                                summary = "发现新版本时弹出提醒",
+                                title = AboutStr.updateReminder(),
+                                summary = AboutStr.updateReminderSummary(),
                                 checked = updateReminder,
                                 onCheckedChange = {
                                     updateReminder = it
@@ -442,15 +444,15 @@ fun UpdateSettingsScreen(
 
             OverlayDialog(
                 title = when {
-                    isInstalling -> "安装中"
-                    downloadComplete -> "下载完成"
-                    isResolvingApk -> "正在获取下载地址"
-                    isDownloading -> "正在下载"
-                    else -> "发现新版本"
+                    isInstalling -> AboutStr.installing()
+                    downloadComplete -> AboutStr.downloadComplete()
+                    isResolvingApk -> AboutStr.gettingDownloadUrl()
+                    isDownloading -> CommonStr.downloading()
+                    else -> AboutStr.newVersionFound()
                 },
                 summary = when {
-                    isInstalling -> "正在安装应用，请稍候..."
-                    else -> "最新版本: ${latestRelease?.tagName ?: ""}"
+                    isInstalling -> AboutStr.installingSummary()
+                    else -> AboutStr.latestVersionN(latestRelease?.tagName ?: "")
                 },
                 show = showDownloadDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
@@ -476,7 +478,7 @@ fun UpdateSettingsScreen(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "正在获取下载地址...",
+                            text = AboutStr.gettingDownloadUrlDots(),
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -502,7 +504,7 @@ fun UpdateSettingsScreen(
                     ) {
                         // 始终提供关闭入口：安装中也能关掉弹窗
                         TextButton(
-                            text = if (isInstalling) "关闭" else "取消",
+                            text = if (isInstalling) CommonStr.close() else CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showDownloadDialog = false
@@ -534,7 +536,7 @@ fun UpdateSettingsScreen(
                                 colors = ButtonDefaults.buttonColorsPrimary()
                             ) {
                                 Text(
-                                    text = "安装",
+                                    text = AboutStr.install(),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = ComposeColor.White
@@ -547,7 +549,7 @@ fun UpdateSettingsScreen(
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                     val tag = latestRelease?.tagName
                                     if (tag.isNullOrBlank()) {
-                                        showToast("未找到版本信息")
+                                        showToast(AboutStr.versionInfoNotFound())
                                         showDownloadDialog = false
                                         return@Button
                                     }
@@ -568,7 +570,7 @@ fun UpdateSettingsScreen(
                                         isResolvingApk = false
                                         if (apkUrl.isNullOrBlank()) {
                                             isDownloading = false
-                                            showToast("获取下载地址失败，请稍后重试", longDuration = true)
+                                            showToast(AboutStr.getDownloadUrlFailedRetry(), longDuration = true)
                                             showDownloadDialog = false
                                             return@launch
                                         }
@@ -580,7 +582,7 @@ fun UpdateSettingsScreen(
                                             downloadComplete = true
                                             isDownloading = false
                                         } catch (e: Exception) {
-                                            showToast("下载失败: ${e.message}")
+                                            showToast(AboutStr.downloadFailedN(e.message))
                                             isDownloading = false
                                             showDownloadDialog = false
                                         }
@@ -589,7 +591,7 @@ fun UpdateSettingsScreen(
                                 colors = ButtonDefaults.buttonColorsPrimary()
                             ) {
                                 Text(
-                                    text = "开始下载",
+                                    text = AboutStr.startDownload(),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = ComposeColor.White
@@ -601,7 +603,7 @@ fun UpdateSettingsScreen(
                                 enabled = false,
                                 onClick = {}) {
                                 Text(
-                                    text = if (isResolvingApk) "获取链接" else "正在下载",
+                                    text = if (isResolvingApk) AboutStr.getLink() else CommonStr.downloading(),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Medium,
                                     // 按钮自己居中内容，换字时按中心收放

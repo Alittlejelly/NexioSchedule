@@ -53,6 +53,8 @@ import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.activities.main.CourseScheduleApp
 import com.haooz.chedule.ui.activities.main.bitmapRecycler
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
@@ -590,22 +592,22 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
         contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri == null) {
-            showToast("未选择图片")
+            showToast(AndroidMiscStr.noImageSelected())
             return@rememberLauncherForActivityResult
         }
         if (wallpaperDecodeJob?.isActive == true) {
-            showToast("正在处理壁纸，请稍候")
+            showToast(AndroidMiscStr.processingWallpaperWait())
             return@rememberLauncherForActivityResult
         }
         val decodeW = screenW
         val decodeH = screenH
-        showToast("正在处理壁纸…")
+        showToast(AndroidMiscStr.processingWallpaper())
         wallpaperDecodeJob = coroutineScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
                 decodeWallpaperSampled(context, uri, decodeW, decodeH)
             }
             if (bitmap == null) {
-                showToast("壁纸解码失败，请换一张图片", longDuration = true)
+                showToast(AndroidMiscStr.wallpaperDecodeFailed(), longDuration = true)
                 return@launch
             }
             pendingWallpaperPicked?.invoke(bitmap.asImageBitmap())
@@ -652,7 +654,7 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
                     ?.openInputStream(Uri.parse(uriString))
                     ?.bufferedReader()?.use { it.readText() }
             } catch (e: Exception) {
-                showToast("导入失败: ${e.message}")
+                showToast(ImportStr.importFailedReason(e.message))
                 null
             }
         },

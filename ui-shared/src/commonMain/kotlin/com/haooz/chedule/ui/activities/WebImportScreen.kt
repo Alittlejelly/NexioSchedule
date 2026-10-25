@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.NativeDocumentAction
@@ -91,7 +94,7 @@ fun WebImportScreen(
     val hapticFeedback = LocalHapticFeedback.current
     val webViewScrollBehavior = rememberSharedScrollBehavior()
 
-    var webPageTitle by remember { mutableStateOf("加载中...") }
+    var webPageTitle by remember(AppLanguage.resolved) { mutableStateOf(CommonStr.loading()) }
     // 页面顶部取色：按亮度定顶栏标题/图标的黑白，不跟应用深浅色主题（仅非原生文档时用得上）
     var webTopColor by remember { mutableStateOf(Color.White) }
     val webTopIsLight = remember(webTopColor) {
@@ -109,13 +112,13 @@ fun WebImportScreen(
     }
     NativeDocumentLeadingActionEffect(
         if (nativeChrome != null) {
-            NativeDocumentAction(symbol = "xmark", label = "关闭", onClick = onFinish)
+            NativeDocumentAction(symbol = "xmark", label = CommonStr.close(), onClick = onFinish)
         } else null
     )
     NativeDocumentActionEffect(
         NativeDocumentAction(
             symbol = "arrow.clockwise",
-            label = "刷新",
+            label = ImportStr.refresh(),
             onClick = { reloadWebViewAction?.invoke() },
         )
     )
@@ -160,7 +163,7 @@ fun WebImportScreen(
                         courseViewModel.replaceCourses(courses)
                     }
                     scheduleViewModel.refreshScheduleList()
-                    showToast("课程已保存，共 ${courses.size} 门课程")
+                    showToast(ImportStr.coursesSavedN(courses.size))
                 },
                 onTaskCompleted = {
                     val prefs = AppStorage.store("edu_import_prefs")
@@ -218,7 +221,7 @@ fun WebImportScreen(
                             backdrop = liquidGlassBackdrop,
                             icon = MiuixIcons.Close,
                             iconTint = webBarContentColor.copy(alpha = 0.85f),
-                            contentDescription = "关闭",
+                            contentDescription = CommonStr.close(),
                             performHapticFeedback = false,
                             iconSize = 22.dp,
                             backdropAlpha = backdropAlpha,
@@ -234,7 +237,7 @@ fun WebImportScreen(
                             backdrop = liquidGlassBackdrop,
                             icon = MiuixIcons.Refresh,
                             iconTint = webBarContentColor.copy(alpha = 0.85f),
-                            contentDescription = "刷新",
+                            contentDescription = ImportStr.refresh(),
                             performHapticFeedback = false,
                             iconSize = 24.dp,
                             backdropAlpha = backdropAlpha,

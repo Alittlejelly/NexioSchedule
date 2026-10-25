@@ -72,6 +72,8 @@ import com.haooz.chedule.data.createHttpService
 import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
@@ -197,8 +199,8 @@ fun WebImportRoute(
 @Composable
 fun AboutRoute(
     router: AppRouter,
-    appVersion: String = "未知版本",
-    appName: String = "Nexio课程表",
+    appVersion: String = ChromeStr.unknownVersion(),
+    appName: String = ChromeStr.appName(),
     appIcon: ImageBitmap? = null,
     onExitApp: () -> Unit = {},
     diagnosticRecorder: DiagnosticRecorder = NoopDiagnosticRecorder,
@@ -223,7 +225,7 @@ fun AboutRoute(
 /** 更新日志路由。 */
 @Composable
 fun ChangelogRoute(router: AppRouter) {
-    DocumentPageScaffold(title = "更新日志", onBack = { router.popBack() }) { scrollBehavior, _ ->
+    DocumentPageScaffold(title = ChromeStr.changelog(), onBack = { router.popBack() }) { scrollBehavior, _ ->
         ChangelogScreen(scrollBehavior = scrollBehavior)
     }
 }
@@ -231,7 +233,7 @@ fun ChangelogRoute(router: AppRouter) {
 /** 开源协议路由。 */
 @Composable
 fun LicenseRoute(router: AppRouter) {
-    DocumentPageScaffold(title = "开源协议", onBack = { router.popBack() }) { scrollBehavior, _ ->
+    DocumentPageScaffold(title = ChromeStr.openSourceLicenses(), onBack = { router.popBack() }) { scrollBehavior, _ ->
         LicenseScreen(scrollBehavior = scrollBehavior)
     }
 }
@@ -239,7 +241,7 @@ fun LicenseRoute(router: AppRouter) {
 /** 隐私政策路由。 */
 @Composable
 fun PrivacyPolicyRoute(router: AppRouter) {
-    DocumentPageScaffold(title = "隐私政策", onBack = { router.popBack() }) { scrollBehavior, _ ->
+    DocumentPageScaffold(title = ChromeStr.privacyPolicy(), onBack = { router.popBack() }) { scrollBehavior, _ ->
         PrivacyPolicyScreen(scrollBehavior = scrollBehavior)
     }
 }
@@ -247,7 +249,7 @@ fun PrivacyPolicyRoute(router: AppRouter) {
 /** 交流与反馈路由。 */
 @Composable
 fun CommunicationRoute(router: AppRouter) {
-    DocumentPageScaffold(title = "交流与反馈", onBack = { router.popBack() }) { scrollBehavior, _ ->
+    DocumentPageScaffold(title = ChromeStr.communityFeedback(), onBack = { router.popBack() }) { scrollBehavior, _ ->
         CommunicationScreen(scrollBehavior = scrollBehavior)
     }
 }
@@ -255,7 +257,7 @@ fun CommunicationRoute(router: AppRouter) {
 /** 捐赠支持路由。 */
 @Composable
 fun AppreciateAuthorRoute(router: AppRouter) {
-    DocumentPageScaffold(title = "捐赠支持", onBack = { router.popBack() }) { scrollBehavior, _ ->
+    DocumentPageScaffold(title = ChromeStr.donate(), onBack = { router.popBack() }) { scrollBehavior, _ ->
         AppreciateAuthorScreen(scrollBehavior = scrollBehavior)
     }
 }
@@ -277,7 +279,7 @@ fun PreferenceSettingsRoute(
     onThemeDarkChanged: (Boolean) -> Unit = {},
 ) {
     DocumentPageScaffold(
-        title = "应用偏好设置",
+        title = ChromeStr.appPreferences(),
         onBack = { router.popBack() },
     ) { scrollBehavior, backdrop ->
         // 偏好设置页可能改主题 → 系统栏要跟着刷新
@@ -304,7 +306,7 @@ fun UpdateSettingsRoute(
     updateController: UpdateController = NoopUpdateController,
 ) {
     DocumentPageScaffold(
-        title = "更新设置",
+        title = ChromeStr.updateSettingsTitle(),
         onBack = { router.popBack() },
     ) { scrollBehavior, backdrop ->
         UpdateSettingsScreen(
@@ -328,7 +330,7 @@ fun LocalBackupRoute(
     onHolidayDataChanged: () -> Unit = {},
 ) {
     DocumentPageScaffold(
-        title = "本地备份",
+        title = ChromeStr.localBackup(),
         onBack = { router.popBack() },
     ) { scrollBehavior, backdrop ->
         LocalBackupScreen(
@@ -351,7 +353,7 @@ fun AiImportRoute(
     onCopyToClipboard: (String) -> Unit = {},
 ) {
     DocumentPageScaffold(
-        title = "AI 文本导入",
+        title = ChromeStr.aiImport(),
         onBack = { router.popBack() },
     ) { scrollBehavior, backdrop ->
         AiImportScreen(
@@ -407,14 +409,14 @@ fun HolidaySettingsRoute(
 
     NativeDocumentActionEffect(NativeDocumentAction(
         symbol = "arrow.clockwise",
-        label = if (loading) "更新中" else "更新",
+        label = if (loading) ChromeStr.updating() else CommonStr.update(),
         enabled = !loading,
         busy = loading,
         onClick = { requestYear(year) },
     ))
 
     DocumentPageScaffold(
-        title = "节假日与调休",
+        title = ChromeStr.holidaysTitle(),
         onBack = { router.popBack() },
         endAction = { backdropAlpha, shadowAlpha ->
             if (loading) {
@@ -434,7 +436,7 @@ fun HolidaySettingsRoute(
                     onClick = { requestYear(year) },
                     backdrop = rememberLayerBackdrop(),
                     icon = MiuixIcons.Normal.Update,
-                    contentDescription = "更新",
+                    contentDescription = CommonStr.update(),
                     iconSize = 28.dp,
                     backdropAlpha = backdropAlpha,
                     shadowAlpha = shadowAlpha,
@@ -478,11 +480,11 @@ fun WidgetIntroRoute(
     var showGuideDialog by remember { mutableStateOf(false) }
 
     DocumentPageScaffold(
-        title = "桌面小部件",
+        title = ChromeStr.widgetsTitle(),
         onBack = { router.popBack() },
         overlay = { backdrop ->
             LiquidGlassTextButton(
-                text = "添加到桌面",
+                text = ChromeStr.addToHomeScreen(),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                     showGuideDialog = true
@@ -499,7 +501,7 @@ fun WidgetIntroRoute(
                     .padding(bottom = 20.dp),
             )
             OverlayDialog(
-                title = "添加桌面小部件",
+                title = ChromeStr.addWidgetTitle(),
                 show = showGuideDialog,
                 liquidGlassBackdrop = backdrop,
                 onDismissRequest = { showGuideDialog = false }
@@ -510,9 +512,9 @@ fun WidgetIntroRoute(
                 ) {
                     Text(
                         text = if (isIosPlatform) {
-                            "1. 长按主屏幕空白处\n2. 点击「编辑」→「添加小组件」\n3. 搜索「Nexio课程表」\n4. 添加「课程表」，调整大小切换课程视图"
+                            ChromeStr.widgetGuideIos()
                         } else {
-                            "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加"
+                            ChromeStr.widgetGuideAndroid()
                         },
                         fontSize = 14.sp,
                         lineHeight = 24.sp,
@@ -520,7 +522,7 @@ fun WidgetIntroRoute(
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                     TextButton(
-                        text = "我知道了",
+                        text = ChromeStr.gotIt(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showGuideDialog = false
@@ -550,14 +552,14 @@ fun WidgetIntroRoute(
 fun CourseReminderRoute(
     router: AppRouter,
     reminderController: ReminderController = NoopReminderController,
-    testActionLabel: String = "测试通知",
+    testActionLabel: String = ChromeStr.testNotification(),
     onSendTestNotification: (() -> Unit)? = null,
 ) {
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
     DocumentPageScaffold(
-        title = "课程提醒",
+        title = ChromeStr.courseReminders(),
         onBack = { router.popBack() },
         overlay = { backdrop ->
             if (onSendTestNotification != null) {
@@ -609,13 +611,13 @@ fun WebDavSettingsRoute(
 
     NativeDocumentActionEffect(NativeDocumentAction(
         symbol = if (connected) "checkmark" else "play.fill",
-        label = if (connected) "已连接" else "测试连接",
+        label = if (connected) ChromeStr.connected() else ChromeStr.testConnection(),
         successful = connected,
         onClick = { onTestConnection() },
     ))
 
     DocumentPageScaffold(
-        title = "WebDAV 云备份",
+        title = ChromeStr.webdavBackup(),
         onBack = { router.popBack() },
         overlay = { backdrop ->
             Row(
@@ -631,13 +633,13 @@ fun WebDavSettingsRoute(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 LiquidGlassTextButton(
-                    text = if (backingUp) "备份中..." else "备份到云端",
+                    text = if (backingUp) ChromeStr.backingUp() else ChromeStr.backupToCloud(),
                     onClick = { onBackup() },
                     backdrop = backdrop,
                     modifier = Modifier.weight(1f)
                 )
                 LiquidGlassTextButton(
-                    text = if (restoring) "恢复中..." else "从云端恢复",
+                    text = if (restoring) ChromeStr.restoring() else ChromeStr.restoreFromCloud(),
                     onClick = { onRestore() },
                     backdrop = backdrop,
                     modifier = Modifier.weight(1f)
@@ -649,7 +651,7 @@ fun WebDavSettingsRoute(
                 onClick = { onTestConnection() },
                 backdrop = rememberLayerBackdrop(),
                 icon = if (connected) MiuixIcons.Ok else MiuixIcons.Play,
-                contentDescription = if (connected) "已连接" else "测试连接",
+                contentDescription = if (connected) ChromeStr.connected() else ChromeStr.testConnection(),
                 backdropAlpha = backdropAlpha,
                 shadowAlpha = shadowAlpha,
                 iconOffset = if (!connected) DpOffset(x = 2.dp, y = 0.dp) else DpOffset.Zero,
@@ -688,17 +690,17 @@ fun BackupAndMigrationRoute(
     scheduleFileController: ScheduleFileController = NoopScheduleFileController,
     onHolidayDataChanged: () -> Unit = {},
     onFetchShareCode: suspend (code: String) -> Result<ShareCodeFetchResult> =
-        { Result.failure(IllegalStateException("当前平台不支持口令导入")) },
+        { Result.failure(IllegalStateException(ChromeStr.platformUnsupported(ChromeStr.shareCodeImport()))) },
     onImportThirdParty: suspend (source: ThirdPartyShareSource, code: String)
     -> Result<ThirdPartySharePayload> =
-        { source, _ -> Result.failure(IllegalStateException("当前平台不支持${source.displayName}")) },
+        { source, _ -> Result.failure(IllegalStateException(ChromeStr.platformUnsupported(source.displayName))) },
     onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
     onExportToWearable: suspend (scheduleName: String) -> String? = { null },
 ) {
     val title = when (mode) {
-        ScheduleDataManageMode.Import -> "课表导入"
-        ScheduleDataManageMode.Export -> "课表导出"
-        ScheduleDataManageMode.Backup -> "课表备份"
+        ScheduleDataManageMode.Import -> ChromeStr.scheduleImport()
+        ScheduleDataManageMode.Export -> ChromeStr.scheduleExport()
+        ScheduleDataManageMode.Backup -> ChromeStr.scheduleBackup()
     }
     DocumentPageScaffold(
         title = title,
@@ -781,7 +783,7 @@ fun CourseTimeSettingsRoute(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 DocumentPageScaffold(
-                    title = "课程时间管理",
+                    title = ChromeStr.classTimeSettings(),
                     onBack = { router.popBack() },
                 ) { scrollBehavior, liquidGlassBackdrop ->
                     CourseTimeSettingsScreen(
@@ -843,7 +845,7 @@ fun CourseTimeSettingsRoute(
                             } ?: false
                             if (!saved) {
                                 // 保存被丢弃必须让用户看见，否则表现成「改完保存、重开还是原来的」
-                                showToast("保存失败，请重试")
+                                showToast(ChromeStr.saveFailedRetry())
                             }
                             listRefreshTrigger++
                         },
@@ -988,7 +990,7 @@ fun CourseManageRoute(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 DocumentPageScaffold(
-                    title = "课程管理",
+                    title = ChromeStr.courseManage(),
                     onBack = { router.popBack() },
                 ) { scrollBehavior, liquidGlassBackdrop ->
                     CourseManageScreen(
@@ -1188,7 +1190,7 @@ fun CourseManageRoute(
             items = listOf(
                 ShortcutMenuItem(
                     icon = MiuixIcons.Edit,
-                    label = "编辑",
+                    label = CommonStr.edit(),
                     onClick = {
                         if (shortcutMenuCourses.isNotEmpty()) {
                             val courseToEdit = shortcutMenuCourses.first()
@@ -1202,7 +1204,7 @@ fun CourseManageRoute(
                 ),
                 ShortcutMenuItem(
                     icon = MiuixIcons.Delete,
-                    label = "删除",
+                    label = CommonStr.delete(),
                     onClick = {
                         pendingDeleteCourses = shortcutMenuCourses.toList()
                         showShortcutMenu = false

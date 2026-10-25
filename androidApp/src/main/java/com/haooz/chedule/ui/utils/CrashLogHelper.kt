@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.PrintWriter
@@ -215,7 +216,7 @@ object CrashLogHelper {
         runCatching {
             file.writeText(
                 buildString {
-                    appendLine("=== Nexio课程表 功能录制 ===")
+                    appendLine(AndroidMiscStr.recordingHeader())
                     appendLine("startedAt=${formatTime(recordingStartedAt)}")
                     appendLine("maxRecordMin=${MAX_RECORD_MS / 60000}")
                     appendLine(deviceInfo(app))
@@ -313,12 +314,12 @@ object CrashLogHelper {
                 buildString {
                     append(base)
                     appendLine()
-                    appendLine("=== 其它崩溃记录 ===")
+                    appendLine(AndroidMiscStr.otherCrashesHeader())
                     val others = File(context.filesDir, CRASH_DIR).listFiles()
                         ?.filter { it.isFile && it.name.startsWith("crash_") && !it.name.endsWith("_mem.txt") }
                         ?.sortedByDescending { it.name }
                         .orEmpty().drop(1)
-                    if (others.isEmpty()) appendLine("(无)")
+                    if (others.isEmpty()) appendLine(AndroidMiscStr.noneEntry())
                     else others.take(4).forEach { c ->
                         appendLine("--- ${c.name} ---")
                         appendLine(runCatching { c.readText().take(20_000) }.getOrDefault("?"))
@@ -359,14 +360,14 @@ object CrashLogHelper {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", out)
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, "Nexio课程表功能录制日志")
+                putExtra(Intent.EXTRA_SUBJECT, AndroidMiscStr.recordingLogSubject())
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                val textBody = if (body.length > 20_000) body.take(20_000) + "\n…(完整内容见附件)" else body
+                val textBody = if (body.length > 20_000) body.take(20_000) + "\n" + AndroidMiscStr.fullContentInAttachment() else body
                 putExtra(Intent.EXTRA_TEXT, textBody)
             }
             context.startActivity(
-                Intent.createChooser(send, "分享录制日志").apply {
+                Intent.createChooser(send, AndroidMiscStr.shareRecordingChooser()).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
@@ -397,13 +398,13 @@ object CrashLogHelper {
 
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Nexio课程表崩溃/轨迹日志")
+            putExtra(Intent.EXTRA_SUBJECT, AndroidMiscStr.crashTraceLogSubject())
             if (uri != null) {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             val body = if (content.length > 20_000) {
-                content.substring(0, 20_000) + "\n…(完整内容见附件)"
+                content.substring(0, 20_000) + "\n" + AndroidMiscStr.fullContentInAttachment()
             } else {
                 content
             }
@@ -411,7 +412,7 @@ object CrashLogHelper {
         }
         return try {
             context.startActivity(
-                Intent.createChooser(send, "导出崩溃日志").apply {
+                Intent.createChooser(send, AndroidMiscStr.exportCrashLogChooser()).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
@@ -424,7 +425,7 @@ object CrashLogHelper {
 
     fun buildExportContent(context: Context): String {
         val sb = StringBuilder()
-        sb.appendLine("=== Nexio课程表 崩溃/轨迹日志导出 ===")
+        sb.appendLine(AndroidMiscStr.exportHeader())
         sb.appendLine("exportAt=${formatTime(System.currentTimeMillis())}")
         sb.appendLine("traceWindowMin=${TRACE_WINDOW_MS / 60000}")
         sb.appendLine("isRecording=$isRecording")
@@ -434,15 +435,15 @@ object CrashLogHelper {
         sb.appendLine()
         sb.append(deviceInfo(context))
         sb.appendLine()
-        sb.appendLine("=== 本机会话 ===")
+        sb.appendLine(AndroidMiscStr.localSessionHeader())
         sb.appendLine(sessionMarkerText())
         sb.appendLine()
-        sb.appendLine("=== 功能轨迹（最近 ${TRACE_WINDOW_MS / 60000} 分钟） ===")
+        sb.appendLine(AndroidMiscStr.traceWindowHeaderN(TRACE_WINDOW_MS / 60000))
         sb.appendLine(formatTrace())
         sb.appendLine()
         sb.appendLine(crashSection(context))
         sb.appendLine()
-        sb.appendLine("=== Logcat（release 可能受 ROM 限制） ===")
+        sb.appendLine(AndroidMiscStr.logcatHeader())
         sb.appendLine(tryDumpLogcat())
         return sb.toString()
     }
@@ -468,7 +469,7 @@ object CrashLogHelper {
             }
         }
         return if (lines.isEmpty()) {
-            "(最近 ${windowMs / 60000} 分钟无功能轨迹)"
+            AndroidMiscStr.noTraceInWindowN(windowMs / 60000)
         } else {
             lines.joinToString("\n")
         }
@@ -563,9 +564,9 @@ object CrashLogHelper {
             ?.sortedByDescending { it.name }
             .orEmpty()
         val sb = StringBuilder()
-        sb.appendLine("=== 已捕获崩溃 (${crashFiles.size}) ===")
+        sb.appendLine(AndroidMiscStr.capturedCrashesHeaderN(crashFiles.size))
         if (crashFiles.isEmpty()) {
-            sb.appendLine("(尚无 Java/Kotlin 崩溃记录。若为原生崩溃，请附上 logcat / 功能轨迹。)")
+            sb.appendLine(AndroidMiscStr.noCrashRecords())
         } else {
             crashFiles.take(8).forEach { file ->
                 sb.appendLine()
@@ -580,7 +581,7 @@ object CrashLogHelper {
             }
             if (crashFiles.size > 8) {
                 sb.appendLine()
-                sb.appendLine("…另有 ${crashFiles.size - 8} 条未展开")
+                sb.appendLine(AndroidMiscStr.moreCrashesN(crashFiles.size - 8))
             }
         }
         return sb.toString()
@@ -614,7 +615,7 @@ object CrashLogHelper {
             stack = stack.take(MAX_STACK_CHARS) + "\n…truncated"
         }
         val body = buildString {
-            appendLine("=== Nexio课程表 崩溃报告 ===")
+            appendLine(AndroidMiscStr.crashReportHeader())
             appendLine("time=${formatTime(System.currentTimeMillis())}")
             appendLine("thread=${thread.name}")
             appendLine("throwable=${throwable::class.java.name}")

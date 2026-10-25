@@ -17,6 +17,8 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.i18n.AndroidWidgetStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -90,7 +92,11 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         } else true
         val showTomorrow = isNextDayReminderEnabled && currentMinutes >= reminderMinutes && todayCoursesFinished
 
-        val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val dayNames = listOf(
+            CommonStr.weekdayMon(), CommonStr.weekdayTue(), CommonStr.weekdayWed(),
+            CommonStr.weekdayThu(), CommonStr.weekdayFri(), CommonStr.weekdaySat(),
+            CommonStr.weekdaySun()
+        )
         // 今日/明日统一走 resolveDaySchedule：节假日末日例外按节次保留课程、调休按映射查课
         val resolution = CourseReminderHelper.resolveDaySchedule(context, forTomorrow = showTomorrow)
         val targetWeek = resolution.displayWeek
@@ -101,15 +107,15 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
         val isHoliday = currentWeek > totalWeeks || (currentWeek >= 1 && currentWeek > lastWeekWithCourses)
 
         val titleText = if (showTomorrow) {
-            "明天"
+            AndroidWidgetStr.tomorrow()
         } else {
             // 今日也用日历日，避免调休日标题写成映射星期
             dayNames[(resolution.calendarDayOfWeek - 1).coerceIn(0, 6)]
         }
         val weekText = when {
-            isHoliday -> "放假中"
-            currentWeek < 1 -> "未开始"
-            else -> "第${targetWeek}周"
+            isHoliday -> AndroidWidgetStr.onBreak()
+            currentWeek < 1 -> AndroidWidgetStr.notStarted()
+            else -> CommonStr.weekN(targetWeek)
         }
 
         val displayCourse: Course?
@@ -157,12 +163,12 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
             } else allCourses
         } else {
             emptyText = when {
-                isHoliday -> "假期中，暂无课程"
-                currentWeek < 1 -> "学期暂未开始"
-                resolution.isHolidayDate -> "假期中，暂无课程"
-                showTomorrow -> "明日无课"
-                todayCourses.isEmpty() -> "今日无课"
-                else -> "今日课程已上完"
+                isHoliday -> AndroidWidgetStr.vacationNoClasses()
+                currentWeek < 1 -> AndroidWidgetStr.semesterNotStarted()
+                resolution.isHolidayDate -> AndroidWidgetStr.vacationNoClasses()
+                showTomorrow -> AndroidWidgetStr.noClassesTomorrow()
+                todayCourses.isEmpty() -> AndroidWidgetStr.noClassesToday()
+                else -> AndroidWidgetStr.allClassesFinished()
             }
             startTime = ""
             endTime = ""
@@ -219,7 +225,7 @@ class TodayCourseWidgetProviderStandard : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_course_time, "$startTime-$endTime")
             views.setTextViewText(R.id.widget_course_location, displayCourse.classroom)
 
-            val remainingText = if (remainingCount > 0) "还有${remainingCount}节课" else "没有其他课程"
+            val remainingText = if (remainingCount > 0) AndroidWidgetStr.moreClassesN(remainingCount) else AndroidWidgetStr.noOtherClasses()
             views.setTextViewText(R.id.widget_remaining_text, remainingText)
 
             for (i in dotIds.indices) {

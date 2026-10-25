@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
+import com.haooz.chedule.i18n.MiscStr
 import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -57,8 +58,8 @@ fun PrivacyConsentScreen(
     // 透明 Scaffold：只为提供 LocalDialogStates + MiuixPopupHost，让弹窗能渲染在最上层
     Scaffold(containerColor = Color.Transparent) { _ ->
         OverlayDialog(
-            title = "隐私政策",
-            summary = "欢迎使用 Nexio 课程表。\n\n为提供课程表、课程提醒、天气等功能，我们需要在您同意后申请必要权限，并处理实现功能所必需的信息。\n您的课程数据默认仅保存在本机，设备信息仅用于匿名统计且不含身份信息。",
+            title = MiscStr.privacyPolicyTitle(),
+            summary = MiscStr.privacyConsentSummary(),
             show = show,
             // 不可点击外部或返回键关闭，必须明确选择
             onDismissRequest = null,
@@ -68,7 +69,7 @@ fun PrivacyConsentScreen(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "《Nexio 课程表隐私政策》",
+                    text = MiscStr.privacyPolicyLink(),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.primary,
@@ -80,7 +81,7 @@ fun PrivacyConsentScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(
-                    text = "同意并继续",
+                    text = MiscStr.agreeAndContinue(),
                     onClick = {
                         pendingAction = onAgree
                         dialogVisible = false
@@ -90,7 +91,7 @@ fun PrivacyConsentScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(
-                    text = "不同意",
+                    text = MiscStr.disagree(),
                     // 直接退出，不等弹窗关闭动画（退出后动画无意义，且会拖慢退出）
                     onClick = { onDecline() },
                     modifier = Modifier.fillMaxWidth()

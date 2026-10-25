@@ -2,6 +2,7 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.utils.IosUiHost
 import platform.Foundation.NSData
 import platform.Foundation.NSDate
@@ -78,12 +79,12 @@ class IosBackupFileController : BackupFileController {
             // id 用绝对路径（与 Android 一致），读/删直接当路径用
             id = fullPath,
             fileName = fileName,
-            type = if (isFullBackup) "全部备份" else "单独课表",
+            type = if (isFullBackup) L("全部备份", "Full Backup")() else L("单独课表", "Single Schedule")(),
             scheduleName = scheduleName,
             scheduleCount = scheduleCount,
             timestamp = BACKUP_NAME_REGEX.matchEntire(baseName)
                 ?.let { formatBackupTimestamp(it.groupValues[2]) }
-                ?: "未知时间",
+                ?: L("未知时间", "Unknown time")(),
             size = formatBackupSize(sizeBytes),
             isFullBackup = isFullBackup,
         )
@@ -119,7 +120,7 @@ class IosBackupFileController : BackupFileController {
         val host = IosUiHost.topViewController()
         if (host == null) {
             pickDelegate = null
-            showToast("导入失败: 无法打开文件选择器")
+            showToast(L("导入失败：无法打开文件选择器", "Import failed: cannot open the file picker")())
             onResult(null, null)
             return
         }
@@ -132,16 +133,16 @@ class IosBackupFileController : BackupFileController {
         try {
             val data = NSData.dataWithContentsOfURL(url)
             if (data == null) {
-                showToast("无法识别备份文件：读取失败")
+                showToast(L("无法识别备份文件：读取失败", "Unrecognized backup file: read failed")())
                 return null
             }
             if (data.length > MAX_BACKUP_PARSE_BYTES.toULong()) {
-                showToast("无法识别备份文件：超过 8 MB 限制")
+                showToast(L("无法识别备份文件：超过 8 MB 限制", "Unrecognized backup file: exceeds the 8 MB limit")())
                 return null
             }
             return data.toByteArray().decodeToString()
         } catch (e: Exception) {
-            showToast("无法识别备份文件：${e.message}")
+            showToast(L("无法识别备份文件：%s", "Unrecognized backup file: %s")(e.message ?: ""))
             return null
         } finally {
             if (scoped) url.stopAccessingSecurityScopedResource()
@@ -163,7 +164,7 @@ class IosBackupFileController : BackupFileController {
         val sizeBytes = (fm.attributesOfItemAtPath(id, null)?.get(NSFileSize) as? NSNumber)
             ?.longLongValue ?: 0L
         if (sizeBytes > MAX_BACKUP_PARSE_BYTES) {
-            throw IllegalStateException("备份文件超过 8 MB 限制")
+            throw IllegalStateException(L("备份文件超过 8 MB 限制", "Backup file exceeds the 8 MB limit")())
         }
         return readTextAt(id)
     }
@@ -181,7 +182,7 @@ class IosBackupFileController : BackupFileController {
      * 文件名存的是本地时间，直接切字符串、无需时区换算（与 Android `SimpleDateFormat` 同结果）。
      */
     private fun formatBackupTimestamp(raw: String): String {
-        if (raw.length != 15 || raw[8] != '_') return "未知时间"
+        if (raw.length != 15 || raw[8] != '_') return L("未知时间", "Unknown time")()
         return "${raw.substring(0, 4)}-${raw.substring(4, 6)}-${raw.substring(6, 8)} " +
             "${raw.substring(9, 11)}:${raw.substring(11, 13)}:${raw.substring(13, 15)}"
     }

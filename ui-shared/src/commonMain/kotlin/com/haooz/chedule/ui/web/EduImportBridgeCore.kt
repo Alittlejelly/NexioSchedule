@@ -10,6 +10,7 @@ import com.haooz.chedule.data.optBoolean
 import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.parseJsonArray
 import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.i18n.ImportStr
 import kotlin.random.Random
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -70,10 +71,10 @@ class EduImportBridgeCore(
         val courses = try {
             parseJsonArray(json).mapNotNull { (it as? JsonObject) }
         } catch (e: Exception) {
-            throw EduBridgeReject("课程数据解析失败: ${e.message}")
+            throw EduBridgeReject(ImportStr.bridgeParseCoursesFailed(e.message))
         }.map(::toCourse)
 
-        if (courses.isEmpty()) throw EduBridgeReject("课程数据为空")
+        if (courses.isEmpty()) throw EduBridgeReject(ImportStr.bridgeCoursesEmpty())
 
         storeTarget()
         onCoursesImported(courses)
@@ -81,7 +82,7 @@ class EduImportBridgeCore(
         val badDay = courses.count { it.dayOfWeek !in 1..7 }
         if (badDay > 0) {
             // 这类课落库后日期边界计算会跳过 → 表上看不见；不 reject 是怕偶发脏值毁掉整批
-            NexioLog.w(TAG, "$badDay 门课程 day 不在 1..7，导入后可能不显示")
+            NexioLog.w(TAG, ImportStr.bridgeInvalidDayWarningN(badDay))
         }
         return "true"
     }
@@ -132,7 +133,7 @@ class EduImportBridgeCore(
         val config = try {
             parseJsonObject(json)
         } catch (e: Exception) {
-            throw EduBridgeReject("课表配置解析失败: ${e.message}")
+            throw EduBridgeReject(ImportStr.bridgeParseConfigFailed(e.message))
         }
         val totalWeeks = config.optInt("semesterTotalWeeks", 20)
         val classDuration = config.optInt("defaultClassDuration", 45)
@@ -152,20 +153,20 @@ class EduImportBridgeCore(
             putInt("first_day_of_week", firstDay)
             writeTarget(this)
         }
-        NexioLog.d(TAG, "课表配置: start=$startDate weeks=$totalWeeks firstDay=$firstDay")
+        NexioLog.d(TAG, ImportStr.bridgeConfigLog(startDate, totalWeeks, firstDay))
         return "true"
     }
 
     // ── 1.2 预设时间段 ──────────────────────────────────────────────
 
     private fun saveTimeSlots(json: String): String {
-        if (comboSaved) throw EduBridgeReject("组合作息已提交，本次导入不再接受基础时间段")
+        if (comboSaved) throw EduBridgeReject(ImportStr.bridgeComboAlreadySaved())
         val slots = try {
             parseJsonArray(json)
         } catch (e: Exception) {
-            throw EduBridgeReject("时间段数据解析失败: ${e.message}")
+            throw EduBridgeReject(ImportStr.bridgeParseTimeSlotsFailed(e.message))
         }
-        if (slots.isEmpty()) throw EduBridgeReject("时间段数据为空")
+        if (slots.isEmpty()) throw EduBridgeReject(ImportStr.bridgeTimeSlotsEmpty())
         AppStorage.store(PREFS_NAME).edit {
             putString("preset_time_slots", json)
             writeTarget(this)
@@ -179,15 +180,15 @@ class EduImportBridgeCore(
     private fun saveCombo(json: String): String {
         // 官方契约 2.1.7：没有骨架就无从做差量合并
         if (!baseTimeSlotsSaved) {
-            throw EduBridgeReject("请先调用 savePresetTimeSlots 提交基础时间段")
+            throw EduBridgeReject(ImportStr.bridgeCallSaveTimeSlotsFirst())
         }
         val combo = try {
             parseJsonObject(json)
         } catch (e: Exception) {
-            throw EduBridgeReject("组合作息解析失败: ${e.message}")
+            throw EduBridgeReject(ImportStr.bridgeParseComboFailed(e.message))
         }
         val count = (combo["publicSchedules"] as? JsonArray)?.size ?: 0
-        if (count == 0) throw EduBridgeReject("组合作息没有 publicSchedules")
+        if (count == 0) throw EduBridgeReject(ImportStr.bridgeComboNoPublicSchedules())
         // 原样存，结构校验与差量合并交给消费端（与 preset_time_slots 同套路）
         AppStorage.store(PREFS_NAME).edit {
             putString("combo_schedule", json)

@@ -100,6 +100,10 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.CourseEditStr
+import com.haooz.chedule.i18n.TimeCfgStr
+import com.haooz.chedule.i18n.TimeEditStr
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 
@@ -153,7 +157,7 @@ private fun specialBlockSummary(block: SpecialBlock): String {
     val items = block.safeItems
     if (items.isEmpty()) return base
     val days = items.flatMap { it.startDay..it.endDay }.distinct().sorted()
-    val dayLabel = if (days.size >= 7) "每天" else describeSpecialDays(days.toSet())
+    val dayLabel = if (days.size >= 7) TimeEditStr.everyDay() else describeSpecialDays(days.toSet())
     return "$base · $dayLabel"
 }
 
@@ -214,7 +218,7 @@ fun TimeConfigEditScreen(
     val scrollBehavior = rememberSharedScrollBehavior()
     var listScrollY by remember { mutableIntStateOf(0) }
 
-    val screenTitle = "编辑作息"
+    val screenTitle = TimeEditStr.editRoutine()
     val usesNativeControls = LocalNativeDocumentChrome.current != null
     var routineName by remember(timeConfig) { mutableStateOf(timeConfig.safeRoutines.firstOrNull { it.id == routineId }?.name ?: "") }
 
@@ -347,7 +351,7 @@ fun TimeConfigEditScreen(
             else -> relSection
         }
         val name = sectionNames[key]?.takeIf { it.isNotBlank() }
-        return if (name != null) "第${abs}节 $name" else "第${abs}节"
+        return if (name != null) TimeEditStr.sectionNameN(abs, name) else TimeEditStr.sectionN(abs)
     }
 
     // 仅检查当前节数范围内的节次 + 当前特殊课程块
@@ -373,23 +377,23 @@ fun TimeConfigEditScreen(
         for ((section, timeStr) in morningTimes) {
             if (section > morningSections) continue
             val range = parseRange(timeStr) ?: continue
-            allTimes.add(TimeRange(range.first, range.last, "上午第${section}节", true))
+            allTimes.add(TimeRange(range.first, range.last, TimeEditStr.morningSectionN(section), true))
         }
         for ((section, timeStr) in afternoonTimes) {
             if (section > afternoonSections) continue
             val range = parseRange(timeStr) ?: continue
-            allTimes.add(TimeRange(range.first, range.last, "下午第${section}节", true))
+            allTimes.add(TimeRange(range.first, range.last, TimeEditStr.afternoonSectionN(section), true))
         }
         for ((section, timeStr) in eveningTimes) {
             if (section > eveningSections) continue
             val range = parseRange(timeStr) ?: continue
-            allTimes.add(TimeRange(range.first, range.last, "晚上第${section}节", true))
+            allTimes.add(TimeRange(range.first, range.last, TimeEditStr.eveningSectionN(section), true))
         }
         // 特殊课程块也上时间轴：早读/大课间与节次同处一条时间线，重叠会让横带骑到课程卡上。
         for (block in specialBlocks) {
             val s = parseRange("${block.startTime}-${block.endTime}") ?: continue
             if (s.last <= s.first) continue
-            val label = block.name.ifBlank { "特殊课程" }
+            val label = block.name.ifBlank { TimeEditStr.specialCourse() }
             allTimes.add(TimeRange(s.first, s.last, label, false))
         }
 
@@ -402,9 +406,9 @@ fun TimeConfigEditScreen(
                 if (a.start < b.end && b.start < a.end) {
                     // 节次互相重叠沿用旧口径：直接拦保存。
                     if (a.isSection && b.isSection) {
-                        if (blocking == null) blocking = "${a.label} 与 ${b.label}"
+                        if (blocking == null) blocking = TimeEditStr.overlapPair(a.label, b.label)
                     } else {
-                        warnings.add("${a.label} 与 ${b.label}")
+                        warnings.add(TimeEditStr.overlapPair(a.label, b.label))
                     }
                 }
             }
@@ -490,11 +494,11 @@ fun TimeConfigEditScreen(
     NativeDocumentEditorEffect(
         if (morph.animating.value) null else NativeDocumentEditorChrome(
             title = screenTitle,
-            cancel = NativeDocumentAction("xmark", "取消") {
+            cancel = NativeDocumentAction("xmark", CommonStr.cancel()) {
                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                 triggerExitAndBack()
             },
-            save = NativeDocumentAction("checkmark", "保存并关闭") {
+            save = NativeDocumentAction("checkmark", TimeEditStr.saveAndClose()) {
                 requestSave()
             },
         )
@@ -574,7 +578,7 @@ fun TimeConfigEditScreen(
                                         },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.Normal.Close,
-                                        contentDescription = "取消",
+                                        contentDescription = CommonStr.cancel(),
                                         iconSize = 24.dp,
                                         backdropAlpha = backdropAlpha,
                                         shadowAlpha = shadowAlpha,
@@ -585,7 +589,7 @@ fun TimeConfigEditScreen(
                                         onClick = { requestSave() },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.Ok,
-                                        contentDescription = "保存并关闭",
+                                        contentDescription = TimeEditStr.saveAndClose(),
                                         iconSize = 25.dp,
                                         backdropAlpha = backdropAlpha,
                                         shadowAlpha = shadowAlpha,
@@ -647,11 +651,11 @@ fun TimeConfigEditScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 item(key = "config_name") {
-                                    SmallTitle(text = "作息名称")
+                                    SmallTitle(text = TimeCfgStr.routineNameLabel())
                                     NativeMiuixTextField(
                                         value = routineName,
                                         onValueChange = { routineName = it },
-                                        label = "请输入作息名称",
+                                        label = TimeEditStr.routineNamePlaceholder(),
                                         useLabelAsPlaceholder = true,
                                         requestFocus = isFabCreation
                                     )
@@ -666,11 +670,11 @@ fun TimeConfigEditScreen(
                                     ) {
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             ArrowPreference(
-                                                title = "生效日期",
+                                                title = TimeEditStr.effectiveDate(),
                                                 // 只有一套作息时没有可切换的对象，日期无意义
                                                 summary = if (canDeleteRoutine) {
-                                                    "每年 ${routineEffectiveMonth}月${routineEffectiveDay}日起自动切换"
-                                                } else "始终生效",
+                                                    TimeEditStr.effectiveDateSummaryN(routineEffectiveMonth, routineEffectiveDay)
+                                                } else TimeCfgStr.alwaysActive(),
                                                 enabled = canDeleteRoutine,
                                                 onClick = {
                                                     hapticFeedback.performHapticFeedback(
@@ -718,7 +722,7 @@ fun TimeConfigEditScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    "快捷设置时间",
+                                                    TimeEditStr.quickTimeSettings(),
                                                     fontSize = 17.sp,
                                                     fontWeight = FontWeight.Medium,
                                                     color = MiuixTheme.colorScheme.onSurface
@@ -730,10 +734,10 @@ fun TimeConfigEditScreen(
                                             CardExpand(visible = quickExpanded) {
                                                 Column(modifier = Modifier.fillMaxWidth()) {
                                                     ArrowPreference(
-                                                        title = "每节课时长",
+                                                        title = TimeEditStr.classDurationTitle(),
                                                         endActions = {
                                                             Text(
-                                                                "${classDuration}分钟",
+                                                                TimeEditStr.minutesN(classDuration),
                                                                 fontSize = 14.5.sp,
                                                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                                                 textAlign = TextAlign.End,
@@ -748,10 +752,10 @@ fun TimeConfigEditScreen(
                                                         holdDownState = showQuickItemDialog && quickEditType == "duration"
                                                     )
                                                     ArrowPreference(
-                                                        title = "课间休息",
+                                                        title = TimeEditStr.shortBreakTitle(),
                                                         endActions = {
                                                             Text(
-                                                                "${shortBreak}分钟",
+                                                                TimeEditStr.minutesN(shortBreak),
                                                                 fontSize = 14.5.sp,
                                                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                                                 textAlign = TextAlign.End,
@@ -776,7 +780,7 @@ fun TimeConfigEditScreen(
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Text(
-                                                            "大课间休息",
+                                                            TimeEditStr.longBreakTitle(),
                                                             fontSize = 17.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MiuixTheme.colorScheme.onSurface
@@ -790,10 +794,10 @@ fun TimeConfigEditScreen(
                                                     CardExpand(visible = longBreakEnabled) {
                                                         Column {
                                                             ArrowPreference(
-                                                                title = "上午大课间休息",
+                                                                title = TimeEditStr.longBreakMorningTitle(),
                                                                 endActions = {
                                                                     Text(
-                                                                        "第${longBreakMorningSection}节后 ${longBreakMorning}分钟",
+                                                                        TimeEditStr.afterSectionMinutesN(longBreakMorningSection, longBreakMorning),
                                                                         fontSize = 14.5.sp,
                                                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                                                         textAlign = TextAlign.End,
@@ -809,10 +813,10 @@ fun TimeConfigEditScreen(
                                                                 holdDownState = showQuickItemDialog && quickEditType == "long_morning"
                                                             )
                                                             ArrowPreference(
-                                                                title = "下午大课间休息",
+                                                                title = TimeEditStr.longBreakAfternoonTitle(),
                                                                 endActions = {
                                                                     Text(
-                                                                        "第${longBreakAfternoonSection}节后 ${longBreakAfternoon}分钟",
+                                                                        TimeEditStr.afterSectionMinutesN(longBreakAfternoonSection, longBreakAfternoon),
                                                                         fontSize = 14.5.sp,
                                                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                                                         textAlign = TextAlign.End,
@@ -828,10 +832,10 @@ fun TimeConfigEditScreen(
                                                                 holdDownState = showQuickItemDialog && quickEditType == "long_afternoon"
                                                             )
                                                             ArrowPreference(
-                                                                title = "晚上大课间休息",
+                                                                title = TimeEditStr.longBreakEveningTitle(),
                                                                 endActions = {
                                                                     Text(
-                                                                        "第${longBreakEveningSection}节后 ${longBreakEvening}分钟",
+                                                                        TimeEditStr.afterSectionMinutesN(longBreakEveningSection, longBreakEvening),
                                                                         fontSize = 14.5.sp,
                                                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                                                         textAlign = TextAlign.End,
@@ -849,7 +853,7 @@ fun TimeConfigEditScreen(
                                                         }
                                                     }
                                                     ArrowPreference(
-                                                        title = "上午开始时间",
+                                                        title = TimeEditStr.morningStartTitle(),
                                                         endActions = {
                                                             Text(
                                                                 formatHhMm(
@@ -871,7 +875,7 @@ fun TimeConfigEditScreen(
                                                         holdDownState = showQuickItemDialog && quickEditType == "start_morning"
                                                     )
                                                     ArrowPreference(
-                                                        title = "下午开始时间",
+                                                        title = TimeEditStr.afternoonStartTitle(),
                                                         endActions = {
                                                             Text(
                                                                 formatHhMm(
@@ -893,7 +897,7 @@ fun TimeConfigEditScreen(
                                                         holdDownState = showQuickItemDialog && quickEditType == "start_afternoon"
                                                     )
                                                     ArrowPreference(
-                                                        title = "晚上开始时间",
+                                                        title = TimeEditStr.eveningStartTitle(),
                                                         endActions = {
                                                             Text(
                                                                 formatHhMm(
@@ -915,7 +919,7 @@ fun TimeConfigEditScreen(
                                                         holdDownState = showQuickItemDialog && quickEditType == "start_evening"
                                                     )
                                                     TextButton(
-                                                        text = "应用",
+                                                        text = TimeEditStr.apply(),
                                                         onClick = {
                                                             hapticFeedback.performHapticFeedback(
                                                                 HapticFeedbackType.Confirm
@@ -962,7 +966,7 @@ fun TimeConfigEditScreen(
                                                                     lbE,
                                                                     lbsE
                                                                 )
-                                                            showToast("课程时间已应用")
+                                                            showToast(TimeEditStr.timeApplied())
                                                         },
                                                         colors = ButtonDefaults.textButtonColorsPrimary(),
                                                         modifier = Modifier.fillMaxWidth().padding(
@@ -981,7 +985,7 @@ fun TimeConfigEditScreen(
                                 // 特殊课程（无编号时段块）
                                 item(key = "morning") {
                                     SmallTitle(
-                                        text = "上午",
+                                        text = TimeCfgStr.morning(),
                                     )
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1021,7 +1025,7 @@ fun TimeConfigEditScreen(
 
                                 item(key = "afternoon") {
                                     SmallTitle(
-                                        text = "下午",
+                                        text = TimeCfgStr.afternoon(),
                                     )
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1061,7 +1065,7 @@ fun TimeConfigEditScreen(
 
                                 item(key = "evening") {
                                     SmallTitle(
-                                        text = "晚上",
+                                        text = TimeCfgStr.evening(),
                                     )
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1101,7 +1105,7 @@ fun TimeConfigEditScreen(
 
                                 item(key = "special_courses") {
                                     SmallTitle(
-                                        text = "特殊课程"
+                                        text = TimeEditStr.specialBlocksTitle()
                                     )
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1110,8 +1114,8 @@ fun TimeConfigEditScreen(
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             CardExpand(visible = specialBlocks.isEmpty()) {
                                                 ArrowPreference(
-                                                    title = "暂无特殊课程",
-                                                    summary = "点击添加早读、眼保健操等无编号时段",
+                                                    title = TimeEditStr.noSpecialBlocks(),
+                                                    summary = TimeEditStr.noSpecialBlocksSummary(),
                                                     holdDownState = showSpecialDialog,
                                                     onClick = {
                                                         resetSpecialTemp()
@@ -1124,7 +1128,7 @@ fun TimeConfigEditScreen(
                                                 // 始终按开始时间排序展示
                                                 sortSpecialBlocksByTime(specialBlocks).forEachIndexed { index, block ->
                                                     ArrowPreference(
-                                                        title = if (block.name.isNotBlank()) block.name else "特殊课程",
+                                                        title = if (block.name.isNotBlank()) block.name else TimeEditStr.specialCourse(),
                                                         summary = specialBlockSummary(block),
                                                         // 只压暗被点开弹窗的那一项
                                                         holdDownState = showSpecialDialog && index == editingSpecialIndex,
@@ -1140,7 +1144,7 @@ fun TimeConfigEditScreen(
                                                     )
                                                 }
                                                 ArrowPreference(
-                                                    title = "添加特殊课程",
+                                                    title = TimeEditStr.addSpecialBlock(),
                                                     holdDownState = showSpecialDialog && editingSpecialIndex == -1,
                                                     onClick = {
                                                         // 添加不能带出上一次编辑的名称/时间
@@ -1179,7 +1183,7 @@ fun TimeConfigEditScreen(
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                "删除作息",
+                                                TimeEditStr.deleteRoutine(),
                                                 fontSize = 17.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = destructiveColor
@@ -1192,14 +1196,14 @@ fun TimeConfigEditScreen(
 
                         OverlayDialog(
                             title = when (quickEditType) {
-                                "duration" -> "每节课时长"
-                                "short_break" -> "小课间休息时长"
-                                "long_morning" -> "上午大课间设置"
-                                "long_afternoon" -> "下午大课间设置"
-                                "long_evening" -> "晚上大课间设置"
-                                "start_morning" -> "上午开始时间"
-                                "start_afternoon" -> "下午开始时间"
-                                "start_evening" -> "晚上开始时间"
+                                "duration" -> TimeEditStr.classDurationTitle()
+                                "short_break" -> TimeEditStr.shortBreakDurationTitle()
+                                "long_morning" -> TimeEditStr.longBreakMorningSetting()
+                                "long_afternoon" -> TimeEditStr.longBreakAfternoonSetting()
+                                "long_evening" -> TimeEditStr.longBreakEveningSetting()
+                                "start_morning" -> TimeEditStr.morningStartTitle()
+                                "start_afternoon" -> TimeEditStr.afternoonStartTitle()
+                                "start_evening" -> TimeEditStr.eveningStartTitle()
                                 else -> ""
                             },
                             show = showQuickItemDialog,
@@ -1269,7 +1273,7 @@ fun TimeConfigEditScreen(
                                             range = sectionRange,
                                             visibleItemCount = 3,
                                             itemHeight = 60.dp,
-                                            label = { "第${it}节后" },
+                                            label = { TimeEditStr.afterSectionN(it) },
                                             wrapAround = false,
                                             textStyle = MiuixTheme.textStyles.title2,
                                             modifier = Modifier.weight(1f)
@@ -1283,7 +1287,7 @@ fun TimeConfigEditScreen(
                                             range = breakOptions.indices,
                                             visibleItemCount = 3,
                                             itemHeight = 60.dp,
-                                            label = { "${breakOptions[it]}分钟" },
+                                            label = { TimeEditStr.minutesN(breakOptions[it]) },
                                             wrapAround = false,
                                             textStyle = MiuixTheme.textStyles.title2,
                                             modifier = Modifier.weight(1f)
@@ -1303,7 +1307,7 @@ fun TimeConfigEditScreen(
                                         range = options.indices,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { "${options[it]}分钟" },
+                                        label = { TimeEditStr.minutesN(options[it]) },
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -1313,7 +1317,7 @@ fun TimeConfigEditScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     TextButton(
-                                        text = "取消",
+                                        text = CommonStr.cancel(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showQuickItemDialog = false
@@ -1321,7 +1325,7 @@ fun TimeConfigEditScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     TextButton(
-                                        text = "确定",
+                                        text = CommonStr.ok(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             when (quickEditType) {
@@ -1380,7 +1384,7 @@ fun TimeConfigEditScreen(
 
 
                         OverlayDialog(
-                            title = if (editingSpecialIndex == -1) "添加特殊课程" else "编辑特殊课程",
+                            title = if (editingSpecialIndex == -1) TimeEditStr.addSpecialBlock() else TimeEditStr.editSpecialBlock(),
                             summary = null,
                             show = showSpecialDialog,
                             onDismissRequest = { showSpecialDialog = false },
@@ -1396,7 +1400,7 @@ fun TimeConfigEditScreen(
                                 NativeMiuixTextField(
                                     value = tempSpecialName,
                                     onValueChange = { tempSpecialName = it },
-                                    label = "特殊课程",
+                                    label = TimeEditStr.specialCourse(),
                                     useLabelAsPlaceholder = true,
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
@@ -1477,7 +1481,7 @@ fun TimeConfigEditScreen(
                                 val editingSpecialBlock = specialBlocks.getOrNull(editingSpecialIndex)
                                 if (editingSpecialIndex != -1) {
                                     Text(
-                                        text = "按星期的安排",
+                                        text = TimeEditStr.weekdaySchedule(),
                                         fontSize = 15.sp,
                                         color = MiuixTheme.colorScheme.onBackground,
                                         modifier = Modifier.padding(start = 12.dp)
@@ -1500,7 +1504,7 @@ fun TimeConfigEditScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     TextButton(
-                                        text = "取消",
+                                        text = CommonStr.cancel(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showSpecialDialog = false
@@ -1508,14 +1512,14 @@ fun TimeConfigEditScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     TextButton(
-                                        text = "保存",
+                                        text = CommonStr.save(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             val startMinutes = tempSpecialStartHour * 60 + tempSpecialStartMinute
                                             val endMinutes = tempSpecialEndHour * 60 + tempSpecialEndMinute
                                             // 结束不晚于开始按跨午夜处理（次日结束），只有起止完全相同才是无效输入
                                             if (startMinutes == endMinutes) {
-                                                showToast("开始与结束时间不能相同")
+                                                showToast(CourseEditStr.timeSameError())
                                                 return@TextButton
                                             }
                                             val startStr = formatHhMm(tempSpecialStartHour, tempSpecialStartMinute)
@@ -1561,7 +1565,7 @@ fun TimeConfigEditScreen(
                                 ) {
                                     Image(
                                         imageVector = MiuixIcons.Delete,
-                                        contentDescription = "删除",
+                                        contentDescription = CommonStr.delete(),
                                         colorFilter = ColorFilter.tint(Color(0xFFF44336)),
                                         modifier = Modifier.size(23.dp),
                                     )
@@ -1571,8 +1575,8 @@ fun TimeConfigEditScreen(
                         }
 
                         OverlayDialog(
-                            title = "删除特殊课程",
-                            summary = "确定要删除这条特殊课程吗？\n此操作不可撤销。",
+                            title = TimeEditStr.deleteSpecialBlock(),
+                            summary = TimeEditStr.deleteSpecialBlockConfirm(),
                             show = showSpecialDeleteConfirm,
                             liquidGlassBackdrop = liquidGlassBackdrop,
                             onDismissRequest = { showSpecialDeleteConfirm = false }
@@ -1582,7 +1586,7 @@ fun TimeConfigEditScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 TextButton(
-                                    "取消",
+                                    CommonStr.cancel(),
                                     {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         showSpecialDeleteConfirm = false
@@ -1590,7 +1594,7 @@ fun TimeConfigEditScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 TextButton(
-                                    "删除",
+                                    CommonStr.delete(),
                                     {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         if (editingSpecialIndex in specialBlocks.indices) {
@@ -1609,10 +1613,10 @@ fun TimeConfigEditScreen(
 
                         OverlayDialog(
                             title = when (editingPeriod) {
-                                "morning" -> "第${editingSection}节时间设置"
-                                "afternoon" -> "第${morningSections + editingSection}节时间设置"
-                                "evening" -> "第${morningSections + afternoonSections + editingSection}节时间设置"
-                                else -> "时间设置"
+                                "morning" -> TimeEditStr.sectionTimeSettingsN(editingSection)
+                                "afternoon" -> TimeEditStr.sectionTimeSettingsN(morningSections + editingSection)
+                                "evening" -> TimeEditStr.sectionTimeSettingsN(morningSections + afternoonSections + editingSection)
+                                else -> TimeEditStr.timeSettings()
                             },
                             show = showTimeDialog,
                             onDismissRequest = { showTimeDialog = false },
@@ -1625,7 +1629,7 @@ fun TimeConfigEditScreen(
                                 NativeMiuixTextField(
                                     value = tempSectionName,
                                     onValueChange = { tempSectionName = it },
-                                    label = "自定义节次名称",
+                                    label = TimeEditStr.customSectionName(),
                                     useLabelAsPlaceholder = true,
                                     singleLine = true,
                                     trailingIcon = {
@@ -1722,7 +1726,7 @@ fun TimeConfigEditScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     TextButton(
-                                        text = "取消",
+                                        text = CommonStr.cancel(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showTimeDialog = false
@@ -1730,7 +1734,7 @@ fun TimeConfigEditScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     TextButton(
-                                        text = "确定",
+                                        text = CommonStr.ok(),
                                         enabled = tempSectionName.length <= 2,
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1738,7 +1742,7 @@ fun TimeConfigEditScreen(
                                             val endMinutes = tempEndHour * 60 + tempEndMinute
                                             // 结束不晚于开始按跨午夜处理（次日结束），只有起止完全相同才是无效输入
                                             if (startMinutes == endMinutes) {
-                                                showToast("开始与结束时间不能相同")
+                                                showToast(CourseEditStr.timeSameError())
                                                 return@TextButton
                                             }
                                             val newTimeStr = "${
@@ -1784,7 +1788,7 @@ fun TimeConfigEditScreen(
                             }
                         }
                         OverlayDialog(
-                            title = "时间重叠",
+                            title = TimeEditStr.timeOverlap(),
                             show = showOverlapDialog,
                             onDismissRequest = { showOverlapDialog = false },
                             liquidGlassBackdrop = liquidGlassBackdrop
@@ -1801,13 +1805,13 @@ fun TimeConfigEditScreen(
                                     textAlign = TextAlign.Center,
                                 )
                                 Text(
-                                    text = "存在时间重叠，请重新设置",
+                                    text = TimeEditStr.timeOverlapBlocking(),
                                     style = MiuixTheme.textStyles.body1,
                                     color = MiuixTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 TextButton(
-                                    text = "知道了",
+                                    text = TimeEditStr.gotIt(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         showOverlapDialog = false
@@ -1820,7 +1824,7 @@ fun TimeConfigEditScreen(
                         // 特殊课程与其它时间重叠：只警告。块会插到被压节次之前排开，
                         // 渲染不会坏；老数据也可能本来就重叠，给「仍然保存」出口。
                         OverlayDialog(
-                            title = "时间重叠（可继续保存）",
+                            title = TimeEditStr.timeOverlapWarningTitle(),
                             show = showOverlapWarningDialog,
                             onDismissRequest = { showOverlapWarningDialog = false },
                             liquidGlassBackdrop = liquidGlassBackdrop
@@ -1838,7 +1842,7 @@ fun TimeConfigEditScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "特殊课程会排在该时段之前，确认无误可继续保存",
+                                    text = TimeEditStr.overlapWarningBody(),
                                     style = MiuixTheme.textStyles.footnote2,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                 )
@@ -1848,7 +1852,7 @@ fun TimeConfigEditScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     TextButton(
-                                        text = "返回修改",
+                                        text = TimeEditStr.backToEdit(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showOverlapWarningDialog = false
@@ -1856,7 +1860,7 @@ fun TimeConfigEditScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     TextButton(
-                                        text = "仍然保存",
+                                        text = TimeEditStr.saveAnyway(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showOverlapWarningDialog = false
@@ -1871,8 +1875,8 @@ fun TimeConfigEditScreen(
 
                         // ---- 修改生效日期 ----
                         OverlayDialog(
-                            title = "生效日期",
-                            summary = "到这一天自动切换到该作息",
+                            title = TimeEditStr.effectiveDate(),
+                            summary = TimeEditStr.effectiveDateDialogSummary(),
                             show = showRoutineDateDialog,
                             liquidGlassBackdrop = liquidGlassBackdrop,
                             onDismissRequest = { showRoutineDateDialog = false }
@@ -1894,7 +1898,7 @@ fun TimeConfigEditScreen(
                                         range = 1..12,
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { "${it}月" },
+                                        label = { TimeCfgStr.monthN(it) },
                                         wrapAround = true,
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
@@ -1907,7 +1911,7 @@ fun TimeConfigEditScreen(
                                             .daysInMonth(tempRoutineMonth),
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,
-                                        label = { "${it}日" },
+                                        label = { CommonStr.dateN(it) },
                                         textStyle = MiuixTheme.textStyles.title2,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -1918,12 +1922,12 @@ fun TimeConfigEditScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     TextButton(
-                                        text = "取消",
+                                        text = CommonStr.cancel(),
                                         onClick = { showRoutineDateDialog = false },
                                         modifier = Modifier.weight(1f)
                                     )
                                     TextButton(
-                                        text = "确定",
+                                        text = CommonStr.ok(),
                                         onClick = {
                                             // 同一天只能有一套作息，否则到点切换的结果取决于列表顺序
                                             if (timeConfig.isRoutineDateTaken(
@@ -1931,7 +1935,7 @@ fun TimeConfigEditScreen(
                                                     excludeId = routineId
                                                 )
                                             ) {
-                                                showToast("该日期已有作息，请换一个生效日期")
+                                                showToast(TimeCfgStr.routineDateTaken())
                                                 return@TextButton
                                             }
                                             routineEffectiveMonth = tempRoutineMonth
@@ -1947,8 +1951,8 @@ fun TimeConfigEditScreen(
 
                         // ---- 删除作息 ----
                         OverlayDialog(
-                            title = "删除作息",
-                            summary = "确定要删除作息「${editingRoutine?.name ?: routineName}」吗？\n此操作不可撤销。",
+                            title = TimeEditStr.deleteRoutine(),
+                            summary = TimeEditStr.deleteRoutineConfirm(editingRoutine?.name ?: routineName),
                             show = showDeleteRoutineDialog,
                             liquidGlassBackdrop = liquidGlassBackdrop,
                             onDismissRequest = { showDeleteRoutineDialog = false }
@@ -1960,7 +1964,7 @@ fun TimeConfigEditScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 TextButton(
-                                    text = "取消",
+                                    text = CommonStr.cancel(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(
                                             HapticFeedbackType.Confirm
@@ -1970,7 +1974,7 @@ fun TimeConfigEditScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 TextButton(
-                                    text = "删除",
+                                    text = CommonStr.delete(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(
                                             HapticFeedbackType.Confirm

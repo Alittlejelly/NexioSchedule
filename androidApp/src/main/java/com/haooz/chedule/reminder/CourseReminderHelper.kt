@@ -40,6 +40,7 @@ import java.util.Calendar
 import com.haooz.chedule.data.LOG_LEVEL_DEBUG
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.logMinLevel
+import com.haooz.chedule.i18n.AndroidNotifStr
 
 object CourseReminderHelper {
 
@@ -177,9 +178,11 @@ object CourseReminderHelper {
     }
 
     const val CHANNEL_REMINDER_ID = "course_reminder_alert"
-    const val CHANNEL_REMINDER_NAME = "课程提醒通知"
+
+    /** 渠道名在系统设置中展示，随语言取值 */
+    val CHANNEL_REMINDER_NAME: String get() = AndroidNotifStr.channelReminder()
     const val CHANNEL_LIVE_ID = "course_reminder_live"
-    const val CHANNEL_LIVE_NAME = "课程提醒实况"
+    val CHANNEL_LIVE_NAME: String get() = AndroidNotifStr.channelLiveName()
 
     // 发送去重：JSON map(courseId->时间戳)+日期，跨日失效。
     // 常规提醒 60 分钟窗口不重发；超级岛当天只发一次（原生倒计时自行跳秒，重发会弹出岛）。
@@ -327,9 +330,9 @@ object CourseReminderHelper {
             else -> ""
         }
         if (timeRange.isEmpty()) {
-            append("${minutesUntilStart}分钟后上课")
+            append(AndroidNotifStr.classInN(minutesUntilStart))
         } else {
-            append("${minutesUntilStart}分钟后上课 · $timeRange")
+            append(AndroidNotifStr.classInNAt(minutesUntilStart, timeRange))
         }
         if (classroom.isNotEmpty()) {
             append('\n')
@@ -1294,10 +1297,13 @@ object CourseReminderHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val endTimeLabel = if (endTime.isNotEmpty()) "${endTime}下课" else "下课"
-        val infoLine = "$endTimeLabel · 还剩${remainMin}分钟"
+        val infoLine = if (endTime.isNotEmpty()) {
+            AndroidNotifStr.infoWithRemaining(AndroidNotifStr.endsAt(endTime), remainMin)
+        } else {
+            AndroidNotifStr.infoRemaining(remainMin)
+        }
         val expandedText = if (classroom.isBlank()) infoLine else "$infoLine\n$classroom"
-        val shortCriticalText = "${remainMin}分钟"
+        val shortCriticalText = AndroidNotifStr.minutesShort(remainMin)
 
         // 课中只保留进度卡片，不挂动作按钮（点整卡打开课表即可）
         val notification = if (Build.VERSION.SDK_INT >= 36) {
@@ -1402,7 +1408,7 @@ object CourseReminderHelper {
                 append(startTime)
                 append(" · ")
             }
-            append("现在上课")
+            append(AndroidNotifStr.classStartedNow())
         }
         val startedNotification = NotificationCompat.Builder(context, CHANNEL_LIVE_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -1416,8 +1422,8 @@ object CourseReminderHelper {
             .setContentIntent(startedIntent)
             .setCategory(Notification.CATEGORY_REMINDER)
             .setRequestPromotedOngoing(true)
-            .addAction(R.drawable.ic_notification_calendar, "查看课表", startedIntent)
-            .addAction(R.drawable.ic_notification_mute, "上课勿扰", dndPendingIntent)
+            .addAction(R.drawable.ic_notification_calendar, AndroidNotifStr.viewSchedule(), startedIntent)
+            .addAction(R.drawable.ic_notification_mute, AndroidNotifStr.dndAction(), dndPendingIntent)
             .setTimeoutAfter(15_000L)
             .build()
             .apply {
@@ -1437,7 +1443,7 @@ object CourseReminderHelper {
             CHANNEL_REMINDER_NAME,
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "课程提醒通知"
+            description = AndroidNotifStr.channelReminder()
             setShowBadge(true)
         }
         val liveChannel = NotificationChannel(
@@ -1445,7 +1451,7 @@ object CourseReminderHelper {
             CHANNEL_LIVE_NAME,
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "课程提醒实时进度"
+            description = AndroidNotifStr.channelLiveDesc()
             setShowBadge(true)
             enableLights(false)
             enableVibration(false)
@@ -1530,7 +1536,7 @@ object CourseReminderHelper {
             // 缩略态只有十几个半角宽，课程名和地点都先按用户规则精简一手
             0 -> reminderPrefs.shortCourse(courseName).ifEmpty { courseName }
             1 -> reminderPrefs.shortClassroom(classroom).ifEmpty { courseName }
-            2 -> "${minutesUntilStart}分钟"
+            2 -> AndroidNotifStr.minutesShort(minutesUntilStart)
             else -> reminderPrefs.shortCourse(courseName).ifEmpty { courseName }
         }
 
@@ -1555,8 +1561,8 @@ object CourseReminderHelper {
             .setContentIntent(contentIntent)
             .setCategory(Notification.CATEGORY_REMINDER)
             .setRequestPromotedOngoing(true)
-            .addAction(R.drawable.ic_notification_calendar, "查看课表", contentIntent)
-            .addAction(R.drawable.ic_notification_mute, "上课勿扰", dndPendingIntent)
+            .addAction(R.drawable.ic_notification_calendar, AndroidNotifStr.viewSchedule(), contentIntent)
+            .addAction(R.drawable.ic_notification_mute, AndroidNotifStr.dndAction(), dndPendingIntent)
             .apply {
                 val timeout = endMillis - System.currentTimeMillis()
                 if (timeout > 0) setTimeoutAfter(timeout)
@@ -1623,9 +1629,9 @@ object CourseReminderHelper {
      * 课前 70 秒倒计时 + 课中 120 秒，便于验证倒计时 / 已上课 / 课中进度全链路。
      */
     fun sendTestLiveNotification(context: Context) {
-        val courseName = "大学英语Ⅱ"
-        val classroom = "博A201"
-        val section = "第3~4节"
+        val courseName = AndroidNotifStr.testCourseName()
+        val classroom = AndroidNotifStr.testClassroom()
+        val section = AndroidNotifStr.testSection()
         val startMillis = System.currentTimeMillis() + 70_000L
         val endMillis = startMillis + 120_000L
         val startTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
@@ -1754,7 +1760,7 @@ object CourseReminderHelper {
         val shortCriticalText = when (collapsedMode) {
             0 -> collapsedPrefs.shortCourse(courseName).ifEmpty { courseName }
             1 -> collapsedPrefs.shortClassroom(classroom).ifEmpty { courseName }
-            2 -> "${minutesUntilStart}分钟"
+            2 -> AndroidNotifStr.minutesShort(minutesUntilStart)
             else -> collapsedPrefs.shortCourse(courseName).ifEmpty { courseName }
         }
 
@@ -1798,8 +1804,8 @@ object CourseReminderHelper {
             .setContentIntent(contentIntent)
             .setCategory(Notification.CATEGORY_REMINDER)
             .setRequestPromotedOngoing(true)
-            .addAction(R.drawable.ic_notification_calendar, "查看课表", contentIntent)
-            .addAction(R.drawable.ic_notification_mute, "上课勿扰", dndPendingIntent)
+            .addAction(R.drawable.ic_notification_calendar, AndroidNotifStr.viewSchedule(), contentIntent)
+            .addAction(R.drawable.ic_notification_mute, AndroidNotifStr.dndAction(), dndPendingIntent)
             .apply {
                 val timeout = endMillis - now
                 if (timeout > 0) setTimeoutAfter(timeout)

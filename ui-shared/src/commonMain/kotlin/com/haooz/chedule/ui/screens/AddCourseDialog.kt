@@ -94,6 +94,8 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.CourseEditStr
 
 /** 揭示分组数（基本信息/星期/节次/周次/颜色/删除） */
 private const val REVEAL_GROUP_COUNT = 6
@@ -264,9 +266,9 @@ fun AddCourseDialog(
     val onConfirmClick: () -> Unit = {
         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
         if (form.name.isBlank()) {
-            showToast("请输入课程名称")
+            showToast(CourseEditStr.enterCourseName())
         } else if (form.selectedWeeks.isEmpty()) {
-            showToast("请选择上课周次")
+            showToast(CourseEditStr.selectCourseWeeks())
         } else if (form.startSection <= form.endSection) {
             val sortedWeeks = form.selectedWeeks.sorted()
             val minWeek = sortedWeeks.first()
@@ -316,7 +318,7 @@ fun AddCourseDialog(
     if (isTablet) {
         BlurBottomSheetTablet(
             show = show,
-            title = if (isEdit) "编辑课程" else "添加课程",
+            title = if (isEdit) CourseEditStr.editCourse() else CourseEditStr.addCourse(),
             dimBackground = true,
             onDismissRequest = dismissSheet,
             onSheetContentBackdropCreated = { sheetContentBackdropHolder.value = it },
@@ -328,7 +330,7 @@ fun AddCourseDialog(
                     },
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Normal.Close,
-                    contentDescription = "关闭",
+                    contentDescription = CommonStr.close(),
                     modifier = Modifier.padding(start = 16.dp),
                     iconSize = 24.dp,
                     backdropAlpha = material.backdropAlpha,
@@ -341,7 +343,7 @@ fun AddCourseDialog(
                     onClick = onConfirmClick,
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Ok,
-                    contentDescription = "确定",
+                    contentDescription = CommonStr.ok(),
                     modifier = Modifier.padding(end = 16.dp),
                     iconSize = 25.dp,
                     backdropAlpha = material.backdropAlpha,
@@ -383,7 +385,7 @@ fun AddCourseDialog(
     } else {
         BlurBottomSheet(
             show = show,
-            title = if (isEdit) "编辑课程" else "添加课程",
+            title = if (isEdit) CourseEditStr.editCourse() else CourseEditStr.addCourse(),
             dimBackground = true,
             fillMaxHeight = true,
             sheetOffsetDp = statusBarsPadding + 5.dp,
@@ -397,7 +399,7 @@ fun AddCourseDialog(
                     },
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Normal.Close,
-                    contentDescription = "关闭",
+                    contentDescription = CommonStr.close(),
                     modifier = Modifier.padding(start = 18.dp),
                     iconSize = 24.dp,
                     backdropAlpha = material.backdropAlpha,
@@ -410,7 +412,7 @@ fun AddCourseDialog(
                     onClick = onConfirmClick,
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Ok,
-                    contentDescription = "确定",
+                    contentDescription = CommonStr.ok(),
                     modifier = Modifier.padding(end = 18.dp),
                     iconSize = 25.dp,
                     backdropAlpha = material.backdropAlpha,
@@ -452,8 +454,8 @@ fun AddCourseDialog(
     }
 
     OverlayDialog(
-        title = "删除课程",
-        summary = "确定要删除课程「${course?.name}」吗？\n此操作不可撤销。",
+        title = CourseEditStr.deleteCourse(),
+        summary = CourseEditStr.deleteCourseConfirm(course?.name),
         show = showDeleteDialog,
         onDismissRequest = { showDeleteDialog = false },
         liquidGlassBackdrop = sheetContentBackdropHolder.value ?: liquidGlassBackdrop
@@ -467,7 +469,7 @@ fun AddCourseDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showDeleteDialog = false
@@ -475,7 +477,7 @@ fun AddCourseDialog(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "删除",
+                        text = CommonStr.delete(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             course?.id?.let { onDelete(it) }
@@ -491,7 +493,7 @@ fun AddCourseDialog(
     }
 
     OverlayDialog(
-        title = "选择上课节次",
+        title = CourseEditStr.selectSectionTitle(),
         show = showSectionDialog,
         onDismissRequest = { showSectionDialog = false },
         liquidGlassBackdrop = sheetContentBackdropHolder.value ?: liquidGlassBackdrop,
@@ -511,7 +513,7 @@ fun AddCourseDialog(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "开始",
+                                text = CourseEditStr.start(),
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -534,7 +536,7 @@ fun AddCourseDialog(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "结束",
+                                text = CourseEditStr.end(),
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -557,7 +559,7 @@ fun AddCourseDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showSectionDialog = false
@@ -565,7 +567,7 @@ fun AddCourseDialog(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (tempStartSection <= tempEndSection) {
@@ -584,7 +586,7 @@ fun AddCourseDialog(
     }
 
     OverlayDialog(
-        title = "选择上课时间",
+        title = CourseEditStr.selectTimeTitle(),
         show = showTimeDialog,
         onDismissRequest = { showTimeDialog = false },
         liquidGlassBackdrop = sheetContentBackdropHolder.value ?: liquidGlassBackdrop,
@@ -607,7 +609,7 @@ fun AddCourseDialog(
                     )
                     if (timeError) {
                         Text(
-                            text = "开始与结束时间不能相同",
+                            text = CourseEditStr.timeSameError(),
                             style = MiuixTheme.textStyles.footnote1,
                             color = Color(0xFFF44336),
                             modifier = Modifier.padding(top = 8.dp)
@@ -621,7 +623,7 @@ fun AddCourseDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showTimeDialog = false
@@ -630,7 +632,7 @@ fun AddCourseDialog(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 val startMinutes = tempStartHour * 60 + tempStartMinute
@@ -656,7 +658,7 @@ fun AddCourseDialog(
     }
 
     OverlayDialog(
-        title = "选择颜色",
+        title = CourseEditStr.selectColorTitle(),
         show = showColorDialog,
         onDismissRequest = { showColorDialog = false },
         liquidGlassBackdrop = sheetContentBackdropHolder.value ?: liquidGlassBackdrop,
@@ -680,7 +682,7 @@ fun AddCourseDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showColorDialog = false
@@ -688,7 +690,7 @@ fun AddCourseDialog(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 form.selectedColor =
@@ -816,7 +818,7 @@ private fun AddCourseDialogContent(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        "删除",
+                        CommonStr.delete(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFFF44336)
@@ -850,7 +852,7 @@ private fun BasicInfoCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "课程名称",
+                    text = CourseEditStr.courseName(),
                     modifier = Modifier.weight(1f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
@@ -860,7 +862,7 @@ private fun BasicInfoCard(
                     value = form.name,
                     onValueChange = { form.name = it },
                     modifier = Modifier.fillMaxWidth(0.65f),
-                    hint = "必填",
+                    hint = CourseEditStr.required(),
                     singleLine = true,
                     textAlign = TextAlign.End,
                     textStyle = TextStyle(
@@ -877,7 +879,7 @@ private fun BasicInfoCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "地点",
+                    text = CourseEditStr.location(),
                     modifier = Modifier.weight(1f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
@@ -887,7 +889,7 @@ private fun BasicInfoCard(
                     value = form.classroom,
                     onValueChange = { form.classroom = it },
                     modifier = Modifier.fillMaxWidth(0.65f),
-                    hint = "非必填",
+                    hint = CommonStr.notRequired(),
                     singleLine = true,
                     textAlign = TextAlign.End,
                     textStyle = TextStyle(
@@ -904,7 +906,7 @@ private fun BasicInfoCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "教师",
+                    text = CourseEditStr.teacher(),
                     modifier = Modifier.weight(1f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
@@ -914,7 +916,7 @@ private fun BasicInfoCard(
                     value = form.teacher,
                     onValueChange = { form.teacher = it },
                     modifier = Modifier.fillMaxWidth(0.65f),
-                    hint = "非必填",
+                    hint = CommonStr.notRequired(),
                     singleLine = true,
                     textAlign = TextAlign.End,
                     textStyle = TextStyle(
@@ -954,7 +956,7 @@ private fun WeekdayCard(
                 // 在 Row lambda 内读取，切换自定义时间只重组这一行
                 val isCustomTime = form.isCustomTime
                 Text(
-                    text = "上课星期",
+                    text = CourseEditStr.classDay(),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
@@ -966,7 +968,7 @@ private fun WeekdayCard(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "自定义时间",
+                    text = CourseEditStr.customTime(),
                     fontSize = 15.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                 )
@@ -975,7 +977,7 @@ private fun WeekdayCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val dayLabels = remember { listOf("一", "二", "三", "四", "五", "六", "日") }
+                val dayLabels = CourseEditStr.dayLabels
                 val currentDay = form.dayOfWeek
                 for (day in 1..7) {
                     val isSelected = day == currentDay
@@ -998,7 +1000,7 @@ private fun WeekdayCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = dayLabels[day - 1],
+                            text = dayLabels[day - 1](),
                             fontSize = 14.sp,
                             color = textColor,
                             textAlign = TextAlign.Center,
@@ -1028,7 +1030,7 @@ private fun SectionTimeCard(
         // isCustomTime 只在 content lambda 内读：切换时不必重组 SectionTimeCard 本体
         CardExpand(visible = form.isCustomTime) {
             ArrowPreference(
-                title = "上课时间",
+                title = CourseEditStr.classTime(),
                 endActions = {
                     Text(
                         text = "${form.customStartTime} - ${form.customEndTime}",
@@ -1042,10 +1044,10 @@ private fun SectionTimeCard(
         }
         CardExpand(visible = !form.isCustomTime) {
             ArrowPreference(
-                title = "上课节次",
+                title = CourseEditStr.classPeriods(),
                 endActions = {
                     Text(
-                        text = "第${form.startSection} - ${form.endSection}节",
+                        text = CourseEditStr.periodsRange(form.startSection, form.endSection),
                         fontSize = 14.5.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         textAlign = TextAlign.End,
@@ -1109,7 +1111,7 @@ private fun WeekSettingCard(
                 // 必须在 Row lambda 内算：放外层会把派生态读取抬到整卡作用域
                 val hasMixedSelection = someSelectableOddSelected && someSelectableEvenSelected
                 Text(
-                    text = "上课周次",
+                    text = CourseEditStr.classWeeks(),
                     modifier = Modifier.weight(1f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
@@ -1137,7 +1139,7 @@ private fun WeekSettingCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "全部",
+                            text = CourseEditStr.all(),
                             fontSize = 15.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
@@ -1167,7 +1169,7 @@ private fun WeekSettingCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "单周",
+                            text = CourseEditStr.oddWeeks(),
                             fontSize = 15.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
@@ -1197,7 +1199,7 @@ private fun WeekSettingCard(
                             )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "双周",
+                            text = CourseEditStr.evenWeeks(),
                             fontSize = 15.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
@@ -1250,7 +1252,7 @@ private fun ColorCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "课程颜色",
+                    text = CourseEditStr.courseColor(),
                     modifier = Modifier.weight(1f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
@@ -1382,7 +1384,7 @@ private fun RowScope.CustomColorSwatch(
             if (!isCustomColor) {
                 Icon(
                     imageVector = MiuixIcons.Add,
-                    contentDescription = "自定义颜色",
+                    contentDescription = CourseEditStr.customColorLabel(),
                     modifier = Modifier.size(18.dp),
                     tint = hintColor
                 )

@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SwitchStr
 import com.haooz.chedule.ui.activities.CourseManageScreen
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
@@ -180,7 +182,7 @@ fun TabletCourseManagePane(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "课程管理",
+                        text = SwitchStr.courseManage(),
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
@@ -209,7 +211,7 @@ fun TabletCourseManagePane(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (names.isEmpty()) "暂无课程" else "请选择左侧课程",
+                            text = if (names.isEmpty()) SwitchStr.noCourses() else SwitchStr.selectCourseHint(),
                             fontSize = 15.sp,
                             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             textAlign = TextAlign.Center,
@@ -277,7 +279,7 @@ fun TabletCourseManagePane(
             items = listOf(
                 ShortcutMenuItem(
                     icon = MiuixIcons.Edit,
-                    label = "编辑",
+                    label = CommonStr.edit(),
                     onClick = {
                         menuVisible = false
                         pendingEditCourse = menuCourses.firstOrNull()
@@ -285,7 +287,7 @@ fun TabletCourseManagePane(
                 ),
                 ShortcutMenuItem(
                     icon = MiuixIcons.Delete,
-                    label = "删除",
+                    label = CommonStr.delete(),
                     onClick = {
                         menuVisible = false
                         pendingDeleteCourses = menuCourses

@@ -20,6 +20,8 @@ import com.haooz.chedule.data.countSchedulesInBackupJson
 import com.haooz.chedule.data.formatBackupSize
 import com.haooz.chedule.data.parseBackupFileBaseName
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.BackupStr
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -99,7 +101,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
                     onSuccess = { json -> callback(json, displayName) },
                     onFailure = { e ->
                         // 逐字保留原页面 beginRestore 失败分支的 toast 文案
-                        showToast("无法识别备份文件：${e.message ?: "格式错误"}")
+                        showToast(BackupStr.unrecognizedBackupN(e.message ?: BackupStr.formatError()))
                         callback(null, null)
                     }
                 )
@@ -124,7 +126,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
         val dir = getBackupDir(context)
         if (!isUsableDir(dir)) {
             // 逐字保留原页面的失败信息：页面 catch 后 toast「备份失败: <原因>」
-            throw IllegalStateException("备份目录不可写：${dir.absolutePath}")
+            throw IllegalStateException(AndroidMiscStr.backupDirNotWritableN(dir.absolutePath))
         }
         File(dir, fileName).writeText(json, Charsets.UTF_8)
         return true
@@ -202,7 +204,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
                 val name = file.nameWithoutExtension
                 // 非全量备份：正则第 1 组为课表名，匹配不上则整个名字当课表名（与原实现一致）
                 val (scheduleName, isFullBackup) = parseBackupFileBaseName(name)
-                val type = if (isFullBackup) "全部备份" else "单独课表"
+                val type = if (isFullBackup) BackupStr.fullBackup() else BackupStr.singleSchedule()
 
                 val match = BACKUP_NAME_REGEX.matchEntire(name)
 
@@ -210,9 +212,9 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
 
                 val timestamp = try {
                     match?.let { parseSdf.parse(it.groupValues[2]) }?.let { displaySdf.format(it) }
-                        ?: "未知时间"
+                        ?: AndroidMiscStr.unknownTime()
                 } catch (_: Exception) {
-                    "未知时间"
+                    AndroidMiscStr.unknownTime()
                 }
 
                 val sizeStr = formatBackupSize(file.length())
@@ -234,7 +236,7 @@ class AndroidBackupFileController(private val context: Context) : BackupFileCont
 
     private fun readExternalBackupJson(context: Context, uri: Uri): String {
         val inputStream = context.contentResolver.openInputStream(uri)
-            ?: throw IllegalArgumentException("无法读取所选文件")
+            ?: throw IllegalArgumentException(AndroidMiscStr.cannotReadSelectedFile())
         return readBoundedUtf8(inputStream)
     }
 
@@ -264,7 +266,7 @@ internal fun readBoundedUtf8(
             val count = input.read(buffer)
             if (count < 0) break
             totalBytes += count
-            require(totalBytes <= maxBytes) { "备份文件超过8 MB限制" }
+            require(totalBytes <= maxBytes) { AndroidMiscStr.backupOverSizeLimit() }
             output.write(buffer, 0, count)
         }
         String(output.toByteArray(), Charsets.UTF_8)

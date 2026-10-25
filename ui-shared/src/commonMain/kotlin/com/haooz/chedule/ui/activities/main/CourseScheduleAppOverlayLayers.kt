@@ -48,6 +48,8 @@ import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.SwitchScheduleScreen
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
@@ -354,7 +356,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                         add(
                             ShortcutMenuItem(
                                 icon = MiuixIcons.Edit,
-                                label = "编辑",
+                                label = CommonStr.edit(),
                                 onClick = {
                                     FeatureLog.course("edit_shortcut")
                                     shortcutMenuVisible = false
@@ -373,7 +375,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             add(
                                 ShortcutMenuItem(
                                     icon = MiuixIcons.Copy,
-                                    label = "复制",
+                                    label = CommonStr.copy(),
                                     onClick = {
                                         FeatureLog.course("copy_shortcut")
                                         copiedCourseForPaste = activeShortcutCourse
@@ -383,7 +385,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                             delay(240.milliseconds)
                                             shortcutMenuCourse = null
                                         }
-                                        showToast("已复制")
+                                        showToast(CommonStr.copied())
                                     }
                                 )
                             )
@@ -391,7 +393,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                         add(
                             ShortcutMenuItem(
                                 icon = MiuixIcons.Delete,
-                                label = "删除",
+                                label = CommonStr.delete(),
                                 onClick = {
                                     FeatureLog.course("delete_shortcut")
                                     deleteConfirmCourse = activeShortcutCourse
@@ -416,7 +418,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             add(
                                 ShortcutMenuItem(
                                     icon = MiuixIcons.Paste,
-                                    label = "粘贴",
+                                    label = ChromeStr.paste(),
                                     onClick = {
                                         pasteRangeTarget = PasteTarget(
                                             columnDay = emptyDay,
@@ -438,7 +440,7 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                             add(
                                 ShortcutMenuItem(
                                     icon = MiuixIcons.Add,
-                                    label = "添加",
+                                    label = CommonStr.add(),
                                     iconSize = 24.dp,
                                     onClick = {
                                         val defaultWeeks =

@@ -63,6 +63,9 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.ScriptRepository
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.NativeDocumentBottomBar
 import com.haooz.chedule.ui.utils.NativeDocumentBottomBarEffect
@@ -155,7 +158,7 @@ fun WebViewScreen(
     var loadingProgress by remember { mutableFloatStateOf(0f) }
     // 顶栏采样色：宿主逐帧上报（Android = PixelCopy）；null = 该平台没有这个能力，不画色带
     var topColor by remember { mutableStateOf<Color?>(null) }
-    var pageTitle by remember { mutableStateOf("加载中...") }
+    var pageTitle by remember(AppLanguage.resolved) { mutableStateOf(CommonStr.loading()) }
     // 平板默认桌面版，手机默认手机版（UA 与视口策略都跟着走，见 WebCompatDelegate）
     var isDesktopMode by remember { mutableStateOf(isTablet) }
     val hapticFeedback = LocalHapticFeedback.current
@@ -249,7 +252,7 @@ fun WebViewScreen(
             onTaskCompleted = {
                 currentOnTaskCompleted()
                 if (!importCompleted) {
-                    showToast("导入完成", longDuration = true)
+                    showToast(SchedStr.importDone(), longDuration = true)
                 }
                 currentOnBack()
             },
@@ -308,7 +311,7 @@ fun WebViewScreen(
         if (assetJsPath != null) {
             showCourseTablePicker = true
         } else {
-            showToast("无导入脚本", longDuration = true)
+            showToast(SchedStr.noImportScript(), longDuration = true)
         }
     }
 
@@ -317,12 +320,12 @@ fun WebViewScreen(
         if (nativeChrome != null) {
             NativeDocumentBottomBar(
                 title = school.name,
-                subtitle = "登入教务系统 → 按照提示进行导入",
-                badge = if (isDesktopMode) "桌面版" else "手机版",
+                subtitle = SchedStr.webImportSubtitle(),
+                badge = if (isDesktopMode) SchedStr.desktopMode() else SchedStr.mobileMode(),
                 toggleSymbol = "rectangle.on.rectangle",
-                toggleLabel = "切换手机版/桌面版",
+                toggleLabel = SchedStr.toggleDesktopMode(),
                 primarySymbol = "square.and.arrow.down",
-                primaryLabel = "执行导入",
+                primaryLabel = SchedStr.runImport(),
                 primaryEnabled = assetJsPath != null,
                 onToggle = { isDesktopMode = !isDesktopMode },
                 onPrimary = onExecuteImport,
@@ -344,12 +347,12 @@ fun WebViewScreen(
                     val tableIdLiteral = Json.encodeToString(tableId)
                     val fullJsCode = "window.currentTableId = $tableIdLiteral;\n$jsCode"
                     webHost.evaluateJavascript(fullJsCode)
-                    showToast("正在执行导入脚本...")
+                    showToast(SchedStr.runningImportScript())
                 } else {
-                    showToast("脚本下载失败: $path", longDuration = true)
+                    showToast(SchedStr.scriptDownloadFailed(path), longDuration = true)
                 }
             }
-        } ?: showToast("无导入脚本", longDuration = true)
+        } ?: showToast(SchedStr.noImportScript(), longDuration = true)
     }
 
     // 单选列表对话框
@@ -531,7 +534,7 @@ private fun WebImportDockContent(
                         Color(0xFF66BB6A).copy(alpha = 0.15f)
                 ) {
                     Text(
-                        text = if (isDesktopMode) "桌面版" else "手机版",
+                        text = if (isDesktopMode) SchedStr.desktopMode() else SchedStr.mobileMode(),
                         fontSize = 12.sp,
                         color = if (isDesktopMode)
                             MiuixTheme.colorScheme.primary
@@ -545,7 +548,7 @@ private fun WebImportDockContent(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "登入教务系统 → 按照提示进行导入",
+                text = SchedStr.webImportSubtitle(),
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
             )
@@ -565,7 +568,7 @@ private fun WebImportDockContent(
                 IconButton(onClick = onToggleDesktopMode) {
                     Icon(
                         painter = painterResource(Res.drawable.ic_phone_pc),
-                        contentDescription = "切换手机版/桌面版",
+                        contentDescription = SchedStr.toggleDesktopMode(),
                         modifier = Modifier.size(22.dp),
                         tint = if (isLightTheme) Color.Black else Color.White
                     )
@@ -586,7 +589,7 @@ private fun WebImportDockContent(
                 ) {
                     Icon(
                         MiuixIcons.Normal.Download,
-                        contentDescription = "执行导入",
+                        contentDescription = SchedStr.runImport(),
                         modifier = Modifier.size(26.dp),
                         tint = if (importEnabled)
                             MiuixTheme.colorScheme.onPrimary
@@ -712,12 +715,12 @@ private fun WebPromptDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = { onConfirm(textFieldValue.text) },
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         modifier = Modifier.weight(1f)
@@ -798,12 +801,12 @@ private fun WebSelectionDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = { onSelect(selectedIndex) },
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         modifier = Modifier.weight(1f)
@@ -843,14 +846,14 @@ private fun CourseTablePickerDialog(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "选择要导入的课表",
+                    text = SchedStr.selectScheduleToImport(),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MiuixTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "导入的课程将写入所选课表，当前课表不会受影响",
+                    text = SchedStr.importTargetHint(),
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantActions
                 )
@@ -888,7 +891,7 @@ private fun CourseTablePickerDialog(
                                 )
                                 if (isCurrent) {
                                     Text(
-                                        text = "当前",
+                                        text = SchedStr.currentTag(),
                                         fontSize = 12.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                         modifier = Modifier.padding(start = 8.dp)
@@ -904,12 +907,12 @@ private fun CourseTablePickerDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = onDismissRequest,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = { onTableSelected(selectedSchedule) },
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         modifier = Modifier.weight(1f)

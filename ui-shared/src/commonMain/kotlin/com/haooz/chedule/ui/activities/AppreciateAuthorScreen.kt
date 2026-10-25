@@ -49,6 +49,7 @@ import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import com.haooz.chedule.data.AppreciationItem
+import com.haooz.chedule.i18n.AboutStr
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -170,7 +171,7 @@ private fun PodiumStage(entries: List<AppreciationItem>, isTablet: Boolean = fal
 
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(
-            text = "累计赞助",
+            text = AboutStr.totalSponsorship(),
         )
         // 与赞赏码/捐赠明细同卡容器：宽度与兄弟区块一致，小屏不再被固定台座挤爆
         Card(
@@ -404,7 +405,7 @@ private fun DonorAvatar(item: AppreciationItem, size: androidx.compose.ui.unit.D
         if (isAnonymous) {
             Icon(
                 painter = painterResource(Res.drawable.ic_anonymous_avatar),
-                contentDescription = "匿名",
+                contentDescription = AboutStr.anonymous(),
                 modifier = Modifier
                     .size(size)
                     .alpha(0.65f),
@@ -436,7 +437,7 @@ private fun DonateQrCard(isTablet: Boolean = false) {
         ) {
             Image(
                 painter = painterResource(Res.drawable.zanshangma),
-                contentDescription = "赞赏码",
+                contentDescription = AboutStr.donateQr(),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(14.dp)
@@ -455,11 +456,11 @@ private fun DonationDetailSection(donationList: List<AppreciationItem>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             SmallTitle(
-                text = "捐赠明细",
+                text = AboutStr.donationDetails(),
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
-                text = "正在手工填写中",
+                text = AboutStr.donationManual(),
                 style = MiuixTheme.textStyles.body2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 modifier = Modifier.padding(end = 12.dp)
@@ -508,7 +509,7 @@ private fun AppreciationListItem(item: AppreciationItem) {
             if (isAnonymous) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_anonymous_avatar),
-                    contentDescription = "匿名",
+                    contentDescription = AboutStr.anonymous(),
                     modifier = Modifier
                         .size(40.dp)
                         .alpha(0.6f),

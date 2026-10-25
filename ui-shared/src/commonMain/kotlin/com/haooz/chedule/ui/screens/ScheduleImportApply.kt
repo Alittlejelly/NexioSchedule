@@ -9,6 +9,7 @@ import com.haooz.chedule.data.minusWeeks
 import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.data.weeksBetween
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.parseShareCourseWeekModel
@@ -35,7 +36,7 @@ fun applyScheduleData(
 ): Pair<Boolean, String> {
     try {
         if (scheduleName in scheduleViewModel.scheduleNames.value) {
-            return Pair(false, "课表「$scheduleName」已存在")
+            return Pair(false, ImportStr.scheduleExists(scheduleName))
         }
 
         val settings = parseShareSettings(data)
@@ -43,7 +44,7 @@ fun applyScheduleData(
         if (reorganizationFieldPresent) {
             val importedStartDate = settings["class_start_time"] as? String
             require(CourseRepository.normalizeClassStartDate(importedStartDate) != null) {
-                "包含教学周重组的分享课表必须有有效开学日期"
+                ImportStr.reorgNeedsStartDate()
             }
         }
         val importTotalWeeks = parseShareTotalWeeks(settings)
@@ -256,7 +257,7 @@ fun applyScheduleData(
         }
 
         require(courses.size == coursesData.size) {
-            "分享课表中的课程数据无法完整导入"
+            ImportStr.coursesIncomplete()
         }
         scheduleViewModel.addSchedule(scheduleName)
         scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
@@ -329,7 +330,7 @@ fun applyScheduleData(
                         preserveOutOfRangeRules = true,
                     )
             ) {
-                throw IllegalArgumentException("教学周重组规则与课表总周数冲突")
+                throw IllegalArgumentException(ImportStr.reorgWeeksConflict())
             }
             (settings["smart_weekend"] as? Boolean)?.let {
                 settingsViewModel.setSmartWeekend(it)
@@ -398,9 +399,9 @@ fun applyScheduleData(
         settingsViewModel.refreshSettings()
         scheduleViewModel.refreshScheduleList()
 
-        return Pair(true, "成功导入课表「$scheduleName」\n共${courses.size}门课程")
+        return Pair(true, ImportStr.importSuccessCompact(scheduleName, courses.size))
     } catch (e: Exception) {
-        return Pair(false, "导入失败: ${e.message}")
+        return Pair(false, ImportStr.importFailedReason(e.message))
     }
 }
 
@@ -414,7 +415,7 @@ fun applyThirdPartySharePayload(
 ): Pair<Boolean, String> {
     return try {
         if (scheduleName in scheduleViewModel.scheduleNames.value) {
-            return false to "课表「$scheduleName」已存在"
+            return false to ImportStr.scheduleExists(scheduleName)
         }
         scheduleViewModel.addSchedule(scheduleName)
 
@@ -427,7 +428,7 @@ fun applyThirdPartySharePayload(
             item.toCourse(scheduleName, color)
         }
         if (courses.isEmpty()) {
-            return false to "未解析到课程数据"
+            return false to ImportStr.noCoursesParsed()
         }
         scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
 
@@ -481,8 +482,8 @@ fun applyThirdPartySharePayload(
         courseViewModel.reloadCourses()
         settingsViewModel.refreshSettings()
         scheduleViewModel.refreshScheduleList()
-        true to "成功导入课表「$scheduleName」\n共 ${courses.size} 门课程"
+        true to ImportStr.importSuccess(scheduleName, courses.size)
     } catch (e: Exception) {
-        false to "导入失败: ${e.message}"
+        false to ImportStr.importFailedReason(e.message)
     }
 }

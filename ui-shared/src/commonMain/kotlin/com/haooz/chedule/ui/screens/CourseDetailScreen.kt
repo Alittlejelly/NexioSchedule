@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.i18n.CommonStr
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
@@ -224,7 +225,7 @@ fun CourseDetailScreen(
                                         onClick = { morph.close() },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.ChevronBackward,
-                                        contentDescription = "返回",
+                                        contentDescription = CommonStr.back(),
                                         performHapticFeedback = false,
                                         iconSize = 25.dp,
                                         iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
@@ -352,7 +353,7 @@ fun CourseDetailScreen(
                                         item {
                                             Column {
                                                 SmallTitle(
-                                                    text = "第${week}周",
+                                                    text = CommonStr.weekN(week),
                                                 )
                                                 Card(
                                                     modifier = Modifier.fillMaxWidth(),
@@ -365,20 +366,20 @@ fun CourseDetailScreen(
                                                     ) {
                                                         weekCourses.forEachIndexed { index, (_, course) ->
                                                             val dayName = when (course.dayOfWeek) {
-                                                                1 -> "周一"
-                                                                2 -> "周二"
-                                                                3 -> "周三"
-                                                                4 -> "周四"
-                                                                5 -> "周五"
-                                                                6 -> "周六"
-                                                                7 -> "周日"
-                                                                else -> "未知"
+                                                                1 -> CommonStr.weekdayMon()
+                                                                2 -> CommonStr.weekdayTue()
+                                                                3 -> CommonStr.weekdayWed()
+                                                                4 -> CommonStr.weekdayThu()
+                                                                5 -> CommonStr.weekdayFri()
+                                                                6 -> CommonStr.weekdaySat()
+                                                                7 -> CommonStr.weekdaySun()
+                                                                else -> CommonStr.unknown()
                                                             }
                                                             val courseDate = com.haooz.chedule.data.TeachingWeekReorganization.dateForPosition(
                                                                 semesterStartDate, week, course.dayOfWeek, teachingWeekReorganizations,
                                                             ) ?: return@forEachIndexed
                                                             val dateStr = courseDate.formatMonthDayShort()
-                                                            val sectionText = course.getTimeDisplayText()
+                                                            val sectionText = course.timeDisplayTextLocalized()
                                                             val timeStart = sectionTimes[course.startSection]?.split("-")?.firstOrNull() ?: ""
                                                             val timeEnd = sectionTimes[course.endSection]?.split("-")?.lastOrNull() ?: ""
                                                             val timeText = if (course.hasValidCustomTime()) {

@@ -25,6 +25,11 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
+import com.haooz.chedule.i18n.SwitchStr
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.activities.EduImportUpdater
@@ -185,7 +190,7 @@ class IosAppHost {
         it.chrome.effectiveLeading?.symbol ?: if (it.route == AppRoute.CourseTimeSettings || it.route == AppRoute.CourseManage) "chevron.backward" else ""
     }
     fun nativePageLeadingLabel(routeId: String): String =
-        nativePage(routeId).chrome.effectiveLeading?.label ?: "返回"
+        nativePage(routeId).chrome.effectiveLeading?.label ?: CommonStr.back()
     fun nativePageLeadingEnabled(routeId: String): Boolean =
         pageVisibleAndInteractive(routeId) &&
             nativePage(routeId).chrome.effectiveLeading?.let { it.enabled && !it.busy } != false
@@ -309,7 +314,7 @@ class IosAppHost {
 
     val scheduleLibraryActive: Boolean get() = navigation.scheduleLibraryActive
     val scheduleLibraryTransitionActive: Boolean get() = navigation.scheduleLibraryTransitionActive
-    val scheduleLibraryTitle: String get() = navigation.scheduleLibraryChrome.title.ifEmpty { "全部课表" }
+    val scheduleLibraryTitle: String get() = navigation.scheduleLibraryChrome.title.ifEmpty { SwitchStr.allSchedules() }
     val scheduleLibraryTintArgb: Long get() = navigation.scheduleLibraryChrome.tintArgb
     fun scheduleLibraryLeadingSymbol(): String = navigation.scheduleLibraryChrome.effectiveLeading?.symbol.orEmpty()
     fun scheduleLibraryLeadingLabel(): String = navigation.scheduleLibraryChrome.effectiveLeading?.label.orEmpty()
@@ -633,21 +638,21 @@ internal class NativeDocumentPage(
     val chrome = NativeDocumentChrome().apply {
         if (route == AppRoute.EducationalImport) {
             // Install the trailing item before push; Compose keeps it up to date afterward.
-            title = "选择学校"
+            title = ImportStr.selectSchool()
             val updating = EduImportUpdater.isUpdating.value
             action = NativeDocumentAction(
                 symbol = "arrow.clockwise",
-                label = "更新",
+                label = CommonStr.update(),
                 enabled = !updating,
                 busy = updating,
                 onClick = { EduImportUpdater.forceUpdate() },
             )
         } else if (route == AppRoute.HolidaySettings) {
             // Include the item in UIKit's push transition before Compose publishes its handler.
-            title = "节假日与调休"
+            title = ChromeStr.holidaysTitle()
             action = NativeDocumentAction(
                 symbol = "arrow.clockwise",
-                label = "更新",
+                label = CommonStr.update(),
                 enabled = false,
                 onClick = {},
             )
@@ -661,28 +666,28 @@ internal class NativeDocumentPage(
 internal fun AppRoute.isNativeDocument(): Boolean = nativeDocumentTitle() != null
 
 internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
-    AppRoute.Changelog -> "更新日志"
-    AppRoute.License -> "开源协议"
-    AppRoute.PrivacyPolicy -> "隐私政策"
-    AppRoute.Communication -> "交流与反馈"
-    AppRoute.AppreciateAuthor -> "捐赠支持"
-    AppRoute.PreferenceSettings -> "应用偏好设置"
-    AppRoute.UpdateSettings -> "更新设置"
-    AppRoute.LocalBackup -> "本地备份"
-    AppRoute.AiImport -> "AI 文本导入"
-    AppRoute.WidgetIntro -> "桌面小部件"
-    AppRoute.CourseReminder -> "课程提醒"
-    AppRoute.HolidaySettings -> "节假日与调休"
-    AppRoute.WebDavSettings -> "WebDAV 云备份"
-    AppRoute.ScheduleExport -> "课表导出"
-    AppRoute.ScheduleBackup -> "课表备份"
-    AppRoute.ScheduleImport -> "课表导入"
-    AppRoute.About -> "关于应用"
-    AppRoute.CourseTimeSettings -> "课程时间管理"
+    AppRoute.Changelog -> ChromeStr.changelog()
+    AppRoute.License -> ChromeStr.openSourceLicenses()
+    AppRoute.PrivacyPolicy -> ChromeStr.privacyPolicy()
+    AppRoute.Communication -> ChromeStr.communityFeedback()
+    AppRoute.AppreciateAuthor -> ChromeStr.donate()
+    AppRoute.PreferenceSettings -> ChromeStr.appPreferences()
+    AppRoute.UpdateSettings -> ChromeStr.updateSettingsTitle()
+    AppRoute.LocalBackup -> ChromeStr.localBackup()
+    AppRoute.AiImport -> ChromeStr.aiImport()
+    AppRoute.WidgetIntro -> ChromeStr.widgetsTitle()
+    AppRoute.CourseReminder -> ChromeStr.courseReminders()
+    AppRoute.HolidaySettings -> ChromeStr.holidaysTitle()
+    AppRoute.WebDavSettings -> ChromeStr.webdavBackup()
+    AppRoute.ScheduleExport -> ChromeStr.scheduleExport()
+    AppRoute.ScheduleBackup -> ChromeStr.scheduleBackup()
+    AppRoute.ScheduleImport -> ChromeStr.scheduleImport()
+    AppRoute.About -> AboutStr.aboutApp()
+    AppRoute.CourseTimeSettings -> ChromeStr.classTimeSettings()
     // 网页导入页与选择页同级：必须是原生文档（走 Compose 栈会被原生文档挡住）
-    AppRoute.WebImport -> "网页导入"
+    AppRoute.WebImport -> ChromeStr.webImport()
     // ⚠ 必须是原生文档：从「课表导出/导入/备份」这些原生文档页跳进来，
     // 走 Compose 栈会被上面压着的原生文档挡住（表现为「点了没反应」）
-    AppRoute.EducationalImport -> "教务导入"
-    AppRoute.CourseManage -> "课程管理"
+    AppRoute.EducationalImport -> ChromeStr.educationalImport()
+    AppRoute.CourseManage -> SwitchStr.courseManage()
 }

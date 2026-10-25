@@ -55,6 +55,8 @@ import kotlin.math.roundToInt
 import com.haooz.chedule.data.HolidayCourseExclusion
 import com.haooz.chedule.data.SpecialBlock
 import com.haooz.chedule.data.SpecialItem
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.SharedBlurBackdrop
@@ -677,7 +679,7 @@ private fun PendingSectionBox(
                         ) {
                             Icon(
                                 imageVector = MiuixIcons.Add,
-                                contentDescription = "添加",
+                                contentDescription = CommonStr.add(),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -710,7 +712,7 @@ private fun PendingSectionBox(
                 ) {
                     Icon(
                         imageVector = MiuixIcons.Add,
-                        contentDescription = "添加",
+                        contentDescription = CommonStr.add(),
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -848,7 +850,7 @@ fun SpecialBandOverlay(
     // 智能周末下可能只有 1..5，调休时也可能与列下标不一致，决定子块定位与列宽
     dayRange: List<Int> = emptyList()
 ) {
-    val shownName = name.ifBlank { "特殊课程" }
+    val shownName = name.ifBlank { SchedStr.specialCourses() }
     // 默认 cardAlpha=0.15 时因子为 1；仅保护最终 alpha
     val alphaFactor = cardAlpha / 0.15f
     val effectiveCornerRadius = if (isTablet) cardCornerRadius * 1.3f else cardCornerRadius
@@ -1031,7 +1033,7 @@ private fun SpecialBandBody(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = item.name.ifBlank { "未命名" },
+                        text = item.name.ifBlank { SchedStr.unnamed() },
                         style = MiuixTheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
                         color = itemTextColor,
                         maxLines = 2,

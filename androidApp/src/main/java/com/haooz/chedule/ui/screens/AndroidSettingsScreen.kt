@@ -46,6 +46,9 @@ import com.haooz.chedule.widget.WidgetUpdateCache
 import java.net.HttpURLConnection
 import java.net.URL
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.AppLanguage
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 
 /**
@@ -146,7 +149,7 @@ fun AndroidSettingsScreen(
                     onCopyToClipboard = { text ->
                         val clipboard =
                             context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("课表导入提示词", text)
+                        val clip = ClipData.newPlainText(AndroidMiscStr.aiImportClipLabel(), text)
                         clipboard.setPrimaryClip(clip)
                     },
                 )
@@ -281,11 +284,11 @@ fun AndroidSettingsScreen(
                         onNavigate = { route ->
                             appRouter.navigate(route)
                         },
-                        appVersion = remember { aboutPackageInfo?.versionName ?: "未知版本" },
-                        appName = remember {
+                        appVersion = remember(AppLanguage.resolved) { aboutPackageInfo?.versionName ?: AboutStr.unknownVersion() },
+                        appName = remember(AppLanguage.resolved) {
                             aboutPackageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
                                 ?: context.applicationInfo?.nonLocalizedLabel?.toString()
-                                ?: "Nexio课程表"
+                                ?: AboutStr.appName()
                         },
                         appIcon = aboutIcon,
                         onExitApp = { aboutActivity?.finishAffinity() },
@@ -309,13 +312,13 @@ fun AndroidSettingsScreen(
                     context
                 )
                 com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_island_sent")
-                showToast("已发送超级岛测试通知")
+                showToast(AndroidMiscStr.islandTestSent())
             } else {
                 CourseReminderHelper.sendTestLiveNotification(
                     context
                 )
                 com.haooz.chedule.ui.utils.FeatureLog.reminderFlow("test_live_sent")
-                showToast("已发送实时活动测试通知")
+                showToast(AndroidMiscStr.liveActivityTestSent())
             }
         },
         isIslandSupported = { IslandNotificationHelper.isIslandSupported(context) },

@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.web
 
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidMiscStr
 
 /**
  * 「静态资源是否走 OkHttp 转发（剥离 `X-Requested-With`）」的站点开关，默认关。
@@ -42,7 +43,7 @@ object WebForwardHosts {
         val h = normalize(host)
         if (h.isEmpty() || !hosts.add(h)) return false
         AppStorage.store(FILE).edit { putStringSet(KEY, hosts) }
-        NexioLog.w(TAG, "已对该站点启用请求转发（剥离 X-Requested-With）: $h")
+        NexioLog.w(TAG, AndroidMiscStr.logForwardEnabledN(h))
         return true
     }
 }

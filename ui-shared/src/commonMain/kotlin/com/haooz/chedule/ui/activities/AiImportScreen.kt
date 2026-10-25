@@ -49,6 +49,9 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.screens.AddCourseDialog
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -156,39 +159,8 @@ fun AiImportScreen(
         (it.morningCount + it.afternoonCount + it.eveningCount).coerceAtLeast(12)
     } ?: maxSection
 
-    val promptText = remember {
-        """请根据课表信息按以下格式返回，包含节次配置和课程列表两部分：
-
-第一部分 - 节次配置（放在课程列表之前，时间行可选，无时间则不输出）：
-上午节数=N
-下午节数=N
-晚上节数=N
-上午时间=1:08:00-08:45,2:08:55-09:40
-下午时间=1:14:00-14:45,2:14:55-15:40
-晚上时间=1:19:00-19:45,2:19:55-20:40
-
-第二部分 - 课程列表（每行一门课程，用"|"分隔）：
-课程名称|教室|教师|星期几|开始节次|结束节次|周次
-
-字段说明：
-- 星期几：1=周一 ... 7=周日
-- 周次：英文逗号分隔，连续周次展开，例：1-6周和10-12周写为 1,2,3,4,5,6,10,11,12
-- 教室和教师无法识别则留空
-
-重要：同名但教师或教室不同的课程必须分行输出，只有名称、教室、教师、星期、节次完全相同时才可合并周次。
-
-示例：
-上午节数=4
-下午节数=4
-晚上节数=2
-上午时间=1:08:00-08:45,2:08:55-09:40,3:10:00-10:45,4:10:55-11:40
-下午时间=1:14:00-14:45,2:14:55-15:40,3:16:00-16:45,4:16:55-17:40
-晚上时间=1:19:00-19:45,2:19:55-20:40
-高等数学|A101|张三|1|1|2|1,2,3,4,5,6,7,8,9,10
-高等数学|B202|李四|3|3|4|1,2,3,4,5,6,7,8,9,10
-大学英语|||3|3|4|1,2,3,4,5,6,7,8
-
-请严格按此格式返回，不要添加其他说明文字。"""
+    val promptText = remember(AppLanguage.resolved) {
+        ImportStr.aiPrompt()
     }
 
     val isTablet = isTabletWidth()
@@ -223,14 +195,14 @@ fun AiImportScreen(
         ) {
             item {
                 SmallTitle(
-                    text = "课表数据",
+                    text = ImportStr.scheduleData(),
                 )
                 NativeMiuixTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
                     minLines = 1,
                     maxLines = 12,
-                    label = "请粘贴AI返回的课表数据",
+                    label = ImportStr.pasteAiDataHint(),
                     useLabelAsPlaceholder = true
                 )
             }
@@ -258,7 +230,7 @@ fun AiImportScreen(
                         }
                     ) {
                         SmallTitle(
-                            text = "解析预览",
+                            text = ImportStr.parsePreview(),
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -266,16 +238,16 @@ fun AiImportScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = "已识别 ${parsedCourses.size} 门课程",
+                                    text = ImportStr.identifiedCoursesN(parsedCourses.size),
                                     style = MiuixTheme.textStyles.title2,
                                     color = MiuixTheme.colorScheme.primary,
                                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 17.dp, bottom = 12.dp)
                                 )
                                 parsedSectionConfig?.let { config ->
                                     Text(
-                                        text = "已识别节次配置：上午${config.morningCount}节 · 下午${config.afternoonCount}节 · 晚上${config.eveningCount}节" +
+                                        text = ImportStr.sectionConfigIdentified(config.morningCount, config.afternoonCount, config.eveningCount) +
                                             if (config.morningTimes.isNotEmpty() || config.afternoonTimes.isNotEmpty() || config.eveningTimes.isNotEmpty())
-                                                "（含上课时间，导入时自动应用）" else "（导入时自动应用）",
+                                                ImportStr.withTimesSuffix() else ImportStr.autoApplySuffix(),
                                         style = MiuixTheme.textStyles.body2,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
@@ -283,7 +255,7 @@ fun AiImportScreen(
                                 }
                                 CardExpand(visible = parsedWarnings.isNotEmpty()) {
                                     Text(
-                                        text = "提示 ${parsedWarnings.size} 条",
+                                        text = ImportStr.warningsCountN(parsedWarnings.size),
                                         style = MiuixTheme.textStyles.body2,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
@@ -304,7 +276,7 @@ fun AiImportScreen(
                                 }
                                 CardExpand(visible = parsedCourses.isNotEmpty()) {
                                     TextButton(
-                                        text = "确定导入",
+                                        text = ImportStr.confirmImportCard(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                             showConfirmDialog = true
@@ -326,7 +298,7 @@ fun AiImportScreen(
                                 ) {
                                     Column(modifier = Modifier.fillMaxWidth()) {
                                         Text(
-                                            text = "提示详情",
+                                            text = ImportStr.warningDetails(),
                                             style = MiuixTheme.textStyles.title2,
                                             fontSize = 17.sp,
                                             color = MiuixTheme.colorScheme.onSurface,
@@ -360,7 +332,7 @@ fun AiImportScreen(
 
             item {
                 SmallTitle(
-                    text = "使用说明",
+                    text = ImportStr.usageGuide(),
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -368,7 +340,7 @@ fun AiImportScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "请将以下提示词发送给 AI ，再将 AI 返回的文本粘贴到上方输入框。",
+                            text = ImportStr.promptUsageHint(),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface
@@ -388,11 +360,11 @@ fun AiImportScreen(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         TextButton(
-                            text = "复制提示词",
+                            text = ImportStr.copyPrompt(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 onCopyToClipboard(promptText)
-                                showToast("提示词已复制到剪切板")
+                                showToast(ImportStr.promptCopied())
                             },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -429,24 +401,24 @@ fun AiImportScreen(
     }
 
     OverlayDialog(
-        title = if (appendMode) "增量添加到当前课表？" else "导入并覆盖当前课表？",
+        title = if (appendMode) ImportStr.appendDialogTitle() else ImportStr.overwriteDialogTitle(),
         summary = buildString {
             if (appendMode) {
                 if (existingCourses.isNotEmpty()) {
-                    append("当前课表 ${existingCourses.size} 门 + 新增 ${parsedCourses.size} 门 → 共 ${existingCourses.size + parsedCourses.size} 门")
-                    append("\n保留现有课程，不覆盖")
+                    append(ImportStr.appendSummaryCombined(existingCourses.size, parsedCourses.size, existingCourses.size + parsedCourses.size))
+                    append(ImportStr.appendKeepExisting())
                 } else {
-                    append("共 ${parsedCourses.size} 门课程")
+                    append(ImportStr.totalCoursesN(parsedCourses.size))
                 }
             } else {
                 if (existingCourses.isNotEmpty()) {
-                    append("当前课表 ${existingCourses.size} 门 → 新课表 ${parsedCourses.size} 门")
+                    append(ImportStr.replaceSummary(existingCourses.size, parsedCourses.size))
                 } else {
-                    append("共 ${parsedCourses.size} 门课程")
+                    append(ImportStr.totalCoursesN(parsedCourses.size))
                 }
             }
             parsedSectionConfig?.let { cfg ->
-                append("\n将同时应用节次配置：\n上午${cfg.morningCount}节 · 下午${cfg.afternoonCount}节 · 晚上${cfg.eveningCount}节")
+                append(ImportStr.applySectionConfigInfo(cfg.morningCount, cfg.afternoonCount, cfg.eveningCount))
             }
         },
         show = showConfirmDialog,
@@ -471,12 +443,12 @@ fun AiImportScreen(
                     Spacer(modifier = Modifier.size(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "增量添加",
+                            text = ImportStr.appendModeLabel(),
                             style = MiuixTheme.textStyles.body1,
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (appendMode) "保留现有课程，追加到当前课表" else "关闭则清空现有课表后导入",
+                            text = if (appendMode) ImportStr.appendModeOnDesc() else ImportStr.appendModeOffDesc(),
                             style = MiuixTheme.textStyles.body2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -490,7 +462,7 @@ fun AiImportScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showConfirmDialog = false
@@ -498,7 +470,7 @@ fun AiImportScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = if (appendMode) "确认添加" else "确认导入",
+                    text = if (appendMode) ImportStr.confirmAppend() else ImportStr.confirmImport(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         if (parsedCourses.isNotEmpty()) {
@@ -521,7 +493,7 @@ fun AiImportScreen(
                             } else {
                                 viewModel.replaceCourses(parsedCourses.toList())
                             }
-                            showToast(if (appendMode) "成功添加 ${parsedCourses.size} 门课程" else "成功导入 ${parsedCourses.size} 门课程", longDuration = true)
+                            showToast(if (appendMode) ImportStr.addedCoursesN(parsedCourses.size) else ImportStr.importedCoursesN(parsedCourses.size), longDuration = true)
                             showConfirmDialog = false
                             onBack()
                         }
@@ -541,15 +513,15 @@ private fun CoursePreviewRow(
     onClick: () -> Unit
 ) {
     val hapticFeedback = LocalHapticFeedback.current
-    val dayText = remember(course.dayOfWeek) {
+    val dayText = remember(course.dayOfWeek, AppLanguage.resolved) {
         when (course.dayOfWeek) {
-            1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"
-            5 -> "周五"; 6 -> "周六"; 7 -> "周日"; else -> "?"
+            1 -> CommonStr.weekdayMon(); 2 -> CommonStr.weekdayTue(); 3 -> CommonStr.weekdayWed(); 4 -> CommonStr.weekdayThu()
+            5 -> CommonStr.weekdayFri(); 6 -> CommonStr.weekdaySat(); 7 -> CommonStr.weekdaySun(); else -> "?"
         }
     }
     // 连续周次存为空列表（用 startWeek/endWeek 表示），getWeekText() 综合判断
-    val weekText = remember(course.selectedWeeks, course.startWeek, course.endWeek, course.weekType) {
-        course.getWeekText()
+    val weekText = remember(course.selectedWeeks, course.startWeek, course.endWeek, course.weekType, AppLanguage.resolved) {
+        course.weekTextLocalized()
     }
     Box(
         modifier = Modifier
@@ -580,9 +552,9 @@ private fun CoursePreviewRow(
                 )
                 val summaryLine1 = buildString {
                     append(dayText)
-                    append("｜第${course.startSection}-${course.endSection}节")
+                    append(ImportStr.sectionRangeSuffix(course.startSection, course.endSection))
                     if (course.classroom.isNotBlank()) {
-                        append("｜${course.classroom}")
+                        append(ImportStr.classroomSuffix(course.classroom))
                     }
                 }
                 Text(
@@ -598,7 +570,7 @@ private fun CoursePreviewRow(
             }
             Icon(
                 imageVector = MiuixIcons.Basic.ArrowRight,
-                contentDescription = "编辑",
+                contentDescription = CommonStr.edit(),
                 modifier = Modifier.size(16.dp),
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions
             )
@@ -619,9 +591,11 @@ data class SectionConfig(
     val eveningTimes: Map<Int, String>
 )
 
-/** 节次配置行前缀，用于从文本中识别并跳过 */
+/** 节次配置行前缀，用于从文本中识别并跳过（英文前缀供英文版提示词的 AI 返回格式使用） */
 private val SECTION_CONFIG_PREFIXES = listOf(
-    "上午节数", "下午节数", "晚上节数", "上午时间", "下午时间", "晚上时间"
+    "上午节数", "下午节数", "晚上节数", "上午时间", "下午时间", "晚上时间",
+    "Morning sections", "Afternoon sections", "Evening sections",
+    "Morning times", "Afternoon times", "Evening times"
 )
 
 /** 判断某行是否为节次配置行 */
@@ -650,12 +624,12 @@ internal fun parseSectionConfig(text: String): SectionConfig? {
         val key = trimmed.substring(0, eqIdx).trim()
         val value = trimmed.substring(eqIdx + 1).trim()
         when (key) {
-            "上午节数" -> morningCount = value.toIntOrNull()
-            "下午节数" -> afternoonCount = value.toIntOrNull()
-            "晚上节数" -> eveningCount = value.toIntOrNull()
-            "上午时间" -> morningTimes = parseTimeMap(value)
-            "下午时间" -> afternoonTimes = parseTimeMap(value)
-            "晚上时间" -> eveningTimes = parseTimeMap(value)
+            "上午节数", "Morning sections" -> morningCount = value.toIntOrNull()
+            "下午节数", "Afternoon sections" -> afternoonCount = value.toIntOrNull()
+            "晚上节数", "Evening sections" -> eveningCount = value.toIntOrNull()
+            "上午时间", "Morning times" -> morningTimes = parseTimeMap(value)
+            "下午时间", "Afternoon times" -> afternoonTimes = parseTimeMap(value)
+            "晚上时间", "Evening times" -> eveningTimes = parseTimeMap(value)
         }
     }
 
@@ -709,11 +683,11 @@ internal fun parseImportedCourses(text: String, maxSection: Int = 12): Pair<List
         try {
             val parts = line.split("|").map { it.trim() }
             if (parts.size < 7) {
-                warnings.add("第${index + 1}行: 字段数量不足，已跳过")
+                warnings.add(ImportStr.lineInsufficientFields(index + 1))
                 continue
             }
 
-            val name = parts[0].ifBlank { "未命名课程" }
+            val name = parts[0].ifBlank { ImportStr.unnamedCourse() }
             val classroom = parts[1].trim()
             // 识别不到时留空，不写入占位文字
             val teacher = parts[2].trim()
@@ -723,21 +697,21 @@ internal fun parseImportedCourses(text: String, maxSection: Int = 12): Pair<List
             val weekStr = parts[6].trim()
 
             if (dayOfWeek == null || dayOfWeek !in 1..7) {
-                warnings.add("第${index + 1}行「${name}」: 星期几无效，已跳过")
+                warnings.add(ImportStr.lineInvalidDay(index + 1, name))
                 continue
             }
             if (startSection == null || startSection !in 1..maxSection) {
-                warnings.add("第${index + 1}行「${name}」: 开始节次无效（应为 1-$maxSection），已跳过")
+                warnings.add(ImportStr.lineInvalidStartSection(index + 1, name, maxSection))
                 continue
             }
             if (endSection == null || endSection !in 1..maxSection || endSection < startSection) {
-                warnings.add("第${index + 1}行「${name}」: 结束节次无效（应为 ${startSection}-$maxSection），已跳过")
+                warnings.add(ImportStr.lineInvalidEndSection(index + 1, name, startSection, maxSection))
                 continue
             }
 
             val selectedWeeks = parseWeekString(weekStr)
             if (selectedWeeks.isEmpty()) {
-                warnings.add("第${index + 1}行「${name}」: 周次无效，已跳过")
+                warnings.add(ImportStr.lineInvalidWeeks(index + 1, name))
                 continue
             }
 
@@ -747,7 +721,7 @@ internal fun parseImportedCourses(text: String, maxSection: Int = 12): Pair<List
             metaData[key] = CourseMetaData(name, classroom, teacher, dayOfWeek, startSection, endSection)
 
         } catch (_: Exception) {
-            warnings.add("第${index + 1}行: 格式解析异常，已跳过")
+            warnings.add(ImportStr.lineParseError(index + 1))
             continue
         }
     }

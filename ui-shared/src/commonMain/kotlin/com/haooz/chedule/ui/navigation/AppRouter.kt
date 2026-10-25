@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.haooz.chedule.i18n.ChromeStr
 
 /**
  * 供深处的 Composable（如 `SettingsScreen`）发起路由跳转，**不经过 Activity 引用**。
@@ -14,7 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
  * 在 `MainActivity.setContent` 的最外层 provide。⚠ 只在主线程（组合）里用，不加锁。
  */
 val LocalAppRouter = staticCompositionLocalOf<AppRouter> {
-    error("LocalAppRouter 未提供：请在 MainActivity.setContent 最外层 CompositionLocalProvider")
+    error(ChromeStr.routerNotProvided())
 }
 
 /** 最近一次导航的方向，供转场动画判方向。 */

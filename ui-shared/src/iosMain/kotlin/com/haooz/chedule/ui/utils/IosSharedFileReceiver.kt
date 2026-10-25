@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.components.SharedFileIntent
 import platform.Foundation.NSData
 import platform.Foundation.NSURL
@@ -54,19 +55,19 @@ object IosSharedFileReceiver {
      */
     fun readText(urlString: String): String? {
         val url = NSURL.URLWithString(urlString) ?: run {
-            showToast("导入失败: 无效的文件地址")
+            showToast(L("导入失败：无效的文件地址", "Import failed: invalid file URL")())
             return null
         }
         val scoped = url.startAccessingSecurityScopedResource()
         try {
             val data = NSData.dataWithContentsOfURL(url)
             if (data == null) {
-                showToast("导入失败: 无法读取文件")
+                showToast(L("导入失败：无法读取文件", "Import failed: cannot read the file")())
                 return null
             }
             return data.toByteArray().decodeToString()
         } catch (e: Exception) {
-            showToast("导入失败: ${e.message}")
+            showToast(L("导入失败：%s", "Import failed: %s")(e.message ?: ""))
             return null
         } finally {
             if (scoped) url.stopAccessingSecurityScopedResource()

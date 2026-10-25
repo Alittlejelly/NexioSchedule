@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.randomUuidV4
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SwitchStr
 import com.haooz.chedule.ui.utils.CourseSorting
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -149,7 +151,16 @@ fun CourseManageScreen(
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
 
-    val dayNames = listOf("", "周一", "周二", "周三", "周四", "周五", "周六", "周日")
+    val dayNames = listOf(
+        "",
+        CommonStr.weekdayMon(),
+        CommonStr.weekdayTue(),
+        CommonStr.weekdayWed(),
+        CommonStr.weekdayThu(),
+        CommonStr.weekdayFri(),
+        CommonStr.weekdaySat(),
+        CommonStr.weekdaySun(),
+    )
 
     // 新建课程弹窗状态
     var showNewCourseDialog by remember { mutableStateOf(false) }
@@ -241,14 +252,14 @@ fun CourseManageScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = "暂无课程",
+                            text = SwitchStr.noCourses(),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "还没有添加任何课程",
+                            text = SwitchStr.noCoursesHint(),
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                         )
@@ -308,7 +319,7 @@ fun CourseManageScreen(
                                 .distinctBy { "${it.dayOfWeek}_${it.startSection}_${it.endSection}_${it.customStartTime}_${it.customEndTime}" }
                                 .map {
                                     val day = dayNames.getOrElse(it.dayOfWeek) { "?" }
-                                    "$day ${it.getTimeDisplayText()}"
+                                    "$day ${it.timeDisplayTextLocalized()}"
                                 }
 
                             val teachers = courseList
@@ -375,7 +386,7 @@ fun CourseManageScreen(
 
     // 新建/编辑课程弹窗
     OverlayDialog(
-        title = if (editingCourse != null) "编辑课程" else "新建课程",
+        title = if (editingCourse != null) SwitchStr.editCourse() else SwitchStr.newCourse(),
         show = showNewCourseDialog,
         onDismissRequest = {
             showNewCourseDialog = false
@@ -394,7 +405,7 @@ fun CourseManageScreen(
             NativeMiuixTextField(
                 value = newCourseName,
                 onValueChange = { newCourseName = it },
-                label = "课程名称",
+                label = SwitchStr.courseNameLabel(),
 
                 requestFocus = true,
                 modifier = Modifier.fillMaxWidth()
@@ -409,7 +420,7 @@ fun CourseManageScreen(
                 val totalItems = remember(allColors) { allColors.size + 1 }
                 val colorRows = remember(totalItems, colorColumns) { (totalItems + colorColumns - 1) / colorColumns }
                 Text(
-                    text = "课程颜色",
+                    text = SwitchStr.courseColor(),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
@@ -496,7 +507,7 @@ fun CourseManageScreen(
                                         if (!isCustomColor) {
                                             Icon(
                                                 imageVector = MiuixIcons.Add,
-                                                contentDescription = "自定义颜色",
+                                                contentDescription = SwitchStr.customColor(),
                                                 modifier = Modifier.size(18.dp),
                                                 tint = hintColor
                                             )
@@ -519,7 +530,7 @@ fun CourseManageScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showNewCourseDialog = false
@@ -531,7 +542,7 @@ fun CourseManageScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     enabled = newCourseName.isNotBlank(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -551,7 +562,7 @@ fun CourseManageScreen(
                                 onEditDismiss()
                             } else {
                                 if (courses.any { it.name == newCourseName.trim() }) {
-                                    showToast("已存在同名课程")
+                                    showToast(SwitchStr.duplicateCourse())
                                 } else {
                                     val course = Course(
                                         id = randomUuidV4(),
@@ -581,7 +592,7 @@ fun CourseManageScreen(
 
     // 自定义颜色选择弹窗
     OverlayDialog(
-        title = "选择颜色",
+        title = SwitchStr.selectColor(),
         show = showCustomColorDialog,
         onDismissRequest = { showCustomColorDialog = false },
         liquidGlassBackdrop = liquidGlassBackdrop
@@ -603,7 +614,7 @@ fun CourseManageScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showCustomColorDialog = false
@@ -611,7 +622,7 @@ fun CourseManageScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         newCourseColor = (customColor.alpha * 255).toInt().toLong() shl 24 or
@@ -631,12 +642,12 @@ fun CourseManageScreen(
     if (deleteConfirmCourses.isNotEmpty()) {
         val deleteCourseName = deleteConfirmCourses.firstOrNull()?.name ?: ""
         val deleteSummary = if (deleteConfirmCourses.size > 1) {
-            "确定要删除课程「${deleteCourseName}」的 ${deleteConfirmCourses.size} 条记录吗？\n此操作不可撤销。"
+            SwitchStr.deleteCourseRecordsConfirm(deleteCourseName, deleteConfirmCourses.size)
         } else {
-            "确定要删除课程「${deleteCourseName}」吗？\n此操作不可撤销。"
+            SwitchStr.deleteCourseConfirm(deleteCourseName)
         }
         OverlayDialog(
-            title = "删除课程",
+            title = SwitchStr.deleteCourse(),
             summary = deleteSummary,
             show = deleteConfirmShow,
             onDismissRequest = onDeleteConfirmDismiss,
@@ -649,7 +660,7 @@ fun CourseManageScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         onDeleteConfirmDismiss()
@@ -657,7 +668,7 @@ fun CourseManageScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "删除",
+                    text = CommonStr.delete(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         onDeleteConfirmDismiss()
@@ -843,7 +854,7 @@ private fun CourseManageCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$sectionCount 节",
+                            text = SwitchStr.sectionCountN(sectionCount),
                             fontSize = 11.sp,
                             lineHeight = 14.sp,
                             maxLines = 1,
@@ -888,7 +899,7 @@ private fun CourseManageCard(
                 }
             } else {
                 Text(
-                    text = "点击设置时间",
+                    text = SwitchStr.tapToSetTime(),
                     fontSize = MANAGE_CARD_BODY_SIZE,
                     lineHeight = MANAGE_CARD_BODY_LINE,
                     color = MiuixTheme.colorScheme.primary
@@ -931,13 +942,13 @@ private fun NewCourseCard(
         ) {
             Icon(
                 MiuixIcons.Add,
-                contentDescription = "新建课程",
+                contentDescription = SwitchStr.newCourse(),
                 modifier = Modifier.size(28.dp),
                 tint = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "新建课程",
+                text = SwitchStr.newCourse(),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.4f)

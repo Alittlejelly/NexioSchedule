@@ -11,6 +11,8 @@ import android.os.Bundle
 import com.haooz.chedule.data.NexioLog
 import androidx.core.content.edit
 import com.haooz.chedule.R
+import com.haooz.chedule.i18n.AndroidNotifStr
+import com.haooz.chedule.i18n.AndroidWidgetStr
 import com.haooz.chedule.shizuku.ShizukuManager
 import com.haooz.chedule.ui.activities.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +28,9 @@ import kotlin.time.Duration.Companion.milliseconds
 object IslandNotificationHelper {
     private const val TAG = "IslandNotificationHelper"
     private const val CHANNEL_ID = "course_reminder_island"
-    private const val CHANNEL_NAME = "课程提醒超级岛"
+
+    /** 渠道名在系统设置中展示，随语言取值 */
+    private val CHANNEL_NAME: String get() = AndroidNotifStr.channelIslandName()
     private const val KEY_ISLAND_EXPAND_GLOW_ENABLED = "island_expand_glow_enabled"
     // 课中提醒：到点后「已上课」替换为模板6进度卡片
     const val KEY_IN_CLASS_REMINDER = "island_in_class_enabled"
@@ -293,7 +297,7 @@ object IslandNotificationHelper {
             CHANNEL_NAME,
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "课程提醒超级岛通知"
+            description = AndroidNotifStr.channelIslandDesc()
             setShowBadge(true)
             // 与实况频道同理：不放行的话开「上课勿扰」后超级岛会被一并屏蔽
             setBypassDnd(true)
@@ -387,13 +391,13 @@ object IslandNotificationHelper {
         val islandLeftText = when (leftMode) {
             0 -> shortCourse
             1 -> shortClassroom
-            2 -> if (counting) "${minutesUntil}分钟" else "已上课"
+            2 -> if (counting) AndroidNotifStr.minutesShort(minutesUntil) else AndroidNotifStr.classStarted()
             else -> courseName ?: ""
         }
         val islandRightText = when (rightMode) {
             0 -> shortCourse
             1 -> shortClassroom
-            2 -> if (counting) "${minutesUntil}分钟" else "已上课"
+            2 -> if (counting) AndroidNotifStr.minutesShort(minutesUntil) else AndroidNotifStr.classStarted()
             else -> shortClassroom
         }
         val aodTitle = if (aodMode == 1) shortClassroom.ifEmpty { shortCourse.ifEmpty { title } } else shortCourse.ifEmpty { title }
@@ -440,11 +444,11 @@ object IslandNotificationHelper {
             val hintInfo = JSONObject().apply {
                 put("type", 2)
                 if (counting) {
-                    put("content", "即将上课")
+                    put("content", AndroidNotifStr.upcomingClass())
                     put("title", "")
                 } else {
-                    put("content", "现在")
-                    put("title", "已上课")
+                    put("content", AndroidNotifStr.now())
+                    put("title", AndroidNotifStr.classStarted())
                 }
                 val timerInfo = JSONObject().apply {
                     if (counting) {
@@ -460,7 +464,7 @@ object IslandNotificationHelper {
                     }
                 }
                 put("timerInfo", timerInfo)
-                put("subContent", "地点")
+                put("subContent", AndroidNotifStr.location())
                 // 展开态放得下完整地点，这里给原文 —— 精简只服务于缩略态
                 put("subTitle", classroom ?: "")
                 put("colorContent", "#666666")
@@ -472,7 +476,7 @@ object IslandNotificationHelper {
                 put("colorSubTitle", "#222222")
                 put("colorSubTitleDark", "#eeeeee")
                 val actionInfo = JSONObject().apply {
-                    put("actionTitle", "上课勿扰")
+                    put("actionTitle", AndroidNotifStr.dndAction())
                     put("actionIntentType", 2)
                     // 测试课已并入 isInClass，与真实课共用同一条按钮链路
                     put(
@@ -505,7 +509,7 @@ object IslandNotificationHelper {
 
                     if (rightMode == 2 && counting) {
                         val sameWidthDigitInfo = JSONObject().apply {
-                            put("content", "上课")
+                            put("content", AndroidNotifStr.startsIn())
                             put("showHighlightColor", false)
                             put("timerInfo", JSONObject().apply {
                                 put("timerType", -1)
@@ -525,7 +529,7 @@ object IslandNotificationHelper {
                     } else {
                         put("textInfo", JSONObject().apply {
                             put("frontTitle", "")
-                            put("title", if (counting) islandRightText else "已上课")
+                            put("title", if (counting) islandRightText else AndroidNotifStr.classStarted())
                             put("content", "")
                             put("showHighlightColor", false)
                             put("narrowFont", false)
@@ -559,11 +563,11 @@ object IslandNotificationHelper {
     ): String = buildString {
         if (!isCustomTime && section.isNotEmpty()) append(section)
         if (classroom.isNotEmpty()) {
-            if (isNotEmpty()) append("｜")
+            if (isNotEmpty()) append(AndroidWidgetStr.infoSeparator())
             append(classroom)
         }
         if (teacher.isNotEmpty()) {
-            if (isNotEmpty()) append("｜")
+            if (isNotEmpty()) append(AndroidWidgetStr.infoSeparator())
             append(teacher)
         }
     }
@@ -604,7 +608,7 @@ object IslandNotificationHelper {
                 append(endTime)
             }
             if (showSection) {
-                if (isNotEmpty()) append("｜")
+                if (isNotEmpty()) append(AndroidWidgetStr.infoSeparator())
                 append(section)
             }
         }
@@ -648,7 +652,7 @@ object IslandNotificationHelper {
             // 按钮组件2：距下课倒计时
             put("hintInfo", JSONObject().apply {
                 put("type", 2)
-                put("content", if (counting) "距离下课" else "已下课")
+                put("content", if (counting) AndroidNotifStr.untilClassEnds() else AndroidNotifStr.classEnded())
                 put("title", "")
                 put("timerInfo", JSONObject().apply {
                     if (counting) {
@@ -663,7 +667,7 @@ object IslandNotificationHelper {
                         put("timerSystemCurrent", 0)
                     }
                 })
-                put("subContent", "地点")
+                put("subContent", AndroidNotifStr.location())
                 put("subTitle", shortClassroom)
                 put("colorContent", "#666666")
                 put("colorContentDark", "#aaaaaa")
@@ -674,7 +678,7 @@ object IslandNotificationHelper {
                 put("colorSubTitle", "#222222")
                 put("colorSubTitleDark", "#eeeeee")
                 put("actionInfo", JSONObject().apply {
-                    put("actionTitle", "查看课表")
+                    put("actionTitle", AndroidNotifStr.viewSchedule())
                     // 1=启动 Activity；与通知体点击一致，打开课表主页
                     put("actionIntentType", 1)
                     put(
@@ -705,7 +709,7 @@ object IslandNotificationHelper {
                         // B区：距下课倒计时。与课前「N分钟上课」同一套 sameWidthDigitInfo 机制，
                         // 由系统 timer 自刷到下课，App 无需按分钟重推，也不会让岛反复弹出
                         put("sameWidthDigitInfo", JSONObject().apply {
-                            put("content", "下课")
+                            put("content", AndroidNotifStr.endsIn())
                             put("showHighlightColor", false)
                             put("timerInfo", JSONObject().apply {
                                 put("timerType", -1)
@@ -725,7 +729,7 @@ object IslandNotificationHelper {
                         // B区：静态文案
                         put("textInfo", JSONObject().apply {
                             put("frontTitle", "")
-                            put("title", if (counting) "正在上课" else "已下课")
+                            put("title", if (counting) AndroidNotifStr.inClassNow() else AndroidNotifStr.classEnded())
                             put("content", "")
                             put("showHighlightColor", false)
                             put("narrowFont", false)
@@ -893,9 +897,9 @@ object IslandNotificationHelper {
 
         ensureChannel(context)
 
-        val courseName = "大学英语Ⅱ"
-        val classroom = "博A201"
-        val section = "第3~4节"
+        val courseName = AndroidNotifStr.testCourseName()
+        val classroom = AndroidNotifStr.testClassroom()
+        val section = AndroidNotifStr.testSection()
         val testNotificationId = ISLAND_TEST_NOTIFICATION_ID
 
         // 时间串也由这两个时间戳派生，否则岛上显示与倒计时对不上，无法判断是否正确
@@ -974,7 +978,7 @@ object IslandNotificationHelper {
         // Shizuku 不可用时提示后直接发送（不走 bypass）
         if (!isShizukuAvailable()) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(context, "Shizuku 未授权，超级岛通知可能无法正常显示", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, AndroidNotifStr.shizukuNotAuthorized(), android.widget.Toast.LENGTH_LONG).show()
             }
             sendNotificationDirect(context, testNotificationId, notification)
         } else {
@@ -1162,8 +1166,7 @@ object IslandNotificationHelper {
                 if (classroom.isNotEmpty()) append(classroom)
                 if (isNotEmpty()) append(" ")
                 if (endTime.isNotEmpty()) {
-                    append(endTime)
-                    append("下课")
+                    append(AndroidNotifStr.endsAt(endTime))
                 }
             },
             courseName = courseName,

@@ -107,6 +107,8 @@ import com.haooz.chedule.data.plusDays
 import com.haooz.chedule.data.plusWeeks
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.activities.main.PagerJumpNeighbor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.cardRevealLayer
@@ -1641,8 +1643,8 @@ fun MainScheduleScreen(
                                                 )
                                             }
                                         }
-                                        BreakDivider(morningHeight, "午休")
-                                        BreakDivider(dinnerBreakY, "晚休")
+                                        BreakDivider(morningHeight, SchedStr.lunchBreak())
+                                        BreakDivider(dinnerBreakY, SchedStr.dinnerBreak())
                                     }
                                 }
                             }
@@ -1734,7 +1736,7 @@ fun MainScheduleScreen(
                     },
                     backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
                     icon = MiuixIcons.Add,
-                    contentDescription = "添加课程",
+                    contentDescription = SchedStr.addCourse(),
                     modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
                     iconSize = 24.dp,
                     containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
@@ -1775,9 +1777,9 @@ fun MainScheduleScreen(
                     coursesToShow.forEachIndexed { index, course ->
                         key(course.id) {
                             val summaryText = buildString {
-                                append(course.getWeekText())
+                                append(course.weekTextLocalized())
                                 append(" ｜ ")
-                                append(course.getTimeDisplayText())
+                                append(course.timeDisplayTextLocalized())
                                 if (course.classroom.isNotEmpty()) {
                                     append("\n")
                                     append(course.classroom)
@@ -1868,7 +1870,7 @@ fun MainScheduleScreen(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = if (isCurrentWeekCourse) course.name else "${course.name}（非本周）",
+                                                text = if (isCurrentWeekCourse) course.name else SchedStr.nonCurrentWeekName(course.name),
                                                 style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
                                                 fontWeight = FontWeight.Medium,
                                                 color = MiuixTheme.colorScheme.onSurface
@@ -1901,7 +1903,7 @@ fun MainScheduleScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = "编辑",
+                                                text = CommonStr.edit(),
                                                 style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
                                                 fontWeight = FontWeight.Medium,
                                                 color = MiuixTheme.colorScheme.primary
@@ -1957,11 +1959,11 @@ fun MainScheduleScreen(
                         val selected = specialItemSelectedDays.sorted()
                         when {
                             trimmedName.isBlank() -> {
-                                showToast("请输入名称")
+                                showToast(SchedStr.enterName())
                             }
 
                             selected.isEmpty() -> {
-                                showToast("请选择至少一个星期")
+                                showToast(SchedStr.selectAtLeastOneDay())
                             }
 
                             else -> {
@@ -2019,7 +2021,7 @@ private fun CourseDetailSheet(
     if (isTablet) {
         BlurBottomSheetTablet(
             show = show,
-            title = "课程详情",
+            title = SchedStr.courseDetails(),
             dimBackground = true,
             isBottomAligned = true,
             onDismissRequest = onDismiss,
@@ -2029,7 +2031,7 @@ private fun CourseDetailSheet(
     } else {
         BlurBottomSheet(
             show = show,
-            title = "课程详情",
+            title = SchedStr.courseDetails(),
             dimBackground = true,
             onDismissRequest = onDismiss,
             endAction = endAction,

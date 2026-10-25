@@ -4,14 +4,23 @@ package com.haooz.chedule.data
  * 卡片外观的三个纯枚举：CourseCard（`:ui-shared`）用它们做布局/配色分流，零依赖。
  *
  * ⚠ 落盘格式 = ordinal（fromOrdinal 是旧数据的恢复入口），**枚举顺序不能改**。
+ * [label] 是纯展示名（随应用语言，见 [DisplayLang]），不参与落盘与比较。
  */
 
 /** 卡片内容对齐方式 */
-enum class CardContentAlignment(val label: String) {
-    TOP_START("顶部居左"),
-    TOP_CENTER("顶部居中"),
-    CENTER_START("中间居左"),
-    CENTER_CENTER("中间居中");
+enum class CardContentAlignment {
+    TOP_START,
+    TOP_CENTER,
+    CENTER_START,
+    CENTER_CENTER;
+
+    val label: String
+        get() = when (this) {
+            TOP_START -> if (DisplayLang.isZh) "顶部居左" else "Top left"
+            TOP_CENTER -> if (DisplayLang.isZh) "顶部居中" else "Top center"
+            CENTER_START -> if (DisplayLang.isZh) "中间居左" else "Middle left"
+            CENTER_CENTER -> if (DisplayLang.isZh) "中间居中" else "Middle center"
+        }
 
     companion object {
         fun fromOrdinal(ordinal: Int): CardContentAlignment =
@@ -20,9 +29,15 @@ enum class CardContentAlignment(val label: String) {
 }
 
 /** 卡片文字配色 */
-enum class CardTextColor(val label: String) {
-    COLORFUL("彩色"),
-    SOLID("纯色");
+enum class CardTextColor {
+    COLORFUL,
+    SOLID;
+
+    val label: String
+        get() = when (this) {
+            COLORFUL -> if (DisplayLang.isZh) "彩色" else "Colorful"
+            SOLID -> if (DisplayLang.isZh) "纯色" else "Solid"
+        }
 
     companion object {
         fun fromOrdinal(ordinal: Int): CardTextColor =
@@ -31,15 +46,22 @@ enum class CardTextColor(val label: String) {
 }
 
 /** 卡片玻璃对壁纸的透镜折射强度（需壁纸才生效） */
-enum class CardRefractionLevel(val label: String, val lensRadiusDp: Float, val lensStrengthDp: Float) {
-    OFF("关闭", 0f, 0f),
-    WEAK("较弱", 4f, 16f),
-    DEFAULT("默认", 5f, 25f),
-    STRONG("较强", 6f, 36f);
+enum class CardRefractionLevel(val lensRadiusDp: Float, val lensStrengthDp: Float) {
+    OFF(0f, 0f),
+    WEAK(4f, 16f),
+    DEFAULT(5f, 25f),
+    STRONG(6f, 36f);
+
+    val label: String
+        get() = when (this) {
+            OFF -> if (DisplayLang.isZh) "关闭" else "Off"
+            WEAK -> if (DisplayLang.isZh) "较弱" else "Weak"
+            DEFAULT -> if (DisplayLang.isZh) "默认" else "Default"
+            STRONG -> if (DisplayLang.isZh) "较强" else "Strong"
+        }
 
     companion object {
         fun fromOrdinal(ordinal: Int): CardRefractionLevel =
             entries.getOrElse(ordinal) { DEFAULT }
     }
 }
-

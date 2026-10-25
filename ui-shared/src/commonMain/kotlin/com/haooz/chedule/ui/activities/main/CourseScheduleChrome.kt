@@ -37,6 +37,8 @@ import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenu
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownMenuItem
 import com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
@@ -147,13 +149,13 @@ internal fun MorePopupMenus(
             onBackProgress = onMoreBackProgress,
             onBackCancelled = onMoreBackCancelled,
             triggerIcon = MiuixIcons.More,
-            triggerContentDescription = "更多",
+            triggerContentDescription = CommonStr.more(),
             onExpand = onMorePopupExpand,
             offsetPx = scheduleMenuOffset,
             materialAlpha = scheduleMaterialAlpha,
         ) {
             LiquidGlassDropdownMenuItem(
-                text = "跳转周数",
+                text = ChromeStr.jumpToWeek(),
                 onClick = {
                     onMorePopupDismiss()
                     onJumpWeek()
@@ -169,7 +171,7 @@ internal fun MorePopupMenus(
             )
             if (!isShiftMode) {
                 LiquidGlassDropdownMenuItem(
-                    text = "课程管理",
+                    text = ChromeStr.courseManage(),
                     onClick = {
                         onMorePopupDismiss()
                         onCourseManage()
@@ -185,7 +187,7 @@ internal fun MorePopupMenus(
                 )
             }
             LiquidGlassDropdownMenuItem(
-                text = "课表外观",
+                text = ChromeStr.scheduleAppearance(),
                 onClick = {
                     onMorePopupDismiss()
                     onEnterCustomize()
@@ -209,13 +211,13 @@ internal fun MorePopupMenus(
             onBackProgress = onTodayMoreBackProgress,
             onBackCancelled = onTodayMoreBackCancelled,
             triggerIcon = MiuixIcons.More,
-            triggerContentDescription = "更多",
+            triggerContentDescription = CommonStr.more(),
             onExpand = onTodayMorePopupExpand,
             offsetPx = todayMenuOffset,
             materialAlpha = todayMaterialAlpha,
         ) {
             LiquidGlassDropdownMenuItem(
-                text = "跳转日期",
+                text = ChromeStr.jumpToDate(),
                 onClick = {
                     onTodayMorePopupDismiss()
                     onJumpToDate()
@@ -230,7 +232,7 @@ internal fun MorePopupMenus(
                 }
             )
             LiquidGlassDropdownMenuItem(
-                text = "课程管理",
+                text = ChromeStr.courseManage(),
                 onClick = {
                     onTodayMorePopupDismiss()
                     onCourseManage()
@@ -245,7 +247,7 @@ internal fun MorePopupMenus(
                 }
             )
             LiquidGlassDropdownMenuItem(
-                text = "课表外观",
+                text = ChromeStr.scheduleAppearance(),
                 onClick = {
                     onTodayMorePopupDismiss()
                     onEnterCustomize()
@@ -312,8 +314,8 @@ internal fun SettingsTopBar(
         ) {
             CollapsibleTopAppBar(
                 // 平板设置：顶栏不再显示「我的」，标题由 MainActivity 叠层绘制
-                title = if (isTablet) "" else "我的",
-                largeTitle = if (isTablet) "" else "我的",
+                title = if (isTablet) "" else ChromeStr.profile(),
+                largeTitle = if (isTablet) "" else ChromeStr.profile(),
                 showLargeTitle = if (isTablet) false else null,
                 showSmallTitle = if (isTablet) true else null,
                 modifier = Modifier.zIndex(1f),
@@ -359,9 +361,13 @@ internal fun TodayTopBar(
     } else {
         Modifier
     }
-    val dayOfWeekNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+    val dayOfWeekNames = listOf(
+        CommonStr.weekdayMon(), CommonStr.weekdayTue(), CommonStr.weekdayWed(),
+        CommonStr.weekdayThu(), CommonStr.weekdayFri(), CommonStr.weekdaySat(),
+        CommonStr.weekdaySun(),
+    )
     val dayOfWeekName = if (currentDayOfWeek in 1..7) dayOfWeekNames[currentDayOfWeek - 1] else ""
-    val titleText = if (isToday) "今天是$dayOfWeekName" else dayOfWeekName
+    val titleText = if (isToday) ChromeStr.todayIsDow(dayOfWeekName) else dayOfWeekName
     val todayNativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
 
     // 隐藏时 alpha=0 但仍测量，保证 currentHeightPx 启动即就位
@@ -398,7 +404,7 @@ internal fun TodayTopBar(
                                 onClick = onJumpToDate,
                                 backdrop = liquidGlassBackdrop,
                                 icon = MiuixIcons.Basic.FastForward,
-                                contentDescription = "跳转日期",
+                                contentDescription = ChromeStr.jumpToDate(),
                                 iconSize = 23.dp,
                                 backdropAlpha = backdropAlpha,
                                 shadowAlpha = shadowAlpha,
@@ -407,7 +413,7 @@ internal fun TodayTopBar(
                                 onClick = onEnterCustomize,
                                 backdrop = liquidGlassBackdrop,
                                 icon = MiuixIcons.Background,
-                                contentDescription = "课表外观",
+                                contentDescription = ChromeStr.scheduleAppearance(),
                                 iconSize = 23.dp,
                                 backdropAlpha = backdropAlpha,
                                 shadowAlpha = shadowAlpha,
@@ -425,7 +431,7 @@ internal fun TodayTopBar(
                                             indication = null,
                                             onClick = onMoreExpand,
                                         )
-                                        .semantics { contentDescription = "更多" }
+                                        .semantics { contentDescription = CommonStr.more() }
                                     else Modifier
                                 )
                                 .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }

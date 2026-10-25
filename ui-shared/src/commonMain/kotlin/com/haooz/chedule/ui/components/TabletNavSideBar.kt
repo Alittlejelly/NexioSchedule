@@ -59,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.basic.DropdownPanelDragSelectState
 import com.haooz.chedule.ui.basic.dropdownPanelDragSelect
 import com.haooz.chedule.ui.basic.dropdownPanelEntry
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
@@ -262,16 +264,16 @@ fun TabletNavSideBar(
     }
     val tabs = if (isShiftMode) {
         listOf(
-            "排班课表" to MiuixIcons.Months,
-            "设置" to MiuixIcons.Demibold.Settings,
+            ChromeStr.shiftSchedule() to MiuixIcons.Months,
+            CommonStr.settings() to MiuixIcons.Demibold.Settings,
         )
     } else {
         listOf(
-            "今日" to MiuixIcons.Album,
-            "课程表" to MiuixIcons.Months,
-            "我的" to MiuixIcons.ContactsCircle,
-            "课程管理" to MiuixIcons.Backup,
-            "切换课表" to MiuixIcons.ConvertFile,
+            CommonStr.today() to MiuixIcons.Album,
+            ChromeStr.schedule() to MiuixIcons.Months,
+            ChromeStr.profile() to MiuixIcons.ContactsCircle,
+            ChromeStr.courseManage() to MiuixIcons.Backup,
+            ChromeStr.switchSchedule() to MiuixIcons.ConvertFile,
         )
     }
 
@@ -353,7 +355,7 @@ fun TabletNavSideBar(
         ) {
             TabletNavSideItem(
                 icon = MiuixIcons.Regular.Sidebar,
-                label = "导航",
+                label = ChromeStr.navigationLabel(),
                 selected = false,
                 textColor = textColor,
                 showLabel = false,
@@ -417,7 +419,7 @@ fun TabletNavSideBar(
                                         )
                                 )
                                 Text(
-                                    text = "数据管理",
+                                    text = ChromeStr.dataManagement(),
                                     fontSize = 13.4.sp,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                         .copy(alpha = 0.6f),
@@ -493,7 +495,7 @@ fun TabletNavSideBar(
                         BackToNowFloatingButton(
                             onClick = onBackToNow,
                             backdrop = backdrop,
-                            label = "今",
+                            label = ChromeStr.todayBadge(),
                             // 折叠紧凑防裁切，展开恢复饱满内边距
                             adaptiveToSidebarExpand = true,
                         )

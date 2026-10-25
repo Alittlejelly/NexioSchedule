@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -140,9 +142,9 @@ fun AboutScreen(
      */
     onNavigate: (AppRoute) -> Unit = {},
     /** 应用版本号（宿主从 packageManager 取）；桌面/iOS 用各自来源 */
-    appVersion: String = "未知版本",
+    appVersion: String = AboutStr.unknownVersion(),
     /** 应用名 */
-    appName: String = "Nexio课程表",
+    appName: String = AboutStr.appName(),
     /** 应用图标（已裁边的 ImageBitmap）；null 不显示（回退为首字母文本） */
     appIcon: ImageBitmap? = null,
     /** 撤回隐私同意后退出应用（Android = activity.finishAffinity）；桌面/iOS 空实现 */
@@ -156,7 +158,7 @@ fun AboutScreen(
     val nativeBarInset = (nativeChrome?.barInset ?: 0.0).dp
     val tintArgb = MiuixTheme.colorScheme.primary.toArgb().toLong()
     SideEffect {
-        nativeChrome?.title = "关于应用"
+        nativeChrome?.title = AboutStr.aboutApp()
         nativeChrome?.tintArgb = tintArgb
     }
 
@@ -263,8 +265,8 @@ fun AboutScreen(
                 noTopStatusBar = hostVerticalBarEdge(),
             ) {
                 CollapsibleTopAppBar(
-                    title = "关于应用",
-                    largeTitle = "关于应用",
+                    title = AboutStr.aboutApp(),
+                    largeTitle = AboutStr.aboutApp(),
                     showLargeTitle = false,
                     showSmallTitle = scrollProgress > 0.5f,
                     showShadow = scrollProgress >= 1f,
@@ -276,7 +278,7 @@ fun AboutScreen(
                             onClick = { onBack() },
                             backdrop = liquidGlassBackdrop,
                             icon = MiuixIcons.ChevronBackward,
-                            contentDescription = "返回",
+                            contentDescription = CommonStr.back(),
                             performHapticFeedback = false,
                             iconSize = 24.dp,
                             iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
@@ -447,24 +449,24 @@ fun AboutScreen(
                             ) {
                                 if (!embedded) {
                                     ArrowPreference(
-                                        title = "交流与反馈",
+                                        title = AboutStr.communicationFeedback(),
                                         onClick = {
                                             onNavigate(AppRoute.Communication)
                                         }
                                     )
                                 }
                                 ArrowPreference(
-                                    title = "项目仓库",
+                                    title = AboutStr.projectRepo(),
                                     onClick = {
                                         showRepoDialog = true
                                     }
                                 )
                                 if (!embedded) {
                                     ArrowPreference(
-                                        title = "捐赠支持",
+                                        title = AboutStr.donate(),
                                         endActions = {
                                             Text(
-                                                text = "请作者喝杯咖啡",
+                                                text = AboutStr.buyCoffee(),
                                                 fontSize = 14.sp,
                                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                             )
@@ -519,7 +521,7 @@ fun AboutScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "更新日志",
+                                        text = AboutStr.changelog(),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MiuixTheme.colorScheme.onSurface
@@ -607,7 +609,7 @@ fun AboutScreen(
                                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                                         )
                                                         Text(
-                                                            text = change,
+                                                            text = change(),
                                                             fontSize = 14.sp,
                                                             lineHeight = 22.sp,
                                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
@@ -690,7 +692,7 @@ fun AboutScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "特别致谢",
+                                            text = AboutStr.specialThanks(),
                                             fontSize = 17.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = MiuixTheme.colorScheme.onSurface
@@ -886,7 +888,7 @@ fun AboutScreen(
                                         .padding(horizontal = 18.dp, vertical = 16.dp)
                                 ) {
                                     Text(
-                                        text = "功能日志录制",
+                                        text = AboutStr.diagRecording(),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MiuixTheme.colorScheme.onSurface
@@ -899,16 +901,16 @@ fun AboutScreen(
                                     val statusText = when {
                                         recordingActive ->
                                             // 跨平台替代 String.format("%02d")（checkKmpPurity 拦截 + Locale 字形问题）
-                                            "录制中… 剩余 ${mm}:${ss.toString().padStart(2, '0')} \n正在记入日志，崩溃/被杀自动结束"
+                                            AboutStr.recordingRemaining("${mm}:${ss.toString().padStart(2, '0')}")
                                         canShareRecording ->
                                             when (diagnosticRecorder.readyReason) {
-                                                "crash" -> "检测到崩溃，日志已自动保存，可直接分享"
-                                                "process_killed" -> "上次进程被杀，已自动结束录制，可分享"
-                                                "timeout_30min" -> "录制已达 30 分钟上限，可分享"
-                                                else -> "录制已结束，可分享给开发者"
+                                                "crash" -> AboutStr.diagCrashSaved()
+                                                "process_killed" -> AboutStr.diagKilled()
+                                                "timeout_30min" -> AboutStr.diagTimeout()
+                                                else -> AboutStr.diagEnded()
                                             }
                                         else ->
-                                            "点击开始录制后请复现问题，结束后点分享。\n日志仅存本机，需你主动分享才会离开设备"
+                                            AboutStr.diagIdleHint()
                                     }
                                     Text(
                                         text = statusText,
@@ -921,7 +923,7 @@ fun AboutScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         TextButton(
-                                            text = if (recordingActive) "结束录制" else "开始录制",
+                                            text = if (recordingActive) AboutStr.diagStop() else AboutStr.diagStart(),
                                             onClick = {
                                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                                 exportingCrashLog = true
@@ -939,10 +941,10 @@ fun AboutScreen(
                                                     recordingElapsedSec =
                                                         (diagnosticRecorder.recordingElapsedMs() / 1000L).toInt()
                                                     showToast(when {
-                                                            !ok && recordingActive -> "录制已在进行"
-                                                            ok && recordingActive -> "已开始录制，最长 30 分钟"
-                                                            ok && !recordingActive -> "录制已结束，可分享"
-                                                            else -> "操作失败，请重试"
+                                                            !ok && recordingActive -> AboutStr.diagAlreadyRecording()
+                                                            ok && recordingActive -> AboutStr.diagStarted()
+                                                            ok && !recordingActive -> AboutStr.diagEndedShort()
+                                                            else -> AboutStr.opFailedRetry()
                                                         })
                                                 }
                                             },
@@ -955,7 +957,7 @@ fun AboutScreen(
                                             }
                                         )
                                         TextButton(
-                                            text = "分享",
+                                            text = AboutStr.share(),
                                             onClick = {
                                                 if (!canShareRecording) return@TextButton
                                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -965,7 +967,7 @@ fun AboutScreen(
                                                         diagnosticRecorder.shareReadyRecording()
                                                     }
                                                     exportingCrashLog = false
-                                                    showToast(if (ok) "已打开分享，请把日志发给开发者" else "分享失败，请重试")
+                                                    showToast(if (ok) AboutStr.shareOpened() else AboutStr.shareFailedRetry())
                                                 }
                                             },
                                             modifier = Modifier.weight(1f),
@@ -995,13 +997,13 @@ fun AboutScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "© 2026 Nexio课程表 · ",
+                                            text = AboutStr.copyright(),
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                         // 开源协议入口：应用内展示 AGPL-3.0 全文，与隐私政策入口同构
                                         Text(
-                                            text = "开源协议",
+                                            text = AboutStr.license(),
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.primary,
                                             modifier = Modifier
@@ -1018,7 +1020,7 @@ fun AboutScreen(
                                         modifier = Modifier.padding(top = 6.dp)
                                     ) {
                                         Text(
-                                            text = "《隐私政策》",
+                                            text = AboutStr.privacyPolicy(),
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.primary,
                                             modifier = Modifier.clickable {
@@ -1026,7 +1028,7 @@ fun AboutScreen(
                                             }
                                         )
                                         Text(
-                                            text = "撤回同意",
+                                            text = AboutStr.revokeConsent(),
                                             fontSize = 13.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                             modifier = Modifier.clickable {
@@ -1037,7 +1039,7 @@ fun AboutScreen(
                                     }
                                     // APP 备案号：按工信部要求在「关于」页面显著位置展示
                                     Text(
-                                        text = "闽ICP备2026037367号-2A",
+                                        text = AboutStr.icpNumber(),
                                         fontSize = 13.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                         modifier = Modifier.padding(top = 6.dp)
@@ -1052,7 +1054,7 @@ fun AboutScreen(
 
 
         OverlayDialog(
-            title = "项目仓库",
+            title = AboutStr.projectRepo(),
             show = showRepoDialog,
             liquidGlassBackdrop = dialogGlass,
             onDismissRequest = { showRepoDialog = false }
@@ -1116,7 +1118,7 @@ fun AboutScreen(
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 TextButton(
-                    text = "完成",
+                    text = CommonStr.done(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showRepoDialog = false
@@ -1128,8 +1130,8 @@ fun AboutScreen(
 
         // 撤回隐私政策同意：确认后清空同意状态并关闭整个应用
         OverlayDialog(
-            title = "撤回隐私政策同意",
-            summary = "撤回后将关闭应用，且需要重新同意隐私政策才能继续使用。确定撤回吗？",
+            title = AboutStr.revokeDialogTitle(),
+            summary = AboutStr.revokeDialogSummary(),
             show = showRevokeDialog,
             liquidGlassBackdrop = dialogGlass,
             onDismissRequest = { showRevokeDialog = false }
@@ -1141,7 +1143,7 @@ fun AboutScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showRevokeDialog = false
@@ -1149,7 +1151,7 @@ fun AboutScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "撤回并退出",
+                    text = AboutStr.revokeAndExit(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         com.haooz.chedule.data.PrivacyConsent.revoke()

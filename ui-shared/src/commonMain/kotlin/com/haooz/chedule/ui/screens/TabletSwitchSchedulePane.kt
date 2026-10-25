@@ -38,6 +38,8 @@ import androidx.compose.runtime.setValue
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SwitchStr
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -202,7 +204,7 @@ fun TabletSwitchSchedulePane(
                             },
                             backdrop = leftBackdrop,
                             icon = MiuixIcons.Normal.Close,
-                            contentDescription = "关闭",
+                            contentDescription = CommonStr.close(),
                             iconSize = 24.dp,
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -212,7 +214,7 @@ fun TabletSwitchSchedulePane(
                         )
                     }
                     Text(
-                        text = if (isEditMode.value) "编辑课表" else "切换课表",
+                        text = if (isEditMode.value) SwitchStr.editSchedule() else SwitchStr.switchSchedule(),
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
@@ -235,7 +237,7 @@ fun TabletSwitchSchedulePane(
                             },
                             backdrop = leftBackdrop,
                             icon = MiuixIcons.Add,
-                            contentDescription = "添加",
+                            contentDescription = CommonStr.add(),
                             iconSize = 24.dp,
                             backdropAlpha = maskAlpha,
                             shadowAlpha = maskAlpha,
@@ -247,7 +249,7 @@ fun TabletSwitchSchedulePane(
                             },
                             backdrop = leftBackdrop,
                             icon = MiuixIcons.AddFolder,
-                            contentDescription = "新建文件夹",
+                            contentDescription = SwitchStr.newFolder(),
                             iconSize = 26.dp,
                             backdropAlpha = maskAlpha,
                             shadowAlpha = maskAlpha,
@@ -358,7 +360,15 @@ private fun TabletPaneTopChrome(
     }
 }
 
-private val DayLabels = listOf("一", "二", "三", "四", "五", "六", "日")
+private val DayLabels = listOf(
+    SwitchStr.dayHeaderMon,
+    SwitchStr.dayHeaderTue,
+    SwitchStr.dayHeaderWed,
+    SwitchStr.dayHeaderThu,
+    SwitchStr.dayHeaderFri,
+    SwitchStr.dayHeaderSat,
+    SwitchStr.dayHeaderSun,
+)
 
 /** 学期课表预览：紧凑周网格 */
 @Composable
@@ -431,7 +441,7 @@ private fun SemesterSchedulePreview(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = if (hasCourses) "学期课表预览" else "暂无课程",
+            text = if (hasCourses) SwitchStr.semesterPreview() else SwitchStr.noCourses(),
             fontSize = 14.sp,
             color = if (hasCourses) headerText else emptyHint,
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
@@ -440,7 +450,7 @@ private fun SemesterSchedulePreview(
         if (!hasCourses) {
             Spacer(Modifier.height(48.dp))
             Text(
-                text = "这张课表还没有课程",
+                text = SwitchStr.scheduleEmptyHint(),
                 fontSize = 15.sp,
                 color = emptyHint,
                 textAlign = TextAlign.Center,
@@ -464,7 +474,7 @@ private fun SemesterSchedulePreview(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = label,
+                        text = label(),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = headerText,
@@ -582,7 +592,7 @@ private fun PreviewCourseChip(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        val weekText = course.getWeekText()
+        val weekText = course.weekTextLocalized()
         if (weekText.isNotEmpty()) {
             Text(
                 text = weekText,

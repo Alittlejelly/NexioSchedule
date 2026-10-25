@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.i18n.CommonStr
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -104,7 +105,7 @@ fun CrossWeekDropHint(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "第${fromWeek}周",
+                        text = CommonStr.weekN(fromWeek),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = textColor.copy(alpha = 0.72f),
@@ -118,7 +119,7 @@ fun CrossWeekDropHint(
                 }
             }
             Text(
-                text = "第${toWeek}周",
+                text = CommonStr.weekN(toWeek),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = textColor,

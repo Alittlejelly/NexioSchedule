@@ -9,6 +9,7 @@ import com.haooz.chedule.data.optJsonObject
 import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.parseJsonArray
 import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.web.JS_PROMISE_BRIDGE
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
@@ -229,7 +230,7 @@ internal object IosWakeUpImport {
             try {
                 withTimeout(PAGE_LOAD_TIMEOUT_MS) { pageLoaded.await() }
             } catch (e: TimeoutCancellationException) {
-                throw IllegalStateException("页面加载超时，请检查网络后重试")
+                throw IllegalStateException(L("页面加载超时，请检查网络后重试", "Page load timed out. Check your network and try again.")())
             }
         }
 
@@ -279,15 +280,15 @@ internal object IosWakeUpImport {
                     }
                 }
                 "notifyTaskCompletion" -> complete()
-                "onImportFailed" -> fail(args.getOrNull(0) as? String ?: "导入失败")
+                "onImportFailed" -> fail(args.getOrNull(0) as? String ?: L("导入失败", "Import failed")())
                 "saveImportedCourses" -> {
                     val promiseId = args.getOrNull(1) as? String
                     val parsed = runCatching { parseCourses(args.getOrNull(0) as? String) }
                         .onFailure { NexioLog.e(TAG, "课程解析失败", it) }
                         .getOrDefault(emptyList())
                     if (parsed.isEmpty()) {
-                        fail("未解析到课程数据")
-                        rejectPromise(promiseId, "未解析到课程数据")
+                        fail(L("未解析到课程数据", "No course data could be parsed")())
+                        rejectPromise(promiseId, L("未解析到课程数据", "No course data could be parsed")())
                         return
                     }
                     courses = parsed
@@ -311,7 +312,7 @@ internal object IosWakeUpImport {
                 "saveComboSchedule" -> resolvePromise(args.getOrNull(1) as? String, "true")
                 "showAlert" -> {
                     val content = args.getOrNull(1) as? String
-                    fail(content?.takeIf { it.isNotBlank() } ?: "导入失败")
+                    fail(content?.takeIf { it.isNotBlank() } ?: L("导入失败", "Import failed")())
                     resolvePromise(args.getOrNull(3) as? String, "true")
                 }
                 "showPrompt" -> resolvePromise(args.getOrNull(4) as? String, "'${escapeJs(shareKey)}'")
@@ -350,7 +351,7 @@ internal object IosWakeUpImport {
             if (settled) return
             val list = courses
             if (list.isNullOrEmpty()) {
-                fail("未解析到课程数据")
+                fail(L("未解析到课程数据", "No course data could be parsed")())
                 return
             }
             settled = true

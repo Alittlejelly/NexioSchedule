@@ -47,6 +47,7 @@ import com.haooz.chedule.ui.utils.ExtractedShareTools
 import com.haooz.chedule.data.school.AdapterData
 import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.SchoolRepository
+import com.haooz.chedule.i18n.ImportStr
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -137,7 +138,7 @@ fun SchoolSelectionScreen(
             filteredSchools.isEmpty() && !isUpdating -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = if (searchQuery.isBlank()) "暂无学校数据" else "未找到匹配的学校",
+                        text = if (searchQuery.isBlank()) ImportStr.noSchoolData() else ImportStr.noSchoolMatch(),
                         style = MiuixTheme.textStyles.body1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         textAlign = TextAlign.Center,
@@ -154,7 +155,7 @@ fun SchoolSelectionScreen(
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            text = "正在检查更新",
+                            text = ImportStr.checkingUpdates(),
                             style = MiuixTheme.textStyles.body2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -284,7 +285,7 @@ fun SchoolSelectionScreen(
                                         if (isPostgrad) {
                                             Text(
                                                 modifier = Modifier.padding(start = 4.dp),
-                                                text = "研究生",
+                                                text = ImportStr.categoryPostgraduate(),
                                                 fontSize = 14.sp,
                                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                             )

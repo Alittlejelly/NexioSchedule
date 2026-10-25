@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
+import com.haooz.chedule.i18n.CommonStr
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -111,7 +112,7 @@ fun DocumentPageScaffold(
                                     onClick = onBack,
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.ChevronBackward,
-                                    contentDescription = "返回",
+                                    contentDescription = CommonStr.back(),
                                     performHapticFeedback = false,
                                     iconSize = 25.dp,
                                     iconOffset = DpOffset(x = (-2).dp, y = 0.dp),

@@ -13,6 +13,7 @@ import com.haooz.chedule.data.optJsonObject
 import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.parseJsonObject
 import com.haooz.chedule.data.school.ScriptRepository
+import com.haooz.chedule.i18n.L
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
@@ -53,7 +54,7 @@ object IosShareImport {
         withContext(ioDispatcher) {
             runCatching {
                 val trimmed = rawCode.trim()
-                if (trimmed.isBlank()) throw IllegalArgumentException("请输入口令")
+                if (trimmed.isBlank()) throw IllegalArgumentException(L("请输入口令", "Please enter a share code")())
                 val url = "$SHARE_BASE_URL?code=${encodeQuery(trimmed)}"
                 val resp = http.get(url)
                 val text = resp.text
@@ -62,21 +63,21 @@ object IosShareImport {
                     val err = json?.optString("error").orEmpty()
                     throw IllegalStateException(
                         err.ifBlank {
-                            if (resp.code == 404) "口令不存在或已过期" else "服务器错误 HTTP ${resp.code}"
+                            if (resp.code == 404) L("口令不存在或已过期", "Share code not found or expired")() else L("服务器错误 HTTP %s", "Server error HTTP %s")(resp.code)
                         }
                     )
                 }
                 if (json == null || !json.optBoolean("ok", false)) {
-                    throw IllegalStateException("口令不存在或已过期")
+                    throw IllegalStateException(L("口令不存在或已过期", "Share code not found or expired")())
                 }
                 val dataObj = json.optJsonObject("schedule_data")
-                    ?: throw IllegalStateException("课表数据无效")
+                    ?: throw IllegalStateException(L("课表数据无效", "Invalid schedule data")())
                 @Suppress("UNCHECKED_CAST")
                 val data = jsonToPlainValue(dataObj) as? Map<String, Any>
-                    ?: throw IllegalStateException("课表数据无效")
+                    ?: throw IllegalStateException(L("课表数据无效", "Invalid schedule data")())
                 ShareCodeFetchResult(
                     code = json.optString("code").ifBlank { trimmed },
-                    scheduleName = json.optString("schedule_name").ifBlank { "分享的课表" },
+                    scheduleName = json.optString("schedule_name").ifBlank { L("分享的课表", "Shared Schedule")() },
                     scheduleData = data,
                 )
             }
@@ -97,7 +98,7 @@ object IosShareImport {
         runCatching {
             withTimeout(45_000L) {
                 val code = extractShareKey(source, rawInput)
-                if (code.isBlank()) throw IllegalArgumentException("请输入${source.inputLabel}")
+                if (code.isBlank()) throw IllegalArgumentException(L("请输入%s", "Please enter %s")(source.inputLabel))
                 when (source) {
                     ThirdPartyShareSource.WakeUp -> importWakeUp(code)
                     ThirdPartyShareSource.StarLink -> importStarLink(code)
@@ -113,29 +114,29 @@ object IosShareImport {
             val resp = http.get(STARLINK_BASE_URL + encodePath(shareCode))
             val text = resp.text
             if (!resp.isSuccessful) {
-                throw IllegalStateException("分享码已失效或网络异常（HTTP ${resp.code}）")
+                throw IllegalStateException(L("分享码已失效或网络异常（HTTP %s）", "Share code is invalid or the network failed (HTTP %s)")(resp.code))
             }
-            if (text.isBlank()) throw IllegalStateException("未获取到课程数据")
+            if (text.isBlank()) throw IllegalStateException(L("未获取到课程数据", "No course data received")())
             val envelope = runCatching { parseJsonObject(text) }.getOrNull()
-                ?: throw IllegalStateException("星链课表响应格式无效")
+                ?: throw IllegalStateException(L("星链课表响应格式无效", "Invalid StarLink response format")())
             val data = envelope.optJsonObject("data")
-                ?: throw IllegalStateException("未获取到课程数据")
+                ?: throw IllegalStateException(L("未获取到课程数据", "No course data received")())
             val rawCourses = data.optJsonArray("courses").orEmpty().mapCourses()
                 .map { c ->
                     ThirdPartyCourse(
-                        name = c.name.takeIf { it.isNotBlank() } ?: "未命名课程",
-                        teacher = c.teacher.takeIf { it.isNotBlank() && it != "无" } ?: "未知教师",
+                        name = c.name.takeIf { it.isNotBlank() } ?: L("未命名课程", "Unnamed course")(),
+                        teacher = c.teacher.takeIf { it.isNotBlank() && it != "无" } ?: L("未知教师", "Unknown teacher")(),
                         position = c.location
                             .removePrefix("@")
                             .trim()
-                            .takeIf { it.isNotEmpty() } ?: "未排地点",
+                            .takeIf { it.isNotEmpty() } ?: L("未排地点", "No location")(),
                         day = c.weekday,
                         startSection = c.startSection,
                         endSection = c.endSection,
                         weeks = c.weeks,
                     )
                 }
-            if (rawCourses.isEmpty()) throw IllegalStateException("未获取到课程数据")
+            if (rawCourses.isEmpty()) throw IllegalStateException(L("未获取到课程数据", "No course data received")())
 
             val timeSlots = data.optJsonObject("sectionMinutes")?.entries.orEmpty()
                 .mapNotNull { (key, value) ->
@@ -173,9 +174,9 @@ object IosShareImport {
     private suspend fun importWakeUp(code: String): ThirdPartySharePayload {
         val scriptFile = ScriptRepository(ScriptRepository.getRepoUrl())
             .ensureScript(ExtractedShareTools.GLOBAL_TOOLS_RESOURCE, ExtractedShareTools.WAKEUP_JS)
-            ?: throw IllegalStateException("WakeUp 适配脚本下载失败，请检查网络后重试")
+            ?: throw IllegalStateException(L("WakeUp 适配脚本下载失败，请检查网络后重试", "Failed to download the WakeUp adapter script. Check your network and try again.")())
         val script = scriptFile.readText()
-        if (script.isBlank()) throw IllegalStateException("WakeUp 适配脚本为空")
+        if (script.isBlank()) throw IllegalStateException(L("WakeUp 适配脚本为空", "The WakeUp adapter script is empty.")())
         return IosWakeUpImport.run(code, script)
     }
 

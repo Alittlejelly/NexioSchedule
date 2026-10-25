@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.TeachingWeekPosition
+import com.haooz.chedule.i18n.SwitchStr
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import com.haooz.chedule.ui.activities.classschedule.SectionColumn
 import com.haooz.chedule.ui.components.ShiftDayColumn
@@ -220,8 +221,8 @@ fun ShiftScheduleScreen(
                         )
                     }
                 }
-                BreakDivider(morningHeight, "午休")
-                BreakDivider(dinnerBreakY, "晚休")
+                BreakDivider(morningHeight, SwitchStr.lunchBreak())
+                BreakDivider(dinnerBreakY, SwitchStr.dinnerBreak())
             }
         }
     }
@@ -267,7 +268,7 @@ fun ShiftScheduleScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${course.name}  ${course.getTimeDisplayText()}",
+                            text = "${course.name}  ${course.timeDisplayTextLocalized()}",
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -281,7 +282,7 @@ fun ShiftScheduleScreen(
     if (isTablet) {
         BlurBottomSheetTablet(
             show = showDetail,
-            title = "课表详情",
+            title = SwitchStr.scheduleDetail(),
             dimBackground = true,
             isBottomAligned = true,
             onDismissRequest = { showDetail = false },
@@ -290,7 +291,7 @@ fun ShiftScheduleScreen(
     } else {
         BlurBottomSheet(
             show = showDetail,
-            title = "课表详情",
+            title = SwitchStr.scheduleDetail(),
             dimBackground = true,
             onDismissRequest = { showDetail = false },
             content = detailContent

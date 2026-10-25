@@ -18,6 +18,8 @@ import java.io.FileOutputStream
 import com.google.gson.GsonBuilder
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.BackupStr
 
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
@@ -118,13 +120,13 @@ object ShareCodeApi {
                         ""
                     }
                     return@withContext Result.failure(
-                        IllegalStateException(err.ifBlank { "服务器错误 HTTP ${resp.code}" })
+                        IllegalStateException(err.ifBlank { AndroidMiscStr.serverErrorHttpN(resp.code) })
                     )
                 }
                 val json = JSONObject(text)
                 val code = json.optString("code")
                 if (code.isBlank()) {
-                    return@withContext Result.failure(IllegalStateException("服务器未返回口令"))
+                    return@withContext Result.failure(IllegalStateException(AndroidMiscStr.serverNoCodeReturned()))
                 }
                 Result.success(
                     CreateResult(
@@ -143,7 +145,7 @@ object ShareCodeApi {
         try {
             val trimmed = code.trim()
             if (trimmed.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("请输入口令"))
+                return@withContext Result.failure(IllegalArgumentException(BackupStr.enterShareCode()))
             }
             val url = "$BASE_URL?code=${java.net.URLEncoder.encode(trimmed, "UTF-8")}"
             val request = Request.Builder().url(url).get().build()
@@ -160,15 +162,15 @@ object ShareCodeApi {
                         IllegalStateException(
                             err.ifBlank {
                                 when (resp.code) {
-                                    404 -> "口令不存在或已过期"
-                                    else -> "服务器错误 HTTP ${resp.code}"
+                                    404 -> BackupStr.shareCodeNotFound()
+                                    else -> AndroidMiscStr.serverErrorHttpN(resp.code)
                                 }
                             }
                         )
                     )
                 }
                 if (json == null || !json.optBoolean("ok", false)) {
-                    return@withContext Result.failure(IllegalStateException("口令不存在或已过期"))
+                    return@withContext Result.failure(IllegalStateException(BackupStr.shareCodeNotFound()))
                 }
                 @Suppress("UNCHECKED_CAST")
                 val data = json.optJSONObject("schedule_data")?.let { obj ->
@@ -176,12 +178,12 @@ object ShareCodeApi {
                     com.google.gson.Gson().fromJson<Map<String, Any>>(obj.toString(), type)
                 }
                 if (data == null) {
-                    return@withContext Result.failure(IllegalStateException("课表数据无效"))
+                    return@withContext Result.failure(IllegalStateException(AndroidMiscStr.scheduleDataInvalid()))
                 }
                 Result.success(
                     FetchResult(
                         code = json.optString("code").ifBlank { trimmed },
-                        scheduleName = json.optString("schedule_name").ifBlank { "分享的课表" },
+                        scheduleName = json.optString("schedule_name").ifBlank { AndroidMiscStr.sharedScheduleName() },
                         scheduleData = data,
                     )
                 )
@@ -263,11 +265,7 @@ object ShareImageGenerator {
     /** 系统分享：图片 + 口令文案 */
     fun shareCard(context: Context, code: String, scheduleName: String): Boolean {
         val uri = writeShareImage(context, code) ?: return false
-        val text = buildString {
-            append("我分享了课表「").append(scheduleName).append("」\n")
-            append("口令：").append(code).append("\n")
-            append("打开 Nexio课程表，用口令导入即可（30 分钟内有效）")
-        }
+        val text = AndroidMiscStr.shareTextNN(scheduleName, code)
         val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
@@ -276,7 +274,7 @@ object ShareImageGenerator {
         }
         return try {
             context.startActivity(
-                android.content.Intent.createChooser(intent, "分享课表").apply {
+                android.content.Intent.createChooser(intent, AndroidMiscStr.shareScheduleChooser()).apply {
                     addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
@@ -299,13 +297,13 @@ fun performScheduleShare(
     val repository = CourseRepository.getInstance()
     val scheduleMap = buildShareScheduleMap(repository, scheduleName)
     if (scheduleMap == null) {
-        showToast("「$scheduleName」课表为空，无法分享")
+        showToast(AndroidMiscStr.scheduleEmptyNoShareN(scheduleName))
         return
     }
     onSharingChanged(true)
     scope.launch {
         try {
-            showToast("正在生成分享口令…")
+            showToast(AndroidMiscStr.generatingShareCode())
             val json = GsonBuilder().create().toJson(scheduleMap)
             ShareCodeApi.createShare(scheduleName, json).fold(
                 onSuccess = { created ->
@@ -316,13 +314,13 @@ fun performScheduleShare(
                         created.scheduleName
                     )
                     if (ok) {
-                        showToast("口令已复制：「${created.code}」30 分钟内有效", longDuration = true)
+                        showToast(AndroidMiscStr.codeCopiedValidN(created.code), longDuration = true)
                     } else {
-                        showToast("口令已复制「${created.code}」，但生成图片失败", longDuration = true)
+                        showToast(AndroidMiscStr.codeCopiedImageFailedN(created.code), longDuration = true)
                     }
                 },
                 onFailure = { e ->
-                    showToast("分享失败：${e.message ?: "网络错误"}")
+                    showToast(AndroidMiscStr.shareFailedN(e.message ?: AndroidMiscStr.networkErrorShort()))
                 }
             )
         } finally {

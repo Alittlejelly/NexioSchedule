@@ -166,7 +166,7 @@ fun ChangelogScreen(
                                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                                     )
                                                     Text(
-                                                        text = change,
+                                                        text = change(),
                                                         fontSize = 14.sp,
                                                         lineHeight = 22.sp,
                                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,

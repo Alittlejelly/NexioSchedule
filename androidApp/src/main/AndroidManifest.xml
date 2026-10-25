@@ -68,7 +68,7 @@
             android:name=".ImportAlias"
             android:targetActivity=".ui.activities.MainActivity"
             android:exported="true"
-            android:label="导入课程表"
+            android:label="@string/import_schedule"
             android:theme="@style/Theme.课程表"
             tools:ignore="InvalidManifestAttribute">
             <intent-filter>
@@ -173,7 +173,7 @@
         <receiver
             android:name=".widget.CourseWidgetProviderStandard"
             android:exported="true"
-            android:label="课程提醒">
+            android:label="@string/widget_course_reminder">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -185,7 +185,7 @@
         <receiver
             android:name=".widget.TodayTomorrowCourseWidgetProvider"
             android:exported="true"
-            android:label="今明课程">
+            android:label="@string/widget_today_tomorrow">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -197,7 +197,7 @@
         <receiver
             android:name=".widget.TodayCourseWidgetProviderStandard"
             android:exported="true"
-            android:label="今日课程">
+            android:label="@string/widget_today_course">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -209,7 +209,7 @@
         <receiver
             android:name=".widget.CourseWidgetProviderPad"
             android:exported="true"
-            android:label="课程提醒(Pad)">
+            android:label="@string/widget_course_reminder_pad">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -221,7 +221,7 @@
         <receiver
             android:name=".widget.TodayCourseWidgetProviderPad"
             android:exported="true"
-            android:label="今日课程(Pad)">
+            android:label="@string/widget_today_course_pad">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

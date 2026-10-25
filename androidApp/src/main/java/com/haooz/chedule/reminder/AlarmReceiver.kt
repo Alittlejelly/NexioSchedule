@@ -14,13 +14,16 @@ import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayCountdown
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.i18n.AndroidNotifStr
+import com.haooz.chedule.i18n.AndroidWidgetStr
+import com.haooz.chedule.i18n.AppLanguage
 import kotlinx.datetime.LocalDate
 
 class AlarmReceiver : BroadcastReceiver() {
 
     /** 放假提示标题：有假期名就带上，缺失时退化成通用文案 */
     private fun holidayStartTitle(name: String): String =
-        if (name.isBlank()) "明天开始放假" else "明天起${name}放假"
+        if (name.isBlank()) AndroidNotifStr.holidayStartsGeneric() else AndroidNotifStr.holidayStartsWithName(name)
 
     /**
      * 放假提示正文：从放假日算起的剩余假期天数 + 复课日。
@@ -31,10 +34,10 @@ class AlarmReceiver : BroadcastReceiver() {
         entriesByYear: Map<Int, List<HolidayEntry>>,
         startDate: LocalDate,
     ): String {
-        val block = HolidayCountdown.holidayBlockAt(entriesByYear, startDate) ?: return "明天不用上课"
+        val block = HolidayCountdown.holidayBlockAt(entriesByYear, startDate) ?: return AndroidNotifStr.noClassTomorrow()
         val resume = block.endDate.plusDays(1)
         val days = startDate.daysUntil(block.endDate) + 1L
-        return "共${days}天，${resume.monthNumber}月${resume.dayOfMonth}日恢复上课"
+        return AndroidNotifStr.holidayResumeN(days, resume.monthNumber, resume.dayOfMonth)
     }
 
     /** 把 1..23 的整数转成中文数字（如 8 -> "八"，23 -> "二十三"），用于"早八"式文案 */
@@ -48,6 +51,10 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
+    /** 「早八」文案的小时显示：中文用汉字数字，英文直接用阿拉伯数字 */
+    private fun hourDisplay(n: Int): String =
+        if (AppLanguage.isZh) chineseNumberHour(n) else n.toString()
+
     override fun onReceive(context: Context, intent: Intent) {
         val type = intent.getIntExtra(CourseReminderHelper.EXTRA_REMINDER_TYPE, 0)
         NexioLog.d("CourseReminder", "AlarmReceiver: type=$type ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
@@ -56,7 +63,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         when (type) {
             CourseReminderHelper.TYPE_PRE_CLASS -> {
-                val courseName = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_NAME) ?: "课程"
+                val courseName = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_NAME) ?: AndroidNotifStr.defaultCourseName()
                 val section = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_SECTION) ?: ""
                 val startTime = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_START_TIME) ?: ""
                 val courseId = intent.getStringExtra(CourseReminderHelper.EXTRA_COURSE_ID) ?: ""
@@ -173,17 +180,21 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
 
                 if (tomorrowCourses.isEmpty()) {
-                    CourseReminderHelper.showReminderNotification(context, type, "明日无课", "明天没有课程安排")
+                    CourseReminderHelper.showReminderNotification(
+                        context, type,
+                        AndroidWidgetStr.noClassesTomorrow(),
+                        AndroidNotifStr.tomorrowNoClasses(),
+                    )
                 } else {
-                    val title = "明天共${tomorrowCourses.size}节课"
+                    val title = AndroidNotifStr.tomorrowClassesN(tomorrowCourses.size)
                     val firstCourse = tomorrowCourses.first()
                     val firstStart = CourseReminderHelper.getCourseStartTime(firstCourse, repository)
                     val firstHour = firstStart?.split(":")?.firstOrNull()?.toIntOrNull() ?: 9
                     val details = when {
-                        firstHour < 9 -> "明早有早${chineseNumberHour(firstHour)}，${firstCourse.name}"
-                        firstHour < 12 -> "明早有课，${firstCourse.name} $firstStart"
-                        firstHour < 18 -> "下午有课，${firstCourse.name} $firstStart"
-                        else -> "晚上有课，${firstCourse.name} $firstStart"
+                        firstHour < 9 -> AndroidNotifStr.earlyClassTomorrow(hourDisplay(firstHour), firstCourse.name)
+                        firstHour < 12 -> AndroidNotifStr.morningClassTomorrow(firstCourse.name, firstStart)
+                        firstHour < 18 -> AndroidNotifStr.afternoonClass(firstCourse.name, firstStart)
+                        else -> AndroidNotifStr.eveningClass(firstCourse.name, firstStart)
                     }
                     CourseReminderHelper.showReminderNotification(context, type, title, details)
                 }

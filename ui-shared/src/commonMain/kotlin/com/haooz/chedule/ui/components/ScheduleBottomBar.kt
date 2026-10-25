@@ -20,6 +20,8 @@ import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Months
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import com.haooz.chedule.ui.utils.bottomFloatingPadding
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -64,7 +66,7 @@ fun ScheduleBottomBar(
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconTint)
                     )
-                    Text("排班课表", fontSize = 11.sp, color = iconTint)
+                    Text(ChromeStr.shiftSchedule(), fontSize = 11.sp, color = iconTint)
                 }
                 LiquidBottomTab(index = 1, onClick = { onSelect(1) }) {
                     Image(
@@ -73,7 +75,7 @@ fun ScheduleBottomBar(
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconTint)
                     )
-                    Text("设置", fontSize = 11.sp, color = iconTint)
+                    Text(CommonStr.settings(), fontSize = 11.sp, color = iconTint)
                 }
             }
         } else {
@@ -93,7 +95,7 @@ fun ScheduleBottomBar(
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconTint)
                     )
-                    Text("今日", fontSize = 11.sp, color = iconTint)
+                    Text(CommonStr.today(), fontSize = 11.sp, color = iconTint)
                 }
                 LiquidBottomTab(index = 1, onClick = { onSelect(1) }) {
                     Image(
@@ -102,7 +104,7 @@ fun ScheduleBottomBar(
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconTint)
                     )
-                    Text("课程表", fontSize = 11.sp, color = iconTint)
+                    Text(ChromeStr.schedule(), fontSize = 11.sp, color = iconTint)
                 }
                 LiquidBottomTab(index = 2, onClick = { onSelect(2) }) {
                     Image(
@@ -111,7 +113,7 @@ fun ScheduleBottomBar(
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconTint)
                     )
-                    Text("我的", fontSize = 11.sp, color = iconTint)
+                    Text(ChromeStr.profile(), fontSize = 11.sp, color = iconTint)
                 }
             }
         }

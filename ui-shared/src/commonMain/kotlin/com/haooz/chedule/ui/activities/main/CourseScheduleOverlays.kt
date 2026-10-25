@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.TransitionLayerImage
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -91,7 +92,7 @@ internal fun ShiftLoadingOverlay(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "切换中",
+                    text = ChromeStr.switching(),
                     style = MiuixTheme.textStyles.body1.copy(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium

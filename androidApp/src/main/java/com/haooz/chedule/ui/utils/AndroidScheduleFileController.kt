@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.haooz.chedule.data.MAX_BACKUP_PARSE_BYTES
 import com.haooz.chedule.data.ScheduleFileController
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.ImportStr
 
 /**
  * [ScheduleFileController] 的 Android 实现 —— 包装「导入选文件读内容」与
@@ -93,7 +95,7 @@ class AndroidScheduleFileController(private val context: Context) : ScheduleFile
         Thread {
             val readResult = runCatching {
                 val inputStream = context.contentResolver.openInputStream(uri)
-                    ?: throw IllegalArgumentException("无法读取所选文件")
+                    ?: throw IllegalArgumentException(AndroidMiscStr.cannotReadSelectedFile())
                 // 8 MB 上限：与备份通道同一个约束（避免把超大/无关文件整个读进内存）
                 readBoundedUtf8(inputStream, MAX_BACKUP_PARSE_BYTES)
             }
@@ -101,7 +103,7 @@ class AndroidScheduleFileController(private val context: Context) : ScheduleFile
                 readResult.fold(
                     onSuccess = { text -> callback(text) },
                     onFailure = { e ->
-                        showToast("导入失败: ${e.message}")
+                        showToast(ImportStr.importFailedReason(e.message))
                         callback(null)
                     }
                 )
@@ -117,7 +119,7 @@ class AndroidScheduleFileController(private val context: Context) : ScheduleFile
             else -> jsonSaveLauncher
         }
         if (launcher == null) {
-            showToast("导出失败: 无法唤起文件选择器")
+            showToast(AndroidMiscStr.exportFailedN(AndroidMiscStr.cannotOpenFilePicker()))
             return
         }
         pendingContent = content
@@ -135,12 +137,12 @@ class AndroidScheduleFileController(private val context: Context) : ScheduleFile
             val writeResult = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { os ->
                     os.write(content.toByteArray(Charsets.UTF_8))
-                } ?: throw IllegalStateException("无法写入所选位置")
+                } ?: throw IllegalStateException(AndroidMiscStr.cannotWriteSelectedLocation())
             }
             mainHandler.post {
                 writeResult.fold(
-                    onSuccess = { showToast("导出成功") },
-                    onFailure = { e -> showToast("导出失败: ${e.message}") }
+                    onSuccess = { showToast(AndroidMiscStr.exportSuccess()) },
+                    onFailure = { e -> showToast(AndroidMiscStr.exportFailedN(e.message)) }
                 )
             }
         }.start()

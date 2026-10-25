@@ -8,6 +8,10 @@ import com.haooz.chedule.data.formatChineseDate
 import com.haooz.chedule.data.millisBetween
 import com.haooz.chedule.data.parseHourMinute
 
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.L10n
+import com.haooz.chedule.i18n.TodayStr
+
 import com.haooz.chedule.data.lengthOfMonth
 import com.haooz.chedule.data.localDateTimeAt
 import com.haooz.chedule.data.nowLocalTime
@@ -250,7 +254,7 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
         return if (startTime.isNotEmpty() && endTime.isNotEmpty()) {
             "$startTime - $endTime"
         } else {
-            "第$startSection-${endSection}节"
+            TodayStr.sectionRange(startSection, endSection)
         }
     }
 
@@ -324,10 +328,10 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
     }
 
     val statusText = when (courseStatus) {
-        "未开始" -> "未开始"
-        "已结束" -> "已结束"
+        "未开始" -> TodayStr.notStarted()
+        "已结束" -> TodayStr.ended()
         // 剩余时间在今日助手展示，这里只标状态
-        "进行中" -> "正在上课"
+        "进行中" -> TodayStr.inClass()
         else -> ""
     }
 
@@ -347,7 +351,7 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = buildString {
-                    append(course.getTimeDisplayText())
+                    append(course.timeDisplayTextLocalized())
                     if (showClassroom && course.classroom.isNotEmpty()) append(" | ").append(course.classroom)
                     if (showTeacher && course.teacher.isNotEmpty()) append(" | ").append(course.teacher)
                 },
@@ -1004,7 +1008,7 @@ fun TodayScreen(
     }
 
         OverlayDialog(
-            title = "跳转日期",
+            title = TodayStr.jumpToDate(),
             show = showDatePicker,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showDatePicker = false }
@@ -1024,7 +1028,7 @@ fun TodayScreen(
                         range = 2024..2030,
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
-                        label = { "${it}年" },
+                        label = { TodayStr.yearN(it) },
                         textStyle = MiuixTheme.textStyles.title2,
                         modifier = Modifier.weight(1f)
                     )
@@ -1034,7 +1038,7 @@ fun TodayScreen(
                         range = 0..11,
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
-                        label = { "${it + 1}月" },
+                        label = { TodayStr.monthN(it + 1) },
                         wrapAround = true,
                         textStyle = MiuixTheme.textStyles.title2,
                         modifier = Modifier.weight(1f)
@@ -1052,7 +1056,7 @@ fun TodayScreen(
                         range = 1..maxDay,
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
-                        label = { "${it}日" },
+                        label = { CommonStr.dateN(it) },
                         wrapAround = true,
                         textStyle = MiuixTheme.textStyles.title2,
                         modifier = Modifier.weight(1f)
@@ -1063,7 +1067,7 @@ fun TodayScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showDatePicker = false
@@ -1071,7 +1075,7 @@ fun TodayScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             val target =
@@ -1193,174 +1197,6 @@ private fun computeQuoteScene(
     return QuoteScene.AFTER_ALL
 }
 
-// 嘴硬一点，但别变成劝退
-private val quotesDeepNight = listOf(
-    "凌晨了，你的黑眼圈在申请吉尼斯",
-    "别修仙了，早八不会为你的仙气让路",
-    "这个点的努力，感动天感动地，感动不了绩点",
-    "手机还剩 20% 电，你的意志力还剩多少",
-    "关机，睡觉，别逼我跪下来求你",
-    "你熬的不是夜，是明天迟到的底气",
-    "深夜的你最清醒——清醒地摆烂",
-    "头发在掉，作业在飘，就你在熬",
-    "别拿灵感当借口，你刷的是短视频不是文献",
-    "再不睡，明天第一节课的主角就是你的呼噜",
-    "凌晨的自我感动，白天的现实打脸，稳了",
-    "睡吧，让明天的你去面对今天的债",
-    "台灯比你努力，它至少在工作",
-    "这个点的「再学五分钟」，一般等于再玩两小时",
-    "别数羊了，数数你今天翘过的知识点",
-    "月亮都下班了，你还在硬撑，图啥"
-)
-private val quotesNoClass = listOf(
-    "今天没课，你的生产力大概率也没上班",
-    "自由日？通常是废掉日的委婉说法",
-    "别躺出褥子，明天课表会找你算账",
-    "没课的你：计划满满，进度零零",
-    "今天没有老师催你，你也别把自己催崩了",
-    "空出来的时间，最后都会变成刷手机的时长",
-    "难得没课，做点人事——比如真的睡一觉",
-    "别羡慕别人有课充实，你空虚得很彻底",
-    "没课不是奖励，是你自己把今天过成了过场",
-    "图书馆开门了，你大概率在门外路过",
-    "闹钟不用响，你也照样起不来，很稳定",
-    "别人满课像渡劫，你没课像断线",
-    "自由是有了，自律呢？哦，没装这个模块",
-    "今天省下的通勤，会在晚上变成刷夜"
-)
-private val quotesOtherDay = listOf(
-    "翻别人的课表干嘛，今天的你才是重灾区",
-    "别对照了，你自己的进度也好看不到哪去",
-    "看课表不能让课消失，但能让你更焦虑",
-    "这一天的你：还没到，已经开始慌了",
-    "提前预习焦虑，是你唯一的超前学习",
-    "别滑了，课不会因为你看两眼就少一节",
-    "未来的苦，现在的你先替他尝了一口",
-    "看得挺认真，就是一点用没有",
-    "现在研究那天的教室，那天你照样会迷路",
-    "课表翻得越勤，心里越慌，很科学"
-)
-private val quotesScheduleBroken = listOf(
-    "课有，时间没有——你这是薛定谔的课表",
-    "节次或时间没填全，格言都不知道怎么嘲你",
-    "去课表补一下，不然倒计时和笑话都对不上",
-    "时间残缺得跟期末范围似的，先补数据",
-    "课表在，起点终点不在，当代悬疑片",
-    "别指望我编故事，先把上课时间写上"
-)
-private val quotesBeforeFirst = listOf(
-    "离上课还有点时间，够你再赖一次",
-    "别吃了，再吃就得用跑的了",
-    "今天的第一节课，是你和被窝的告别演出",
-    "出门前再看一眼床，它舍不得你，但课表舍得",
-    "还有时间？不，是还有借口",
-    "你的早晨流程：醒→赖→慌→跑，稳定发挥",
-    "别收拾了，教室的灯不会给你打光",
-    "早饭随便塞两口，你的胃会记住这笔账",
-    "这个点还从容的，等会儿会在走廊飙车",
-    "闹钟响了三遍，你赢了两次，课赢了最后一次",
-    "现在有多悠闲，待会儿就有多冲刺",
-    "第一节还没开始，迟到的剧本已经写好了",
-    "外套记得带，教室空调不跟你讲武德",
-    "水杯记得带，忘带的上午你会懂"
-)
-private val quotesInClassJust = listOf(
-    "刚点完名，你的魂就开始请假了",
-    "这节课才开始，你已经在心里下课三次了",
-    "别急着关书，还有很久够你表演专注",
-    "老师还没讲到重点，你已经演完走神全套了",
-    "坐姿挺标准，就是眼神在窗外办签证",
-    "别装了，你打开书只是为了挡脸",
-    "连着上？恭喜，你可以完整睡一觉了",
-    "刚上课就盼下课，你的盼头比成绩稳定",
-    "这节要是选修，你连装都懒得装",
-    "上课五分钟，摸鱼两小时——预算已分配好",
-    "第一节就耗尽电量，后面靠什么撑？意志力？笑死",
-    "老师讲的是大纲，你听的是氛围",
-    "别急着拍 PPT，拍了你也不会再看",
-    "现在坐得多端正，中段就瘫得多彻底"
-)
-private val quotesInClassMid = listOf(
-    "过半了，你的耐心没有",
-    "老师的进度条在走，你的倒计时在蹦迪",
-    "别掐大腿了，掐完还是困",
-    "中段的你：眼睛睁着，脑子已签退",
-    "笔记记到一半开始画火柴人，艺术家实锤",
-    "撑住，后面的内容你反正也听不懂（不是）",
-    "你的专注力像流量包，早超额了",
-    "别问同学借笔记，你借的是别人的努力",
-    "这会儿还能听进去的，建议保送",
-    "半节课过去，你的人设从「认真」改成「还活着」",
-    "知识点从左耳进右耳出，路过都不打卡",
-    "别刷学习软件了，你在教室，不是在图书馆装",
-    "现在犯的困，都是昨晚欠的债",
-    "老师提问的概率在上升，你的低头角度也是"
-)
-private val quotesInClassEnd = listOf(
-    "还有几分钟，你的脚已经完成热身",
-    "别装了，书包拉链你都摸三遍了",
-    "最后几分钟的演技，够评奥斯卡",
-    "下课铃还没响，你的魂已经出校门打卡了",
-    "老师拖堂一分钟，你少活一年",
-    "忍住，现在冲出去会被记仇的",
-    "你的坐姿从听课切换成起跑预备了",
-    "最后几分钟，你听进去的只有自己的心跳",
-    "别提前收东西，老师就爱抓这个",
-    "再撑一下，食堂不会跑，但队伍会",
-    "这个点的「认真」，是装给老师看的余光",
-    "手机在包里震，你的心比它还抖",
-    "最后几分钟的知识点，往往是考点——你正好在收拾书包",
-    "拖堂是老师的特权，崩溃是你的义务"
-)
-private val quotesShortBreak = listOf(
-    "就这么几分钟，你还掏出手机？格局小了",
-    "接水排队都比你准备下节课久",
-    "别去走廊演风云人物了，下节课更困",
-    "课间是用来补觉的，不是用来假装社交的",
-    "上厕所+接水+刷手机：完美卡点迟到套餐",
-    "这几分钟够你想清楚要不要翘下一节（别）",
-    "歇够没？没歇够也得滚回去了",
-    "课间刷到的瓜，下节课讲不完更难受",
-    "别瘫了，下节课的老师已经在门口蹲你了",
-    "三分钟热度都不够你热完这个课间",
-    "同桌都睡着了，就你还清醒地浪费课间",
-    "打水的队伍，是你今天见过最长的卷",
-    "走廊逛一圈，风没醒，瓜吃了一堆",
-    "现在多玩一分钟，下节课多困十分钟，汇率很差"
-)
-private val quotesLongBreak = listOf(
-    "这么久的空档，你大概率会用来后悔",
-    "计划：预习。实际：刷到手机发烫",
-    "别瘫了，待会还要演一小时清醒",
-    "午休充电五分钟，续命一下午——并没充上",
-    "这段时间够你写作业，也够你把作业忘光",
-    "饭可以吃，觉可以睡，就是别打开那局游戏",
-    "你管这叫休息？手机电量都不信",
-    "长课间的尽头，是你踩点冲进教室的背影",
-    "别把空档过成加班，最后累的还是自己",
-    "现在有多闲，下节课开场就有多狼狈",
-    "睡有睡的代价，玩有玩的报应，你自己选",
-    "空档是用来回血的，不是用来掉段的",
-    "说好只躺十分钟，醒来天都变了",
-    "别开新剧了，开了一集就是一下午"
-)
-private val quotesAfterAll = listOf(
-    "课是上完了，作业才刚刚开始看你笑话",
-    "别急着躺，明天的早八已经在门口蹲着了",
-    "今天的你：完整出席，完整走神",
-    "恭喜通关今日副本，奖励是——明天还有",
-    "书包可以放下了，良心放不下",
-    "放学不是自由，是换个地方继续焦虑",
-    "今天的知识点，一个都没办理入住",
-    "别装充实了，你今天干了啥自己清楚",
-    "老师下班了，你的愧疚开始上班",
-    "自由了？作业群消息响了没",
-    "走出校门的风，都比教室里的清醒",
-    "今天的重点：你一个都没抓到",
-    "人是放了，魂还在最后一排没领走",
-    "复盘一下今天：出席率 100%，吸收率未知"
-)
-
 // 时段：场景定语气，时段再加菜，整点也会换一条
 private enum class QuoteTimeBand {
     DAWN,      // 5-7
@@ -1382,239 +1218,55 @@ private fun quoteTimeBand(hour: Int): QuoteTimeBand = when (hour) {
     else -> QuoteTimeBand.LATE
 }
 
-// 时段加菜：只在对应钟点并入当前场景池
-private val extrasClassDawn = listOf(
-    "早八的教室，灵魂还在宿舍办入住",
-    "这个点的笔记，写的是睡姿速写",
-    "别问老师为什么看你，你的眼睛还没开机",
-    "天刚亮就上课，你的床想报警",
-    "第一排都坐不醒的早八，建议改叫「晨间刑」",
-    "你人到了，生物钟还在昨天",
-    "老师声音越稳，你眼皮越重",
-    "早八的正确打开方式：睁一只眼闭一只眼"
-)
-private val extrasClassMorning = listOf(
-    "上午的清醒是限量款，你已经用完了",
-    "阳光正好，适合发呆，不适合听课",
-    "别看窗外了，窗外没有绩点",
-    "上午的效率曲线：开局即巅峰，然后跳水",
-    "别人在记重点，你在记「老师今天穿什么」",
-    "连堂的上午，是意志力的连续剧",
-    "别点头了，老师以为你听懂了会更来劲",
-    "上午的咖啡，撑的是仪式感，不是脑子"
-)
-private val extrasClassNoon = listOf(
-    "中午的课，是胃在讲课",
-    "别想食堂了，想了也得坐着",
-    "这节上完就是饭点，你的魂已经去排队了",
-    "饭点上课，是对干饭魂的公开处刑",
-    "老师讲公式，你脑子里全是菜名",
-    "中午的知识进不去，下午的困拦不住",
-    "别人等下课铃，你等开饭铃",
-    "这个点还能听进去的，建议直接保送食堂"
-)
-private val extrasClassAfternoon = listOf(
-    "下午的困，是生理规律，不是态度问题",
-    "太阳晒着，老师讲着，你飘着",
-    "别硬撑了，你的点头频率已经暴露了",
-    "空调在吹，你在睡，分工明确",
-    "下午第一节课，全班集体进入省电模式",
-    "眼皮在跳科目一，你在跳下课",
-    "别怪自己，是午饭在体内开了慢充",
-    "老师擦黑板的声音，是你的白噪音"
-)
-private val extrasClassEvening = listOf(
-    "晚课的教室，一半人在线下挂机",
-    "别睡了，晚课睡了晚上就真睡不着了",
-    "这个点还在听的，不是热爱，是怕点名",
-    "晚课的意义：证明你今天还没完全摆",
-    "窗外在天黑，你在神游，进度一致",
-    "晚课的手机亮度，暴露了你的听课深度",
-    "别看表了，看一次慢一分钟",
-    "别人晚自习开卷，你晚自习开机"
-)
-private val extrasClassNight = listOf(
-    "晚课收尾，宿舍的床已经在想你",
-    "别急，最后一节的结束铃比下课铃更神圣",
-    "撑完这节，今晚就可以名正言顺摆烂了",
-    "夜色正好，可惜你在教室，不在操场",
-    "这个点的知识，多半会和困意一起过期",
-    "最后一节的专注，全用来倒计时了",
-    "老师还在讲，你的魂已办理入住宿舍",
-    "别提前收包，最后五分钟才是修罗场"
-)
-
-private val extrasBreakDawn = listOf(
-    "早课间别趴了，趴了第二节更废",
-    "这个点的课间，用来清醒，不是用来做梦",
-    "走廊风大，吹不走你的困",
-    "去洗把脸，比咖啡便宜，比硬撑体面",
-    "早课间补觉，是给下午挖坑",
-    "别人晒太阳，你晒枕头印",
-    "别刷手机了，屏幕比天光还晃眼",
-    "站着也困的课间，建议原地罚站（不是）"
-)
-private val extrasBreakMorning = listOf(
-    "上午课间，刷两分钟就变十分钟",
-    "别去小卖部了，去了钱包和腰围一起受伤",
-    "接水的时候想想下节课，算了别想了",
-    "课间最忙的器官：拇指",
-    "走廊走一圈，消息刷一堆，重点一个没有",
-    "同桌补觉，你补瓜，分工合理",
-    "上午课间的规划很大，执行很手机",
-    "别笑太大声，下节课老师记得你"
-)
-private val extrasBreakNoon = listOf(
-    "饭点课间，食堂才是主战场",
-    "别纠结吃什么了，纠结完队伍就长了",
-    "中午能趴就趴，下午会感谢现在的你",
-    "冲食堂的速度，暴露了你对这门课的态度",
-    "课间十分钟，排队二十分钟，很公平",
-    "别人午休，你午刷，下午一起倒",
-    "吃完别立刻躺，除非你想给下午签到失败",
-    "中午的自由很短，队伍很长"
-)
-private val extrasBreakAfternoon = listOf(
-    "下午课间，走廊的风都比你清醒",
-    "用这几分钟站起来，不然第三节直接焊在椅子上",
-    "别刷手机了，你的眼睛比脑子先罢工",
-    "晒两分钟太阳，比续杯咖啡管用（大概）",
-    "下午课间的打哈欠会传染，你就是传染源",
-    "别买冰饮了，胃和钱包一起凉",
-    "站起来伸个懒腰，假装自己还活着",
-    "走廊的吵闹，是下午唯一的提神饮料"
-)
-private val extrasBreakEvening = listOf(
-    "晚课间，出去走两步，教室快把你腌入味了",
-    "别瘫，晚课间瘫完，最后一节直接交卷式听课",
-    "这个点的清醒，全靠走廊冷风硬灌",
-    "楼道灯比教室亮，也比你的前途亮一点",
-    "晚课间的风是免费的，困是自费的",
-    "别开黑了，开了最后一节就没了",
-    "去接杯热水，给晚上留点人样",
-    "窗外路灯亮了，你的斗志该开灯了"
-)
-private val extrasBreakNight = listOf(
-    "晚课间别开新局，开了就回不来了",
-    "最后一点课间电量，留给下节课，不是短视频",
-    "走廊灯下站会儿，回教室还能再演十分钟",
-    "夜课间的安静，适合反省——反省完接着玩",
-    "别去便利店了，去了钱包比人先空",
-    "最后一点课间的体面，是回教室坐直",
-    "晚课间刷到的下饭视频，下节课会在你脑子里重播"
-)
-
-private val extrasFreeDawn = listOf(
-    "这么早没课，你确定不是忘看课表",
-    "早起没事干，是奢侈，也是浪费",
-    "别睡回笼了，睡完中午更废",
-    "五点醒着还不学也不睡，卡在人生加载界面",
-    "清晨没课，食堂都比你有安排",
-    "这个点的自由，是昨晚熬夜的分期付款",
-    "别感动自己起得早，起得早也没干正事",
-    "窗外鸟都开工了，你还在缓冲"
-)
-private val extrasFreeMorning = listOf(
-    "上午没课，图书馆有空位，你有借口",
-    "别人在上课，你在计划——然后计划失败",
-    "自由的上午，通常从「先躺十分钟」开始",
-    "早饭可以慢慢吃，但别吃到中午",
-    "没课的上午，手机电量掉得比绩点快",
-    "说好预习，结果在给收藏夹分类",
-    "别人在教室渡劫，你在宿舍修仙",
-    "上午的安静很贵，你用来刷完了"
-)
-private val extrasFreeNoon = listOf(
-    "没课的中午，吃慢点，反正没人催你上课",
-    "午睡可以，别睡到以为今天是周末",
-    "饭点自由，是你今天最实在的自由",
-    "别人抢座，你抢被子，赛道不同",
-    "中午的计划：学习。中午的实际：饭+躺",
-    "没课的午饭吃出了放假的感觉，然后就真放假了一下午",
-    "别点太多，下午你会困到骂自己",
-    "午后的太阳不等你，你还在第二碗"
-)
-private val extrasFreeAfternoon = listOf(
-    "下午没课，阳光这么好，适合焦虑",
-    "别把空闲过成加班的愧疚，也别过成纯刷",
-    "这个点还躺着的，晚上会还的",
-    "说好下午学习，结果下午在想晚上吃什么",
-    "没课的下午，是给手机充电，不是给自己充电",
-    "别人实验报告，你实验发呆",
-    "阳光透过窗帘：提示你该出门了，你当暖被",
-    "下午的自由很长，进度条一直是 0%"
-)
-private val extrasFreeEvening = listOf(
-    "晚上没课，自由的味道是手机发烫",
-    "别报复性熬夜了，明天没有课也会困",
-    "空出来的晚上，最后都交给了短视频",
-    "晚上的计划很大，手很诚实地打开了娱乐软件",
-    "没课的夜，更容易把「明天一定」说出口",
-    "别人在晚自习，你在晚自习游戏（也算自习？）",
-    "晚饭后的躺平，会一路躺到愧疚",
-    "别开新番了，开了就是通宵预告"
-)
-private val extrasFreeNight = listOf(
-    "没课的晚上，更容易把自己熬废",
-    "别人晚自习，你晚自习手机——也算自习？",
-    "夜深了，你的待办列表还醒着，你快睡了",
-    "没课的夜很长，玩起来又太短",
-    "说好只玩一局，天都快亮了还没「只」",
-    "别把自由夜过成通宵前传",
-    "月亮上班了，你的正事还没上班",
-    "这个点还不睡的自由，明天会连本带利收走"
-)
-
-private fun timeExtrasFor(scene: QuoteScene, band: QuoteTimeBand): List<String> = when (scene) {
+private fun timeExtrasFor(scene: QuoteScene, band: QuoteTimeBand): List<L10n> = when (scene) {
     QuoteScene.IN_CLASS_JUST, QuoteScene.IN_CLASS_MID, QuoteScene.IN_CLASS_END -> when (band) {
-        QuoteTimeBand.DAWN -> extrasClassDawn
-        QuoteTimeBand.MORNING -> extrasClassMorning
-        QuoteTimeBand.NOON -> extrasClassNoon
-        QuoteTimeBand.AFTERNOON -> extrasClassAfternoon
-        QuoteTimeBand.EVENING -> extrasClassEvening
-        QuoteTimeBand.NIGHT -> extrasClassNight
+        QuoteTimeBand.DAWN -> TodayStr.extrasClassDawn
+        QuoteTimeBand.MORNING -> TodayStr.extrasClassMorning
+        QuoteTimeBand.NOON -> TodayStr.extrasClassNoon
+        QuoteTimeBand.AFTERNOON -> TodayStr.extrasClassAfternoon
+        QuoteTimeBand.EVENING -> TodayStr.extrasClassEvening
+        QuoteTimeBand.NIGHT -> TodayStr.extrasClassNight
         QuoteTimeBand.LATE -> emptyList()
     }
     QuoteScene.SHORT_BREAK, QuoteScene.LONG_BREAK -> when (band) {
-        QuoteTimeBand.DAWN -> extrasBreakDawn
-        QuoteTimeBand.MORNING -> extrasBreakMorning
-        QuoteTimeBand.NOON -> extrasBreakNoon
-        QuoteTimeBand.AFTERNOON -> extrasBreakAfternoon
-        QuoteTimeBand.EVENING -> extrasBreakEvening
-        QuoteTimeBand.NIGHT -> extrasBreakNight
+        QuoteTimeBand.DAWN -> TodayStr.extrasBreakDawn
+        QuoteTimeBand.MORNING -> TodayStr.extrasBreakMorning
+        QuoteTimeBand.NOON -> TodayStr.extrasBreakNoon
+        QuoteTimeBand.AFTERNOON -> TodayStr.extrasBreakAfternoon
+        QuoteTimeBand.EVENING -> TodayStr.extrasBreakEvening
+        QuoteTimeBand.NIGHT -> TodayStr.extrasBreakNight
         QuoteTimeBand.LATE -> emptyList()
     }
     QuoteScene.BEFORE_FIRST, QuoteScene.NO_CLASS, QuoteScene.AFTER_ALL -> when (band) {
-        QuoteTimeBand.DAWN -> extrasFreeDawn
-        QuoteTimeBand.MORNING -> extrasFreeMorning
-        QuoteTimeBand.NOON -> extrasFreeNoon
-        QuoteTimeBand.AFTERNOON -> extrasFreeAfternoon
-        QuoteTimeBand.EVENING -> extrasFreeEvening
-        QuoteTimeBand.NIGHT -> extrasFreeNight
+        QuoteTimeBand.DAWN -> TodayStr.extrasFreeDawn
+        QuoteTimeBand.MORNING -> TodayStr.extrasFreeMorning
+        QuoteTimeBand.NOON -> TodayStr.extrasFreeNoon
+        QuoteTimeBand.AFTERNOON -> TodayStr.extrasFreeAfternoon
+        QuoteTimeBand.EVENING -> TodayStr.extrasFreeEvening
+        QuoteTimeBand.NIGHT -> TodayStr.extrasFreeNight
         QuoteTimeBand.LATE -> emptyList()
     }
     else -> emptyList()
 }
 
-private fun quotePoolFor(scene: QuoteScene, hour: Int): List<String> {
+private fun quotePoolFor(scene: QuoteScene, hour: Int): List<L10n> {
     val base = when (scene) {
-        QuoteScene.DEEP_NIGHT -> quotesDeepNight
-        QuoteScene.NO_CLASS -> quotesNoClass
-        QuoteScene.OTHER_DAY -> quotesOtherDay
-        QuoteScene.SCHEDULE_BROKEN -> quotesScheduleBroken
-        QuoteScene.BEFORE_FIRST -> quotesBeforeFirst
-        QuoteScene.IN_CLASS_JUST -> quotesInClassJust
-        QuoteScene.IN_CLASS_MID -> quotesInClassMid
-        QuoteScene.IN_CLASS_END -> quotesInClassEnd
-        QuoteScene.SHORT_BREAK -> quotesShortBreak
-        QuoteScene.LONG_BREAK -> quotesLongBreak
-        QuoteScene.AFTER_ALL -> quotesAfterAll
+        QuoteScene.DEEP_NIGHT -> TodayStr.quotesDeepNight
+        QuoteScene.NO_CLASS -> TodayStr.quotesNoClass
+        QuoteScene.OTHER_DAY -> TodayStr.quotesOtherDay
+        QuoteScene.SCHEDULE_BROKEN -> TodayStr.quotesScheduleBroken
+        QuoteScene.BEFORE_FIRST -> TodayStr.quotesBeforeFirst
+        QuoteScene.IN_CLASS_JUST -> TodayStr.quotesInClassJust
+        QuoteScene.IN_CLASS_MID -> TodayStr.quotesInClassMid
+        QuoteScene.IN_CLASS_END -> TodayStr.quotesInClassEnd
+        QuoteScene.SHORT_BREAK -> TodayStr.quotesShortBreak
+        QuoteScene.LONG_BREAK -> TodayStr.quotesLongBreak
+        QuoteScene.AFTER_ALL -> TodayStr.quotesAfterAll
     }
     val extras = timeExtrasFor(scene, quoteTimeBand(hour))
     if (extras.isEmpty()) return base
     // 去重，避免底池和加菜撞句
-    val seen = HashSet<String>(base.size + extras.size)
-    return (base + extras).filter { seen.add(it) }
+    return (base + extras).distinctBy { it() }
 }
 
 // 原来取的是平台的进程 id；top-level val 每进程只初始化一次，
@@ -1656,7 +1308,7 @@ private fun QuoteCard(
         val seed = processId xor (scene.ordinal * 31L) xor (hour * 17L)
         (((seed % pool.size) + pool.size) % pool.size).toInt()
     }
-    val quote = pool[quoteIndex]
+    val quote = pool[quoteIndex]()
 
     BlurCard(
         wallpaperBackdrop = wallpaperBackdrop,
@@ -1870,7 +1522,7 @@ private fun LazyListScope.addCourseSections(
         item(key = "today-course-section-morning") {
             Column {
                 CourseSectionTitle(
-                    text = "上午课程",
+                    text = TodayStr.morningClasses(),
                     wallpaperBackdrop = wallpaperBackdrop,
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
@@ -1891,7 +1543,7 @@ private fun LazyListScope.addCourseSections(
         item(key = "today-course-section-afternoon") {
             Column {
                 CourseSectionTitle(
-                    text = "下午课程",
+                    text = TodayStr.afternoonClasses(),
                     wallpaperBackdrop = wallpaperBackdrop,
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
@@ -1912,7 +1564,7 @@ private fun LazyListScope.addCourseSections(
         item(key = "today-course-section-evening") {
             Column {
                 CourseSectionTitle(
-                    text = "晚上课程",
+                    text = TodayStr.eveningClasses(),
                     wallpaperBackdrop = wallpaperBackdrop,
                     blurRadius = blurRadius,
                     surfaceOpacity = surfaceOpacity
@@ -1937,10 +1589,10 @@ private fun LazyListScope.addCourseSections(
             ) {
                 CourseSectionTitle(
                     text = when {
-                        isHolidayDate && isPageToday -> "今天是假期，好好休息吧！"
-                        isHolidayDate -> "这天是假期"
-                        isPageToday -> "今天没有课程，好好休息吧！"
-                        else -> "这天没有课程"
+                        isHolidayDate && isPageToday -> TodayStr.holidayTodayRest()
+                        isHolidayDate -> TodayStr.holidayOtherDay()
+                        isPageToday -> TodayStr.noCourseTodayRest()
+                        else -> TodayStr.noCourseOtherDay()
                     },
                     wallpaperBackdrop = wallpaperBackdrop,
                     blurRadius = blurRadius,

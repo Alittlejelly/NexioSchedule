@@ -12,6 +12,8 @@ import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.ImportStr
 
 private const val TAG = "AndroidBridge"
 
@@ -165,9 +167,9 @@ class AndroidBridge(
                     resolveJsPromise(promiseId, defaultSelectedIndex.toString())
                 }
             } catch (e: Exception) {
-                NexioLog.e(TAG, "解析单选列表失败: ${e.message}", e)
-                Toast.makeText(context, "选项数据错误", Toast.LENGTH_LONG).show()
-                rejectJsPromise(promiseId, "选项列表 JSON 无效: ${e.message}")
+                NexioLog.e(TAG, AndroidMiscStr.logParseSelectionFailedN(e.message), e)
+                Toast.makeText(context, AndroidMiscStr.selectionDataError(), Toast.LENGTH_LONG).show()
+                rejectJsPromise(promiseId, AndroidMiscStr.selectionJsonInvalidN(e.message))
             }
         }
     }
@@ -175,26 +177,26 @@ class AndroidBridge(
     /** JS 调用：将课程数据传回原生保存 */
     @JavascriptInterface
     fun saveImportedCourses(coursesJsonString: String, promiseId: String) {
-        NexioLog.d(TAG, "接收到课程数据，大小: ${coursesJsonString.length / 1024} KB")
-        handler.post { dispatch("saveImportedCourses", coursesJsonString, promiseId, "课程导入成功") }
+        NexioLog.d(TAG, AndroidMiscStr.logReceivedCoursesN(coursesJsonString.length / 1024))
+        handler.post { dispatch("saveImportedCourses", coursesJsonString, promiseId, AndroidMiscStr.courseImportSuccess()) }
     }
 
     /** JS 调用：将课表配置数据传回原生保存 */
     @JavascriptInterface
     fun saveCourseConfig(configJsonString: String, promiseId: String) {
-        handler.post { dispatch("saveCourseConfig", configJsonString, promiseId, "课表配置导入成功") }
+        handler.post { dispatch("saveCourseConfig", configJsonString, promiseId, AndroidMiscStr.configImportSuccess()) }
     }
 
     /** JS 调用：将预设时间段数据传回原生保存 */
     @JavascriptInterface
     fun savePresetTimeSlots(timeSlotsJsonString: String, promiseId: String) {
-        handler.post { dispatch("savePresetTimeSlots", timeSlotsJsonString, promiseId, "时间段导入成功") }
+        handler.post { dispatch("savePresetTimeSlots", timeSlotsJsonString, promiseId, AndroidMiscStr.timeSlotsImportSuccess()) }
     }
 
     /** JS 调用：将组合作息方案（官方 1.4 comboSchedule）数据传回原生保存 */
     @JavascriptInterface
     fun saveComboSchedule(comboJsonString: String, promiseId: String) {
-        handler.post { dispatch("saveComboSchedule", comboJsonString, promiseId, "组合作息导入成功") }
+        handler.post { dispatch("saveComboSchedule", comboJsonString, promiseId, AndroidMiscStr.comboImportSuccess()) }
     }
 
     /** JS 调用：通知 Native 端 JS 任务已逻辑完成 */
@@ -213,14 +215,14 @@ class AndroidBridge(
         val result = try {
             core.handle(method, listOf(payload))
         } catch (e: EduBridgeReject) {
-            NexioLog.w(TAG, "$method 被拒绝: ${e.message}")
-            Toast.makeText(context, e.message ?: "导入失败", Toast.LENGTH_LONG).show()
-            promiseId?.let { rejectJsPromise(it, e.message ?: "导入失败") }
+            NexioLog.w(TAG, AndroidMiscStr.logMethodRejectedN(method, e.message))
+            Toast.makeText(context, e.message ?: AndroidMiscStr.importFailed(), Toast.LENGTH_LONG).show()
+            promiseId?.let { rejectJsPromise(it, e.message ?: AndroidMiscStr.importFailed()) }
             return
         } catch (e: Exception) {
-            NexioLog.e(TAG, "$method 处理异常", e)
-            Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
-            promiseId?.let { rejectJsPromise(it, "导入失败: ${e.message}") }
+            NexioLog.e(TAG, AndroidMiscStr.logMethodExceptionN(method), e)
+            Toast.makeText(context, ImportStr.importFailedReason(e.message), Toast.LENGTH_LONG).show()
+            promiseId?.let { rejectJsPromise(it, ImportStr.importFailedReason(e.message)) }
             return
         }
         if (okToast != null) Toast.makeText(context, okToast, Toast.LENGTH_SHORT).show()

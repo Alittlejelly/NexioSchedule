@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.lengthOfMonth
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SettingsStr
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.utils.FeatureLog
@@ -233,7 +235,7 @@ fun SettingsScreen(
             ) {
                 item(key = "basic") {
                     SmallTitle(
-                        text = "基本设置",
+                        text = SettingsStr.basicSettings(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -243,7 +245,7 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 ArrowPreference(
-                                title = "开始上课日期",
+                                title = SettingsStr.startDate(),
                                 endActions = {
                                     Text(
                                         text = classStartTime,
@@ -264,13 +266,13 @@ fun SettingsScreen(
                             )
 
                             ArrowPreference(
-                                title = "当前周数",
+                                title = SettingsStr.currentWeek(),
                                 endActions = {
                                     Text(
                                         text = when {
-                                            !isSemesterStarted -> "未开始"
-                                            currentWeek > totalWeeks -> "放假中"
-                                            else -> "第${currentWeek}周"
+                                            !isSemesterStarted -> SettingsStr.notStarted()
+                                            currentWeek > totalWeeks -> SettingsStr.onBreak()
+                                            else -> CommonStr.weekN(currentWeek)
                                         },
                                         fontSize = 14.5.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
@@ -288,10 +290,10 @@ fun SettingsScreen(
                             )
 
                             ArrowPreference(
-                                title = "本学期总周数",
+                                title = SettingsStr.totalWeeksTitle(),
                                 endActions = {
                                     Text(
-                                        text = "共${totalWeeks}周",
+                                        text = SettingsStr.totalWeeksValue(totalWeeks),
                                         fontSize = 14.5.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                         textAlign = TextAlign.End,
@@ -306,23 +308,23 @@ fun SettingsScreen(
                             )
 
                             SwitchPreference(
-                                title = "智能显示周末",
-                                summary = "开启后隐藏无课的周六日",
+                                title = SettingsStr.smartWeekend(),
+                                summary = SettingsStr.smartWeekendSummary(),
                                 checked = smartWeekend,
                                 onCheckedChange = { settingsViewModel.setSmartWeekend(it) }
                             )
 
                             CardExpand(visible = !isShiftMode) {
                                 SwitchPreference(
-                                    title = "显示非本周课程",
+                                    title = SettingsStr.showNonCurrentWeek(),
                                     checked = showNonCurrentWeek,
                                     onCheckedChange = { settingsViewModel.setShowNonCurrentWeek(it) }
                                 )
                             }
 
                             ArrowPreference(
-                                title = "课程时间管理",
-                                summary = "管理课表的节数与课程时间",
+                                    title = SettingsStr.courseTimeManagement(),
+                                    summary = SettingsStr.courseTimeSummary(),
                                 onClick = {
                                     FeatureLog.timeConfig("open")
                                     // 已路由化：保存/删除作息时 repository 会 notifyCourseChanged("settings")，
@@ -337,7 +339,7 @@ fun SettingsScreen(
                 if (!isShiftMode) {
                     item(key = "features") {
                         SmallTitle(
-                            text = "特色功能",
+                            text = SettingsStr.featuresSection(),
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -347,30 +349,30 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 ArrowPreference(
-                                    title = "课程提醒",
-                                    summary = "课前提醒、次日课程提醒",
+                                    title = SettingsStr.courseReminder(),
+                                    summary = SettingsStr.courseReminderSummary(),
                                     onClick = {
                                         FeatureLog.reminder("open")
                                         settingsRouter.navigate(AppRoute.CourseReminder)
                                     }
                                 )
                                 ArrowPreference(
-                                    title = "节假日与调休",
+                                    title = SettingsStr.holidayAndWorkswap(),
                                     onClick = {
                                         FeatureLog.holiday("open")
                                         settingsRouter.navigate(AppRoute.HolidaySettings)
                                     }
                                 )
                                 ArrowPreference(
-                                    title = "桌面小部件",
+                                    title = SettingsStr.homeScreenWidget(),
                                     onClick = {
                                         FeatureLog.widget("open")
                                         settingsRouter.navigate(AppRoute.WidgetIntro)
                                     }
                                 )
                                 ArrowPreference(
-                                    title = "排班模式",
-                                    summary = "同时对比多个课表的排班情况",
+                                    title = SettingsStr.shiftMode(),
+                                    summary = SettingsStr.shiftModeSummary(),
                                     holdDownState = showShiftModeConfirmDialog,
                                     onClick = { showShiftModeConfirmDialog = true }
                                 )
@@ -382,7 +384,7 @@ fun SettingsScreen(
                 if (isShiftMode) {
                     item(key = "shift_schedules") {
                         SmallTitle(
-                            text = "选择对比课表",
+                            text = SettingsStr.selectCompareSchedules(),
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -424,7 +426,7 @@ fun SettingsScreen(
                             ) else ButtonDefaults.buttonColors(),
                         ) {
                             Text(
-                                text = "退出排班模式",
+                                text = SettingsStr.exitShiftMode(),
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = ComposeColor(0xFFF44336)
@@ -436,7 +438,7 @@ fun SettingsScreen(
                 if (!isShiftMode) {
                     item(key = "data_manage") {
                         SmallTitle(
-                            text = "数据管理",
+                            text = SettingsStr.dataManagement(),
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -448,21 +450,21 @@ fun SettingsScreen(
                                 // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                                 val dataManageRouter = LocalAppRouter.current
                                 ArrowPreference(
-                                    title = "课表导入",
+                                    title = SettingsStr.scheduleImport(),
                                     onClick = {
                                         FeatureLog.import("open")
                                         dataManageRouter.navigate(AppRoute.ScheduleImport)
                                     }
                                 )
                                 ArrowPreference(
-                                    title = "课表导出",
+                                    title = SettingsStr.scheduleExport(),
                                     onClick = {
                                         FeatureLog.backup("open_export")
                                         dataManageRouter.navigate(AppRoute.ScheduleExport)
                                     }
                                 )
                                 ArrowPreference(
-                                    title = "课表备份",
+                                    title = SettingsStr.scheduleBackup(),
                                     onClick = {
                                         FeatureLog.backup("open_backup")
                                         dataManageRouter.navigate(AppRoute.ScheduleBackup)
@@ -476,7 +478,7 @@ fun SettingsScreen(
                 if (!isShiftMode) {
                     item(key = "others_title") {
                         SmallTitle(
-                            text = "其他",
+                            text = CommonStr.other(),
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -486,8 +488,8 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 ArrowPreference(
-                                    title = "开启新学期",
-                                    summary = "复用当前课表设置，创建空课程的新课表",
+                                    title = SettingsStr.newSemester(),
+                                    summary = SettingsStr.newSemesterSummary(),
                                     holdDownState = showNewSemesterDialog,
                                     onClick = {
                                         FeatureLog.t("设置", "new_semester_dialog")
@@ -509,7 +511,7 @@ fun SettingsScreen(
                                 // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                                 val appRouter = LocalAppRouter.current
                                 ArrowPreference(
-                                    title = "应用偏好设置",
+                                    title = SettingsStr.appPreferences(),
                                     // 只在偏好设置页仍在栈上时压暗；
                                     // 单独打开更新设置时不应连带压暗本项
                                     onClick = {
@@ -520,7 +522,7 @@ fun SettingsScreen(
                                 // iOS 走 App Store 更新 → 宿主传 showUpdateSettings=false，入口整个不渲染
                                 CardExpand(visible = showUpdateSettings) {
                                     ArrowPreference(
-                                        title = "更新设置",
+                                        title = SettingsStr.updateSettings(),
                                         onClick = {
                                             FeatureLog.update("open")
                                             appRouter.navigate(AppRoute.UpdateSettings)
@@ -528,7 +530,7 @@ fun SettingsScreen(
                                     )
                                 }
                                 ArrowPreference(
-                                    title = "关于应用",
+                                    title = SettingsStr.aboutApp(),
                                     onClick = {
                                         FeatureLog.about("open")
                                         appRouter.navigate(AppRoute.About)
@@ -542,8 +544,8 @@ fun SettingsScreen(
 
         // 即使 iOS 没有入口打开它也要挡：showShiftModeConfirmDialog 可能被别的路径置 true。
         OverlayDialog(
-            title = "进入排班模式",
-            summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
+            title = SettingsStr.enterShiftMode(),
+            summary = SettingsStr.enterShiftModeSummary(),
             show = showShiftModeConfirmDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showShiftModeConfirmDialog = false },
@@ -560,7 +562,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showShiftModeConfirmDialog = false
@@ -568,7 +570,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showShiftModeConfirmDialog = false
@@ -585,8 +587,8 @@ fun SettingsScreen(
         }
 
         OverlayDialog(
-            title = "开启新学期",
-            summary = "将复用当前课表的所有设置数据，创建一个清空课程的新课表",
+            title = SettingsStr.newSemester(),
+            summary = SettingsStr.newSemesterDialogSummary(),
             show = showNewSemesterDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = {
@@ -601,7 +603,7 @@ fun SettingsScreen(
                 NativeMiuixTextField(
                     value = newSemesterName,
                     onValueChange = { newSemesterName = it },
-                    label = "新课表名称",
+                    label = SettingsStr.newScheduleNameLabel(),
                     modifier = Modifier.fillMaxWidth(),
                     requestFocus = showNewSemesterDialog
                 )
@@ -612,7 +614,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showNewSemesterDialog = false
@@ -621,21 +623,21 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "创建",
+                        text = SettingsStr.create(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             val name = newSemesterName.trim()
                             when {
                                 // 名称空着点「创建」以前是静默无反应，看着像按钮坏了
-                                name.isEmpty() -> showToast("请输入课表名称")
+                                name.isEmpty() -> showToast(SettingsStr.emptyNameToast())
                                 name in scheduleViewModel.scheduleNames.value ->
-                                    showToast("该课表名称已存在")
+                                    showToast(SettingsStr.duplicateNameToast())
 
                                 else -> {
                                     scheduleViewModel.createNewSemesterSchedule(name)
                                     showNewSemesterDialog = false
                                     newSemesterName = ""
-                                    showToast("「${name}」创建成功")
+                                    showToast(SettingsStr.createdToast(name))
                                 }
                             }
                         },
@@ -647,7 +649,7 @@ fun SettingsScreen(
         }
 
         OverlayDialog(
-            title = "开始上课日期",
+            title = SettingsStr.startDate(),
             show = showStartDateDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showStartDateDialog = false }
@@ -686,7 +688,7 @@ fun SettingsScreen(
                         range = 1..12,
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
-                        label = { "${it}月" },
+                        label = { SettingsStr.monthN(it) },
                         wrapAround = true,
                         textStyle = MiuixTheme.textStyles.title2,
                         modifier = Modifier.weight(1f)
@@ -697,7 +699,7 @@ fun SettingsScreen(
                         range = 1..maxDaysInMonth,
                         visibleItemCount = 3,
                         itemHeight = 60.dp,
-                        label = { "${it}日" },
+                        label = { CommonStr.dateN(it) },
                         wrapAround = true,
                         textStyle = MiuixTheme.textStyles.title2,
                         modifier = Modifier.weight(1f)
@@ -710,7 +712,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showStartDateDialog = false
@@ -718,7 +720,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             // ⚠ 手写 padStart（`String.format` 是 JVM 专有）；格式与迁移前逐字一致，且
@@ -737,7 +739,7 @@ fun SettingsScreen(
         }
 
         OverlayDialog(
-            title = "选择当前周次",
+            title = SettingsStr.selectCurrentWeek(),
             show = showCurrentWeekDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showCurrentWeekDialog = false }
@@ -761,7 +763,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showCurrentWeekDialog = false
@@ -769,7 +771,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             viewModel.setCurrentWeek(tempCurrentWeek)
@@ -783,7 +785,7 @@ fun SettingsScreen(
         }
 
         OverlayDialog(
-            title = "选择学期总周数",
+            title = SettingsStr.selectTotalWeeks(),
             show = showTotalWeeksDialog,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = { showTotalWeeksDialog = false }
@@ -807,7 +809,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showTotalWeeksDialog = false
@@ -815,7 +817,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定",
+                        text = CommonStr.ok(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             viewModel.setTotalWeeks(tempTotalWeeks)

@@ -17,6 +17,8 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.i18n.AndroidWidgetStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -127,10 +129,14 @@ class TodayTomorrowCourseWidgetProvider : AppWidgetProvider() {
         val lastWeekWithCourses = repository.getLastWeekWithCourses()
         val isHoliday = currentWeek > totalWeeks || (currentWeek >= 1 && currentWeek > lastWeekWithCourses)
 
-        val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val dayNames = listOf(
+            CommonStr.weekdayMon(), CommonStr.weekdayTue(), CommonStr.weekdayWed(),
+            CommonStr.weekdayThu(), CommonStr.weekdayFri(), CommonStr.weekdaySat(),
+            CommonStr.weekdaySun()
+        )
         // 表头用各自日历日：周日补周二课 → 明天列仍写周日
-        val todayHeaderText = "今天 / ${dayNames[todayResolution.calendarDayOfWeek - 1]}"
-        val tomorrowHeaderText = "明天 / ${dayNames[tomorrowResolution.calendarDayOfWeek - 1]}"
+        val todayHeaderText = "${CommonStr.today()} / ${dayNames[todayResolution.calendarDayOfWeek - 1]}"
+        val tomorrowHeaderText = "${AndroidWidgetStr.tomorrow()} / ${dayNames[tomorrowResolution.calendarDayOfWeek - 1]}"
 
         // 每列课程数随小组件高度变化：2 格=2 / 3 格=3 / 4 格=5
         val rowCount = widgetRowCount(appWidgetManager.getAppWidgetOptions(appWidgetId))
@@ -173,12 +179,12 @@ class TodayTomorrowCourseWidgetProvider : AppWidgetProvider() {
 
         // 空态文案：照抄旧组件 when 链，按列各算一份
         fun emptyTextFor(isTomorrow: Boolean, isHolidayDate: Boolean): String = when {
-            isHoliday -> "假期中，暂无课程"
-            currentWeek < 1 -> "学期暂未开始"
-            isHolidayDate -> "假期中，暂无课程"
-            isTomorrow -> "明日无课"
-            todayCourses.isEmpty() -> "今日无课"
-            else -> "今日课程已上完"
+            isHoliday -> AndroidWidgetStr.vacationNoClasses()
+            currentWeek < 1 -> AndroidWidgetStr.semesterNotStarted()
+            isHolidayDate -> AndroidWidgetStr.vacationNoClasses()
+            isTomorrow -> AndroidWidgetStr.noClassesTomorrow()
+            todayCourses.isEmpty() -> AndroidWidgetStr.noClassesToday()
+            else -> AndroidWidgetStr.allClassesFinished()
         }
         val todayEmptyText = if (todaySlots.isEmpty()) {
             emptyTextFor(isTomorrow = false, isHolidayDate = todayResolution.isHolidayDate)
@@ -397,5 +403,5 @@ class TodayTomorrowCourseWidgetProvider : AppWidgetProvider() {
     private fun buildCourseInfo(course: Course): String = buildList {
         if (course.classroom.isNotEmpty()) add(course.classroom)
         if (course.teacher.isNotEmpty()) add(course.teacher)
-    }.joinToString("｜")
+    }.joinToString(AndroidWidgetStr.infoSeparator())
 }

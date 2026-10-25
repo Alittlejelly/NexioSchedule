@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.haooz.chedule.data.formatMonthDay
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
@@ -60,7 +62,10 @@ import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
-private val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+private val DAY_NAMES = listOf(
+    CommonStr.weekdayMon, CommonStr.weekdayTue, CommonStr.weekdayWed, CommonStr.weekdayThu,
+    CommonStr.weekdayFri, CommonStr.weekdaySat, CommonStr.weekdaySun,
+)
 
 /** 星期行一格的内容：日期文字 + 是否今天高亮（都不参与列数动画）。 */
 private data class DayCellContent(
@@ -124,9 +129,9 @@ fun ScheduleTopBar(
     val nativeBarInset = (LocalHostNavigation.current?.topBarInset ?: 0.0).dp
 
     val titleText = when {
-        isHoliday -> "放假中"
-        currentWeek < 1 -> "学期未开始"
-        else -> "第${pagerCurrentPage + 1}周"
+        isHoliday -> SchedStr.onBreak()
+        currentWeek < 1 -> SchedStr.semesterNotStarted()
+        else -> CommonStr.weekN(pagerCurrentPage + 1)
     }
 
     // 竖排 tab bar 形态（折叠屏折叠态）：屏幕顶部没有状态栏，走另一套几何
@@ -176,7 +181,7 @@ fun ScheduleTopBar(
                                     onClick = onJumpWeek,
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.Basic.FastForward,
-                                    contentDescription = "跳转周数",
+                                    contentDescription = SchedStr.jumpToWeek(),
                                     iconSize = 23.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -185,7 +190,7 @@ fun ScheduleTopBar(
                                     onClick = onEnterCustomize,
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.Background,
-                                    contentDescription = "课表外观",
+                                    contentDescription = SchedStr.scheduleAppearance(),
                                     iconSize = 23.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -198,7 +203,7 @@ fun ScheduleTopBar(
                                         },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.Normal.ConvertFile,
-                                        contentDescription = "课表切换",
+                                        contentDescription = SchedStr.switchSchedule(),
                                         iconSize = 27.dp,
                                         backdropAlpha = backdropAlpha,
                                         shadowAlpha = shadowAlpha
@@ -215,7 +220,7 @@ fun ScheduleTopBar(
                                                     indication = null,
                                                     onClick = onMoreExpand,
                                                 )
-                                                .semantics { contentDescription = "更多" }
+                                                .semantics { contentDescription = CommonStr.more() }
                                             else Modifier
                                         )
                                         .onGloballyPositioned { onMoreSlotTop(it.positionInRoot().y) }
@@ -317,7 +322,7 @@ private fun DayOfWeekRow(
                 .fillMaxHeight(),
         ) {
             drawnCells.forEachIndexed { cellIndex, cell ->
-                val name = DAY_NAMES[cell.dayOfWeek - 1]
+                val name = DAY_NAMES[cell.dayOfWeek - 1]()
                 val isToday = cell.isToday
                 val dateText = cell.dateText
 

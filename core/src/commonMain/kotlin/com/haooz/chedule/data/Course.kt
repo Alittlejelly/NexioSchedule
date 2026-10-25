@@ -295,6 +295,68 @@ data class Course(
         }
         return run
     }
+
+    // ── 显示用本地化变体（随应用语言取词，见 [DisplayLang]）──
+    // 通知去重 ID、Intent extra、回查比较等数据身份一律用上面不带 Localized 的稳定形态（中文），
+    // 否则切换语言后新旧值失配。
+
+    /** 显示用节次文本：中文「第3-4节」，英文「P3-4」。 */
+    fun sectionTextLocalized(): String {
+        if (startSection <= 0 && endSection <= 0) return ""
+        if (DisplayLang.isZh) return getSectionText()
+        return if (startSection == endSection) "P$startSection" else "P$startSection-$endSection"
+    }
+
+    /** 显示用时间文本：自定义时间跨午夜的「次日」在英文侧以 "+1d" 标注；否则同 [sectionTextLocalized]。 */
+    fun timeDisplayTextLocalized(): String {
+        if (hasValidCustomTime()) {
+            val end = when {
+                !crossesMidnightCustomTime() -> customEndTime
+                DisplayLang.isZh -> "次日$customEndTime"
+                else -> "$customEndTime (+1d)"
+            }
+            return "$customStartTime - $end"
+        }
+        return sectionTextLocalized()
+    }
+
+    /** 显示用周次文本：中文「1-15 (单周)、16周、17周」，英文「1-15 (odd), W16, W17」。 */
+    fun weekTextLocalized(): String {
+        if (DisplayLang.isZh) return getWeekText()
+        if (selectedWeeks.isNotEmpty()) return formatWeeksEn(selectedWeeks.sorted())
+        if (startWeek <= 0 && endWeek <= 0) return ""
+        val type = when (weekType) {
+            WEEK_TYPE_ODD -> "odd"
+            WEEK_TYPE_EVEN -> "even"
+            else -> ""
+        }
+        val weeks = if (startWeek == endWeek) "Week $startWeek" else "Weeks $startWeek-$endWeek"
+        return if (type.isNotEmpty()) "$weeks ($type)" else weeks
+    }
+
+    /** [formatWeeks] 的英文版，语义与合并规则逐条对应。 */
+    private fun formatWeeksEn(sorted: List<Int>): String {
+        val groups = mutableListOf<String>()
+        var i = 0
+        while (i < sorted.size) {
+            val step2Run = extractRun(sorted, i, step = 2)
+            if (step2Run.size >= 3) {
+                val parity = if (step2Run.first() % 2 == 1) "odd" else "even"
+                groups.add("${step2Run.first()}-${step2Run.last()} ($parity)")
+                i += step2Run.size
+                continue
+            }
+            val step1Run = extractRun(sorted, i, step = 1)
+            if (step1Run.size >= 3) {
+                groups.add("W${step1Run.first()}-W${step1Run.last()}")
+                i += step1Run.size
+                continue
+            }
+            groups.add("W${sorted[i]}")
+            i++
+        }
+        return groups.joinToString(", ")
+    }
 }
 
 /**

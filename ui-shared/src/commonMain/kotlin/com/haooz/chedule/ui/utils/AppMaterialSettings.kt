@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.i18n.MiscStr
 import com.kyant.backdrop.isRenderEffectSupported
 
 /**
@@ -44,18 +45,20 @@ object AppMaterialSettings {
     /** 其余档对话框模糊（dp） */
     private const val GLASS_DIALOG_BLUR_MILLED = 24f
 
-    val entries: List<Pair<String, String>> = listOf(
-        BEST to "通透玻璃",
-        BALANCED to "清透磨砂",
-        PERFORMANCE to "性能优先",
-        NONE to "无材质",
-    )
+    // Pair.first 是持久化数据键（BEST/BALANCED/...），Pair.second 是展示名；按当前语言取值，不缓存
+    val entries: List<Pair<String, String>>
+        get() = listOf(
+            BEST to MiscStr.materialBest(),
+            BALANCED to MiscStr.materialBalanced(),
+            PERFORMANCE to MiscStr.materialPerformance(),
+            NONE to MiscStr.materialNone(),
+        )
 
     /** 当前档位；组合期可读，写入走 [apply]。 */
     var level: String by mutableStateOf(BALANCED)
 
     fun labelOf(level: String): String =
-        entries.firstOrNull { it.first == level }?.second ?: "清透磨砂"
+        entries.firstOrNull { it.first == level }?.second ?: MiscStr.materialBalanced()
 
     /** 按钮 / 低栏背景板折射：仅通透玻璃档保留，清透磨砂及更省档关闭。 */
     fun chromeLensEnabled(): Boolean = level == BEST

@@ -95,6 +95,8 @@ import com.haooz.chedule.ui.utils.NativeDocumentSecondaryActionEffect
 import com.haooz.chedule.ui.utils.NativeDocumentOverlayEffect
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.ScheduleFolder
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SwitchStr
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -476,7 +478,7 @@ fun SwitchScheduleScreen(
         onBackCancelled = { }
     )
 
-    val displayTitle = if (isEditMode) "编辑课表" else "全部课表"
+    val displayTitle = if (isEditMode) SwitchStr.editSchedule() else SwitchStr.allSchedules()
 
     val modalActive = showAddDialog || showEditDialog || showDeleteDialog ||
         showAddFolderDialog || showEditFolderDialog || showMoveDialog ||
@@ -490,13 +492,13 @@ fun SwitchScheduleScreen(
         NativeDocumentOverlayEffect(isEditMode || modalActive)
         NativeDocumentLeadingActionEffect(NativeDocumentAction(
             symbol = if (isEditMode) "xmark" else "chevron.backward",
-            label = if (isEditMode) "关闭编辑" else "返回",
+            label = if (isEditMode) SwitchStr.closeEdit() else CommonStr.back(),
             enabled = !modalActive,
             onClick = { if (isEditMode) exitEditMode() else dismissKeepCurrent() },
         ))
         NativeDocumentActionEffect(NativeDocumentAction(
             symbol = if (isEditMode) "" else "plus",
-            label = "添加课表",
+            label = SwitchStr.addSchedule(),
             enabled = !isEditMode && !modalActive,
             onClick = {
                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -505,7 +507,7 @@ fun SwitchScheduleScreen(
         ))
         NativeDocumentSecondaryActionEffect(if (isEditMode) null else NativeDocumentAction(
             symbol = "folder.badge.plus",
-            label = "新建文件夹",
+            label = SwitchStr.newFolder(),
             enabled = !modalActive,
             onClick = {
                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -542,7 +544,7 @@ fun SwitchScheduleScreen(
                                 },
                                 backdrop = liquidGlassBackdrop,
                                 icon = if (isEditMode) MiuixIcons.Normal.Close else MiuixIcons.ChevronBackward,
-                                contentDescription = if (isEditMode) "关闭" else "返回",
+                                contentDescription = if (isEditMode) CommonStr.close() else CommonStr.back(),
                                 performHapticFeedback = false,
                                 iconSize = if (isEditMode) 24.dp else 25.dp,
                                 iconOffset = if (isEditMode) DpOffset.Zero else DpOffset(
@@ -562,7 +564,7 @@ fun SwitchScheduleScreen(
                                     },
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.Add,
-                                    contentDescription = "添加",
+                                    contentDescription = CommonStr.add(),
                                     iconSize = 24.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -575,7 +577,7 @@ fun SwitchScheduleScreen(
                                     },
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.AddFolder,
-                                    contentDescription = "新建文件夹",
+                                    contentDescription = SwitchStr.newFolder(),
                                     iconSize = 26.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -789,7 +791,7 @@ fun SwitchScheduleScreen(
                                     icon = MiuixIcons.Forward,
                                     state = dragSelect,
                                     index = 0,
-                                    label = "分享",
+                                    label = SwitchStr.share(),
                                     enabled = selectedFolders.isEmpty() && selectedSchedules.size == 1 && !isSharingSchedule,
                                     onClick = {
                                         com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("share_dialog")
@@ -797,7 +799,7 @@ fun SwitchScheduleScreen(
                                         val selected = selectedSchedules.firstOrNull()
                                         if (selected != null && !isSharingSchedule) {
                                             if (!isScheduleShareable(selected)) {
-                                                showToast("「$selected」课表为空，无法分享")
+                                                showToast(SwitchStr.cannotShareEmpty(selected))
                                             } else {
                                                 shareConfirmScheduleName = selected
                                                 showShareConfirmDialog = true
@@ -809,7 +811,7 @@ fun SwitchScheduleScreen(
                                     icon = MiuixIcons.Edit,
                                     state = dragSelect,
                                     index = 1,
-                                    label = "编辑",
+                                    label = CommonStr.edit(),
                                     enabled = checkedCount == 1,
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
@@ -836,7 +838,7 @@ fun SwitchScheduleScreen(
                                     icon = MiuixIcons.MoveFile,
                                     state = dragSelect,
                                     index = 2,
-                                    label = "移动",
+                                    label = SwitchStr.move(),
                                     enabled = selectedSchedules.isNotEmpty() && selectedFolders.isEmpty(),
                                     onClick = {
                                         com.haooz.chedule.ui.utils.FeatureLog.switchSchedule("move_dialog")
@@ -848,7 +850,7 @@ fun SwitchScheduleScreen(
                                     icon = MiuixIcons.Delete,
                                     state = dragSelect,
                                     index = 3,
-                                    label = "删除",
+                                    label = CommonStr.delete(),
                                     enabled = checkedCount >= 1,
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
@@ -998,7 +1000,7 @@ fun SwitchScheduleScreen(
                                                 folder.schedules.filter { it in scheduleNames }
                                             CardExpand(visible = children.isEmpty()) {
                                                 Text(
-                                                    text = "文件夹内暂无课表",
+                                                    text = SwitchStr.folderEmpty(),
                                                     fontSize = 14.sp,
                                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                                     modifier = Modifier.padding(
@@ -1043,8 +1045,8 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "分享课表",
-                summary = "将课表「${shareConfirmScheduleName.orEmpty()}」上传生成分享口令？\n口令 30 分钟内有效",
+                title = SwitchStr.shareScheduleTitle(),
+                summary = SwitchStr.shareConfirmSummary(shareConfirmScheduleName.orEmpty()),
                 show = showShareConfirmDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = {
@@ -1059,7 +1061,7 @@ fun SwitchScheduleScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showShareConfirmDialog = false
@@ -1068,7 +1070,7 @@ fun SwitchScheduleScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确认分享",
+                        text = SwitchStr.confirmShare(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             val name = shareConfirmScheduleName
@@ -1085,7 +1087,7 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "新建课表",
+                title = SwitchStr.newSchedule(),
                 show = showAddDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = {
@@ -1100,7 +1102,7 @@ fun SwitchScheduleScreen(
                     NativeMiuixTextField(
                         value = newScheduleName,
                         onValueChange = { newScheduleName = it },
-                        label = "课表名称",
+                        label = SwitchStr.scheduleNameLabel(),
                         modifier = Modifier.fillMaxWidth(),
                         requestFocus = showAddDialog
                     )
@@ -1111,7 +1113,7 @@ fun SwitchScheduleScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showAddDialog = false
@@ -1120,12 +1122,12 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             enabled = newScheduleName.isNotBlank(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (scheduleNames.contains(newScheduleName)) {
-                                    showToast("已存在同名课表")
+                                    showToast(SwitchStr.duplicateSchedule())
                                     return@TextButton
                                 }
                                 val name = newScheduleName
@@ -1147,7 +1149,7 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "编辑课表",
+                title = SwitchStr.editSchedule(),
                 show = showEditDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = {
@@ -1162,7 +1164,7 @@ fun SwitchScheduleScreen(
                     NativeMiuixTextField(
                         value = editScheduleName,
                         onValueChange = { editScheduleName = it },
-                        label = "课表名称",
+                        label = SwitchStr.scheduleNameLabel(),
                         modifier = Modifier.fillMaxWidth(),
                         requestFocus = showEditDialog
                     )
@@ -1173,7 +1175,7 @@ fun SwitchScheduleScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showEditDialog = false
@@ -1182,11 +1184,11 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (editScheduleName.isBlank()) {
-                                    showToast("请输入课表名称")
+                                    showToast(SwitchStr.nameRequired())
                                     return@TextButton
                                 }
                                 if (editScheduleName == editingScheduleName) {
@@ -1195,7 +1197,7 @@ fun SwitchScheduleScreen(
                                     return@TextButton
                                 }
                                 if (scheduleNames.contains(editScheduleName)) {
-                                    showToast("已存在同名课表")
+                                    showToast(SwitchStr.duplicateSchedule())
                                     return@TextButton
                                 }
                                 val oldName = editingScheduleName
@@ -1223,16 +1225,16 @@ fun SwitchScheduleScreen(
             val deleteFolderCount = selectedFolders.size
             val deleteScheduleCount = selectedSchedules.size
             val deleteDialogTitle = when {
-                deleteFolderCount > 0 && deleteScheduleCount > 0 -> "删除课表与文件夹"
-                deleteFolderCount > 0 -> "解散文件夹"
-                else -> "删除课表"
+                deleteFolderCount > 0 && deleteScheduleCount > 0 -> SwitchStr.deleteSchedulesAndFolders()
+                deleteFolderCount > 0 -> SwitchStr.disbandFolder()
+                else -> SwitchStr.deleteSchedule()
             }
             val deleteDialogText = when {
                 deleteFolderCount > 0 && deleteScheduleCount > 0 ->
-                    "选中的 $deleteScheduleCount 个课表将被删除；选中的 $deleteFolderCount 个文件夹将解散，其中课表移回「全部课表」。"
+                    SwitchStr.deleteMixedConfirm(deleteScheduleCount, deleteFolderCount)
                 deleteFolderCount > 0 ->
-                    "选中的文件夹将被解散，其中课表移回「全部课表」，课表不会被删除。"
-                else -> "确定要删除选中的课表吗？"
+                    SwitchStr.disbandOnlyConfirm()
+                else -> SwitchStr.deleteSchedulesConfirm()
             }
             OverlayDialog(
                 title = deleteDialogTitle,
@@ -1258,7 +1260,7 @@ fun SwitchScheduleScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showDeleteDialog = false
@@ -1266,7 +1268,7 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = if (deleteScheduleCount > 0) "删除" else "解散",
+                            text = if (deleteScheduleCount > 0) CommonStr.delete() else SwitchStr.disband(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 val selectedNames = selectedSchedules.toList()
@@ -1303,7 +1305,7 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "新建文件夹",
+                title = SwitchStr.newFolder(),
                 show = showAddFolderDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = {
@@ -1318,7 +1320,7 @@ fun SwitchScheduleScreen(
                     NativeMiuixTextField(
                         value = newFolderName,
                         onValueChange = { newFolderName = it },
-                        label = "文件夹名称",
+                        label = SwitchStr.folderNameLabel(),
                         modifier = Modifier.fillMaxWidth(),
                         requestFocus = showAddFolderDialog
                     )
@@ -1329,7 +1331,7 @@ fun SwitchScheduleScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showAddFolderDialog = false
@@ -1338,12 +1340,12 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             enabled = newFolderName.isNotBlank(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 if (folders.any { it.name == newFolderName }) {
-                                    showToast("已存在同名文件夹")
+                                    showToast(SwitchStr.duplicateFolder())
                                     return@TextButton
                                 }
                                 val name = newFolderName
@@ -1365,7 +1367,7 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "重命名文件夹",
+                title = SwitchStr.renameFolder(),
                 show = showEditFolderDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = {
@@ -1380,7 +1382,7 @@ fun SwitchScheduleScreen(
                     NativeMiuixTextField(
                         value = editFolderName,
                         onValueChange = { editFolderName = it },
-                        label = "文件夹名称",
+                        label = SwitchStr.folderNameLabel(),
                         modifier = Modifier.fillMaxWidth(),
                         requestFocus = showEditFolderDialog
                     )
@@ -1391,7 +1393,7 @@ fun SwitchScheduleScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         TextButton(
-                            text = "取消",
+                            text = CommonStr.cancel(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                 showEditFolderDialog = false
@@ -1400,7 +1402,7 @@ fun SwitchScheduleScreen(
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(
-                            text = "确定",
+                            text = CommonStr.ok(),
                             enabled = editFolderName.isNotBlank(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1410,7 +1412,7 @@ fun SwitchScheduleScreen(
                                     return@TextButton
                                 }
                                 if (folders.any { it.name == editFolderName && it.id != editingFolderId }) {
-                                    showToast("已存在同名文件夹")
+                                    showToast(SwitchStr.duplicateFolder())
                                     return@TextButton
                                 }
                                 com.haooz.chedule.ui.utils.FeatureLog.switchSchedule(
@@ -1429,8 +1431,8 @@ fun SwitchScheduleScreen(
             }
 
             OverlayDialog(
-                title = "移动到",
-                summary = "已选中 ${selectedSchedules.size} 个课表",
+                title = SwitchStr.moveTo(),
+                summary = SwitchStr.moveSelectedCount(selectedSchedules.size),
                 show = showMoveDialog,
                 liquidGlassBackdrop = liquidGlassBackdrop,
                 onDismissRequest = { showMoveDialog = false }
@@ -1440,8 +1442,8 @@ fun SwitchScheduleScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     MoveTargetRow(
-                        title = "全部课表",
-                        subtitle = "移出文件夹，回到根目录",
+                        title = SwitchStr.allSchedules(),
+                        subtitle = SwitchStr.moveToRoot(),
                         icon = MiuixIcons.MoveFile,
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1453,7 +1455,7 @@ fun SwitchScheduleScreen(
                     folders.forEach { folder ->
                         MoveTargetRow(
                             title = folder.name,
-                            subtitle = "${folder.schedules.size} 个课表",
+                            subtitle = SwitchStr.scheduleCountN(folder.schedules.size),
                             icon = MiuixIcons.Folder,
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -1553,7 +1555,7 @@ private fun ScheduleCardRow(
                     if (isCurrent) {
                         Icon(
                             imageVector = MiuixIcons.Basic.Check,
-                            contentDescription = "当前课表",
+                            contentDescription = SwitchStr.currentSchedule(),
                             tint = MiuixTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1608,7 +1610,7 @@ private fun FolderCardRow(
                 ) {
                     Icon(
                         imageVector = MiuixIcons.FolderFill,
-                        contentDescription = "文件夹",
+                        contentDescription = SwitchStr.folder(),
                         tint = MiuixTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
                     )
@@ -1621,7 +1623,7 @@ private fun FolderCardRow(
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "$scheduleCount 个课表",
+                            text = SwitchStr.scheduleCountN(scheduleCount),
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )
@@ -1650,7 +1652,7 @@ private fun FolderCardRow(
                 ) {
                     Icon(
                         imageVector = if (expanded) MiuixIcons.FolderFill else MiuixIcons.Folder,
-                        contentDescription = "文件夹",
+                        contentDescription = SwitchStr.folder(),
                         tint = MiuixTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
                     )
@@ -1663,7 +1665,7 @@ private fun FolderCardRow(
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "$scheduleCount 个课表",
+                            text = SwitchStr.scheduleCountN(scheduleCount),
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                         )

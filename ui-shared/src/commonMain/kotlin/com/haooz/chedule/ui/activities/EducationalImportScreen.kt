@@ -62,6 +62,8 @@ import com.haooz.chedule.data.parseJsonArray
 import com.haooz.chedule.data.parseJsonObject
 import com.haooz.chedule.data.school.ScriptRepository
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
 import com.haooz.chedule.ui.utils.NativeDocumentAction
@@ -165,17 +167,17 @@ fun EducationalImportScreen(
         ((widthDp - 600).coerceIn(0, 600) / 600f * 112 + 16).dp
     } else 0.dp
     val hapticFeedback = LocalHapticFeedback.current
-    val displayTabs = listOf("学校导入", "通用工具")
+    val displayTabs = listOf(ImportStr.tabSchoolImport(), ImportStr.generalTools())
 
     // 标题发布放在 Scaffold 外：content lambda 会被缓存，放里面不保证重新执行
     SideEffect {
-        nativeChrome?.title = "选择学校"
+        nativeChrome?.title = ImportStr.selectSchool()
         nativeChrome?.tintArgb = chromeTint
     }
     NativeDocumentActionEffect(
         NativeDocumentAction(
             symbol = "arrow.clockwise",
-            label = "更新",
+            label = CommonStr.update(),
             enabled = !isUpdating,
             busy = isUpdating,
             onClick = onForceUpdate,
@@ -278,8 +280,8 @@ fun EducationalImportScreen(
                 topInsetAdjustment = nativeBarInset,
             ) {
                 CollapsibleTopAppBar(
-                    title = "选择学校",
-                    largeTitle = "选择学校",
+                    title = ImportStr.selectSchool(),
+                    largeTitle = ImportStr.selectSchool(),
                     showLargeTitle = true,
                     modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     scrollBehavior = scrollBehavior,
@@ -295,7 +297,7 @@ fun EducationalImportScreen(
                                 onClick = onFinish,
                                 backdrop = liquidGlassBackdrop,
                                 icon = MiuixIcons.ChevronBackward,
-                                contentDescription = "返回",
+                                contentDescription = CommonStr.back(),
                                 performHapticFeedback = false,
                                 iconSize = 25.dp,
                                 iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
@@ -322,7 +324,7 @@ fun EducationalImportScreen(
                                     onClick = onForceUpdate,
                                     backdrop = liquidGlassBackdrop,
                                     icon = MiuixIcons.Normal.Update,
-                                    contentDescription = "更新",
+                                    contentDescription = CommonStr.update(),
                                     iconSize = 28.dp,
                                     backdropAlpha = backdropAlpha,
                                     shadowAlpha = shadowAlpha,
@@ -359,7 +361,7 @@ fun EducationalImportScreen(
                             onSearch = { searchExpanded = false },
                             expanded = searchExpanded,
                             onExpandedChange = { searchExpanded = it },
-                            label = "搜索学校",
+                            label = ImportStr.searchSchool(),
                             backdrop = liquidGlassBackdrop,
                             backdropAlpha = searchBackdropAlpha,
                             shadowAlpha = searchShadowAlpha,
@@ -488,7 +490,7 @@ internal fun applyPresetTimeSlots(
 
         prefs.edit { remove("preset_time_slots") }
     } catch (e: Exception) {
-        NexioLog.e("EduImport", "应用预设时间段失败: ${e.message}")
+        NexioLog.e("EduImport", ImportStr.logApplyPresetFailed(e.message))
     }
 }
 
@@ -518,9 +520,9 @@ internal fun applyImportedScheduleConfig(
             repository.setClassStartTime(targetScheduleId, startDate)
         }
         applied = true
-        NexioLog.d("EduImport", "应用开学日: raw=$rawStart -> $startDate target=$targetScheduleId")
+        NexioLog.d("EduImport", ImportStr.logApplyStartDate(rawStart, startDate, targetScheduleId))
     } else if (!rawStart.isNullOrBlank()) {
-        NexioLog.w("EduImport", "开学日无法解析，已忽略: $rawStart")
+        NexioLog.w("EduImport", ImportStr.logStartDateIgnored(rawStart))
     }
     if (totalWeeks > 0) {
         if (isTargetCurrent) {
@@ -544,7 +546,7 @@ internal fun applyImportedScheduleConfig(
                 shortBreak = breakDuration.takeIf { it > 0 } ?: 10,
             )
             applied = true
-            NexioLog.d("EduImport", "应用默认节次时长: class=$classDuration break=$breakDuration target=$targetId")
+            NexioLog.d("EduImport", ImportStr.logApplyDurations(classDuration, breakDuration, targetId))
         }
     }
 
@@ -571,7 +573,7 @@ internal fun applyImportedScheduleConfig(
                     } else {
                         scheduleViewModel.saveCoursesToSchedule(targetId, remapped)
                     }
-                    NexioLog.d("EduImport", "按周起始日归一化星期: firstDayOfWeek=$firstDayOfWeek target=$targetId")
+                    NexioLog.d("EduImport", ImportStr.logNormalizeWeekdays(firstDayOfWeek, targetId))
                 }
             }
             applied = true
@@ -588,7 +590,7 @@ internal fun applyImportedScheduleConfig(
         remove("target_schedule_id")
     }
     if (applied) {
-        NexioLog.d("EduImport", "应用课表配置成功: 开学时间=$startDate, 总周数=$totalWeeks, target=$targetScheduleId")
+        NexioLog.d("EduImport", ImportStr.logApplyConfigSuccess(startDate, totalWeeks, targetScheduleId))
     }
 }
 
@@ -670,7 +672,7 @@ internal fun applyComboSchedule(
 
             TimeRoutine(
                 id = nextId++,
-                name = item.name.ifBlank { comboName.ifBlank { "作息方案" } },
+                name = item.name.ifBlank { comboName.ifBlank { ImportStr.defaultRoutineName() } },
                 effectiveMonth = month,
                 effectiveDay = TimeRoutine.clampDayOfMonth(month, day),
                 // 时间字段以基础配置为准：方案只携带节次时间差量，其余沿用课表当前值
@@ -704,9 +706,9 @@ internal fun applyComboSchedule(
             courseViewModel.refreshEssentialData()
         }
         prefs.edit { remove("combo_schedule") }
-        NexioLog.d("EduImport", "应用组合作息成功: ${routines.size} 个方案 target=$targetId")
+        NexioLog.d("EduImport", ImportStr.logApplyComboSuccess(routines.size, targetId))
     } catch (e: Exception) {
-        NexioLog.e("EduImport", "应用组合作息失败: ${e.message}")
+        NexioLog.e("EduImport", ImportStr.logApplyComboFailed(e.message))
     }
 }
 
@@ -775,7 +777,7 @@ object EduImportUpdater {
                 )
                 prefs.edit { putLong(KEY_LAST_UPDATE_TIME, Clock.System.now().toEpochMilliseconds()) }
             } catch (e: Exception) {
-                NexioLog.e(TAG, "更新失败: ${e.message}")
+                NexioLog.e(TAG, ImportStr.logUpdateFailed(e.message))
             } finally {
                 isUpdating.value = false
                 dataVersion.value++
@@ -792,10 +794,10 @@ object EduImportUpdater {
                     onLog = { }
                 )
                 val msg = when (result) {
-                    0 -> "已是最新版本"
-                    1 -> "更新完成"
-                    -1 -> "更新失败，请检查网络连接"
-                    else -> "更新失败"
+                    0 -> ImportStr.alreadyLatest()
+                    1 -> ImportStr.updateComplete()
+                    -1 -> ImportStr.updateFailedNoNetwork()
+                    else -> ImportStr.updateFailed()
                 }
                 // Toast 必须回主线程（Main 是 kotlinx-coroutines 的跨平台 dispatcher）。⚠ 与迁移前逐字一致，勿改。
                 withContext(Dispatchers.Main) { showToast(msg) }
@@ -804,8 +806,8 @@ object EduImportUpdater {
                     prefs.edit { putLong(KEY_LAST_UPDATE_TIME, Clock.System.now().toEpochMilliseconds()) }
                 }
             } catch (e: Exception) {
-                NexioLog.e(TAG, "手动更新失败: ${e.message}")
-                withContext(Dispatchers.Main) { showToast("更新失败") }
+                NexioLog.e(TAG, ImportStr.logManualUpdateFailed(e.message))
+                withContext(Dispatchers.Main) { showToast(ImportStr.updateFailed()) }
             } finally {
                 isUpdating.value = false
                 dataVersion.value++

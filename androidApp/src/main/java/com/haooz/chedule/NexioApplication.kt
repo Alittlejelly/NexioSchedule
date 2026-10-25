@@ -25,6 +25,8 @@ class NexioApplication : Application() {
         com.haooz.chedule.data.AppStorage.init { name ->
             getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
         }
+        // 语言镜像尽早就位：小部件/通知在首帧前取词（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值。
+        com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
         // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
         com.haooz.chedule.data.initToast { message, long ->
             android.widget.Toast.makeText(

@@ -50,6 +50,9 @@ import com.haooz.chedule.data.localDateTimeAt
 import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.data.parseIcsFile
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.BackupStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
@@ -114,11 +117,11 @@ fun BackupAndMigrationScreen(
     onHolidayDataChanged: () -> Unit = {},
     /** 分享口令取回（Android 专有，宿主注入）；不注入时按「取回失败」处理。 */
     onFetchShareCode: suspend (code: String) -> Result<ShareCodeFetchResult> =
-        { Result.failure(IllegalStateException("当前平台不支持口令导入")) },
+        { Result.failure(IllegalStateException(BackupStr.platformNotSupportedShareCodeImport())) },
     /** 第三方（WakeUp / 星链）口令抓取（Android 专有，宿主注入）。 */
     onImportThirdParty: suspend (source: ThirdPartyShareSource, code: String)
         -> Result<ThirdPartySharePayload> =
-        { source, _ -> Result.failure(IllegalStateException("当前平台不支持${source.displayName}")) },
+        { source, _ -> Result.failure(IllegalStateException(BackupStr.platformNotSupportedN(source.displayName))) },
     /** 口令分享导出（上传 + 出图 + 系统分享，Android 专有，宿主注入）。 */
     onShareSchedule: (scheduleName: String, onSharingChanged: (Boolean) -> Unit) -> Unit = { _, _ -> },
     /** 导出到手环（Android 专有；未连接/不支持时返回 null） */
@@ -138,10 +141,10 @@ fun BackupAndMigrationScreen(
     // 恢复成功后的提醒重排是平台副作用，走注入
     val webDavManager = remember { WebDavManager { onHolidayDataChanged() } }
     val lastSyncTimeMs = webDavManager.lastSyncTime
-    val lastSyncSummary = remember(lastSyncTimeMs) {
+    val lastSyncSummary = remember(lastSyncTimeMs, AppLanguage.resolved) {
         // 格式只含数字与固定分隔符、不受 Locale 影响（:core 手写等价格式化）。
-        if (lastSyncTimeMs > 0L) "上次操作: ${localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute()}"
-        else "未操作"
+        if (lastSyncTimeMs > 0L) BackupStr.lastOperationAtN(localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute())
+        else BackupStr.noOperationYet()
     }
 
     var showImportConfirmDialog by remember { mutableStateOf(false) }
@@ -172,13 +175,13 @@ fun BackupAndMigrationScreen(
         scheduleFileController.openTextFile(listOf("application/json", "*/*")) { text ->
             if (text == null) return@openTextFile
             if (text.isBlank()) {
-                showToast("文件读取失败")
+                showToast(BackupStr.fileReadFailed())
                 return@openTextFile
             }
             val (success, message, data) = parseFullScheduleJson(text)
             if (success && data != null) {
                 pendingImportData = data
-                pendingImportScheduleName = (data["schedule_name"] as? String) ?: "导入的课表"
+                pendingImportScheduleName = (data["schedule_name"] as? String) ?: BackupStr.importedScheduleName()
                 showImportConfirmDialog = true
             } else {
                 showToast(message)
@@ -191,13 +194,13 @@ fun BackupAndMigrationScreen(
         scheduleFileController.openTextFile(listOf("text/calendar", "*/*")) { text ->
             if (text == null) return@openTextFile
             if (text.isBlank()) {
-                showToast("文件读取失败")
+                showToast(BackupStr.fileReadFailed())
                 return@openTextFile
             }
             val (success, message, data) = parseIcsFile(text)
             if (success && data != null) {
                 pendingImportData = data
-                pendingImportScheduleName = "ICS导入课表"
+                pendingImportScheduleName = BackupStr.icsImportedScheduleName()
                 showImportConfirmDialog = true
             } else {
                 showToast(message)
@@ -235,7 +238,7 @@ fun BackupAndMigrationScreen(
             if (mode == ScheduleDataManageMode.Import && !compactImport) {
                 item {
                     SmallTitle(
-                        text = "导入方式",
+                        text = BackupStr.importMethods(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -245,15 +248,15 @@ fun BackupAndMigrationScreen(
                             // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                             val aiImportRouter = LocalAppRouter.current
                             ArrowPreference(
-                                title = "AI 文本导入",
-                                summary = "粘贴由AI解析后的课程进行导入",
+                                title = BackupStr.aiTextImport(),
+                                summary = BackupStr.aiTextImportSummary(),
                                 onClick = {
                                     aiImportRouter.navigate(AppRoute.AiImport)
                                 }
                             )
                             ArrowPreference(
-                                title = "教务系统导入",
-                                summary = "从学校教务系统一键拉取课表",
+                                title = BackupStr.educationalImport(),
+                                summary = BackupStr.educationalImportSummary(),
                                 onClick = {
                                     // 走路由，不再 startActivity
                                     aiImportRouter.navigate(AppRoute.EducationalImport)
@@ -268,7 +271,7 @@ fun BackupAndMigrationScreen(
                 // pad：口令
                 item {
                     SmallTitle(
-                        text = "口令",
+                        text = BackupStr.shareCodeSection(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -276,8 +279,8 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "分享口令导入",
-                                summary = "输入好友分享的口令导入课表",
+                                title = BackupStr.shareCodeImport(),
+                                summary = BackupStr.shareCodeImportSummary(),
                                 holdDownState = showShareCodeDialog,
                                 onClick = {
                                     shareCodeInput = ""
@@ -285,8 +288,8 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "WakeUp课程表口令导入",
-                                summary = "输入WakeUp分享口令即可获取",
+                                title = BackupStr.wakeUpCodeImport(),
+                                summary = BackupStr.wakeUpCodeImportSummary(),
                                 holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.WakeUp,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.WakeUp
@@ -295,8 +298,8 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "星链课表分享码导入",
-                                summary = "输入星链课表分享码即可获取",
+                                title = BackupStr.starLinkCodeImport(),
+                                summary = BackupStr.starLinkCodeImportSummary(),
                                 holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.StarLink,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.StarLink
@@ -310,7 +313,7 @@ fun BackupAndMigrationScreen(
                 // pad：文件
                 item {
                     SmallTitle(
-                        text = "文件",
+                        text = BackupStr.fileSection(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -318,13 +321,13 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "JSON 文件导入",
-                                summary = "支持拾光课程表/Neixo课程表",
+                                title = BackupStr.jsonFileImport(),
+                                summary = BackupStr.jsonFileImportSummary(),
                                 onClick = { pickJsonFile() }
                             )
                             ArrowPreference(
-                                title = "ICS 文件导入",
-                                summary = "从日程文件导入课程",
+                                title = BackupStr.icsFileImport(),
+                                summary = BackupStr.icsFileImportSummary(),
                                 onClick = { pickIcsFile() }
                             )
                         }
@@ -333,7 +336,7 @@ fun BackupAndMigrationScreen(
             } else if (mode == ScheduleDataManageMode.Import) {
                 item {
                     SmallTitle(
-                        text = "文件与口令",
+                        text = BackupStr.fileAndCodeSection(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -341,8 +344,8 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "分享口令导入",
-                                summary = "输入好友分享的口令导入课表",
+                                title = BackupStr.shareCodeImport(),
+                                summary = BackupStr.shareCodeImportSummary(),
                                 holdDownState = showShareCodeDialog,
                                 onClick = {
                                     shareCodeInput = ""
@@ -350,8 +353,8 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "WakeUp课程表口令导入",
-                                summary = "输入WakeUp分享口令即可获取",
+                                title = BackupStr.wakeUpCodeImport(),
+                                summary = BackupStr.wakeUpCodeImportSummary(),
                                 holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.WakeUp,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.WakeUp
@@ -360,8 +363,8 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "星链课表分享码导入",
-                                summary = "输入星链课表分享码即可获取",
+                                title = BackupStr.starLinkCodeImport(),
+                                summary = BackupStr.starLinkCodeImportSummary(),
                                 holdDownState = showThirdPartyCodeDialog && thirdPartySource == ThirdPartyShareSource.StarLink,
                                 onClick = {
                                     thirdPartySource = ThirdPartyShareSource.StarLink
@@ -379,13 +382,13 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "JSON 文件导入",
-                                summary = "支持拾光课程表/Neixo课程表",
+                                title = BackupStr.jsonFileImport(),
+                                summary = BackupStr.jsonFileImportSummary(),
                                 onClick = { pickJsonFile() }
                             )
                             ArrowPreference(
-                                title = "ICS 文件导入",
-                                summary = "从日程文件导入课程",
+                                title = BackupStr.icsFileImport(),
+                                summary = BackupStr.icsFileImportSummary(),
                                 onClick = { pickIcsFile() }
                             )
                         }
@@ -396,7 +399,7 @@ fun BackupAndMigrationScreen(
             if (mode == ScheduleDataManageMode.Export) {
                 item {
                     SmallTitle(
-                        text = "导出课表",
+                        text = BackupStr.exportSchedule(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -405,7 +408,7 @@ fun BackupAndMigrationScreen(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             CardExpand(visible = scheduleNames.isNotEmpty()) {
                                 OverlayDropdownMenu(
-                                    title = "选择课表",
+                                    title = BackupStr.selectSchedule(),
                                     entries = listOf(
                                         DropdownEntry(
                                             items = scheduleNames.map { name ->
@@ -424,7 +427,7 @@ fun BackupAndMigrationScreen(
                             }
                             CardExpand(visible = scheduleNames.isEmpty()) {
                                 Text(
-                                    text = "暂无课表，请先创建或导入后再导出",
+                                    text = BackupStr.noScheduleForExport(),
                                     modifier = Modifier.padding(16.dp),
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                                 )
@@ -437,7 +440,7 @@ fun BackupAndMigrationScreen(
             if (mode == ScheduleDataManageMode.Export) {
                 item {
                     SmallTitle(
-                        text = "导出格式",
+                        text = BackupStr.exportFormat(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -445,8 +448,8 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "JSON 格式导出",
-                                summary = "导出课表为JSON格式",
+                                title = BackupStr.jsonExport(),
+                                summary = BackupStr.jsonExportSummary(),
                                 onClick = {
                                     val json = buildExportJson(selectedExportSchedule)
                                     if (json != null) {
@@ -459,8 +462,8 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "ICS 格式导出",
-                                summary = "导出课表为日程格式",
+                                title = BackupStr.icsExport(),
+                                summary = BackupStr.icsExportSummary(),
                                 onClick = {
                                     val ics = buildExportIcs(selectedExportSchedule)
                                     if (ics != null) {
@@ -473,12 +476,12 @@ fun BackupAndMigrationScreen(
                                 }
                             )
                             ArrowPreference(
-                                title = "口令分享导出",
-                                summary = "生成趣味口令与分享图片",
+                                title = BackupStr.shareCodeExport(),
+                                summary = BackupStr.shareCodeExportSummary(),
                                 holdDownState = showShareExportConfirmDialog,
                                 onClick = {
                                     if (selectedExportSchedule.isBlank()) {
-                                        showToast("请先选择要分享的课表")
+                                        showToast(BackupStr.selectScheduleToShareFirst())
                                     } else if (!isSharingExport) {
                                         showShareExportConfirmDialog = true
                                     }
@@ -494,15 +497,15 @@ fun BackupAndMigrationScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ArrowPreference(
-                                title = "导出到手环",
-                                summary = "打包JSON并推送到手表/手环",
+                                title = BackupStr.exportToWearable(),
+                                summary = BackupStr.exportToWearableSummary(),
                                 onClick = {
                                     scope.launch {
                                         val path = onExportToWearable(selectedExportSchedule)
                                         if (path != null) {
-                                            showToast("已导出并推送手环\n$path", longDuration = true)
+                                            showToast(BackupStr.wearableExportSuccessN(path), longDuration = true)
                                         } else {
-                                            showToast("导出失败，请确认手环已连接")
+                                            showToast(BackupStr.wearableExportFailed())
                                         }
                                     }
                                 }
@@ -515,7 +518,7 @@ fun BackupAndMigrationScreen(
             if (mode == ScheduleDataManageMode.Backup) {
                 item {
                     SmallTitle(
-                        text = "备份",
+                        text = BackupStr.backupSection(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -525,15 +528,15 @@ fun BackupAndMigrationScreen(
                             // LocalAppRouter.current 是 @Composable 调用，必须在组合层取
                             val appRouter = LocalAppRouter.current
                             ArrowPreference(
-                                title = "本地备份",
-                                summary = "备份课表数据到设备存储",
+                                title = BackupStr.localBackup(),
+                                summary = BackupStr.localBackupSummary(),
                                 onClick = {
                                     appRouter.navigate(AppRoute.LocalBackup)
                                 }
                             )
                             ArrowPreference(
-                                title = "WebDAV 云备份",
-                                summary = if (webDavManager.isConfigured()) lastSyncSummary else "配置WebDAV后可云备份/恢复",
+                                title = BackupStr.webDavBackup(),
+                                summary = if (webDavManager.isConfigured()) lastSyncSummary else BackupStr.webDavBackupSummary(),
                                 onClick = {
                                     appRouter.navigate(AppRoute.WebDavSettings)
                                 }
@@ -547,8 +550,8 @@ fun BackupAndMigrationScreen(
 
     if (showImportConfirmDialog && pendingImportData != null) {
         OverlayDialog(
-            title = "导入课表",
-            summary = "是否导入课表「$pendingImportScheduleName」？\n确定导入将创建一个新的课表",
+            title = BackupStr.importSchedule(),
+            summary = BackupStr.importScheduleConfirmSummaryN(pendingImportScheduleName),
             show = true,
             liquidGlassBackdrop = liquidGlassBackdrop,
             onDismissRequest = {
@@ -564,7 +567,7 @@ fun BackupAndMigrationScreen(
                 NativeMiuixTextField(
                     value = pendingImportScheduleName,
                     onValueChange = { pendingImportScheduleName = it },
-                    label = "课表名称",
+                    label = BackupStr.scheduleNameLabel(),
                     modifier = Modifier.fillMaxWidth(),
                     requestFocus = showImportConfirmDialog
                 )
@@ -575,7 +578,7 @@ fun BackupAndMigrationScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TextButton(
-                        text = "取消",
+                        text = CommonStr.cancel(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showImportConfirmDialog = false
@@ -585,7 +588,7 @@ fun BackupAndMigrationScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(
-                        text = "确定导入",
+                        text = BackupStr.confirmImport(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             if (pendingImportScheduleName.isNotBlank() && pendingImportData != null) {
@@ -612,8 +615,8 @@ fun BackupAndMigrationScreen(
 
     // 始终挂载、靠 show 驱动：避免 if 卸载导致关闭无退出动画
     OverlayDialog(
-        title = "口令分享导出",
-        summary = "将课表「$selectedExportSchedule」上传生成分享口令？\n口令 30 分钟内有效",
+        title = BackupStr.shareCodeExport(),
+        summary = BackupStr.shareExportConfirmSummaryN(selectedExportSchedule),
         show = showShareExportConfirmDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -629,7 +632,7 @@ fun BackupAndMigrationScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             TextButton(
-                text = "取消",
+                text = CommonStr.cancel(),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                     showShareExportConfirmDialog = false
@@ -637,7 +640,7 @@ fun BackupAndMigrationScreen(
                 modifier = Modifier.weight(1f)
             )
             TextButton(
-                text = if (isSharingExport) "分享中…" else "确认分享",
+                text = if (isSharingExport) BackupStr.sharing() else BackupStr.confirmShare(),
                 onClick = {
                     if (isSharingExport) return@TextButton
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -653,8 +656,8 @@ fun BackupAndMigrationScreen(
     }
 
     OverlayDialog(
-        title = "口令导入",
-        summary = "输入好友分享的口令，30 分钟内有效",
+        title = BackupStr.shareCodeImportTitle(),
+        summary = BackupStr.shareCodeDialogSummary(),
         show = showShareCodeDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -671,7 +674,7 @@ fun BackupAndMigrationScreen(
             NativeMiuixTextField(
                 value = shareCodeInput,
                 onValueChange = { shareCodeInput = it },
-                label = "分享口令",
+                label = BackupStr.shareCodeLabel(),
                 modifier = Modifier.fillMaxWidth(),
                 requestFocus = showShareCodeDialog
             )
@@ -682,7 +685,7 @@ fun BackupAndMigrationScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         if (!isImportingShareCode) {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -693,12 +696,12 @@ fun BackupAndMigrationScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = if (isImportingShareCode) "导入中…" else "获取课表",
+                    text = if (isImportingShareCode) BackupStr.importing() else BackupStr.fetchSchedule(),
                     onClick = {
                         if (isImportingShareCode) return@TextButton
                         val code = shareCodeInput.trim()
                         if (code.isBlank()) {
-                            showToast("请输入口令")
+                            showToast(BackupStr.enterShareCode())
                             return@TextButton
                         }
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -714,7 +717,7 @@ fun BackupAndMigrationScreen(
                                         showImportConfirmDialog = true
                                     },
                                     onFailure = { e ->
-                                        showToast(e.message ?: "口令不存在或已过期")
+                                        showToast(e.message ?: BackupStr.shareCodeNotFound())
                                     }
                                 )
                             } finally {
@@ -732,7 +735,7 @@ fun BackupAndMigrationScreen(
     // WakeUp / 星链口令输入（始终挂载，靠 show 驱动退出动画）
     OverlayDialog(
         title = thirdPartySource.displayName,
-        summary = "输入${thirdPartySource.inputLabel}即可导入课表",
+        summary = BackupStr.thirdPartyCodeSummaryN(thirdPartySource.inputLabel),
         show = showThirdPartyCodeDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -760,7 +763,7 @@ fun BackupAndMigrationScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         if (!isImportingThirdParty) {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -771,13 +774,13 @@ fun BackupAndMigrationScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = if (isImportingThirdParty) "导入中…" else "获取课表",
+                    text = if (isImportingThirdParty) BackupStr.importing() else BackupStr.fetchSchedule(),
                     onClick = {
                         if (isImportingThirdParty) return@TextButton
                         val source = thirdPartySource
                         val code = thirdPartyCodeInput.trim()
                         if (code.isBlank()) {
-                            showToast("请输入${source.inputLabel}")
+                            showToast(BackupStr.enterInputN(source.inputLabel))
                             return@TextButton
                         }
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -790,13 +793,13 @@ fun BackupAndMigrationScreen(
                                         thirdPartyCodeInput = ""
                                         pendingThirdPartyPayload = payload
                                         pendingImportScheduleName = when (payload.source) {
-                                            ThirdPartyShareSource.WakeUp -> "WakeUp导入课表"
-                                            ThirdPartyShareSource.StarLink -> "星链导入课表"
+                                            ThirdPartyShareSource.WakeUp -> BackupStr.wakeUpImportedName()
+                                            ThirdPartyShareSource.StarLink -> BackupStr.starLinkImportedName()
                                         }
                                         showThirdPartyConfirmDialog = true
                                     },
                                     onFailure = { e ->
-                                        showToast(e.message ?: "口令无效或导入失败", longDuration = true)
+                                        showToast(e.message ?: BackupStr.thirdPartyCodeInvalid(), longDuration = true)
                                     }
                                 )
                             } finally {
@@ -815,11 +818,11 @@ fun BackupAndMigrationScreen(
     val thirdPartyConfirmSourceName = pendingThirdPartyPayload?.source?.displayName.orEmpty()
     val thirdPartyConfirmCourseCount = pendingThirdPartyPayload?.courseCount ?: 0
     OverlayDialog(
-        title = "导入课表",
+        title = BackupStr.importSchedule(),
         summary = if (thirdPartyConfirmSourceName.isEmpty()) {
-            "确定导入将创建一个新的课表"
+            BackupStr.importCreatesNewSchedule()
         } else {
-            "是否导入「$thirdPartyConfirmSourceName」课表？\n共 $thirdPartyConfirmCourseCount 门课程，将创建新课表"
+            BackupStr.thirdPartyConfirmSummaryN(thirdPartyConfirmSourceName, thirdPartyConfirmCourseCount)
         },
         show = showThirdPartyConfirmDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -836,7 +839,7 @@ fun BackupAndMigrationScreen(
             NativeMiuixTextField(
                 value = pendingImportScheduleName,
                 onValueChange = { pendingImportScheduleName = it },
-                label = "课表名称",
+                label = BackupStr.scheduleNameLabel(),
                 modifier = Modifier.fillMaxWidth(),
                 requestFocus = showThirdPartyConfirmDialog
             )
@@ -847,7 +850,7 @@ fun BackupAndMigrationScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         // 只改 show，避免退出动画期间文案被清空
@@ -856,7 +859,7 @@ fun BackupAndMigrationScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定导入",
+                    text = BackupStr.confirmImport(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         val payload = pendingThirdPartyPayload
@@ -885,7 +888,7 @@ private fun buildExportJson(scheduleName: String): String? {
     val repository = CourseRepository()
     val data = buildShareScheduleMap(repository, scheduleName)
     if (data == null) {
-        showToast("「$scheduleName」课表为空，无法导出")
+        showToast(BackupStr.exportEmptyScheduleN(scheduleName))
         return null
     }
     return encodeBackupJson(data)
@@ -968,7 +971,7 @@ private fun buildExportIcs(scheduleName: String): String? {
     val repository = CourseRepository()
     val courses = repository.getCoursesForSchedule(scheduleName)
     if (courses.isEmpty()) {
-        showToast("「$scheduleName」课表为空，无法导出")
+        showToast(BackupStr.exportEmptyScheduleN(scheduleName))
         return null
     }
 
@@ -1031,7 +1034,7 @@ private fun buildExportIcs(scheduleName: String): String? {
                     ).joinToString(" ")
                     appendLine("LOCATION:$location")
                 }
-                appendLine("DESCRIPTION:第${week}周")
+                appendLine("DESCRIPTION:${CommonStr.weekN(week)}")
                 appendLine("END:VEVENT")
             }
         }

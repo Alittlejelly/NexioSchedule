@@ -39,6 +39,8 @@ import com.haooz.chedule.data.coursePeriodOngoing
 import com.haooz.chedule.data.millisBetween
 import com.haooz.chedule.data.nowLocalTime
 import com.haooz.chedule.data.parseHourMinute
+import com.haooz.chedule.i18n.AssistantStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.ic_widget_location
 import com.haooz.chedule.uishared.resources.icon_cloudy
@@ -171,14 +173,15 @@ private fun formatRemainingUntil(
     isCountdownToStart: Boolean
 ): String {
     val remainMillis = millisBetween(from, to, allowRollover = true)
-    if (remainMillis < 0L) return if (isCountdownToStart) "已开始" else "已结束"
+    if (remainMillis < 0L) return if (isCountdownToStart) AssistantStr.alreadyStarted() else AssistantStr.alreadyEnded()
     if (remainMillis < 60_000L) {
         val seconds = ((remainMillis + 999L) / 1000L).toInt().coerceIn(1, 60)
-        return if (isCountdownToStart) "$seconds 秒后" else "还剩 $seconds 秒"
+        return if (isCountdownToStart) AssistantStr.secondsToStart(seconds) else AssistantStr.secondsLeft(seconds)
     }
     val minutes = ceilMinutesUntil(from, to)
-    return if (isCountdownToStart) formatCountdownMinutes(minutes, trailing = "后")
-    else "还剩 ${formatCountdownMinutes(minutes)}"
+    val duration = formatCountdownMinutes(minutes)
+    return if (isCountdownToStart) AssistantStr.durationToStart(duration)
+    else AssistantStr.durationLeft(duration)
 }
 private data class CourseTimeRange(
     val course: Course,
@@ -206,15 +209,14 @@ private fun ceilMinutesUntil(from: LocalTime, to: LocalTime): Int {
     if (remain <= 0L) return 0
     return ((remain + 59_999L) / 60_000L).toInt()
 }
-private fun formatCountdownMinutes(minutes: Int, trailing: String = ""): String {
+private fun formatCountdownMinutes(minutes: Int): String {
     val hours = minutes / 60
     val mins = minutes % 60
-    val body = when {
-        hours > 0 && mins > 0 -> "${hours}小时${mins}分钟"
-        hours > 0 -> "${hours}小时"
-        else -> "${minutes} 分钟"
+    return when {
+        hours > 0 && mins > 0 -> AssistantStr.durationHourMinute(hours, mins)
+        hours > 0 -> AssistantStr.durationHour(hours)
+        else -> AssistantStr.durationMinute(minutes)
     }
-    return body + trailing
 }
 
 // 稳定轮换：同一钟点+时间桶内固定一条，避免每秒乱跳
@@ -235,16 +237,16 @@ private fun generateSmartTip(
     val tomorrowRanges = buildCourseTimeRanges(tomorrowCourses, sectionTimes)
 
     fun roomOf(course: Course): String =
-        course.classroom.ifBlank { "教室待定" }
+        course.classroom.ifBlank { AssistantStr.roomTbd() }
 
     fun tomorrowNote(): String {
         val hour = now.hour
         if (hour < 20) return ""
         val n = tomorrowCourses.size
-        if (n == 0) return " · 明天没课，可以睡到自然醒"
+        if (n == 0) return AssistantStr.tomorrowFree()
         val first = tomorrowRanges.firstOrNull()?.course
-        val firstLine = if (first != null) "${first.name} 开头" else "第一节待定"
-        return " · 明天 $n 节，$firstLine"
+        val firstLine = if (first != null) AssistantStr.tomorrowStartsWith(first.name) else AssistantStr.tomorrowFirstTbd()
+        return AssistantStr.tomorrowCount(n, firstLine)
     }
 
     if (ranges.isEmpty()) {
@@ -252,9 +254,9 @@ private fun generateSmartTip(
         if (courses.isNotEmpty()) {
             return pickTip(
                 listOf(
-                    "今天有 ${courses.size} 节课，但节次时间没填全，先去课表补齐再排日程",
-                    "课表里有 ${courses.size} 节，时间字段是空的，补完才好倒计时",
-                    "有课，没点——节次时间残缺，去课表修一下"
+                    AssistantStr.timesMissingFillFirst(courses.size),
+                    AssistantStr.timesMissingNoCountdown(courses.size),
+                    AssistantStr.timesMissingFixIt(courses.size)
                 ),
                 seed = now.hour
             )
@@ -263,36 +265,36 @@ private fun generateSmartTip(
         val note = tomorrowNote()
         val pool = when (hour) {
             in 5..8 -> listOf(
-                "今天没课，闹钟可以往后挪一格",
-                "没课的早晨，床比计划表靠谱",
-                "今天空着，多睡可以，睡到中午就是另一回事了"
+                AssistantStr.freeMorningAlarm(),
+                AssistantStr.freeMorningBed(),
+                AssistantStr.freeMorningSleepIn()
             )
             in 9..11 -> listOf(
-                "今天没课，上午自己排，别一睁眼就交给了床",
-                "上午空档，图书馆有座，你有借口",
-                "没课的上午很贵，刷完就没了"
+                AssistantStr.freeAmPlanIt(),
+                AssistantStr.freeAmLibrary(),
+                AssistantStr.freeAmPrecious()
             )
             in 12..13 -> listOf(
-                "下午也没课，吃饭按点，别用零食糊弄",
-                "中午自由，胃要照顾好，下午才站得住",
-                "没课的饭点，是你今天最实在的自由"
+                AssistantStr.freeNoonMeals(),
+                AssistantStr.freeNoonStomach(),
+                AssistantStr.freeNoonFreedom()
             )
             in 14..17 -> listOf(
-                "今天没课，做点正事，也别把自己排崩",
-                "下午阳光很好，适合出门，也适合焦虑——你选",
-                "空着的下午，进度条容易一直是 0%"
+                AssistantStr.freePmRealWork(),
+                AssistantStr.freePmSunshine(),
+                AssistantStr.freePmProgressBar()
             )
             in 18..21 -> listOf(
-                "今天没课，适当放空，别熬到明天一起还债",
-                "晚上自由，手机会替你安排——你要不要抢回来",
-                "没课的夜更容易晚睡，自己收着点"
+                AssistantStr.freeEveUnwind(),
+                AssistantStr.freeEvePhone(),
+                AssistantStr.freeEveStayUp()
             )
             in 22..23 -> listOf(
-                "今天没课，早点收，夜里的时间不增值",
-                "该睡了，自由日的尽头通常是熬夜",
-                "收工吧，明天有没有课都得起床面对自己"
+                AssistantStr.freeNightWrapUp(),
+                AssistantStr.freeNightSleep(),
+                AssistantStr.freeNightFaceYourself()
             )
-            else -> listOf("今天没有课")
+            else -> listOf(AssistantStr.noClassToday())
         }
         return pickTip(pool, seed = hour) + note
     }
@@ -319,38 +321,38 @@ private fun generateSmartTip(
             } else null
             val gap = nextAfter?.let { ceilMinutesUntil(ongoing.end, it.start) }
             val gapPart = when {
-                gap != null && gap <= 3 -> " · 连堂只歇 $gap 分钟，东西别收太彻底"
-                gap != null && gap <= 10 -> " · 下课后仅 $gap 分钟，补给要快"
-                gap != null && gap <= 15 -> " · 下课后还有 $gap 分钟，够喘口气"
-                gap != null && gap <= 30 -> " · 下课后有 $gap 分钟，可离开教室"
+                gap != null && gap <= 3 -> AssistantStr.gapBackToBack(gap)
+                gap != null && gap <= 10 -> AssistantStr.gapQuickRefuel(gap)
+                gap != null && gap <= 15 -> AssistantStr.gapCatchBreath(gap)
+                gap != null && gap <= 30 -> AssistantStr.gapLeaveRoom(gap)
                 else -> ""
             }
             val remaining = ceilMinutesUntil(now, ongoing.end)
             val pool = when {
                 remaining <= 1 -> listOf(
-                    "马上收尾",
-                    "到点边缘，准备收势",
-                    "最后几十秒，别提前弹射"
+                    AssistantStr.endWrapUpNow(),
+                    AssistantStr.endAtTheBell(),
+                    AssistantStr.endFinalSeconds()
                 )
                 remaining <= 5 -> listOf(
-                    "还剩 $remaining 分钟，准备收势",
-                    "还剩 $remaining 分钟，书包可以先热身",
-                    "还剩 $remaining 分钟，再撑一下就到"
+                    AssistantStr.endMinWindDown(remaining),
+                    AssistantStr.endMinBackpack(remaining),
+                    AssistantStr.endMinHangIn(remaining)
                 )
                 remaining <= 15 -> listOf(
-                    "还剩 $remaining 分钟，保持节奏",
-                    "还剩 $remaining 分钟，后半段别掉线",
-                    "还剩 $remaining 分钟，重点一般在这截"
+                    AssistantStr.ongoingKeepRhythm(remaining),
+                    AssistantStr.ongoingSecondHalf(remaining),
+                    AssistantStr.ongoingKeyPart(remaining)
                 )
                 remaining <= 45 -> listOf(
-                    "还剩 $remaining 分钟",
-                    "还剩 $remaining 分钟，按自己的步子走",
-                    "还剩 $remaining 分钟，别提前进入下课模式"
+                    AssistantStr.ongoingMinutesLeft(remaining),
+                    AssistantStr.ongoingOwnPace(remaining),
+                    AssistantStr.ongoingNoEarlyDone(remaining)
                 )
                 else -> listOf(
-                    "还剩 $remaining 分钟",
-                    "还剩 $remaining 分钟，刚上不久，稳住",
-                    "还剩 $remaining 分钟，后面还长，别透支注意力"
+                    AssistantStr.ongoingMinutesLeft(remaining),
+                    AssistantStr.ongoingJustStarted(remaining),
+                    AssistantStr.ongoingSaveFocus(remaining)
                 )
             }
             pickTip(pool, seed = now.hour * 31 + remaining / 5) + gapPart
@@ -363,34 +365,34 @@ private fun generateSmartTip(
             val name = next.course.name
             val pool = when {
                 remainToNext <= 1 -> listOf(
-                    "马上上课，座位先落定",
-                    "铃要响了，回座",
-                    "零缓冲，直接进教室"
+                    AssistantStr.breakGrabSeat(),
+                    AssistantStr.breakBellAboutToRing(),
+                    AssistantStr.breakZeroBuffer()
                 )
                 remainToNext <= 5 -> listOf(
-                    "还剩 $remainToNext 分钟，该回座位了 · $room",
-                    "还剩 $remainToNext 分钟 · $room，别压点",
-                    "课间进入收尾 · $room，起身吧"
+                    AssistantStr.breakHeadBack(remainToNext, room),
+                    AssistantStr.breakDontCutClose(remainToNext, room),
+                    AssistantStr.breakOnYourFeet(room)
                 )
                 remainToNext <= 10 -> listOf(
-                    "课间还剩 $remainToNext 分钟，别压点 · $room",
-                    "还剩 $remainToNext 分钟 · $room，$name 在等",
-                    "课间还剩 $remainToNext 分钟，路线先想好 · $room"
+                    AssistantStr.breakWatchTheClock(remainToNext, room),
+                    AssistantStr.breakClassWaiting(remainToNext, room, name),
+                    AssistantStr.breakPlanRoute(remainToNext, room)
                 )
                 remainToNext <= 20 -> listOf(
-                    "课间还剩 $remainToNext 分钟，下节去 $room",
-                    "休息还剩 $remainToNext 分钟 · $name · $room",
-                    "还剩 $remainToNext 分钟，够缓一下，别开新局"
+                    AssistantStr.breakNextRoom(remainToNext, room),
+                    AssistantStr.breakChill(remainToNext, name, room),
+                    AssistantStr.breakNoNewStarts(remainToNext)
                 )
                 remainToNext <= 45 -> listOf(
-                    "休息还剩 $remainToNext 分钟，下节 $room，别走远",
-                    "长课间还剩 $remainToNext 分钟 · $name",
-                    "还剩 $remainToNext 分钟，可以回血，别掉段"
+                    AssistantStr.breakDontWander(remainToNext, room),
+                    AssistantStr.breakLongBreak(remainToNext, name),
+                    AssistantStr.breakRecover(remainToNext)
                 )
                 else -> listOf(
-                    "距下节还有 $remainToNext 分钟 · $room，按自己节奏来",
-                    "大空档还剩 $remainToNext 分钟 · $name · $room",
-                    "还有 $remainToNext 分钟才上课，时间归你安排 · $room"
+                    AssistantStr.breakOwnRhythm(remainToNext, room),
+                    AssistantStr.breakBigGap(remainToNext, name, room),
+                    AssistantStr.breakTimeYours(remainToNext, room)
                 )
             }
             pickTip(pool, seed = now.hour * 31 + remainToNext / 5)
@@ -400,14 +402,14 @@ private fun generateSmartTip(
         prev != null && next == null -> {
             val pool = when {
                 completedCount >= totalCount -> listOf(
-                    "今天 $totalCount 节已收官，知识点自己认领，没认领的算漏网",
-                    "今日 $totalCount 节通关，作业群才是下一关",
-                    "今天 $totalCount 节结束，人可以放，进度自己盯"
+                    AssistantStr.doneClaimKnowledge(totalCount),
+                    AssistantStr.doneNextLevel(totalCount),
+                    AssistantStr.doneOffClock(totalCount)
                 )
                 else -> listOf(
-                    "已上完 $completedCount/$totalCount 节，后面的按原计划走",
-                    "进度 $completedCount/$totalCount，别在收尾段掉链子",
-                    "还剩 ${totalCount - completedCount} 节，稳着走完"
+                    AssistantStr.doneOnPlan(completedCount, totalCount),
+                    AssistantStr.doneProgress(completedCount, totalCount),
+                    AssistantStr.doneSteadyFinish(totalCount - completedCount)
                 )
             }
             pickTip(pool, seed = now.hour) + tomorrowNote()
@@ -421,65 +423,65 @@ private fun generateSmartTip(
             val hour = now.hour
             val dayPlanPool = when {
                 totalCount >= 5 -> listOf(
-                    "今天共 $totalCount 节，强度不低",
-                    "满课向：$totalCount 节，分配好体力",
-                    "今日 $totalCount 节，别在上午就把电用完"
+                    AssistantStr.planHeavy(totalCount),
+                    AssistantStr.planHeavyRation(totalCount),
+                    AssistantStr.planHeavyBattery(totalCount)
                 )
                 totalCount >= 3 -> listOf(
-                    "今天 $totalCount 节，正常强度",
-                    "今日 $totalCount 节，节奏正常",
-                    "共 $totalCount 节，按课表走就行"
+                    AssistantStr.planNormal(totalCount),
+                    AssistantStr.planNormalPace(totalCount),
+                    AssistantStr.planNormalFollow(totalCount)
                 )
                 else -> listOf(
-                    "今天就 $totalCount 节，别太飘",
-                    "课不多，$totalCount 节，省着点浪费",
-                    "轻量日：$totalCount 节，自由也别全刷掉"
+                    AssistantStr.planFewDontFloat(totalCount),
+                    AssistantStr.planFewSpendWisely(totalCount),
+                    AssistantStr.planLightDay(totalCount)
                 )
             }
             val dayPlan = pickTip(dayPlanPool, seed = hour)
             val pool = when {
                 minutes > 180 -> listOf(
-                    "$dayPlan · 第一节还有 ${minutes / 60} 小时以上",
-                    "$dayPlan · 离上课还早，先按自己的节奏来",
-                    "$dayPlan · 还有大把时间，别一开局就瘫"
+                    AssistantStr.firstFarHours(dayPlan, minutes / 60),
+                    AssistantStr.firstFarOwnRhythm(dayPlan),
+                    AssistantStr.firstFarDontCrash(dayPlan)
                 )
                 minutes > 90 -> listOf(
-                    "$dayPlan · 还有 $minutes 分钟，$room",
-                    "$dayPlan · 距 $name 还有 $minutes 分钟",
-                    "$dayPlan · 还有 $minutes 分钟，不用急，也别完全躺"
+                    AssistantStr.first90Room(dayPlan, minutes, room),
+                    AssistantStr.first90Until(dayPlan, name, minutes),
+                    AssistantStr.first90NoRush(dayPlan, minutes)
                 )
                 minutes > 30 -> listOf(
-                    "$dayPlan · 还有 $minutes 分钟，可以准备了 · $room",
-                    "还有 $minutes 分钟 · $name · $room，东西可以理了",
-                    "$dayPlan · 还有 $minutes 分钟，预热一下状态"
+                    AssistantStr.first30GetReady(dayPlan, minutes, room),
+                    AssistantStr.first30PackUp(minutes, name, room),
+                    AssistantStr.first30WarmUp(dayPlan, minutes)
                 )
                 minutes > 15 -> listOf(
-                    "还有 $minutes 分钟，该动身了 · $room",
-                    "还有 $minutes 分钟 · $name，路线可以定了",
-                    "还剩 $minutes 分钟 · $room，别把缓冲用光"
+                    AssistantStr.first15HeadOut(minutes, room),
+                    AssistantStr.first15RouteSet(minutes, name),
+                    AssistantStr.first15Buffer(minutes, room)
                 )
                 minutes > 5 -> listOf(
-                    "还有 $minutes 分钟 · $room，路上别磨",
-                    "还剩 $minutes 分钟 · $name，匀速过去就行",
-                    "还有 $minutes 分钟 · $room，现在走刚好"
+                    AssistantStr.first5NoDawdle(minutes, room),
+                    AssistantStr.first5SteadyWalk(minutes, name),
+                    AssistantStr.first5LeaveNow(minutes, room)
                 )
                 minutes >= 1 -> listOf(
-                    "还有 $minutes 分钟 · $room，保持匀速",
-                    "还剩 $minutes 分钟 · $room，别冲刺也别散步",
-                    "还有 $minutes 分钟，$name，到了先落座"
+                    AssistantStr.first1KeepPace(minutes, room),
+                    AssistantStr.first1NoSprint(minutes, room),
+                    AssistantStr.first1TakeSeat(minutes, name)
                 )
                 else -> {
                     val periodHint = when {
                         afternoonCount > 0 && hour in 12..13 ->
-                            " · 下午还有 $afternoonCount 节"
+                            AssistantStr.hintAfternoonMore(afternoonCount)
                         eveningCount > 0 && hour in 14..17 ->
-                            " · 晚上还有 $eveningCount 节"
+                            AssistantStr.hintEveningMore(eveningCount)
                         else -> ""
                     }
                     listOf(
-                        "快进教室 · $room$periodHint",
-                        "铃在响了 · $room$periodHint",
-                        "直接进教室 · $name$periodHint"
+                        AssistantStr.rushHurryIn(room) + periodHint,
+                        AssistantStr.rushBellRinging(room) + periodHint,
+                        AssistantStr.rushStraightIn(name) + periodHint
                     )
                 }
             }
@@ -488,9 +490,9 @@ private fun generateSmartTip(
 
         else -> pickTip(
             listOf(
-                "今天有 $totalCount 节课，按课表走就行",
-                "今日共 $totalCount 节，日程已排好",
-                "课表就绪：$totalCount 节"
+                AssistantStr.readyFollowSchedule(totalCount),
+                AssistantStr.readyDayPlanned(totalCount),
+                AssistantStr.readyScheduleSet(totalCount)
             ),
             seed = now.hour
         )
@@ -564,16 +566,16 @@ fun TodayAssistantCard(
             val nextCourse = courseStatus.nextCourse
 
             val label = when {
-                currentCourse != null -> "正在上课"
-                nextCourse != null -> "下节课"
+                currentCourse != null -> AssistantStr.inClass()
+                nextCourse != null -> AssistantStr.nextClass()
                 courses.isEmpty() -> ""
                 else -> ""
             }
             val name = when {
                 currentCourse != null -> currentCourse.name
                 nextCourse != null -> nextCourse.name
-                courses.isEmpty() -> "今天没有课程，好好休息吧！"
-                else -> "当前没有课程"
+                courses.isEmpty() -> AssistantStr.noCourseTodayRest()
+                else -> AssistantStr.noCourseNow()
             }
 
             Row(
@@ -679,7 +681,7 @@ fun TodayAssistantCard(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (hasLocationPermission) "无法获取位置信息·点击重试" else "需要定位权限·点击授权",
+                                    text = if (hasLocationPermission) AssistantStr.locationFailedTapRetry() else AssistantStr.locationPermissionNeeded(),
                                     style = MiuixTheme.textStyles.body2,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                     modifier = Modifier.clickable { onRequestLocation() }
@@ -698,7 +700,7 @@ fun TodayAssistantCard(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "天气服务异常·点击重试",
+                                    text = AssistantStr.weatherServiceTapRetry(),
                                     style = MiuixTheme.textStyles.body2,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                     modifier = Modifier.clickable { onRequestLocation() }
@@ -712,7 +714,7 @@ fun TodayAssistantCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "加载中...",
+                            text = CommonStr.loading(),
                             style = MiuixTheme.textStyles.body2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )

@@ -2,14 +2,29 @@ package com.haooz.chedule.ui.utils
 
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.i18n.MiscStr
 
 // 第三方 App 课表导入（WakeUp / 星链）的数据契约。
 // 抓取器在宿主侧，由页面注入（见 BackupAndMigrationScreen 的 onImportThirdParty）。
 
 /** 第三方课表分享口令来源（WakeUp / 星链） */
-enum class ThirdPartyShareSource(val displayName: String, val inputLabel: String) {
-    WakeUp("WakeUp课程表口令导入", "分享口令"),
-    StarLink("星链课表分享码导入", "分享码"),
+enum class ThirdPartyShareSource {
+    WakeUp,
+    StarLink;
+
+    /** 展示名（导入入口 / 确认弹窗标题）；枚举常量只初始化一次，改为按调用时刻语言取值 */
+    val displayName: String
+        get() = when (this) {
+            WakeUp -> MiscStr.wakeUpImportTitle()
+            StarLink -> MiscStr.starLinkImportTitle()
+        }
+
+    /** 口令输入框标签 */
+    val inputLabel: String
+        get() = when (this) {
+            WakeUp -> MiscStr.wakeUpInputLabel()
+            StarLink -> MiscStr.starLinkInputLabel()
+        }
 }
 
 /** 第三方口令解析结果：课程 + 可选时间段/学期配置 */

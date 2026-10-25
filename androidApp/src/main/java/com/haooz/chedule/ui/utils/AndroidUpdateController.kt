@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.utils
 import android.content.Context
 import com.haooz.chedule.data.UpdateController
 import com.haooz.chedule.data.UpdateRelease
+import com.haooz.chedule.i18n.CommonStr
 import java.io.File
 
 /**
@@ -23,9 +24,9 @@ class AndroidUpdateController(private val context: Context) : UpdateController {
     override val currentVersion: String
         get() = try {
             // 原页面在 remember 里现取：packageManager 版本号取不到时显示「未知」
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "未知"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: CommonStr.unknown()
         } catch (_: Exception) {
-            "未知"
+            CommonStr.unknown()
         }
 
     override fun checkForUpdate(source: String, channel: String): Pair<Boolean, UpdateRelease?> {

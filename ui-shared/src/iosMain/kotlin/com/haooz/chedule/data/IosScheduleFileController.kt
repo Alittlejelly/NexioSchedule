@@ -2,6 +2,7 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.utils.IosUiHost
 import platform.Foundation.NSData
 import platform.Foundation.NSTemporaryDirectory
@@ -69,7 +70,7 @@ class IosScheduleFileController : ScheduleFileController {
         // 走 ByteArray → NSData（同 NsFileAppFile.writeBytes），不碰 NSString 编码转换
         val written = content.encodeToByteArray().toNSData().writeToFile(tmpPath, atomically = true)
         if (!written) {
-            showToast("导出失败：无法写入临时文件")
+            showToast(L("导出失败：无法写入临时文件", "Export failed: cannot write the temporary file")())
             return
         }
         val url = NSURL.fileURLWithPath(tmpPath)
@@ -87,7 +88,7 @@ class IosScheduleFileController : ScheduleFileController {
     private fun present(picker: UIDocumentPickerViewController) {
         val host = IosUiHost.topViewController()
         if (host == null) {
-            showToast("导入失败: 无法打开文件选择器")
+            showToast(L("导入失败：无法打开文件选择器", "Import failed: cannot open the file picker")())
             openDelegate = null
             exportDelegate = null
             return
@@ -105,12 +106,12 @@ class IosScheduleFileController : ScheduleFileController {
         try {
             val data = NSData.dataWithContentsOfURL(url)
             if (data == null) {
-                showToast("导入失败: 无法读取文件")
+                showToast(L("导入失败：无法读取文件", "Import failed: cannot read the file")())
                 return null
             }
             return data.toByteArray().decodeToString()
         } catch (e: Exception) {
-            showToast("导入失败: ${e.message}")
+            showToast(L("导入失败：%s", "Import failed: %s")(e.message ?: ""))
             return null
         } finally {
             if (scoped) url.stopAccessingSecurityScopedResource()

@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.i18n.L
+import com.haooz.chedule.i18n.L10n
 import com.haooz.chedule.ui.utils.screenWidthDp
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -43,23 +45,36 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 private const val LICENSE_ASSET = "LICENSE"
 
+private val LICENSE_HEADER_TITLE = L("Nexio 课程表 开源协议", "Nexio Schedule Open-Source License")
+private val LICENSE_HEADER_SUBTITLE = L(
+    "GNU Affero General Public License v3.0（AGPL-3.0）\n本项目源代码完全公开，欢迎阅读、学习与二次开发。",
+    "GNU Affero General Public License v3.0 (AGPL-3.0)\nThe source code is fully public — read, study, and build on it."
+)
+private val LICENSE_FOOTER = L(
+    "AGPL-3.0 官方原文：gnu.org/licenses/agpl-3.0.html\nNexio 课程表",
+    "AGPL-3.0 official text: gnu.org/licenses/agpl-3.0.html\nNexio Schedule"
+)
+
 /**
  * 条款正文的一个块。与隐私政策页共用这套模型。
  */
 sealed interface PolicyBlock {
-    data class Para(val text: String) : PolicyBlock
+    data class Para(val text: L10n) : PolicyBlock
     /** 小节标题（加粗） */
-    data class Sub(val text: String) : PolicyBlock
-    data class Bullets(val items: List<String>) : PolicyBlock
-    data class Note(val text: String) : PolicyBlock
-    data class Table(val headers: List<String>, val rows: List<List<String>>) : PolicyBlock
+    data class Sub(val text: L10n) : PolicyBlock
+    data class Bullets(val items: List<L10n>) : PolicyBlock
+    data class Note(val text: L10n) : PolicyBlock
+    data class Table(val headers: List<L10n>, val rows: List<List<L10n>>) : PolicyBlock
 
     /** 等宽预格式化文本块（AGPL 官方模板块需保留原始换行与缩进） */
     data class Code(val text: String) : PolicyBlock
+
+    /** 逐字原文块（如 AGPL 协议解析文本），不经 L10n 本地化，按原文输出 */
+    data class Raw(val text: String) : PolicyBlock
 }
 
 /** 一个可独立成卡片渲染的章节 */
-data class PolicySection(val title: String, val blocks: List<PolicyBlock>)
+data class PolicySection(val title: L10n, val blocks: List<PolicyBlock>)
 
 // LICENSE 行号分区（0-based）
 private const val IDX_PREAMBLE_BODY = 9    // 第 7 行是 "Preamble" 居中标题，第 9 行起为前言正文
@@ -68,36 +83,61 @@ private const val IDX_S0 = 60              // "  0. Definitions."
 private const val IDX_END = 618            // END OF TERMS AND CONDITIONS
 private const val IDX_APPLY = 620          // How to Apply These Terms...
 
-/** 中文摘要：与官网 license.html 第一节保持一致 */
+/** 开源协议摘要：与官网 license.html 第一节保持一致 */
 private val LICENSE_SUMMARY = PolicySection(
-    title = "一、开源协议摘要",
+    title = L("一、开源协议摘要", "1. License Summary"),
     blocks = listOf(
-        PolicyBlock.Para("本应用采用 GNU Affero General Public License v3.0（AGPL-3.0）开源。你可以自由使用、学习、修改，甚至用于商业目的；但如果你把本应用或其修改版通过网络提供给他人使用，就必须同时向这些用户提供完整的对应源代码。"),
-        PolicyBlock.Note("这是 AGPL 与 MIT 最主要的区别：MIT 只要求「分发二进制时附带许可证」。AGPL 多了一条 —— 只要通过网络向用户提供服务，就必须开放源码。如果你只是个人下载安装自用，AGPL 不会向你提出任何要求。"),
-        PolicyBlock.Sub("你可以做什么"),
-        PolicyBlock.Bullets(
-            listOf(
-                "自由使用：个人学习、备份、多设备安装、非商业目的使用，无需申请。",
-                "研究源码：本应用全部代码开源，可自由查看、理解其实现方式。",
-                "二次分发：可以重新发布原版或修改版，但必须保留本协议声明与版权信息。",
-                "商用：允许收费销售软件、基于它提供收费服务，AGPL 并不禁止商业使用。",
-                "修改与再创作：可以 fork 并自由修改，功能、配色、课表逻辑都可以换成你自己的。",
+        PolicyBlock.Para(
+            L(
+                "本应用采用 GNU Affero General Public License v3.0（AGPL-3.0）开源。你可以自由使用、学习、修改，甚至用于商业目的；但如果你把本应用或其修改版通过网络提供给他人使用，就必须同时向这些用户提供完整的对应源代码。",
+                "This app is released under the GNU Affero General Public License v3.0 (AGPL-3.0). You are free to use, study, and modify it, including for commercial purposes; however, if you make the app or a modified version available to others over a network, you must also provide those users with the complete corresponding source code."
             )
         ),
-        PolicyBlock.Sub("你需要做什么"),
-        PolicyBlock.Bullets(
-            listOf(
-                "保留声明：再分发时必须保留原版权声明与本协议副本。",
-                "标明修改：修改过原版后，需在作品中注明你做过改动及改动内容。",
-                "开放源码：把修改版提供给他人（包括通过网络提供服务）时，需同时提供完整对应源码。",
-                "同等协议：衍生作品须以本协议继续授权（第 13 条允许改用 GPL v3）。",
-                "不作担保：软件按「现状」提供，作者不承担使用后果（第 15、16 条）。",
+        PolicyBlock.Note(
+            L(
+                "这是 AGPL 与 MIT 最主要的区别：MIT 只要求「分发二进制时附带许可证」。AGPL 多了一条 —— 只要通过网络向用户提供服务，就必须开放源码。如果你只是个人下载安装自用，AGPL 不会向你提出任何要求。",
+                "This is the key difference between AGPL and MIT: MIT only requires you to include the license when distributing binaries. AGPL adds one more condition — if you provide the software to users over a network, you must make the source code available. If you only download and use the app yourself, AGPL places no obligations on you."
             )
         ),
-        PolicyBlock.Sub("如果你要二次开发"),
-        PolicyBlock.Para("建议在 fork 仓库的 README 中说明：项目名称、基于 Nexio 课程表修改、源码获取方式。如果你希望用户能直接看到源码链接，可以在应用内放一个指向你 fork 仓库的入口 —— AGPL 第 13 条正是为此设计的。"),
-        PolicyBlock.Para("官方在协议第 13 条给出的建议做法是：在应用界面中提供一个「Source」链接，指向一份代码归档；对于桌面应用，通常指向公开的代码仓库即可。"),
-        PolicyBlock.Note("免责声明：本摘要为便于阅读的通俗说明，不构成法律意见，也不能替代协议原文。摘要与英文原文表述不一致时，以「四、条款正文」的英文原文为准。如需确认某项使用方式是否合规，建议咨询专业法律人士。"),
+        PolicyBlock.Sub(L("你可以做什么", "What you can do")),
+        PolicyBlock.Bullets(
+            listOf(
+                L("自由使用：个人学习、备份、多设备安装、非商业目的使用，无需申请。", "Free use: for personal study, backups, multi-device installation, and non-commercial purposes, with no permission required."),
+                L("研究源码：本应用全部代码开源，可自由查看、理解其实现方式。", "Study the source: all code is open, so you can read it and understand how it works."),
+                L("二次分发：可以重新发布原版或修改版，但必须保留本协议声明与版权信息。", "Redistribute: you may republish the original or a modified version, provided you keep this license notice and the copyright information."),
+                L("商用：允许收费销售软件、基于它提供收费服务，AGPL 并不禁止商业使用。", "Commercial use: you may sell the software or offer paid services based on it; AGPL does not prohibit commercial use."),
+                L("修改与再创作：可以 fork 并自由修改，功能、配色、课表逻辑都可以换成你自己的。", "Modify and build on it: you may fork and change it freely — features, colors, and scheduling logic included."),
+            )
+        ),
+        PolicyBlock.Sub(L("你需要做什么", "What you need to do")),
+        PolicyBlock.Bullets(
+            listOf(
+                L("保留声明：再分发时必须保留原版权声明与本协议副本。", "Keep the notices: when redistributing, retain the original copyright notice and a copy of this license."),
+                L("标明修改：修改过原版后，需在作品中注明你做过改动及改动内容。", "Mark your changes: if you modify the original, state that you changed it and what you changed."),
+                L("开放源码：把修改版提供给他人（包括通过网络提供服务）时，需同时提供完整对应源码。", "Share the source: when you provide a modified version to others (including over a network), also provide the complete corresponding source code."),
+                L("同等协议：衍生作品须以本协议继续授权（第 13 条允许改用 GPL v3）。", "Use the same license: derivative works must remain under this license (Section 13 permits relicensing under GPLv3)."),
+                L("不作担保：软件按「现状」提供，作者不承担使用后果（第 15、16 条）。", "No warranty: the software is provided “as is,” and the authors are not liable for the consequences of its use (Sections 15 and 16)."),
+            )
+        ),
+        PolicyBlock.Sub(L("如果你要二次开发", "If you build on this project")),
+        PolicyBlock.Para(
+            L(
+                "建议在 fork 仓库的 README 中说明：项目名称、基于 Nexio 课程表修改、源码获取方式。如果你希望用户能直接看到源码链接，可以在应用内放一个指向你 fork 仓库的入口 —— AGPL 第 13 条正是为此设计的。",
+                "In your fork's README, state the project name, that it is based on Nexio Schedule, and how to obtain the source. If you want users to see the source link directly, add an entry in the app pointing to your fork — Section 13 of AGPL is designed for exactly this."
+            )
+        ),
+        PolicyBlock.Para(
+            L(
+                "官方在协议第 13 条给出的建议做法是：在应用界面中提供一个「Source」链接，指向一份代码归档；对于桌面应用，通常指向公开的代码仓库即可。",
+                "The official guidance in Section 13 is to provide a “Source” link in the app interface that points to a code archive; for desktop apps, a link to a public repository is usually sufficient."
+            )
+        ),
+        PolicyBlock.Note(
+            L(
+                "免责声明：本摘要为便于阅读的通俗说明，不构成法律意见，也不能替代协议原文。摘要与英文原文表述不一致时，以「四、条款正文」的英文原文为准。如需确认某项使用方式是否合规，建议咨询专业法律人士。",
+                "Disclaimer: this summary is a plain-language aid for readability. It is not legal advice and does not replace the license text. If the summary and the English text differ, the English text in “4. Terms and Conditions” prevails. Consult a qualified legal professional if you need to confirm whether a particular use is permitted."
+            )
+        ),
     )
 )
 
@@ -113,28 +153,33 @@ private suspend fun loadLicenseSections(): List<PolicySection> =
         listOf(
             LICENSE_SUMMARY,
             PolicySection(
-                title = "二、版权声明",
+                title = L("二、版权声明", "2. Copyright Notice"),
                 blocks = listOf(
-                    PolicyBlock.Para("GNU Affero General Public License — Version 3, 19 November 2007"),
-                    PolicyBlock.Para("Copyright (C) 2007 Free Software Foundation, Inc. Everyone is permitted to copy and distribute verbatim copies of this license document, but changing it is not allowed.")
+                    PolicyBlock.Raw("GNU Affero General Public License — Version 3, 19 November 2007"),
+                    PolicyBlock.Raw("Copyright (C) 2007 Free Software Foundation, Inc. Everyone is permitted to copy and distribute verbatim copies of this license document, but changing it is not allowed.")
                 )
             ),
             PolicySection(
-                title = "三、前言 Preamble",
+                title = L("三、前言 Preamble", "3. Preamble"),
                 blocks = renderLicenseBlocks(lines.subList(idx(IDX_PREAMBLE_BODY), idx(IDX_TERMS_HEAD)))
             ),
             PolicySection(
-                title = "四、条款正文 Terms and Conditions",
+                title = L("四、条款正文 Terms and Conditions", "4. Terms and Conditions"),
                 blocks = buildList {
                     add(
-                        PolicyBlock.Note("以下为 AGPL-3.0 完整条款原文（第 0 条至第 17 条），逐字摘自官方文本，未作任何删改。如中文摘要与本节英文原文表述不一致，以英文原文为准。")
+                        PolicyBlock.Note(
+                            L(
+                                "以下为 AGPL-3.0 完整条款原文（第 0 条至第 17 条），逐字摘自官方文本，未作任何删改。如中文摘要与本节英文原文表述不一致，以英文原文为准。",
+                                "The complete AGPL-3.0 text (Sections 0–17) follows, reproduced verbatim from the official license. If the Chinese summary and this English text differ, the English text prevails."
+                            )
+                        )
                     )
                     addAll(renderLicenseBlocks(lines.subList(idx(IDX_S0), idx(IDX_END))))
                 }
             ),
             PolicySection(
-                title = "五、如何将本协议应用到您的新程序",
-                blocks = listOf(PolicyBlock.Sub("How to Apply These Terms to Your New Programs")) +
+                title = L("五、如何将本协议应用到您的新程序", "5. How to Apply These Terms to Your New Programs"),
+                blocks = listOf(PolicyBlock.Sub(L("How to Apply These Terms to Your New Programs", "How to Apply These Terms to Your New Programs"))) +
                         renderLicenseBlocks(lines.subList(idx(IDX_APPLY + 1), lines.size), codeMode = true)
             )
         )
@@ -144,13 +189,21 @@ private suspend fun loadLicenseSections(): List<PolicySection> =
  * 把 AGPL 官方模板块里的尖括号占位符替换为本项目实际信息，
  * 与官网 license.html 的处理保持一致。其余内容逐字保留。
  */
-private fun fillLicensePlaceholders(text: String): String = text
-    .replace(
-        "<one line to give the program's name and a brief idea of what it does.>",
-        "Nexio 课程表 - 基于 Jetpack Compose 的 Android 课程表应用"
-    )
-    .replace("<year>", "2026")
-    .replace("<name of author>", "Nexio 课程表开发团队")
+private fun fillLicensePlaceholders(text: String): String {
+    // 模板是英文原文；应用名/作者占位符按当前语言填入（中文侧与官网 license.html 一致）
+    val zh = com.haooz.chedule.data.DisplayLang.isZh
+    return text
+        .replace(
+            "<one line to give the program's name and a brief idea of what it does.>",
+            if (zh) "Nexio 课程表 - 基于 Jetpack Compose 的 Android 课程表应用"
+            else "Nexio Schedule - an Android timetable app built with Jetpack Compose"
+        )
+        .replace("<year>", "2026")
+        .replace(
+            "<name of author>",
+            if (zh) "Nexio 课程表开发团队" else "Nexio Schedule development team"
+        )
+}
 
 /**
  * 把 AGPL 原文行序列渲染成块。
@@ -170,13 +223,14 @@ private fun renderLicenseBlocks(lines: List<String>, codeMode: Boolean = false):
 
     fun flushPara() {
         if (para.isEmpty()) return
-        out.add(PolicyBlock.Para(para.joinToString(" ") { it.trim() }))
+        val text = para.joinToString(" ") { it.trim() }
+        out.add(PolicyBlock.Para(L(text, text)))
         para.clear()
     }
 
     fun flushBullets() {
         if (bullets.isEmpty()) return
-        out.add(PolicyBlock.Bullets(bullets.toList()))
+        out.add(PolicyBlock.Bullets(bullets.map { L(it, it) }))
         bullets.clear()
     }
 
@@ -222,7 +276,8 @@ private fun renderLicenseBlocks(lines: List<String>, codeMode: Boolean = false):
         val head = Regex("^ {2}(\\d+)\\.\\s+(\\S.*)$").find(line)
         if (head != null) {
             flushPara(); flushBullets(); flushCode()
-            out.add(PolicyBlock.Sub("${head.groupValues[1]}. ${head.groupValues[2].trim()}"))
+            val heading = "${head.groupValues[1]}. ${head.groupValues[2].trim()}"
+            out.add(PolicyBlock.Sub(L(heading, heading)))
             continue
         }
 
@@ -231,7 +286,7 @@ private fun renderLicenseBlocks(lines: List<String>, codeMode: Boolean = false):
         val indent = line.length - line.trimStart().length
         if (isUpper && indent >= 10 && stripped.length < 70) {
             flushPara(); flushBullets(); flushCode()
-            out.add(PolicyBlock.Sub(stripped))
+            out.add(PolicyBlock.Sub(L(stripped, stripped)))
             continue
         }
 
@@ -296,21 +351,21 @@ fun LicenseScreen(
                 item(key = "licenseHeader") {
                     Column(modifier = Modifier.fillMaxWidth().padding(start = 14.dp, bottom = 8.dp)) {
                         Text(
-                            text = "Nexio 课程表 开源协议",
+                            text = LICENSE_HEADER_TITLE(),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MiuixTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "GNU Affero General Public License v3.0（AGPL-3.0）\n本项目源代码完全公开，欢迎阅读、学习与二次开发。",
+                            text = LICENSE_HEADER_SUBTITLE(),
                             fontSize = 13.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
                     }
                 }
 
-                items(sections, key = { it.title }) { section ->
+                itemsIndexed(sections, key = { index, _ -> "license_section_$index" }) { _, section ->
                     PolicySectionCard(section)
                 }
 
@@ -320,7 +375,7 @@ fun LicenseScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "AGPL-3.0 官方原文：gnu.org/licenses/agpl-3.0.html\nNexio 课程表",
+                            text = LICENSE_FOOTER(),
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         )

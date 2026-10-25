@@ -120,21 +120,14 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.datetime.LocalDate
 import kotlin.math.floor
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.HolidayStr
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 private val YEAR_RANGE = 2024..2035
-private val WEEKDAYS = listOf(
-    "星期一",
-    "星期二",
-    "星期三",
-    "星期四",
-    "星期五",
-    "星期六",
-    "星期日",
-)
 
-private fun monthLabel(value: Int): String = "${value}月"
-private fun dayLabel(value: Int): String = "${value}日"
+private fun monthLabel(value: Int): String = HolidayStr.monthN(value)
+private fun dayLabel(value: Int): String = CommonStr.dateN(value)
 
 // commonMain 没有 JVM 的 String.format（原来是 "%04d-%02d-%02d".format(...)），改用 padStart 手写零填充日期
 private fun isoDate(year: Int, month: Int, day: Int): String =
@@ -245,8 +238,8 @@ fun HolidaySettingsScreen(
         )
 
     fun formatDateRange(week: Int, startDay: Int, endDay: Int): String {
-        val first = originalWeekDate(week, startDay) ?: return "日期超出范围"
-        val last = originalWeekDate(week, endDay) ?: return "日期超出范围"
+        val first = originalWeekDate(week, startDay) ?: return HolidayStr.dateOutOfRange()
+        val last = originalWeekDate(week, endDay) ?: return HolidayStr.dateOutOfRange()
         return "${formatTeachingDate(first)}–${formatTeachingDate(last)}"
     }
 
@@ -265,7 +258,7 @@ fun HolidaySettingsScreen(
             currentTotalWeeks,
             teachingWeekReorganizations,
         ) ?: run {
-            showToast("当前课表没有可用的原始周次可重组")
+            showToast(HolidayStr.noWeekToReorganize())
             return
         }
         firstOriginalWeek = selected
@@ -312,7 +305,7 @@ fun HolidaySettingsScreen(
                 changedRule = proposed,
             )
         ) {
-            showToast("保存失败，现有规则未更改")
+            showToast(HolidayStr.saveFailedUnchanged())
             return
         }
         teachingWeekReorganizations = updated
@@ -325,7 +318,7 @@ fun HolidaySettingsScreen(
     fun deleteTeachingWeekRule() {
         val rule = teachingWeekReorganizations.getOrNull(editingTeachingWeekRuleIndex) ?: return
         if (!repository.removeTeachingWeekReorganization(rule, currentScheduleId)) {
-            showToast("删除失败，现有规则未更改")
+            showToast(HolidayStr.deleteFailedUnchanged())
             return
         }
         val updated = teachingWeekReorganizations.toMutableList().apply {
@@ -403,7 +396,7 @@ fun HolidaySettingsScreen(
         val isHoliday = dialogType == HolidayManager.TYPE_HOLIDAY
         val startDate = isoDate(startYear, startMonth, startDay)
         if (runCatching { LocalDate.parse(startDate) }.isFailure) {
-            showToast("日期格式不正确")
+            showToast(HolidayStr.invalidDate())
             return
         }
         val endDate = if (isHoliday) {
@@ -412,19 +405,19 @@ fun HolidaySettingsScreen(
             ""
         }
         if (isHoliday && endDate < startDate) {
-            showToast("结束日期不能早于开始日期")
+            showToast(HolidayStr.endBeforeStart())
             return
         }
         val week = followWeek.toIntOrNull()?.takeIf { it > 0 } ?: -1
         val weekday = followWeekday.toIntOrNull()?.takeIf { it in 1..7 } ?: -1
         if (!isHoliday && (week !in 1..currentTotalWeeks || weekday !in 1..7)) {
-            showToast("请明确选择有效的跟随周次和星期")
+            showToast(HolidayStr.selectValidFollow())
             return
         }
         // UI 上的「第 X 周 星期 Y」只是当前课表的投影，落库一律转成绝对日期
         val followDateValue = if (isHoliday) null else dateOfTeachingWeek(week, weekday)
         if (!isHoliday && followDateValue == null) {
-            showToast("该周次在当前课表下没有对应日期")
+            showToast(HolidayStr.followWeekNoDate())
             return
         }
         // 按开始日期所属年份落库，避免 UI 选中年与日期年不一致时 workSwap 查不到
@@ -437,7 +430,7 @@ fun HolidaySettingsScreen(
         val newEntry = HolidayEntry(
             date = startDate,
             endDate = endDate,
-            name = name.ifBlank { if (isHoliday) "节假日" else "调休工作日" },
+            name = name.ifBlank { if (isHoliday) HolidayStr.defaultHolidayName() else HolidayStr.defaultWorkswapName() },
             type = dialogType,
             // 存绝对日期；旧字段 followWeek/followWeekday 一律不再写入
             followDate = followDateValue?.toString() ?: "",
@@ -458,7 +451,7 @@ fun HolidaySettingsScreen(
             updated.mapValues { (_, entries) -> entries.toList() }
         }
         if (!saved) {
-            showToast("节假日数据无法读取，未覆盖原数据", longDuration = true)
+            showToast(HolidayStr.dataReadFailedSave(), longDuration = true)
             return
         }
         reload()
@@ -476,7 +469,7 @@ fun HolidaySettingsScreen(
             }
         } ?: true
         if (!deleted) {
-            showToast("节假日数据无法读取，未删除原数据", longDuration = true)
+            showToast(HolidayStr.dataReadFailedDelete(), longDuration = true)
             return
         }
         reload()
@@ -568,8 +561,8 @@ fun HolidaySettingsScreen(
 
             item {
                 SectionTitleRow(
-                    text = "节假日",
-                    description = "• 处于假期范围内的日期不会发送课程提醒\n• 可在此手动添加或编辑放假日期",
+                    text = HolidayStr.holidaysTitle(),
+                    description = HolidayStr.holidaysDesc(),
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 if (holidayEntries.isNotEmpty()) {
@@ -587,8 +580,8 @@ fun HolidaySettingsScreen(
 
             item {
                 SectionTitleRow(
-                    text = "调休工作日",
-                    description = "• 原本的日常休息日因调休需要补课\n• 可在此指定某一天作为补班课程安排",
+                    text = HolidayStr.workswapTitle(),
+                    description = HolidayStr.workswapDesc(),
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 if (workswapEntries.isNotEmpty()) {
@@ -606,8 +599,8 @@ fun HolidaySettingsScreen(
 
             item {
                 SectionTitleRow(
-                    text = "教学周重组",
-                    description = "• 长假可能带来教学周的重组，并引发后续教学周的顺延更改\n• 可在此进行教学周重组，后续教学周将重新分配计算",
+                    text = HolidayStr.reorgTitle(),
+                    description = HolidayStr.reorgDesc(),
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 CardExpand(visible = teachingWeekReorganizations.isNotEmpty()) {
@@ -635,10 +628,10 @@ fun HolidaySettingsScreen(
                                     ).week
                                 }
                                 ArrowPreference(
-                                    title = "重组规则 ${index + 1}",
-                                    summary = "原始第${rule.firstOriginalWeek}周 $firstRange + " +
-                                        "原始第${rule.secondOriginalWeek}周 $secondRange → " +
-                                        (targetWeek?.let { "教学第${it}周" } ?: "日期超出范围"),
+                                    title = HolidayStr.reorgRuleN(index + 1),
+                                    summary = HolidayStr.originalWeekN(rule.firstOriginalWeek) + " $firstRange + " +
+                                        HolidayStr.originalWeekN(rule.secondOriginalWeek) + " $secondRange → " +
+                                        (targetWeek?.let { HolidayStr.teachingWeekN(it) } ?: HolidayStr.dateOutOfRange()),
                                     onClick = { startEditingTeachingWeekRule(index) },
                                 )
                             }
@@ -651,7 +644,7 @@ fun HolidaySettingsScreen(
                     insideMargin = PaddingValues(0.dp),
                 ) {
                     ArrowPreference(
-                        title = "添加教学周重组规则",
+                        title = HolidayStr.addReorgRule(),
                         onClick = { startAddingTeachingWeekRule() },
                     )
                 }
@@ -659,11 +652,8 @@ fun HolidaySettingsScreen(
 
             item {
                 SectionTitleRow(
-                    text = "节假日课程排除",
-                    description =
-                        "• 假期前一天或最后一天的几节课不用上课\n" +
-                        "• 可以将节假日前后的某几节课进行排除\n" +
-                        "「假期前一天即使是调休上班日也会照常应用该规则」",
+                    text = HolidayStr.exclusionTitle(),
+                    description = HolidayStr.exclusionDesc(),
                     liquidGlassBackdrop = liquidGlassBackdrop,
                 )
                 Card(
@@ -671,7 +661,7 @@ fun HolidaySettingsScreen(
                     insideMargin = PaddingValues(0.dp),
                 ) {
                     SwitchPreference(
-                        title = "假期前日课程排除",
+                        title = HolidayStr.beforeExclusionTitle(),
                         checked = beforeCourseExclusion.enabled,
                         onCheckedChange = { enabled ->
                             val updated = beforeCourseExclusion.copy(enabled = enabled)
@@ -681,11 +671,11 @@ fun HolidaySettingsScreen(
                         },
                     )
                     ArrowPreference(
-                        title = "节次范围",
-                        summary = "第${beforeCourseExclusion.startSection}–${beforeCourseExclusion.endSection}节",
+                        title = HolidayStr.sectionRangeLabel(),
+                        summary = HolidayStr.sectionRangeN(beforeCourseExclusion.startSection, beforeCourseExclusion.endSection),
                         onClick = {
                             if (configuredSectionCount <= 0) {
-                                showToast("当前课表尚未配置节次")
+                                showToast(HolidayStr.noSectionsConfigured())
                             } else {
                                 editingBeforeCourseExclusion = true
                                 val maxSection = configuredSectionCount
@@ -705,7 +695,7 @@ fun HolidaySettingsScreen(
                     insideMargin = PaddingValues(0.dp),
                 ) {
                     SwitchPreference(
-                        title = "假期末天课程排除",
+                        title = HolidayStr.endExclusionTitle(),
                         checked = endCourseExclusion.enabled,
                         onCheckedChange = { enabled ->
                             val updated = endCourseExclusion.copy(enabled = enabled)
@@ -715,11 +705,11 @@ fun HolidaySettingsScreen(
                         },
                     )
                     ArrowPreference(
-                        title = "节次范围",
-                        summary = "第${endCourseExclusion.startSection}–${endCourseExclusion.endSection}节",
+                        title = HolidayStr.sectionRangeLabel(),
+                        summary = HolidayStr.sectionRangeN(endCourseExclusion.startSection, endCourseExclusion.endSection),
                         onClick = {
                             if (configuredSectionCount <= 0) {
-                                showToast("当前课表尚未配置节次")
+                                showToast(HolidayStr.noSectionsConfigured())
                             } else {
                                 editingBeforeCourseExclusion = false
                                 val maxSection = configuredSectionCount
@@ -739,17 +729,16 @@ fun HolidaySettingsScreen(
         show = showDialog,
         dialogTitle = if (editingEntry == null) {
             if (dialogType == HolidayManager.TYPE_HOLIDAY) {
-                "添加节假日"
+                HolidayStr.addHoliday()
             } else {
-                "添加调休工作日"
+                HolidayStr.addWorkswap()
             }
         } else {
-            val suffix = if (dialogType == HolidayManager.TYPE_HOLIDAY) {
-                "节假日"
+            if (dialogType == HolidayManager.TYPE_HOLIDAY) {
+                HolidayStr.editHoliday()
             } else {
-                "调休工作日"
+                HolidayStr.editWorkswap()
             }
-            "编辑$suffix"
         },
         dialogType = dialogType,
         name = name,
@@ -786,8 +775,12 @@ fun HolidaySettingsScreen(
     )
 
     OverlayDialog(
-        title = "删除记录",
-        summary = "确定要删除这条${if (dialogType == HolidayManager.TYPE_HOLIDAY) "节假日" else "调休工作日"}记录吗？\n此操作不可撤销。",
+        title = HolidayStr.deleteRecord(),
+        summary = if (dialogType == HolidayManager.TYPE_HOLIDAY) {
+            HolidayStr.deleteHolidayConfirm()
+        } else {
+            HolidayStr.deleteWorkswapConfirm()
+        },
         show = showDeleteConfirm,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showDeleteConfirm = false },
@@ -799,7 +792,7 @@ fun HolidaySettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                "取消",
+                CommonStr.cancel(),
                 {
                     haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                     showDeleteConfirm = false
@@ -807,7 +800,7 @@ fun HolidaySettingsScreen(
                 modifier = Modifier.weight(1f),
             )
             TextButton(
-                "删除",
+                CommonStr.delete(),
                 { deleteEntry() },
                 textColor = Color(0xFFF44336),
                 modifier = Modifier.weight(1f),
@@ -850,7 +843,7 @@ fun HolidaySettingsScreen(
                 onHolidayDataChanged()
                 showSectionRangeDialog = false
             } else {
-                showToast("当前课表节次范围已变化，请重新选择")
+                showToast(HolidayStr.sectionRangeChanged())
             }
         },
     )
@@ -859,9 +852,9 @@ fun HolidaySettingsScreen(
         show = showTeachingWeekRuleDialog,
         isEditing = editingTeachingWeekRuleIndex >= 0,
         firstWeek = firstOriginalWeek,
-        firstWeekSummary = "原始第${firstOriginalWeek}周 · ${formatDateRange(firstOriginalWeek, 1, 7)}",
+        firstWeekSummary = HolidayStr.originalWeekN(firstOriginalWeek) + " · " + formatDateRange(firstOriginalWeek, 1, 7),
         secondWeek = secondOriginalWeek,
-        secondWeekSummary = "原始第${secondOriginalWeek}周 · ${formatDateRange(secondOriginalWeek, 1, 7)}",
+        secondWeekSummary = HolidayStr.originalWeekN(secondOriginalWeek) + " · " + formatDateRange(secondOriginalWeek, 1, 7),
         firstEndWeekday = firstEndWeekday,
         onFirstEndWeekdayChange = { firstEndWeekday = it.coerceIn(1, 6) },
         onSecondStartWeekdayChange = { firstEndWeekday = (it - 1).coerceIn(1, 6) },
@@ -891,8 +884,8 @@ fun HolidaySettingsScreen(
     )
 
     OverlayDialog(
-        title = "删除教学周重组规则",
-        summary = "删除后，受影响的后续教学周会重新计算。确定删除这条规则吗？",
+        title = HolidayStr.deleteReorgRule(),
+        summary = HolidayStr.deleteReorgConfirm(),
         show = showTeachingWeekDeleteConfirm,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showTeachingWeekDeleteConfirm = false },
@@ -902,12 +895,12 @@ fun HolidaySettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                "取消",
+                CommonStr.cancel(),
                 { showTeachingWeekDeleteConfirm = false },
                 modifier = Modifier.weight(1f),
             )
             TextButton(
-                "删除",
+                CommonStr.delete(),
                 { deleteTeachingWeekRule() },
                 textColor = Color(0xFFF44336),
                 modifier = Modifier.weight(1f),
@@ -942,8 +935,8 @@ internal fun buildTeachingWeekRulePreview(
     firstPartDateRange = formatTeachingDateRange(firstPartStartDate, firstPartEndDate),
     pauseDateRange = formatTeachingDateRange(pauseStartDate, pauseEndDate),
     secondPartDateRange = formatTeachingDateRange(secondPartStartDate, secondPartEndDate),
-    savedFirstPartWeek = savedFirstPartWeek?.let { "第${it}周" },
-    savedSecondPartWeek = savedSecondPartWeek?.let { "第${it}周" },
+    savedFirstPartWeek = savedFirstPartWeek?.let { CommonStr.weekN(it) },
+    savedSecondPartWeek = savedSecondPartWeek?.let { CommonStr.weekN(it) },
     shiftedWeeks = shiftedWeeks.coerceAtLeast(0),
 )
 
@@ -972,12 +965,12 @@ internal fun teachingWeekRuleOutcomeLabels(
 ): TeachingWeekRuleOutcomeLabels {
     val mergedWeek = savedFirstPartWeek?.takeIf { it == savedSecondPartWeek }
     val shiftLabel = if (shiftedWeeks > 0) {
-        "后续顺延 +${shiftedWeeks}周"
+        HolidayStr.weeksShiftedN(shiftedWeeks)
     } else {
-        "后续不变"
+        HolidayStr.laterUnchanged()
     }
     return TeachingWeekRuleOutcomeLabels(
-        mergeLabel = mergedWeek?.let { "合并为$it" },
+        mergeLabel = mergedWeek?.let { HolidayStr.mergedInto(it) },
         shiftLabel = shiftLabel,
     )
 }
@@ -1014,7 +1007,7 @@ private fun TeachingWeekRuleEditDialog(
             },
             backdrop = LocalSheetContentBackdrop.current!!,
             icon = MiuixIcons.Normal.Close,
-            contentDescription = "取消",
+            contentDescription = CommonStr.cancel(),
             modifier = Modifier.padding(start = if (isTablet) 16.dp else 18.dp),
             iconSize = 24.dp,
             backdropAlpha = material.backdropAlpha,
@@ -1031,7 +1024,7 @@ private fun TeachingWeekRuleEditDialog(
             },
             backdrop = LocalSheetContentBackdrop.current!!,
             icon = MiuixIcons.Ok,
-            contentDescription = if (validationError == null) "保存" else "无法保存",
+            contentDescription = if (validationError == null) CommonStr.save() else HolidayStr.cannotSave(),
             modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
             iconSize = 25.dp,
             iconTint = if (validationError == null) Color.Unspecified
@@ -1056,12 +1049,12 @@ private fun TeachingWeekRuleEditDialog(
             ) {
                 Column {
                     ArrowPreference(
-                        title = "上半段周次",
+                        title = HolidayStr.firstHalfWeeksLabel(),
                         summary = firstWeekSummary,
                         onClick = onPickFirstWeek,
                     )
                     TeachingWeekdayRangeSelector(
-                        title = "上半段星期",
+                        title = HolidayStr.firstHalfWeekdaysLabel(),
                         selectedStart = 1,
                         selectedEnd = firstEndWeekday,
                         selectableDays = 1..6,
@@ -1081,12 +1074,12 @@ private fun TeachingWeekRuleEditDialog(
             ) {
                 Column {
                     ArrowPreference(
-                        title = "下半段周次",
+                        title = HolidayStr.secondHalfWeeksLabel(),
                         summary = secondWeekSummary,
                         onClick = onPickSecondWeek,
                     )
                     TeachingWeekdayRangeSelector(
-                        title = "下半段星期",
+                        title = HolidayStr.secondHalfWeekdaysLabel(),
                         selectedStart = firstEndWeekday + 1,
                         selectedEnd = 7,
                         selectableDays = 2..7,
@@ -1123,7 +1116,7 @@ private fun TeachingWeekRuleEditDialog(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        "删除",
+                        CommonStr.delete(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFFF44336),
@@ -1136,7 +1129,7 @@ private fun TeachingWeekRuleEditDialog(
     if (isTablet) {
         BlurBottomSheetTablet(
             show = show,
-            title = if (isEditing) "编辑教学周重组规则" else "添加教学周重组规则",
+            title = if (isEditing) HolidayStr.editReorgRule() else HolidayStr.addReorgRule(),
             dimBackground = true,
             enableContentHeightSnap = true,
             onDismissRequest = onDismiss,
@@ -1163,7 +1156,7 @@ private fun TeachingWeekRuleEditDialog(
     } else {
         BlurBottomSheet(
             show = show,
-            title = if (isEditing) "编辑教学周重组规则" else "添加教学周重组规则",
+            title = if (isEditing) HolidayStr.editReorgRule() else HolidayStr.addReorgRule(),
             dimBackground = true,
             enableContentHeightSnap = true,
             sheetOffsetDp = statusBarsPadding + 5.dp,
@@ -1225,7 +1218,7 @@ private fun TeachingWeekRulePreviewCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "重组预览",
+                    text = HolidayStr.reorgPreview(),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MiuixTheme.colorScheme.onSurface,
@@ -1246,15 +1239,15 @@ private fun TeachingWeekRulePreviewCard(
 
             Column {
                 TeachingWeekRuleTimelineItem(
-                    title = "上半段 · 原第${firstWeek}周",
-                    dateRange = preview.firstPartDateRange ?: "日期不可用",
+                    title = HolidayStr.firstHalfOriginalWeekN(firstWeek),
+                    dateRange = preview.firstPartDateRange ?: HolidayStr.dateUnavailable(),
                     markerColor = primaryColor,
                     connectorColor = dividerColor,
                     hasConnector = true,
                 )
                 preview.pauseDateRange?.let { dateRange ->
                     TeachingWeekRuleTimelineItem(
-                        title = "课程暂停",
+                        title = HolidayStr.coursesPaused(),
                         dateRange = dateRange,
                         markerColor = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.7f),
                         connectorColor = dividerColor,
@@ -1262,8 +1255,8 @@ private fun TeachingWeekRulePreviewCard(
                     )
                 }
                 TeachingWeekRuleTimelineItem(
-                    title = "下半段 · 原第${secondWeek}周",
-                    dateRange = preview.secondPartDateRange ?: "日期不可用",
+                    title = HolidayStr.secondHalfOriginalWeekN(secondWeek),
+                    dateRange = preview.secondPartDateRange ?: HolidayStr.dateUnavailable(),
                     markerColor = MiuixTheme.colorScheme.secondaryVariant,
                     connectorColor = dividerColor,
                     hasConnector = false,
@@ -1272,7 +1265,7 @@ private fun TeachingWeekRulePreviewCard(
 
             validationError?.let { error ->
                 Text(
-                    text = "无法保存：$error",
+                    text = HolidayStr.cannotSaveWithError(error),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(ContinuousRoundedRectangle(12.dp))
@@ -1369,7 +1362,7 @@ private fun TeachingWeekdayRangeSelector(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "连续范围",
+                text = HolidayStr.continuousRange(),
                 fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
@@ -1436,7 +1429,7 @@ private fun TeachingWeekdayRangeSelector(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = WEEKDAYS[day - 1].removePrefix("星期"),
+                        text = HolidayStr.weekdayChars[day - 1](),
                         fontSize = 14.sp,
                         color = textColor,
                         textAlign = TextAlign.Center,
@@ -1494,7 +1487,7 @@ private fun TeachingWeekNumberPickerDialog(
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     OverlayDialog(
-        title = "选择原始周",
+        title = HolidayStr.pickOriginalWeek(),
         summary = null,
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -1511,7 +1504,7 @@ private fun TeachingWeekNumberPickerDialog(
                 visibleItemCount = 3,
                 itemHeight = 50.dp,
                 textStyle = pickerTextStyle(),
-                label = { "原始第${it}周" },
+                label = { HolidayStr.originalWeekN(it) },
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
@@ -1525,9 +1518,9 @@ private fun TeachingWeekNumberPickerDialog(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton("取消", onDismiss, modifier = Modifier.weight(1f))
+                TextButton(CommonStr.cancel(), onDismiss, modifier = Modifier.weight(1f))
                 TextButton(
-                    "确定",
+                    CommonStr.ok(),
                     {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         onConfirm()
@@ -1631,7 +1624,7 @@ private fun SectionRangeDialog(
 ) {
     val haptic = LocalHapticFeedback.current
     OverlayDialog(
-        title = "选择上课节次",
+        title = HolidayStr.pickSections(),
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = onDismiss,
@@ -1649,7 +1642,7 @@ private fun SectionRangeDialog(
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(
-                        text = "开始",
+                        text = HolidayStr.startLabel(),
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -1667,7 +1660,7 @@ private fun SectionRangeDialog(
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(
-                        text = "结束",
+                        text = HolidayStr.endLabel(),
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -1692,7 +1685,7 @@ private fun SectionRangeDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                         onDismiss()
@@ -1700,7 +1693,7 @@ private fun SectionRangeDialog(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                         onSave()
@@ -1840,7 +1833,7 @@ private fun DataManagementCard(
                         )
                     }
             ),
-            title = "年份",
+            title = HolidayStr.yearLabel(),
             collapseOnSelection = true,
             liquidGlassBackdrop = liquidGlassBackdrop,
             dropdownColors = dropdownColors,
@@ -1899,7 +1892,7 @@ private fun followDate(
 private fun entrySummary(entry: HolidayEntry): String {
     return if (entry.type == HolidayManager.TYPE_HOLIDAY) {
         val endSuffix = if (entry.endDate.isNotBlank()) {
-            " 至 ${displayDate(entry.endDate)}"
+            HolidayStr.dateRangeTo(displayDate(entry.endDate))
         } else {
             ""
         }
@@ -1910,11 +1903,11 @@ private fun entrySummary(entry: HolidayEntry): String {
         val mapping = when {
             entry.followLocalDate() != null -> {
                 val date = entry.followLocalDate()!!
-                "上 ${date.monthNumber}月${date.dayOfMonth}日 的课"
+                HolidayStr.classOnN(date.monthNumber, date.dayOfMonth)
             }
             entry.followWeek > 0 && entry.followWeekday in 1..7 ->
-                "第${entry.followWeek}周${WEEKDAYS[entry.followWeekday - 1]}"
-            else -> "待配置补班课程"
+                HolidayStr.weekWeekdayN(entry.followWeek, HolidayStr.weekdays[entry.followWeekday - 1]())
+            else -> HolidayStr.makeupPending()
         }
         "${displayDate(entry.date)} · $mapping"
     }
@@ -1928,7 +1921,7 @@ private fun AddEntryCard(type: Int, onAdd: () -> Unit) {
         insideMargin = PaddingValues(0.dp),
     ) {
         ArrowPreference(
-            title = if (isHoliday) "添加节假日" else "添加调休工作日",
+            title = if (isHoliday) HolidayStr.addHoliday() else HolidayStr.addWorkswap(),
             onClick = onAdd,
         )
     }
@@ -1984,7 +1977,7 @@ private fun EntryEditDialog(
             },
             backdrop = LocalSheetContentBackdrop.current!!,
             icon = MiuixIcons.Normal.Close,
-            contentDescription = "取消",
+            contentDescription = CommonStr.cancel(),
             modifier = Modifier.padding(start = if (isTablet) 16.dp else 18.dp),
             iconSize = 24.dp,
             backdropAlpha = material.backdropAlpha,
@@ -2002,7 +1995,7 @@ private fun EntryEditDialog(
             },
             backdrop = LocalSheetContentBackdrop.current!!,
             icon = MiuixIcons.Ok,
-            contentDescription = if (canSave) "保存" else "请先填写名称",
+            contentDescription = if (canSave) CommonStr.save() else HolidayStr.enterNameFirst(),
             modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
             iconSize = 25.dp,
             iconTint = if (canSave) Color.Unspecified
@@ -2032,14 +2025,14 @@ private fun EntryEditDialog(
                 NativeMiuixTextField(
                     name,
                     onNameChange,
-                    label = "名称",
+                    label = HolidayStr.nameLabel(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
 
             Column {
                 SmallTitle(
-                    text = if (isHoliday) "开始日期" else "调休日期",
+                    text = if (isHoliday) HolidayStr.startDateLabel() else HolidayStr.adjustedDateLabel(),
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2064,7 +2057,7 @@ private fun EntryEditDialog(
             if (isHoliday) {
                 Column {
                     SmallTitle(
-                        text = "结束日期",
+                        text = HolidayStr.endDateLabel(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -2094,7 +2087,7 @@ private fun EntryEditDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         SmallTitle(
-                            text = "跟随课程",
+                            text = HolidayStr.followCourseLabel(),
                             modifier = Modifier.weight(1f),
                         )
                         val date = followDate(followWeek, followWeekday)
@@ -2129,7 +2122,7 @@ private fun EntryEditDialog(
                                     visibleItemCount = 3,
                                     itemHeight = 44.dp,
                                     textStyle = pickerTextStyle(),
-                                    label = { "第${it}周" },
+                                    label = { CommonStr.weekN(it) },
                                     modifier = Modifier.weight(1f),
                                 )
                                 NumberPicker(
@@ -2139,14 +2132,14 @@ private fun EntryEditDialog(
                                     visibleItemCount = 3,
                                     itemHeight = 44.dp,
                                     textStyle = pickerTextStyle(),
-                                    label = { WEEKDAYS[it - 1] },
+                                    label = { HolidayStr.weekdays[it - 1]() },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
                             // 国家级数据只说「哪天补班」，不说「补哪天的课」，上面是推算出来的预填值，
                             // 各校安排未必一致 —— 明确告诉用户：以学校通知为准，保存后才生效。
                             Text(
-                                "已按假期末尾推算预填，请以学校通知为准，保存后生效",
+                                HolidayStr.followPrefillNote(),
                                 style = MiuixTheme.textStyles.body1.copy(
                                     fontSize = 13.sp,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -2183,7 +2176,7 @@ private fun EntryEditDialog(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        "删除",
+                        CommonStr.delete(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFFF44336),

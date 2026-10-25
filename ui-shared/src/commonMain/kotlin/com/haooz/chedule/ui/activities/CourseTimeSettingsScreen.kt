@@ -47,6 +47,8 @@ import com.haooz.chedule.data.TimeConfig
 import com.haooz.chedule.data.TimeRoutine
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.TimeCfgStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -194,10 +196,12 @@ fun CourseTimeSettingsScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 ArrowPreference(
-                                    title = "课表节数",
-                                    summary = "上午 ${config.morningSections} 节 · " +
-                                        "下午 ${config.afternoonSections} 节 · " +
-                                        "晚上 ${config.eveningSections} 节",
+                                    title = TimeCfgStr.sectionCountTitle(),
+                                    summary = TimeCfgStr.sectionsSummaryN(
+                                        config.morningSections,
+                                        config.afternoonSections,
+                                        config.eveningSections,
+                                    ),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(
                                             HapticFeedbackType.Confirm
@@ -215,7 +219,7 @@ fun CourseTimeSettingsScreen(
 
                     // 2. 作息方案：点进去才进二级。按项目惯例收在一张 Card 里，行间自动分隔
                     item(key = "routines") {
-                        SmallTitle(text = "作息方案")
+                        SmallTitle(text = TimeCfgStr.routinesTitle())
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
@@ -234,8 +238,8 @@ fun CourseTimeSettingsScreen(
                                         title = routine.name,
                                         // 只有一套作息时没有切换对象，显示「始终生效」而不是日期
                                         summary = if (config.safeRoutines.size > 1) {
-                                            "${routine.effectiveLabel}生效"
-                                        } else "始终生效",
+                                            TimeCfgStr.effectiveFrom(routine.effectiveLabel)
+                                        } else TimeCfgStr.alwaysActive(),
                                         endActions = {
                                             if (isActive) {
                                                 Box(
@@ -253,7 +257,7 @@ fun CourseTimeSettingsScreen(
                                                         )
                                                 ) {
                                                     Text(
-                                                        "生效中",
+                                                        TimeCfgStr.activeNow(),
                                                         fontSize = 12.sp,
                                                         fontWeight = FontWeight.Medium,
                                                         color = MiuixTheme.colorScheme.primary,
@@ -309,8 +313,8 @@ fun CourseTimeSettingsScreen(
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 ArrowPreference(
-                                    title = "添加作息",
-                                    summary = "同一套节次，换一套时间",
+                                    title = TimeCfgStr.addRoutine(),
+                                    summary = TimeCfgStr.addRoutineSummary(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(
                                             HapticFeedbackType.Confirm
@@ -330,16 +334,16 @@ fun CourseTimeSettingsScreen(
                     // 3. 从其他课表复制
                     item(key = "copy") {
                         val hasOther = availableSchedules.isNotEmpty()
-                        SmallTitle(text = "更多")
+                        SmallTitle(text = CommonStr.more())
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(0.dp)
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 ArrowPreference(
-                                    title = "从其他课表复制",
-                                    summary = if (hasOther) "完整复制该课表的节次与全部作息"
-                                    else "没有其他课表可复制",
+                                    title = TimeCfgStr.copyFromSchedule(),
+                                    summary = if (hasOther) TimeCfgStr.copyFromScheduleSummary()
+                                    else TimeCfgStr.noScheduleToCopy(),
                                     onClick = {
                                         if (!hasOther) return@ArrowPreference
                                         hapticFeedback.performHapticFeedback(
@@ -360,7 +364,7 @@ fun CourseTimeSettingsScreen(
 
     // ---- 节次选择 ----
     OverlayDialog(
-        title = "课表节数设置",
+        title = TimeCfgStr.sectionCountDialogTitle(),
         show = showSectionPicker,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showSectionPicker = false }
@@ -374,9 +378,9 @@ fun CourseTimeSettingsScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 listOf(
-                    Triple("上午", { v: Int -> secMorning = v }, secMorning),
-                    Triple("下午", { v: Int -> secAfternoon = v }, secAfternoon),
-                    Triple("晚上", { v: Int -> secEvening = v }, secEvening)
+                    Triple(TimeCfgStr.morning(), { v: Int -> secMorning = v }, secMorning),
+                    Triple(TimeCfgStr.afternoon(), { v: Int -> secAfternoon = v }, secAfternoon),
+                    Triple(TimeCfgStr.evening(), { v: Int -> secEvening = v }, secEvening)
                 ).forEach { (label, onPick, current) ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -401,7 +405,7 @@ fun CourseTimeSettingsScreen(
             }
 
             Text(
-                "节次决定课表的行数，所有作息方案共用",
+                TimeCfgStr.sectionsNote(),
                 fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 modifier = Modifier.padding(top = 16.dp)
@@ -414,7 +418,7 @@ fun CourseTimeSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showSectionPicker = false
@@ -422,7 +426,7 @@ fun CourseTimeSettingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         config = config.copy(
@@ -442,7 +446,7 @@ fun CourseTimeSettingsScreen(
 
     // ---- 添加作息 ----
     OverlayDialog(
-        title = "添加作息",
+        title = TimeCfgStr.addRoutine(),
         show = showAddRoutine,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showAddRoutine = false }
@@ -451,7 +455,7 @@ fun CourseTimeSettingsScreen(
             NativeMiuixTextField(
                 value = newRoutineName,
                 onValueChange = { newRoutineName = it },
-                label = "作息名称",
+                label = TimeCfgStr.routineNameLabel(),
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -470,7 +474,7 @@ fun CourseTimeSettingsScreen(
                     range = 1..12,
                     visibleItemCount = 3,
                     itemHeight = 60.dp,
-                    label = { "${it}月" },
+                    label = { TimeCfgStr.monthN(it) },
                     wrapAround = true,
                     textStyle = MiuixTheme.textStyles.title2,
                     modifier = Modifier.weight(1f)
@@ -482,14 +486,14 @@ fun CourseTimeSettingsScreen(
                     range = 1..TimeRoutine.daysInMonth(newRoutineMonth),
                     visibleItemCount = 3,
                     itemHeight = 60.dp,
-                    label = { "${it}日" },
+                    label = { CommonStr.dateN(it) },
                     textStyle = MiuixTheme.textStyles.title2,
                     modifier = Modifier.weight(1f)
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "即「${newRoutineMonth}月${newRoutineDay}日」起使用这套时间",
+                TimeCfgStr.effectiveFromN(newRoutineMonth, newRoutineDay),
                 fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 textAlign = TextAlign.Center,
@@ -501,19 +505,19 @@ fun CourseTimeSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = { showAddRoutine = false },
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "添加",
+                    text = CommonStr.add(),
                     onClick = {
                         // 同一天只能有一套作息，否则到点切换的结果取决于列表顺序
                         if (config.isRoutineDateTaken(newRoutineMonth, newRoutineDay)) {
-                            showToast("该日期已有作息，请换一个生效日期")
+                            showToast(TimeCfgStr.routineDateTaken())
                             return@TextButton
                         }
-                        val name = newRoutineName.trim().ifEmpty { "作息" }
+                        val name = newRoutineName.trim().ifEmpty { TimeCfgStr.defaultRoutineName() }
                         val (updated, _) = config.withRoutineAdded(
                             name, newRoutineMonth, newRoutineDay
                         )
@@ -530,7 +534,7 @@ fun CourseTimeSettingsScreen(
 
     // ---- 从其他课表复制 ----
     OverlayDialog(
-        title = "从其他课表复制",
+        title = TimeCfgStr.copyFromSchedule(),
         show = showCopyDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -545,7 +549,7 @@ fun CourseTimeSettingsScreen(
                     insideMargin = PaddingValues(0.dp)
                 ) {
                     Text(
-                        "没有其他课表可复制",
+                        TimeCfgStr.noScheduleToCopy(),
                         fontSize = 14.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         modifier = Modifier.padding(16.dp)
@@ -559,8 +563,12 @@ fun CourseTimeSettingsScreen(
                         )
                         DropdownItem(
                             text = name,
-                            summary = "上午${other.morningSections}·下午${other.afternoonSections}" +
-                                "·晚上${other.eveningSections} · ${other.safeRoutines.size} 套作息",
+                            summary = TimeCfgStr.sectionsBriefN(
+                                other.morningSections,
+                                other.afternoonSections,
+                                other.eveningSections,
+                                other.safeRoutines.size,
+                            ),
                             selected = copyCandidate == name,
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -577,7 +585,7 @@ fun CourseTimeSettingsScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OverlayDropdownMenu(
-                            title = "选择课表",
+                            title = TimeCfgStr.selectSchedule(),
                             entry = copyEntry,
                             collapseOnSelection = true,
                             liquidGlassBackdrop = liquidGlassBackdrop,
@@ -592,7 +600,7 @@ fun CourseTimeSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showCopyDialog = false
@@ -601,14 +609,14 @@ fun CourseTimeSettingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定复制",
+                    text = TimeCfgStr.confirmCopy(),
                     enabled = copyCandidate != null,
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         val picked = copyCandidate
                         if (picked != null) {
                             repository.copyTimeConfigFromSchedule(picked)
-                            showToast("已复制「$picked」的时间配置")
+                            showToast(TimeCfgStr.copiedTimeConfig(picked))
                             // copyTimeConfigFromSchedule 内部已广播「设置变更」，这里只刷列表
                             refreshList()
                         }

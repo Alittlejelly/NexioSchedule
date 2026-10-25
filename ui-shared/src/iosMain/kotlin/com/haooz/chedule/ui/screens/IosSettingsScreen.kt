@@ -17,6 +17,7 @@ import com.haooz.chedule.data.ScheduleFileController
 import com.haooz.chedule.data.createHttpService
 import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.activities.AboutScreen
 import com.haooz.chedule.ui.activities.AiImportScreen
 import com.haooz.chedule.ui.activities.BackupAndMigrationScreen
@@ -77,7 +78,7 @@ internal fun IosSettingsScreen(
         liquidGlassBackdrop = args.liquidGlassBackdrop,
         showUpdateSettings = args.showUpdateSettings,
         // 文案对齐原生路由页（AppRoute.CourseReminder）：iOS 没有小米超级岛
-        testActionLabel = if (islandNotification) "测试灵动岛" else "测试通知",
+        testActionLabel = if (islandNotification) L("测试灵动岛", "Test Dynamic Island")() else L("测试通知", "Test Notification")(),
         androidPane = { dest ->
             when (dest) {
                 TabletSettingsDest.Reminder -> CourseReminderScreen(
@@ -161,7 +162,7 @@ internal fun IosSettingsScreen(
                         appVersion = AppInfo.version,
                         appName = NSBundle.mainBundle
                             .objectForInfoDictionaryKey("CFBundleDisplayName") as? String
-                            ?: "Nexio课程表",
+                            ?: L("Nexio课程表", "Nexio Schedule")(),
                         appIcon = imageResource(Res.drawable.about_app_icon),
                         appIconShape = ContinuousRoundedRectangle(20.dp, continuity = G2Continuity()),
                         // 撤回隐私同意即退出：iOS 没有 finishAffinity，与隐私弹窗拒绝同一手段
@@ -176,10 +177,10 @@ internal fun IosSettingsScreen(
         onSendTestNotification = {
             if (islandNotification) {
                 IosCourseLiveActivity.startTest()
-                showToast("已启动灵动岛测试")
+                showToast(L("已启动灵动岛测试", "Dynamic Island test started")())
             } else {
                 IosCourseNotifier.sendTestNotification()
-                showToast("已发送测试通知")
+                showToast(L("已发送测试通知", "Test notification sent")())
             }
         },
         // iOS 的「超级岛」= Live Activity（26.1 起恒可用），与 CourseReminderScreen 同判据

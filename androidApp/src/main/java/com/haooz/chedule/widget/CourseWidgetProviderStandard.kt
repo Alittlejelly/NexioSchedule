@@ -17,6 +17,8 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.i18n.AndroidWidgetStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 
@@ -129,7 +131,11 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         } else true
         val showTomorrow = isNextDayReminderEnabled && currentMinutes >= reminderMinutes && todayCoursesFinished
 
-        val dayNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val dayNames = listOf(
+            CommonStr.weekdayMon(), CommonStr.weekdayTue(), CommonStr.weekdayWed(),
+            CommonStr.weekdayThu(), CommonStr.weekdayFri(), CommonStr.weekdaySat(),
+            CommonStr.weekdaySun()
+        )
         // 今日/明日统一走 resolveDaySchedule：节假日末日例外按节次保留课程、调休按映射查课
         val resolution = CourseReminderHelper.resolveDaySchedule(context, forTomorrow = showTomorrow)
         val targetWeek = resolution.displayWeek
@@ -138,14 +144,14 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         val totalWeeks = repository.getTotalWeeks()
         val lastWeekWithCourses = repository.getLastWeekWithCourses()
         val isHoliday = currentWeek > totalWeeks || (currentWeek >= 1 && currentWeek > lastWeekWithCourses)
-        val prefix = if (showTomorrow) "明日课程" else "今天"
+        val prefix = if (showTomorrow) AndroidWidgetStr.tomorrowCourses() else CommonStr.today()
         // 标题用日历日：调休只影响「上哪套课」，预告仍应写真实的明天/今天（如周日补周二课 → 写周日）
         val titleDay = resolution.calendarDayOfWeek
         val titleText = "$prefix / ${dayNames[titleDay - 1]}"
         val weekText = when {
-            isHoliday -> "放假中"
-            currentWeek < 1 -> "未开始"
-            else -> "第${targetWeek}周"
+            isHoliday -> AndroidWidgetStr.onBreak()
+            currentWeek < 1 -> AndroidWidgetStr.notStarted()
+            else -> CommonStr.weekN(targetWeek)
         }
 
         // 卡位/课程数随小组件高度变化：2 格=2 / 3 格=3 / 4 格=5
@@ -182,12 +188,12 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
         }
         val emptyText = if (displayCourses.isEmpty()) {
             when {
-                isHoliday -> "假期中，暂无课程"
-                currentWeek < 1 -> "学期暂未开始"
-                resolution.isHolidayDate -> "假期中，暂无课程"
-                showTomorrow -> "明日无课"
-                todayCourses.isEmpty() -> "今日无课"
-                else -> "今日课程已上完"
+                isHoliday -> AndroidWidgetStr.vacationNoClasses()
+                currentWeek < 1 -> AndroidWidgetStr.semesterNotStarted()
+                resolution.isHolidayDate -> AndroidWidgetStr.vacationNoClasses()
+                showTomorrow -> AndroidWidgetStr.noClassesTomorrow()
+                todayCourses.isEmpty() -> AndroidWidgetStr.noClassesToday()
+                else -> AndroidWidgetStr.allClassesFinished()
             }
         } else ""
 
@@ -257,7 +263,7 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
                         }))
                 views.setViewVisibility(colorIds[index], View.VISIBLE)
                 views.setViewVisibility(nowIds[index], if (slot.remaining != null) View.VISIBLE else View.GONE)
-                if (slot.remaining != null) views.setTextViewText(nowIds[index], "${slot.remaining}分钟结束")
+                if (slot.remaining != null) views.setTextViewText(nowIds[index], AndroidWidgetStr.endsInN(slot.remaining))
                 views.setInt(cardIds[index], "setBackgroundResource",
                     if (slot.remaining != null) R.drawable.widget_card_active_background else R.drawable.widget_card_background)
             }
@@ -388,10 +394,10 @@ class CourseWidgetProviderStandard : AppWidgetProvider() {
 
     /** 拼接课程信息：节次（自定义时间课程跳过）+ 教室 + 教师，非空项间用「｜」分隔 */
     private fun buildCourseInfo(course: Course): String = buildList {
-        if (!course.hasValidCustomTime()) add(course.getTimeDisplayText())
+        if (!course.hasValidCustomTime()) add(course.timeDisplayTextLocalized())
         if (course.classroom.isNotEmpty()) add(course.classroom)
         if (course.teacher.isNotEmpty()) add(course.teacher)
-    }.joinToString("｜")
+    }.joinToString(AndroidWidgetStr.infoSeparator())
 
     private fun String?.toMinutes(): Int {
         if (this.isNullOrBlank()) return Int.MAX_VALUE

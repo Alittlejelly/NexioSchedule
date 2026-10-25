@@ -17,6 +17,7 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.ui.utils.screenWidthDp
 
 private const val TAG = "WebCompatDelegate"
@@ -130,7 +131,7 @@ class WebCompatDelegate(private val webView: WebView) {
             return false
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            NexioLog.w(TAG, "WebView 不支持 document-start 脚本，回退到 onPageFinished 注入")
+            NexioLog.w(TAG, AndroidMiscStr.logNoDocStart())
             return false
         }
         // 初始缩放必须在 loadUrl 之前设置：renderer 每次加载读取一次。
@@ -146,7 +147,7 @@ class WebCompatDelegate(private val webView: WebView) {
             true
         } catch (e: Exception) {
             // 注入失败就退回 onPageFinished 兜底，缩放仍由 zoomBy 兜底修
-            NexioLog.w(TAG, "document-start 视口注入失败，回退到 onPageFinished 注入", e)
+            NexioLog.w(TAG, AndroidMiscStr.logViewportInjectFailed(), e)
             false
         }
     }

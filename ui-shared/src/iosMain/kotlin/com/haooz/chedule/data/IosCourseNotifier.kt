@@ -2,6 +2,7 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.i18n.L
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
@@ -283,23 +284,24 @@ object IosCourseNotifier {
                 id = "$ID_PREFIX_PRE_CLASS.$date.$index",
                 fireEpochMillis = fireAt,
                 title = if (leadMinutes > 0) {
-                    "${course.name} · ${leadMinutes}分钟后上课"
+                    L("%s · %d分钟后上课", "%s · Class in %d min")(course.name, leadMinutes)
                 } else {
-                    "${course.name} · 即将上课"
+                    L("%s · 即将上课", "%s · Starting soon")(course.name)
                 },
                 body = buildString {
+                    val separator = L("｜", " · ")()
                     val section = sectionText(course)
                     if (section.isNotEmpty()) append(section)
                     if (course.classroom.isNotEmpty()) {
-                        if (isNotEmpty()) append("｜")
+                        if (isNotEmpty()) append(separator)
                         append(course.classroom)
                     }
                     if (course.teacher.isNotEmpty()) {
-                        if (isNotEmpty()) append("｜")
+                        if (isNotEmpty()) append(separator)
                         append(course.teacher)
                     }
                     if (endText.isNotEmpty()) {
-                        if (isNotEmpty()) append("｜")
+                        if (isNotEmpty()) append(separator)
                         append("$start-$endText")
                     }
                 },
@@ -351,7 +353,7 @@ object IosCourseNotifier {
         return Notice(
             id = "$ID_PREFIX_NEXT_DAY.$tomorrow",
             fireEpochMillis = fireAt,
-            title = "明日课程（${resolution.courses.size} 节）",
+            title = L("明日课程（%d 节）", "Tomorrow's Classes (%d)")(resolution.courses.size),
             body = lines.joinToString("\n"),
             userInfo = mapOf(KEY_ACTION to ACTION_OPEN_APP),
         )
@@ -438,9 +440,9 @@ object IosCourseNotifier {
 
     private fun sectionText(course: Course): String =
         if (course.startSection == course.endSection) {
-            "第${course.startSection}节"
+            L("第%d节", "Period %d")(course.startSection)
         } else {
-            "第${course.startSection}~${course.endSection}节"
+            L("第%d-%d节", "Periods %d-%d")(course.startSection, course.endSection)
         }
 
     private const val TAG = "IosCourseNotifier"
@@ -548,9 +550,9 @@ object IosCourseLiveActivity {
         val now = Clock.System.now().toEpochMilliseconds()
         startFromCourse(
             courseId = "test_live_course",
-            courseName = "大学英语Ⅱ",
-            classroom = "博A201",
-            section = "第3~4节",
+            courseName = L("大学英语Ⅱ", "College English II")(),
+            classroom = L("博A201", "Bo A201")(),
+            section = L("第3-4节", "Periods 3-4")(),
             startEpochMillis = now + 30_000L,
             endEpochMillis = now + 30_000L,
         )

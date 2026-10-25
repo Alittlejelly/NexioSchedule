@@ -17,6 +17,9 @@ import com.google.gson.reflect.TypeToken
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.school.ScriptRepository
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.BackupStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.web.JS_PROMISE_BRIDGE
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +62,7 @@ import kotlin.coroutines.resumeWithException
 internal fun copyShareCodeToClipboard(context: Context, code: String) {
     try {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Nexio课表口令", code))
+        clipboard?.setPrimaryClip(ClipData.newPlainText(AndroidMiscStr.clipboardShareLabel(), code))
     } catch (_: Exception) {
         // 剪贴板失败不影响分享流程
     }
@@ -141,12 +144,12 @@ class WakeUpHeadlessBridge(
             mainHandler.post {
                 onCourses(courses)
                 resolvePromise(promiseId, "true")
-                if (courses.isEmpty()) onError("未解析到课程数据") else onComplete()
+                if (courses.isEmpty()) onError(ImportStr.noCoursesParsed()) else onComplete()
             }
         } catch (e: Exception) {
             mainHandler.post {
-                onError("课程数据解析失败: ${e.message}")
-                rejectPromise(promiseId, e.message ?: "课程数据解析失败")
+                onError(AndroidMiscStr.parseFailedN(e.message))
+                rejectPromise(promiseId, e.message ?: AndroidMiscStr.parseFailed())
             }
         }
     }
@@ -189,7 +192,7 @@ class WakeUpHeadlessBridge(
     @JavascriptInterface
     fun showAlert(titleText: String?, contentText: String?, confirmText: String?, promiseId: String?) {
         mainHandler.post {
-            onError(contentText?.takeIf { it.isNotBlank() } ?: "导入失败")
+            onError(contentText?.takeIf { it.isNotBlank() } ?: AndroidMiscStr.importFailed())
             resolvePromise(promiseId, "true")
         }
     }
@@ -207,7 +210,7 @@ class WakeUpHeadlessBridge(
 
     @JavascriptInterface
     fun onImportFailed(message: String?) {
-        mainHandler.post { onError(message?.takeIf { it.isNotBlank() } ?: "导入失败") }
+        mainHandler.post { onError(message?.takeIf { it.isNotBlank() } ?: AndroidMiscStr.importFailed()) }
     }
 
     private fun escapeJs(value: String): String {
@@ -313,7 +316,7 @@ object ThirdPartyShareImporter {
     ): Result<ThirdPartySharePayload> = withContext(Dispatchers.IO) {
         runCatching {
             val code = extractShareKey(source, rawInput)
-            if (code.isBlank()) throw IllegalArgumentException("请输入${source.inputLabel}")
+            if (code.isBlank()) throw IllegalArgumentException(BackupStr.enterInputN(source.inputLabel))
             when (source) {
                 ThirdPartyShareSource.WakeUp -> importWakeUp(context, code)
                 ThirdPartyShareSource.StarLink -> importStarLink(code)
@@ -350,32 +353,32 @@ object ThirdPartyShareImporter {
         val request = Request.Builder().url(url).get().build()
         val bodyText = client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("分享码已失效或网络异常（HTTP ${response.code}）")
+                throw IllegalStateException(AndroidMiscStr.shareCodeInvalidHttpN(response.code))
             }
             response.body?.string().orEmpty()
         }
-        if (bodyText.isBlank()) throw IllegalStateException("未获取到课程数据")
+        if (bodyText.isBlank()) throw IllegalStateException(AndroidMiscStr.noCourseData())
         val envelope = try {
             gson.fromJson(bodyText, StarLinkEnvelope::class.java)
         } catch (_: Exception) {
-            throw IllegalStateException("星链课表响应格式无效")
+            throw IllegalStateException(AndroidMiscStr.starLinkInvalidResponse())
         }
-        val data = envelope.data ?: throw IllegalStateException("未获取到课程数据")
+        val data = envelope.data ?: throw IllegalStateException(AndroidMiscStr.noCourseData())
         val rawCourses = data.courses.orEmpty().map { c ->
             ThirdPartyCourse(
-                name = c.name?.takeIf { it.isNotBlank() } ?: "未命名课程",
-                teacher = c.teacher?.takeIf { it.isNotBlank() && it != "无" } ?: "未知教师",
+                name = c.name?.takeIf { it.isNotBlank() } ?: ImportStr.unnamedCourse(),
+                teacher = c.teacher?.takeIf { it.isNotBlank() && it != "无" } ?: AndroidMiscStr.unknownTeacher(),
                 position = c.location
                     ?.removePrefix("@")
                     ?.trim()
-                    ?.takeIf { it.isNotEmpty() } ?: "未排地点",
+                    ?.takeIf { it.isNotEmpty() } ?: AndroidMiscStr.noLocation(),
                 day = c.weekday ?: 1,
                 startSection = c.startSection ?: 1,
                 endSection = c.endSection ?: (c.startSection ?: 1),
                 weeks = c.weeks.orEmpty(),
             )
         }
-        if (rawCourses.isEmpty()) throw IllegalStateException("未获取到课程数据")
+        if (rawCourses.isEmpty()) throw IllegalStateException(AndroidMiscStr.noCourseData())
         val courses = mergeAndDistinctCourses(rawCourses)
         val timeSlots = data.sectionMinutes.orEmpty().mapNotNull { (key, range) ->
             val number = key.toIntOrNull() ?: return@mapNotNull null
@@ -409,9 +412,9 @@ object ThirdPartyShareImporter {
     private suspend fun importWakeUp(context: Context, shareKey: String): ThirdPartySharePayload {
         val scriptFile = ScriptRepository(ScriptRepository.getRepoUrl())
             .ensureScript(ExtractedShareTools.GLOBAL_TOOLS_RESOURCE, ExtractedShareTools.WAKEUP_JS)
-            ?: throw IllegalStateException("WakeUp 适配脚本下载失败，请检查网络后重试")
+            ?: throw IllegalStateException(AndroidMiscStr.wakeUpScriptDownloadFailed())
         val script = scriptFile.readText()
-        if (script.isBlank()) throw IllegalStateException("WakeUp 适配脚本为空")
+        if (script.isBlank()) throw IllegalStateException(AndroidMiscStr.wakeUpScriptEmpty())
 
         val payloadDeferred = CompletableDeferred<ThirdPartySharePayload>()
         val coursesRef = AtomicReference<List<ThirdPartyCourse>?>(null)
@@ -424,7 +427,7 @@ object ThirdPartyShareImporter {
             if (finished.compareAndSet(false, true) && !payloadDeferred.isCompleted) {
                 val courses = coursesRef.get()
                 if (courses.isNullOrEmpty()) {
-                    payloadDeferred.completeExceptionally(IllegalStateException("未解析到课程数据"))
+                    payloadDeferred.completeExceptionally(IllegalStateException(ImportStr.noCoursesParsed()))
                 } else {
                     payloadDeferred.complete(
                         ThirdPartySharePayload(
@@ -489,7 +492,7 @@ object ThirdPartyShareImporter {
                                                 };
                                                 window.AndroidBridgePromise.showAlert = function(title, content) {
                                                   if (window.AndroidBridge && window.AndroidBridge.onImportFailed) {
-                                                    window.AndroidBridge.onImportFailed(content || title || '导入失败');
+                                                    window.AndroidBridge.onImportFailed(content || title || '${AndroidMiscStr.importFailed()}');
                                                   }
                                                   return Promise.resolve(true);
                                                 };
@@ -510,8 +513,8 @@ object ThirdPartyShareImporter {
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    NexioLog.e(TAG, "WakeUp 脚本启动失败", e)
-                                    failOnce(e.message ?: "WakeUp 脚本启动失败")
+                                    NexioLog.e(TAG, AndroidMiscStr.wakeUpScriptStartFailed(), e)
+                                    failOnce(e.message ?: AndroidMiscStr.wakeUpScriptStartFailed())
                                 }
                             }
                         }
@@ -529,8 +532,8 @@ object ThirdPartyShareImporter {
                     wv
                 }
             } catch (e: Exception) {
-                NexioLog.e(TAG, "WakeUp WebView 创建失败", e)
-                failOnce(e.message ?: "WakeUp WebView 创建失败")
+                NexioLog.e(TAG, AndroidMiscStr.wakeUpWebViewCreateFailed(), e)
+                failOnce(e.message ?: AndroidMiscStr.wakeUpWebViewCreateFailed())
             }
 
             try {

@@ -55,6 +55,8 @@ import com.haooz.chedule.data.nowLocalDateTime
 import com.haooz.chedule.data.parseBackupPayload
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.toJsonMap
+import com.haooz.chedule.i18n.BackupStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.courseViewModel
@@ -182,9 +184,9 @@ fun LocalBackupScreen(
                 runCatching {
                     val json = when {
                         backupId != null -> backupFileController.readBackupFile(backupId)
-                            ?: throw IllegalArgumentException("没有可恢复的文件")
+                            ?: throw IllegalArgumentException(BackupStr.noRestorableFile())
                         externalJson != null -> externalJson
-                        else -> throw IllegalArgumentException("没有可恢复的文件")
+                        else -> throw IllegalArgumentException(BackupStr.noRestorableFile())
                     }
                     parseBackupPayload(json)
                 }
@@ -193,11 +195,11 @@ fun LocalBackupScreen(
             result.fold(
                 onSuccess = { payload ->
                     restorePayload = payload
-                    restoreSourceLabel = backupFileName ?: "外部文件"
+                    restoreSourceLabel = backupFileName ?: BackupStr.externalFile()
                     showRestoreDialog = true
                 },
                 onFailure = { e ->
-                    showToast("无法识别备份文件：${e.message ?: "格式错误"}")
+                    showToast(BackupStr.unrecognizedBackupN(e.message ?: BackupStr.formatError()))
                 }
             )
         }
@@ -249,10 +251,10 @@ fun LocalBackupScreen(
             isRestoring = false
             result.fold(
                 onSuccess = {
-                    showToast("恢复成功")
+                    showToast(BackupStr.restoreSuccess())
                 },
                 onFailure = { e ->
-                    showToast("恢复失败: ${e.message}")
+                    showToast(BackupStr.restoreFailedN(e.message))
                 }
             )
         }
@@ -299,19 +301,19 @@ fun LocalBackupScreen(
                         val modeEntry = DropdownEntry(
                             items = listOf(
                                 DropdownItem(
-                                    text = "全部备份",
+                                    text = BackupStr.fullBackup(),
                                     selected = backupMode == "all",
                                     onClick = { backupMode = "all" }
                                 ),
                                 DropdownItem(
-                                    text = "单独课表",
+                                    text = BackupStr.singleSchedule(),
                                     selected = backupMode == "single",
                                     onClick = { backupMode = "single" }
                                 ),
                             )
                         )
                         OverlayDropdownMenu(
-                            title = "备份模式",
+                            title = BackupStr.backupModeLabel(),
                             entry = modeEntry,
                             collapseOnSelection = true,
                             liquidGlassBackdrop = liquidGlassBackdrop,
@@ -329,10 +331,10 @@ fun LocalBackupScreen(
                                 }
                             )
                             OverlayDropdownMenu(
-                                title = "选择课表",
+                                title = BackupStr.selectSchedule(),
                                 summary = if (backupMode == "single") {
-                                    if (selectedSchedule.isNotEmpty()) null else "请选择要备份的课表"
-                                } else "全部备份模式下无需选择",
+                                    if (selectedSchedule.isNotEmpty()) null else BackupStr.selectScheduleToBackup()
+                                } else BackupStr.fullBackupNoSelection(),
                                 entry = scheduleEntry,
                                 collapseOnSelection = true,
                                 enabled = backupMode == "single",
@@ -341,7 +343,7 @@ fun LocalBackupScreen(
                             )
                         } else {
                             Text(
-                                text = "暂无课表数据",
+                                text = BackupStr.noScheduleData(),
                                 fontSize = 14.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
@@ -358,12 +360,12 @@ fun LocalBackupScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ArrowPreference(
-                            title = if (isBackingUp) "备份中..." else "立即备份",
-                            summary = if (backupMode == "all") "备份全部课表数据至存储" else "备份「${selectedSchedule.ifEmpty { "未选择" }}」至存储",
+                            title = if (isBackingUp) BackupStr.backingUp() else BackupStr.backupNow(),
+                            summary = if (backupMode == "all") BackupStr.backupAllSummary() else BackupStr.backupSingleSummaryN(selectedSchedule.ifEmpty { BackupStr.notSelected() }),
                             onClick = {
                                 if (isBackingUp) return@ArrowPreference
                                 if (backupMode == "single" && selectedSchedule.isEmpty()) {
-                                    showToast("请先选择要备份的课表")
+                                    showToast(BackupStr.selectScheduleToBackupFirst())
                                     return@ArrowPreference
                                 }
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
@@ -408,7 +410,7 @@ fun LocalBackupScreen(
                                             val json = encodeBackupJson(data)
                                             // 目录选择/可写校验/写盘全在控制器里（Android 包装保留原异常文案）
                                             if (!backupFileController.saveBackupFile(fileName, json)) {
-                                                throw IllegalStateException("备份文件写入失败")
+                                                throw IllegalStateException(BackupStr.backupWriteFailed())
                                             }
                                             Result.success(fileName)
                                         } catch (e: Exception) {
@@ -418,11 +420,11 @@ fun LocalBackupScreen(
                                     isBackingUp = false
                                     result.fold(
                                         onSuccess = { name ->
-                                            showToast("备份成功: $name")
+                                            showToast(BackupStr.backupSuccessN(name))
                                             refreshHistory()
                                         },
                                         onFailure = { e ->
-                                            showToast("备份失败: ${e.message}")
+                                            showToast(BackupStr.backupFailedN(e.message))
                                         }
                                     )
                                 }
@@ -435,7 +437,7 @@ fun LocalBackupScreen(
             // 备份历史
             item(key = "history_title") {
                 SmallTitle(
-                    text = "备份历史",
+                    text = BackupStr.backupHistorySection(),
                     modifier = Modifier.animateItem()
                 )
             }
@@ -446,7 +448,7 @@ fun LocalBackupScreen(
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                     ) {
                         Text(
-                            text = if (isScanning) "正在扫描备份文件..." else "暂无备份记录",
+                            text = if (isScanning) BackupStr.scanningBackups() else BackupStr.noBackupRecords(),
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -475,7 +477,7 @@ fun LocalBackupScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = if (info.scheduleName != null) "·${info.scheduleName}·" else "共${info.scheduleCount}个课表",
+                                        text = if (info.scheduleName != null) "·${info.scheduleName}·" else BackupStr.scheduleCountN(info.scheduleCount),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MiuixTheme.colorScheme.onSurface
@@ -501,7 +503,7 @@ fun LocalBackupScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "恢复",
+                                            text = BackupStr.restore(),
                                             style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
                                             fontWeight = FontWeight.Medium,
                                             color = Color.White
@@ -526,7 +528,7 @@ fun LocalBackupScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "删除",
+                                            text = CommonStr.delete(),
                                             style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
                                             fontWeight = FontWeight.Medium,
                                             color = Color(0xFFF44336)
@@ -540,7 +542,7 @@ fun LocalBackupScreen(
 
             item(key = "other_operations") {
                 SmallTitle(
-                    text = "其他操作",
+                    text = BackupStr.otherOperations(),
                     modifier = Modifier.animateItem()
                 )
                 Card(
@@ -549,8 +551,8 @@ fun LocalBackupScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ArrowPreference(
-                            title = "手动选择文件",
-                            summary = "从其他位置选择备份文件进行恢复",
+                            title = BackupStr.manualFilePick(),
+                            summary = BackupStr.manualFilePickSummary(),
                             onClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                                 // mime 必须放开（*/*）：各厂商文件管理器对 .json 上报的 mime 不一致，
@@ -571,21 +573,19 @@ fun LocalBackupScreen(
     val restoreSummary = when (restorePayloadValue) {
         is BackupPayload.Full -> {
             val count = countFullBackupSchedules(restorePayloadValue.data)
-            "「$restoreSourceLabel」\n" +
-                "这是全量备份，包含 $count 个课表。\n" +
-                "恢复会先清除现有全部课表与时间配置，再整体覆盖为备份内容，此操作不可撤销。"
+            BackupStr.restoreFullSummaryN(restoreSourceLabel, count)
         }
 
         is BackupPayload.Single -> {
-            "「$restoreSourceLabel」\n" +
-                "这是单课表备份，包含 ${restorePayloadValue.courses.size} 门课程。\n" +
-                "将新建课表「${restorePayloadValue.scheduleName}」（重名时自动编号），不影响现有课表。"
+            BackupStr.restoreSingleSummaryN(
+                restoreSourceLabel, restorePayloadValue.courses.size, restorePayloadValue.scheduleName,
+            )
         }
 
         null -> ""
     }
     OverlayDialog(
-        title = if (restoreIsFull) "恢复全部备份" else "恢复备份",
+        title = if (restoreIsFull) BackupStr.restoreFullBackup() else BackupStr.restoreBackup(),
         summary = restoreSummary,
         show = showRestoreDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -605,7 +605,7 @@ fun LocalBackupScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showRestoreDialog = false
@@ -614,7 +614,7 @@ fun LocalBackupScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = if (restoreIsFull) "覆盖恢复" else "确定恢复",
+                    text = if (restoreIsFull) BackupStr.overwriteRestore() else BackupStr.confirmRestore(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         applyRestore()
@@ -628,8 +628,8 @@ fun LocalBackupScreen(
 
     val deleteDialogInfo = pendingDelete
     OverlayDialog(
-        title = "删除备份",
-        summary = if (deleteDialogInfo != null) "确定要删除备份「${deleteDialogInfo.fileName}」吗？\n此操作不可恢复" else "",
+        title = BackupStr.deleteBackup(),
+        summary = if (deleteDialogInfo != null) BackupStr.deleteBackupSummaryN(deleteDialogInfo.fileName) else "",
         show = showDeleteDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -648,7 +648,7 @@ fun LocalBackupScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showDeleteDialog = false
@@ -657,7 +657,7 @@ fun LocalBackupScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "删除",
+                    text = CommonStr.delete(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         // ⚠ 必须先捕获成局部变量：删除动画有 300ms 延迟，期间 pendingDelete 可能被
@@ -670,13 +670,13 @@ fun LocalBackupScreen(
                             try {
                                 delay(300.milliseconds)
                                 if (backupFileController.deleteBackupFile(target.id)) {
-                                    showToast("删除成功")
+                                    showToast(CommonStr.deleteSuccess())
                                 } else {
-                                    showToast("删除失败：文件不存在或不可写")
+                                    showToast(BackupStr.deleteFailedNotWritable())
                                 }
                                 refreshHistory()
                             } catch (e: Exception) {
-                                showToast("删除失败: ${e.message}")
+                                showToast(BackupStr.deleteFailedN(e.message))
                             } finally {
                                 // 放在 finally：否则扫描抛异常时该卡片会永久停在 alpha=0
                                 deletingFileName = null

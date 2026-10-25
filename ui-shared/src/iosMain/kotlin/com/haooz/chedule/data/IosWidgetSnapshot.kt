@@ -144,7 +144,7 @@ object IosWidgetSnapshot {
             put("name", course.name)
             put("classroom", course.classroom)
             put("teacher", course.teacher)
-            put("section", if (course.hasValidCustomTime()) "" else course.getSectionText())
+            put("section", if (course.hasValidCustomTime()) "" else course.sectionTextLocalized())
             put("start", start / 1000.0)
             put("end", end / 1000.0)
             put("color", (course.colorRes and 0xFFFFFFL).toString(16).padStart(6, '0').uppercase())

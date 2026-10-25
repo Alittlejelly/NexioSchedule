@@ -40,6 +40,8 @@ import com.haooz.chedule.data.WebDavManager
 import com.haooz.chedule.data.formatDateTimeMinute
 import com.haooz.chedule.data.localDateTimeAt
 import com.haooz.chedule.data.resolveWebDavDirUrl
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.MiscStr
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
@@ -115,9 +117,9 @@ fun WebDavSettingsScreen(
     // 2026-10-11：原实现是**全限定名**的 java.text.SimpleDateFormat + java.util.Date ——
     // checkKmpPurity 的 `import java.*` 规则抓不到这种写法，于是这行在 commonMain 里
     // 一路绿灯（android/jvm 目标都能编过），真编 iOS 时才炸。换 :core 的手写格式化。
-    val lastSyncText = remember(lastSyncTimeMs) {
+    val lastSyncText = remember(lastSyncTimeMs, AppLanguage.resolved) {
         if (lastSyncTimeMs > 0L) {
-            "上次操作: ${localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute()}"
+            MiscStr.lastOperationN(localDateTimeAt(lastSyncTimeMs).formatDateTimeMinute())
         } else ""
     }
 
@@ -127,7 +129,7 @@ fun WebDavSettingsScreen(
     val doBackup = {
         if (!backingUp && !restoring) {
             backingUp = true
-            statusText = "正在备份..."
+            statusText = MiscStr.backingUpStatus()
             statusIsError = false
             coroutineScope.launch {
                 webDavManager.serverUrl = serverUrl
@@ -141,7 +143,7 @@ fun WebDavSettingsScreen(
     val doRestore = {
         if (!backingUp && !restoring) {
             restoring = true
-            statusText = "正在恢复..."
+            statusText = MiscStr.restoringStatus()
             statusIsError = false
             coroutineScope.launch {
                 webDavManager.serverUrl = serverUrl
@@ -161,13 +163,13 @@ fun WebDavSettingsScreen(
     LaunchedEffect(syncState) {
         when (val state = syncState) {
             is SyncManager.SyncOperationState.BackupSuccess -> {
-                statusText = "备份成功: ${state.backupId}"
+                statusText = MiscStr.backupSuccessN(state.backupId)
                 statusIsError = false
                 backingUp = false
                 lastSyncTimeMs = webDavManager.lastSyncTime
             }
             is SyncManager.SyncOperationState.RestoreSuccess -> {
-                statusText = "恢复成功: ${state.backupTime}"
+                statusText = MiscStr.restoreSuccessN(state.backupTime)
                 statusIsError = false
                 restoring = false
                 lastSyncTimeMs = webDavManager.lastSyncTime
@@ -183,7 +185,7 @@ fun WebDavSettingsScreen(
                 restoring = false
             }
             is SyncManager.SyncOperationState.Running -> {
-                statusText = if (backingUp) "正在备份..." else if (restoring) "正在恢复..." else "处理中..."
+                statusText = if (backingUp) MiscStr.backingUpStatus() else if (restoring) MiscStr.restoringStatus() else MiscStr.processingStatus()
                 statusIsError = false
             }
             is SyncManager.SyncOperationState.Idle -> {}
@@ -209,7 +211,7 @@ fun WebDavSettingsScreen(
                     statusIsError = false
                     connected = true
                 } else {
-                    statusText = result.exceptionOrNull()?.message ?: "连接失败"
+                    statusText = result.exceptionOrNull()?.message ?: MiscStr.connectionFailed()
                     statusIsError = true
                     connected = false
                 }
@@ -258,7 +260,7 @@ fun WebDavSettingsScreen(
                 // 服务器配置
                 item {
                     SmallTitle(
-                        text = "服务器配置",
+                        text = MiscStr.serverConfigSection(),
                     )
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -272,7 +274,7 @@ fun WebDavSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "服务器地址",
+                                    text = MiscStr.serverAddress(),
                                     modifier = Modifier.weight(1f),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
@@ -299,7 +301,7 @@ fun WebDavSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "备份路径",
+                                    text = MiscStr.backupPath(),
                                     modifier = Modifier.weight(1f),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
@@ -309,7 +311,7 @@ fun WebDavSettingsScreen(
                                     value = remotePath,
                                     onValueChange = { remotePath = it },
                                     modifier = Modifier.fillMaxWidth(0.65f),
-                                    hint = "留空=根目录",
+                                    hint = MiscStr.hintLeaveEmptyForRoot(),
                                     singleLine = true,
                                     textAlign = TextAlign.End,
                                     textStyle = TextStyle(
@@ -325,7 +327,7 @@ fun WebDavSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "用户名",
+                                    text = MiscStr.accountLabel(),
                                     modifier = Modifier.weight(1f),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
@@ -335,7 +337,7 @@ fun WebDavSettingsScreen(
                                     value = username,
                                     onValueChange = { username = it },
                                     modifier = Modifier.fillMaxWidth(0.65f),
-                                    hint = "必填",
+                                    hint = MiscStr.requiredHint(),
                                     singleLine = true,
                                     textAlign = TextAlign.End,
                                     textStyle = TextStyle(
@@ -352,7 +354,7 @@ fun WebDavSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "应用密码",
+                                    text = MiscStr.appPasswordLabel(),
                                     modifier = Modifier.weight(1f),
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Medium,
@@ -362,7 +364,7 @@ fun WebDavSettingsScreen(
                                     value = password,
                                     onValueChange = { password = it },
                                     modifier = Modifier.fillMaxWidth(0.65f),
-                                    hint = "必填",
+                                    hint = MiscStr.requiredHint(),
                                     singleLine = true,
                                     textAlign = TextAlign.End,
                                     textStyle = TextStyle(
@@ -383,16 +385,16 @@ fun WebDavSettingsScreen(
                         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                     ) {
                         Text(
-                            text = if (!isConfigured) "请先配置服务器信息"
-                            else statusText.ifBlank { "暂无操作记录" },
+                            text = if (!isConfigured) MiscStr.configureServerFirst()
+                            else statusText.ifBlank { MiscStr.noOperationRecord() },
                             fontSize = 14.sp,
                             color = if (statusText.isNotBlank() && statusIsError)
                                 ComposeColor(0xFFF44336) else MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (!isConfigured) "配置后即可使用云备份功能"
-                            else lastSyncText.ifBlank { "从未操作" },
+                            text = if (!isConfigured) MiscStr.cloudBackupAfterConfig()
+                            else lastSyncText.ifBlank { MiscStr.neverOperated() },
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                         )
@@ -408,14 +410,14 @@ fun WebDavSettingsScreen(
                     ) {
                         Column {
                             Text(
-                                text = "关联坚果云步骤：",
+                                text = MiscStr.nutstoreStepsTitle(),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MiuixTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "① 下载并安装坚果云客户端\n② 登录后前往「设置 → 第三方应用管理」获取应用密码\n③ 将应用密码填入上方「应用密码」",
+                                text = MiscStr.nutstoreStepsDetail(),
                                 fontSize = 13.sp,
                                 lineHeight = 20.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions
@@ -433,14 +435,14 @@ fun WebDavSettingsScreen(
                     ) {
                         Column {
                             Text(
-                                text = "备份与恢复说明",
+                                text = MiscStr.backupRestoreNotesTitle(),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MiuixTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "备份到云端：将全部课表数据上传为带时间戳的文件，每次备份独立保存，不覆盖历史备份。\n\n从云端恢复：下载最新的备份文件覆盖本地数据。恢复前请先备份当前数据。",
+                                text = MiscStr.backupRestoreNotesDetail(),
                                 fontSize = 13.sp,
                                 lineHeight = 20.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions

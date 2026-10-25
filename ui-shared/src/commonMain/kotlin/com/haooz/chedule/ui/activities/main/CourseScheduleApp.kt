@@ -44,6 +44,8 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.AppearanceStore
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.LanguageStore
 import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.SyncManager
 import com.haooz.chedule.data.TeachingWeekReorganization
@@ -146,6 +148,9 @@ fun CourseScheduleApp(
      */
 ) {
 
+
+    // 语言偏好：进根组合时从存储恢复一次（AppLanguage.set 同时落盘，重建后读回同值）
+    remember { AppLanguage.init(LanguageStore.load()) }
 
     val viewModel: CourseViewModel = courseViewModel()
     val scheduleViewModel: ScheduleViewModel = scheduleViewModel()

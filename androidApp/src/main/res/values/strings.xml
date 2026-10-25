@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Nexio课程表</string>
+    <string name="import_schedule">导入课程表</string>
+    <string name="widget_course_reminder">课程提醒</string>
+    <string name="widget_today_tomorrow">今明课程</string>
+    <string name="widget_today_course">今日课程</string>
+    <string name="widget_course_reminder_pad">课程提醒（Pad）</string>
+    <string name="widget_today_course_pad">今日课程（Pad）</string>
+    <string name="widget_no_classes_today">今日无课</string>
 </resources>

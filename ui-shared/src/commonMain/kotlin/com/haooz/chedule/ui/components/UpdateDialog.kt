@@ -3,6 +3,8 @@ package com.haooz.chedule.ui.components
 import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.CommonStr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -102,7 +104,7 @@ fun UpdateDialog(
                 try {
                     updateController.checkForUpdate(source, channel)
                 } catch (e: Exception) {
-                    NexioLog.e("UpdateDialog", "检查更新失败", e)
+                    NexioLog.e("UpdateDialog", AboutStr.checkUpdateFailed(), e)
                     Pair(false, null)
                 }
             }
@@ -156,7 +158,7 @@ fun UpdateDialog(
     fun startDownload() {
         val tag = updateTagName
         if (tag.isBlank()) {
-            showToast("未找到版本信息")
+            showToast(AboutStr.versionInfoNotFound())
             return
         }
         isDownloading = true
@@ -172,7 +174,7 @@ fun UpdateDialog(
             isResolvingUrl = false
             if (apkUrl.isNullOrBlank()) {
                 isDownloading = false
-                showToast("获取下载地址失败，请到「设置 - 应用更新」中重试", longDuration = true)
+                showToast(AboutStr.getDownloadUrlFailedSettings(), longDuration = true)
                 return@launch
             }
             try {
@@ -186,7 +188,7 @@ fun UpdateDialog(
             } catch (e: Exception) {
                 isDownloading = false
                 downloadComplete = false
-                showToast("下载失败: ${e.message}")
+                showToast(AboutStr.downloadFailedN(e.message))
             }
         }
     }
@@ -208,24 +210,24 @@ fun UpdateDialog(
     }
 
     val primaryLabel = when {
-        isInstalling -> "安装中"
-        isResolvingUrl -> "获取链接"
-        isDownloading -> "正在下载"
-        downloadComplete || hasDownloadedApk -> "安装"
-        else -> "更新"
+        isInstalling -> AboutStr.installing()
+        isResolvingUrl -> AboutStr.getLink()
+        isDownloading -> CommonStr.downloading()
+        downloadComplete || hasDownloadedApk -> AboutStr.install()
+        else -> CommonStr.update()
     }
 
     OverlayDialog(
         title = when {
-            isInstalling -> "安装中"
-            isResolvingUrl -> "正在获取链接"
-            isDownloading -> "正在下载"
-            downloadComplete -> "下载完成"
-            else -> "发现新版本"
+            isInstalling -> AboutStr.installing()
+            isResolvingUrl -> AboutStr.gettingLink()
+            isDownloading -> CommonStr.downloading()
+            downloadComplete -> AboutStr.downloadComplete()
+            else -> AboutStr.newVersionFound()
         },
         summary = when {
-            isInstalling -> "正在安装应用，请稍候..."
-            else -> "最新版本: $updateTagName"
+            isInstalling -> AboutStr.installingSummary()
+            else -> AboutStr.latestVersionN(updateTagName)
         },
         show = showUpdateDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -257,7 +259,7 @@ fun UpdateDialog(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "正在获取下载地址...",
+                        text = AboutStr.gettingDownloadUrlDots(),
                         fontSize = 14.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                     )
@@ -286,9 +288,9 @@ fun UpdateDialog(
                 // 始终提供关闭入口：安装中也能关，否则用户在系统安装器点「取消」后回不来
                 TextButton(
                     text = when {
-                        isInstalling -> "关闭"
-                        isDownloading -> "后台下载"
-                        else -> "稍后"
+                        isInstalling -> CommonStr.close()
+                        isDownloading -> AboutStr.backgroundDownload()
+                        else -> AboutStr.later()
                     },
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)

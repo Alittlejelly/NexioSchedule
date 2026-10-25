@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.utils
 import android.content.Context
 import android.content.Intent
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
 import com.haooz.chedule.shizuku.ShizukuManager
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +41,7 @@ internal object UpdateInstaller {
         val check = UpdateChecker.verifyApk(context, file, UpdateChecker.rememberedApkSha256(context, tag))
         if (!check.ok) {
             if (file.exists()) {
-                NexioLog.w(TAG, "本地APK无效，已删除重下: $tag 原因=${check.reason}")
+                NexioLog.w(TAG, AndroidMiscStr.logLocalApkInvalidN(tag, check.reason))
                 runCatching { file.delete() }
             }
             return false
@@ -62,7 +63,7 @@ internal object UpdateInstaller {
         tag: String,
         onProgress: suspend (Float) -> Unit,
     ): File = withContext(Dispatchers.IO) {
-        if (apkUrl.isBlank()) throw IllegalArgumentException("未找到下载链接")
+        if (apkUrl.isBlank()) throw IllegalArgumentException(AndroidMiscStr.downloadUrlNotFound())
         val finalFile = apkFile(context, tag)
         val part = partFile(context, tag)
         if (part.exists()) part.delete()
@@ -92,11 +93,11 @@ internal object UpdateInstaller {
             }
             if (fileSize > 0 && part.length() != fileSize) {
                 part.delete()
-                throw java.io.IOException("APK 下载不完整: ${part.length()}/$fileSize")
+                throw java.io.IOException(AndroidMiscStr.apkDownloadIncompleteN(part.length(), fileSize))
             }
             if (fileSize <= 0) {
                 // 未声明长度（如分块传输）时无法用体积判定，交给完整校验
-                NexioLog.w(TAG, "服务端未声明长度，改用解析级校验: $tag")
+                NexioLog.w(TAG, AndroidMiscStr.logNoContentLengthN(tag))
             }
 
             // 优先用服务端下发的 SHA-256 做字节级校验，没有则退回解析级校验
@@ -104,13 +105,13 @@ internal object UpdateInstaller {
             val check = UpdateChecker.verifyApk(context, part, expectedSha)
             if (!check.ok) {
                 part.delete()
-                throw java.io.IOException("APK 校验失败：${check.reason}")
+                throw java.io.IOException(AndroidMiscStr.apkVerifyFailedN(check.reason))
             }
 
             if (finalFile.exists()) finalFile.delete()
             if (!part.renameTo(finalFile)) {
                 part.delete()
-                throw java.io.IOException("APK 落盘失败")
+                throw java.io.IOException(AndroidMiscStr.apkFinalizeFailed())
             }
 
             // 记住服务端 SHA-256（若有），下次复用本地包时按字节级复核
@@ -143,8 +144,8 @@ internal object UpdateInstaller {
                     showToast(message)
                     onFinished?.invoke()
                 } else {
-                    NexioLog.w(TAG, "静默安装失败，回退系统安装器: $message")
-                    showToast("静默安装失败，已改用系统安装器")
+                    NexioLog.w(TAG, AndroidMiscStr.logSilentInstallFallbackN(message))
+                    showToast(AndroidMiscStr.silentInstallFallback())
                     // 关键：先解除 installing 状态再拉起安装器。
                     // 否则用户在系统安装器里点取消后，弹窗会永久停在「安装中」且无法关闭。
                     onInstallingChanged(false)
@@ -163,7 +164,7 @@ internal object UpdateInstaller {
 
     private fun launchSystemInstaller(context: Context, file: File) {
         if (!file.exists()) {
-            showToast("安装包不存在，请重新下载")
+            showToast(AndroidMiscStr.apkMissingReDownload())
             return
         }
         try {
@@ -175,7 +176,7 @@ internal object UpdateInstaller {
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            showToast("安装失败: ${e.message}")
+            showToast(AndroidMiscStr.installFailedN(e.message))
         }
     }
 }

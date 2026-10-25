@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toIntSize
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.CommonStr
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
@@ -195,12 +197,15 @@ fun WidgetIntroScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = tabletHorizontalPadding + 18.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    FeatureItem("今日课程一目了然", "桌面显示当天课程、时间、地点和教师信息")
-                    FeatureItem("明日课程提前预览", "开启次日课程提醒后，智能显示明日课程")
-                    FeatureItem("进行中课程高亮", if (isIosPlatform) "突出显示正在上课的课程和结束时间" else "正在上课的课程高亮显示剩余时间")
-                    FeatureItem("智能显示状态", "智能提醒今日课程当前状态")
+                    FeatureItem(AboutStr.featureTodayTitle(), AboutStr.featureTodayDesc())
+                    FeatureItem(AboutStr.featureTomorrowTitle(), AboutStr.featureTomorrowDesc())
+                    FeatureItem(
+                        AboutStr.featureOngoingTitle(),
+                        if (isIosPlatform) AboutStr.featureOngoingDescIos() else AboutStr.featureOngoingDescAndroid()
+                    )
+                    FeatureItem(AboutStr.featureStatusTitle(), AboutStr.featureStatusDesc())
                     if (isIosPlatform) {
-                        FeatureItem("跟随桌面外观", "支持浅色、深色与系统着色外观")
+                        FeatureItem(AboutStr.featureAppearanceTitle(), AboutStr.featureAppearanceDesc())
                     }
                 }
 
@@ -259,13 +264,13 @@ private fun WidgetPreviewToday() {
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
-                Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
+                Text(CommonStr.weekN(10), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
             }
 
-            CourseCardPreview("08:00", "09:35", "高等数学", "第1-2节｜A301｜张老师", ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
+            CourseCardPreview("08:00", "09:35", AboutStr.previewCourseMath(), AboutStr.previewInfoMath(), ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
             Spacer(modifier = Modifier.height(8.dp))
-            CourseCardPreview("14:00", "15:35", "大学英语", "第5-6节｜B205｜李老师", ComposeColor(0xFF2196F3), "25分钟结束", ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
+            CourseCardPreview("14:00", "15:35", AboutStr.previewCourseEnglish(), AboutStr.previewInfoEnglish(), ComposeColor(0xFF2196F3), AboutStr.previewEndingSoon(), ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
             Spacer(modifier = Modifier.height(2.dp))
         }
     }
@@ -305,10 +310,10 @@ private fun WidgetPreviewSmall2x2() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Title: 14sp bold
-                    Text("周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                    Text(CommonStr.weekdayFri(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
                     Spacer(modifier = Modifier.weight(1f))
                     // Week: 14sp bold
-                    Text("第10周", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                    Text(CommonStr.weekN(10), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
                 }
 
                 // Course content: gravity=bottom, weight=1
@@ -318,7 +323,7 @@ private fun WidgetPreviewSmall2x2() {
                 ) {
                     // Course name: 17sp, paddingStart=4dp, paddingTop=8dp, paddingBottom=4dp, marginBottom=4dp
                     Text(
-                        "高等数学",
+                        AboutStr.previewCourseMath(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = nameColor,
@@ -371,7 +376,7 @@ private fun WidgetPreviewSmall2x2() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "还剩 2 节课",
+                        AboutStr.previewRemainingClasses(),
                         fontSize = 12.sp,
                         color = remainingColor,
                         fontFamily = FontFamily.SansSerif
@@ -421,8 +426,8 @@ private fun WidgetPreviewTodayTomorrow() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 与真实组件一致：两个各占一半的表头槽位，明天槽位左移 4dp 起点
-                Text("今天 / 周五", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f))
-                Text("明天 / 周六", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(AboutStr.previewHeaderTomorrow(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 4.dp))
             }
 
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -430,15 +435,15 @@ private fun WidgetPreviewTodayTomorrow() {
                     modifier = Modifier.weight(1f).fillMaxHeight().padding(end = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    TodayTomorrowCardPreview("高等数学", "08:00-09:35", "A301｜张老师", ComposeColor(0xFF4CAF50), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
-                    TodayTomorrowCardPreview("大学英语", "14:00-15:35", "B205｜李老师", ComposeColor(0xFF2196F3), ComposeColor(0x1A2196F3), nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview(AboutStr.previewCourseMath(), "08:00-09:35", AboutStr.previewInfoMathTeacher(), ComposeColor(0xFF4CAF50), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview(AboutStr.previewCourseEnglish(), "14:00-15:35", AboutStr.previewInfoEnglishTeacher(), ComposeColor(0xFF2196F3), ComposeColor(0x1A2196F3), nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
                 }
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    TodayTomorrowCardPreview("线性代数", "08:00-09:35", "C102｜王老师", ComposeColor(0xFFFF9800), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
-                    TodayTomorrowCardPreview("大学物理", "10:00-11:35", "D203｜赵老师", ComposeColor(0xFF9C27B0), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview(AboutStr.previewCourseLinearAlgebra(), "08:00-09:35", AboutStr.previewInfoLinearTeacher(), ComposeColor(0xFFFF9800), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    TodayTomorrowCardPreview(AboutStr.previewCoursePhysics(), "10:00-11:35", AboutStr.previewInfoPhysicsTeacher(), ComposeColor(0xFF9C27B0), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
                 }
             }
         }
@@ -541,7 +546,7 @@ private fun WidgetPaddingSelector(
     val entry = DropdownEntry(
         items = listOf(
             DropdownItem(
-                text = "标准",
+                text = AboutStr.paddingStandard(),
                 selected = selectedMode == 0,
                 onClick = { onSelect(0) }
             ),
@@ -556,12 +561,12 @@ private fun WidgetPaddingSelector(
                 onClick = { onSelect(2) }
             ),
             DropdownItem(
-                text = "4×6 无字",
+                text = AboutStr.padding4x6NoText(),
                 selected = selectedMode == 3,
                 onClick = { onSelect(3) }
             ),
             DropdownItem(
-                text = "4×7 无字",
+                text = AboutStr.padding4x7NoText(),
                 selected = selectedMode == 4,
                 onClick = { onSelect(4) }
             ),
@@ -577,7 +582,7 @@ private fun WidgetPaddingSelector(
         insideMargin = PaddingValues(0.dp)
     ) {
         OverlayDropdownMenu(
-            title = "小组件适应布局",
+            title = AboutStr.widgetLayoutTitle(),
             entry = entry,
             collapseOnSelection = true,
             liquidGlassBackdrop = liquidGlassBackdrop,

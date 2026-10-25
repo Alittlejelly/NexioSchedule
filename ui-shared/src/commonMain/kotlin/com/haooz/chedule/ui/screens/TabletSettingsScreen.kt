@@ -66,6 +66,9 @@ import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SettingsStr
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
 import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
@@ -116,23 +119,53 @@ import kotlin.time.Duration.Companion.milliseconds
  * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。
  * 仅 pad 使用此分组（与手机设置页分类不同）。
  */
-enum class TabletSettingsDest(val title: String, val group: String) {
-    Semester("学期与周次", "基本设置"),
-    CourseTime("课程时间管理", "基本设置"),
-    Reminder("课程提醒", "特色功能"),
-    Holiday("节假日与调休", "特色功能"),
-    Widget("桌面小部件", "特色功能"),
-    ScheduleImport("文件口令导入", "导入与导出"),
-    AiImport("AI 文本导入", "导入与导出"),
-    EducationalImport("教务系统导入", "导入与导出"),
-    ScheduleExport("课表导出", "导入与导出"),
-    LocalBackup("本地备份", "备份"),
-    WebDav("WebDAV 云同步", "备份"),
-    Preference("应用偏好设置", "其他"),
-    Update("更新设置", "其他"),
-    About("关于应用", "其他"),
-    Appreciate("捐赠支持", "其他"),
-    Communication("交流与反馈", "其他"),
+enum class TabletSettingsDest {
+    Semester,
+    CourseTime,
+    Reminder,
+    Holiday,
+    Widget,
+    ScheduleImport,
+    AiImport,
+    EducationalImport,
+    ScheduleExport,
+    LocalBackup,
+    WebDav,
+    Preference,
+    Update,
+    About,
+    Appreciate,
+    Communication,
+    ;
+
+    /** 左栏入口与右栏固定顶栏的标题文案 */
+    fun displayTitle(): String = when (this) {
+        Semester -> SettingsStr.destSemester()
+        CourseTime -> SettingsStr.courseTimeManagement()
+        Reminder -> SettingsStr.courseReminder()
+        Holiday -> SettingsStr.holidayAndWorkswap()
+        Widget -> SettingsStr.homeScreenWidget()
+        ScheduleImport -> SettingsStr.destFileCodeImport()
+        AiImport -> SettingsStr.destAiImport()
+        EducationalImport -> SettingsStr.destAcademicImport()
+        ScheduleExport -> SettingsStr.scheduleExport()
+        LocalBackup -> SettingsStr.destLocalBackup()
+        WebDav -> SettingsStr.destWebDav()
+        Preference -> SettingsStr.appPreferences()
+        Update -> SettingsStr.updateSettings()
+        About -> SettingsStr.aboutApp()
+        Appreciate -> SettingsStr.destAppreciate()
+        Communication -> SettingsStr.destCommunication()
+    }
+
+    /** 左栏分组标题文案 */
+    fun displayGroup(): String = when (this) {
+        Semester, CourseTime -> SettingsStr.basicSettings()
+        Reminder, Holiday, Widget -> SettingsStr.featuresSection()
+        ScheduleImport, AiImport, EducationalImport, ScheduleExport -> SettingsStr.groupImportExport()
+        LocalBackup, WebDav -> SettingsStr.groupBackup()
+        Preference, Update, About, Appreciate, Communication -> CommonStr.other()
+    }
 }
 
 /** 平板设置选中项：MainActivity 叠层读它画固定标题 */
@@ -198,7 +231,7 @@ fun TabletSettingsChromeOverlay() {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            collapsedTitle("我的")
+            collapsedTitle(SettingsStr.mineTab())
         }
 
         // 关于应用内嵌自绘顶栏标题 / 编辑屏打开时，设置页叠加层不再画右栏标题，避免重合
@@ -216,7 +249,7 @@ fun TabletSettingsChromeOverlay() {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                collapsedTitle(selected.title)
+                collapsedTitle(selected.displayTitle())
             }
         }
     }
@@ -366,7 +399,9 @@ fun TabletSettingsScreen(
     showUpdateSettings: Boolean = true,
 ) {
     val selected = TabletSettingsUiState.selected
-    val groups = remember { TabletSettingsDest.entries.groupBy { it.group } }
+    val groups = remember(AppLanguage.resolved) {
+        TabletSettingsDest.entries.groupBy { it.displayGroup() }
+    }
     val paneHorizontal = 20.dp
     // 顶栏折叠标题高度：左右内容都从这条线下方开始，避免被 MainActivity 叠层标题压住
     val chromeTop = mainWindowTopInset() +
@@ -463,7 +498,7 @@ fun TabletSettingsScreen(
                     ) {
                         groups.filterKeys { key ->
                             // 排班模式只保留「基本设置」分类
-                            !isShiftMode || key == TabletSettingsDest.Semester.group
+                            !isShiftMode || key == TabletSettingsDest.Semester.displayGroup()
                         }.forEach { (group, dests) ->
                             item(key = "g_$group") {
                                 SmallTitle(
@@ -497,10 +532,10 @@ fun TabletSettingsScreen(
                                                 )
                                             }
                                         // 排班模式入口：并入「特色功能」分类，非排班模式时显示
-                                        CardExpand(visible = group == TabletSettingsDest.Reminder.group && !isShiftMode) {
+                                        CardExpand(visible = group == TabletSettingsDest.Reminder.displayGroup() && !isShiftMode) {
                                             ArrowPreference(
-                                                title = "排班模式",
-                                                summary = "同时对比多个课表的排班情况",
+                                                title = SettingsStr.shiftMode(),
+                                                summary = SettingsStr.shiftModeSummary(),
                                                 holdDownState = showShiftModeConfirmDialog,
                                                 onClick = { showShiftModeConfirmDialog = true }
                                             )
@@ -509,7 +544,7 @@ fun TabletSettingsScreen(
                                 }
                             }
                             // 课表导出独立卡片：同「导入与导出」分类下、教务系统导入之后
-                            if (group == TabletSettingsDest.ScheduleExport.group && StandaloneDests.isNotEmpty()) {
+                            if (group == TabletSettingsDest.ScheduleExport.displayGroup() && StandaloneDests.isNotEmpty()) {
                                 item(key = "x_export") {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -530,7 +565,7 @@ fun TabletSettingsScreen(
                                 }
                             }
                             // 关于应用/捐赠支持/交流与反馈独立卡片：同「其他」分类下
-                            if (group == TabletSettingsDest.About.group && BottomMoreDests.isNotEmpty()) {
+                            if (group == TabletSettingsDest.About.displayGroup() && BottomMoreDests.isNotEmpty()) {
                                 item(key = "x_about_more") {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
@@ -569,7 +604,7 @@ fun TabletSettingsScreen(
                                     else ButtonDefaults.buttonColors(),
                                 ) {
                                     Text(
-                                        text = "退出排班模式",
+                                        text = SettingsStr.exitShiftMode(),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = Color(0xFFF44336)
@@ -747,7 +782,8 @@ fun TabletSettingsScreen(
                                         .padding(bottom = 20.dp)
                                 ) {
                                     LiquidGlassTextButton(
-                                        text = testActionLabel ?: if (islandEnabled) "测试小米超级岛" else "测试实时活动",
+                                        text = testActionLabel
+                                            ?: if (islandEnabled) SettingsStr.testXiaomiSuperIsland() else SettingsStr.testLiveActivity(),
                                         onClick = { onSendTestNotification() },
                                         backdrop = rightPaneBackdrop,
                                         modifier = Modifier.fillMaxWidth(),
@@ -765,7 +801,7 @@ fun TabletSettingsScreen(
                                         .padding(bottom = 20.dp)
                                 ) {
                                     LiquidGlassTextButton(
-                                        text = "添加到桌面",
+                                        text = SettingsStr.addToHomeScreen(),
                                         onClick = {
                                             hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
                                             showWidgetGuideDialog = true
@@ -776,7 +812,7 @@ fun TabletSettingsScreen(
                                 }
 
                                 OverlayDialog(
-                                    title = "添加桌面小部件",
+                                    title = SettingsStr.addWidgetDialogTitle(),
                                     show = showWidgetGuideDialog,
                                     liquidGlassBackdrop = glassBackdrop,
                                     onDismissRequest = { showWidgetGuideDialog = false }
@@ -786,14 +822,14 @@ fun TabletSettingsScreen(
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(
-                                            text = "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加",
+                                            text = SettingsStr.widgetGuideSteps(),
                                             fontSize = 14.sp,
                                             lineHeight = 24.sp,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                         )
                                         Spacer(modifier = Modifier.height(20.dp))
                                         TextButton(
-                                            text = "我知道了",
+                                            text = SettingsStr.gotIt(),
                                             onClick = {
                                                 hapticFeedback.performHapticFeedback(
                                                     HapticFeedbackType.Confirm
@@ -817,13 +853,13 @@ fun TabletSettingsScreen(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     LiquidGlassTextButton(
-                                        text = if (webDavBackingUp) "备份中..." else "备份到云端",
+                                        text = if (webDavBackingUp) SettingsStr.backingUp() else SettingsStr.backupToCloud(),
                                         onClick = { onWebDavBackup() },
                                         backdrop = rightPaneBackdrop,
                                         modifier = Modifier.weight(1f)
                                     )
                                     LiquidGlassTextButton(
-                                        text = if (webDavRestoring) "恢复中..." else "从云端恢复",
+                                        text = if (webDavRestoring) SettingsStr.restoring() else SettingsStr.restoreFromCloud(),
                                         onClick = { onWebDavRestore() },
                                         backdrop = rightPaneBackdrop,
                                         modifier = Modifier.weight(1f)
@@ -873,7 +909,7 @@ fun TabletSettingsScreen(
                                         onClick = { onHolidayUpdate() },
                                         backdrop = rightPaneBackdrop,
                                         icon = MiuixIcons.Normal.Update,
-                                        contentDescription = "更新",
+                                        contentDescription = CommonStr.update(),
                                         iconSize = 28.dp,
                                         backdropAlpha = rightMaskAlpha,
                                         shadowAlpha = rightMaskAlpha,
@@ -897,7 +933,7 @@ fun TabletSettingsScreen(
                                     onClick = { onWebDavTestConnection() },
                                     backdrop = rightPaneBackdrop,
                                     icon = if (webDavConnected) MiuixIcons.Ok else MiuixIcons.Play,
-                                    contentDescription = if (webDavConnected) "已连接" else "测试连接",
+                                    contentDescription = if (webDavConnected) SettingsStr.connected() else SettingsStr.testConnection(),
                                     iconTint = if (webDavConnected) Color(0xFF4CAF50) else Color.Unspecified,
                                     iconOffset = if (!webDavConnected) DpOffset(
                                         x = 2.dp,
@@ -958,7 +994,7 @@ fun TabletSettingsScreen(
                                             } ?: false
                                             if (!saved) {
                                                 // 保存被丢弃必须让用户看见：以前静默丢弃，表现成「改完保存、重开还是原来的」
-                                                showToast("保存失败，请重试")
+                                                showToast(SettingsStr.saveFailedRetry())
                                             }
                                             timeConfigRefreshTrigger++
                                             uiScope.launch {
@@ -1011,8 +1047,8 @@ fun TabletSettingsScreen(
 
     // 进入排班模式确认
     OverlayDialog(
-        title = "进入排班模式",
-        summary = "将切换到排班课表模式，可同时对比多个课表的排班情况。确定进入？",
+        title = SettingsStr.enterShiftMode(),
+        summary = SettingsStr.enterShiftModeSummary(),
         show = showShiftModeConfirmDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showShiftModeConfirmDialog = false },
@@ -1028,7 +1064,7 @@ fun TabletSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showShiftModeConfirmDialog = false
@@ -1036,7 +1072,7 @@ fun TabletSettingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showShiftModeConfirmDialog = false
@@ -1073,7 +1109,7 @@ private fun TabletLeftEntry(
     onSelect: () -> Unit,
 ) {
     ArrowPreference(
-        title = dest.title,
+        title = dest.displayTitle(),
         holdDownState = isSelected,
         onClick = onSelect,
     )
@@ -1146,7 +1182,7 @@ private fun TabletSemesterPane(
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     ArrowPreference(
-                        title = "开始上课日期",
+                        title = SettingsStr.startDate(),
                         endActions = {
                             Text(
                                 text = classStartTime,
@@ -1165,13 +1201,13 @@ private fun TabletSemesterPane(
                         holdDownState = showStartDateDialog
                     )
                     ArrowPreference(
-                        title = "当前周数",
+                        title = SettingsStr.currentWeek(),
                         endActions = {
                             Text(
                                 text = when {
-                                    !isSemesterStarted -> "未开始"
-                                    currentWeek > totalWeeks -> "放假中"
-                                    else -> "第${currentWeek}周"
+                                    !isSemesterStarted -> SettingsStr.notStarted()
+                                    currentWeek > totalWeeks -> SettingsStr.onBreak()
+                                    else -> CommonStr.weekN(currentWeek)
                                 },
                                 fontSize = 14.5.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
@@ -1185,10 +1221,10 @@ private fun TabletSemesterPane(
                         holdDownState = showCurrentWeekDialog
                     )
                     ArrowPreference(
-                        title = "本学期总周数",
+                        title = SettingsStr.totalWeeksTitle(),
                         endActions = {
                             Text(
-                                text = "共${totalWeeks}周",
+                                text = SettingsStr.totalWeeksValue(totalWeeks),
                                 fontSize = 14.5.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                                 textAlign = TextAlign.End,
@@ -1201,14 +1237,14 @@ private fun TabletSemesterPane(
                         holdDownState = showTotalWeeksDialog
                     )
                     SwitchPreference(
-                        title = "智能显示周末",
-                        summary = "开启后隐藏无课的周六日",
+                        title = SettingsStr.smartWeekend(),
+                        summary = SettingsStr.smartWeekendSummary(),
                         checked = smartWeekend,
                         onCheckedChange = { settingsViewModel.setSmartWeekend(it) }
                     )
                     CardExpand(visible = !isShiftMode) {
                         SwitchPreference(
-                            title = "显示非本周课程",
+                            title = SettingsStr.showNonCurrentWeek(),
                             checked = showNonCurrentWeek,
                             onCheckedChange = { settingsViewModel.setShowNonCurrentWeek(it) }
                         )
@@ -1220,7 +1256,7 @@ private fun TabletSemesterPane(
             // 排班模式：选择要对比的课表
             item(key = "shift_schedules") {
                 SmallTitle(
-                    text = "选择对比课表",
+                    text = SettingsStr.selectCompareSchedules(),
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1251,7 +1287,7 @@ private fun TabletSemesterPane(
         if (!isShiftMode) {
             item(key = "new_semester") {
                 SmallTitle(
-                    text = "其他操作",
+                    text = SettingsStr.otherActions(),
                 )
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1259,8 +1295,8 @@ private fun TabletSemesterPane(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ArrowPreference(
-                            title = "开启新学期",
-                            summary = "复用当前课表设置，创建空课程的新课表",
+                            title = SettingsStr.newSemester(),
+                            summary = SettingsStr.newSemesterSummary(),
                             onClick = {
                                 newSemesterName = ""
                                 showNewSemesterDialog = true
@@ -1275,8 +1311,8 @@ private fun TabletSemesterPane(
 
     // 开启新学期
     OverlayDialog(
-        title = "开启新学期",
-        summary = "将复用当前课表的所有设置数据，创建一个清空课程的新课表",
+        title = SettingsStr.newSemester(),
+        summary = SettingsStr.newSemesterDialogSummary(),
         show = showNewSemesterDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -1291,7 +1327,7 @@ private fun TabletSemesterPane(
             top.yukonga.miuix.kmp.basic.NativeMiuixTextField(
                 value = newSemesterName,
                 onValueChange = { newSemesterName = it },
-                label = "新课表名称",
+                label = SettingsStr.newScheduleNameLabel(),
                 modifier = Modifier.fillMaxWidth(),
                 requestFocus = showNewSemesterDialog
             )
@@ -1302,7 +1338,7 @@ private fun TabletSemesterPane(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showNewSemesterDialog = false
@@ -1311,18 +1347,18 @@ private fun TabletSemesterPane(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "创建",
+                    text = SettingsStr.create(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         if (newSemesterName.isNotBlank()) {
                             val name = newSemesterName
                             if (name in scheduleNames) {
-                                showToast("该课表名称已存在")
+                                showToast(SettingsStr.duplicateNameToast())
                             } else {
                                 scheduleViewModel.createNewSemesterSchedule(name)
                                 showNewSemesterDialog = false
                                 newSemesterName = ""
-                                showToast("「${name}」创建成功")
+                                showToast(SettingsStr.createdToast(name))
                             }
                         }
                     },
@@ -1335,7 +1371,7 @@ private fun TabletSemesterPane(
 
     // 开始上课日期
     OverlayDialog(
-        title = "开始上课日期",
+        title = SettingsStr.startDate(),
         show = showStartDateDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showStartDateDialog = false }
@@ -1369,7 +1405,7 @@ private fun TabletSemesterPane(
                     range = 1..12,
                     visibleItemCount = 3,
                     itemHeight = 60.dp,
-                    label = { "${it}月" },
+                    label = { SettingsStr.monthN(it) },
                     wrapAround = true,
                     textStyle = MiuixTheme.textStyles.title2,
                     modifier = Modifier.weight(1f)
@@ -1380,7 +1416,7 @@ private fun TabletSemesterPane(
                     range = 1..maxDaysInMonth,
                     visibleItemCount = 3,
                     itemHeight = 60.dp,
-                    label = { "${it}日" },
+                    label = { CommonStr.dateN(it) },
                     wrapAround = true,
                     textStyle = MiuixTheme.textStyles.title2,
                     modifier = Modifier.weight(1f)
@@ -1393,7 +1429,7 @@ private fun TabletSemesterPane(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showStartDateDialog = false
@@ -1401,7 +1437,7 @@ private fun TabletSemesterPane(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         val date = "${tempYear.toString().padStart(4, '0')}/${tempMonth.toString().padStart(2, '0')}/${tempDay.toString().padStart(2, '0')}"
@@ -1417,7 +1453,7 @@ private fun TabletSemesterPane(
 
     // 当前周数
     OverlayDialog(
-        title = "选择当前周次",
+        title = SettingsStr.selectCurrentWeek(),
         show = showCurrentWeekDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showCurrentWeekDialog = false }
@@ -1441,7 +1477,7 @@ private fun TabletSemesterPane(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showCurrentWeekDialog = false
@@ -1449,7 +1485,7 @@ private fun TabletSemesterPane(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         viewModel.setCurrentWeek(tempCurrentWeek)
@@ -1464,7 +1500,7 @@ private fun TabletSemesterPane(
 
     // 总周数
     OverlayDialog(
-        title = "选择学期总周数",
+        title = SettingsStr.selectTotalWeeks(),
         show = showTotalWeeksDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = { showTotalWeeksDialog = false }
@@ -1488,7 +1524,7 @@ private fun TabletSemesterPane(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         showTotalWeeksDialog = false
@@ -1496,7 +1532,7 @@ private fun TabletSemesterPane(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         viewModel.setTotalWeeks(tempTotalWeeks)
@@ -1548,9 +1584,9 @@ private fun TabletHolidayPane(
                     }
                     val message =
                         when {
-                            result.isEmpty() -> "获取失败或暂无数据"
-                            !merged -> "本地数据异常，更新未保存"
-                            else -> "已更新 ${result.size} 条记录"
+                            result.isEmpty() -> SettingsStr.fetchFailedNoData()
+                            !merged -> SettingsStr.localDataError()
+                            else -> SettingsStr.updatedNRecords(result.size)
                         }
                     showToast(message)
                 }

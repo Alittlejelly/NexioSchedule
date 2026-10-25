@@ -97,6 +97,10 @@ import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.time.Duration.Companion.milliseconds
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.SettingsStr
 
 /**
  * 子页路由 → 页面的映射表。
@@ -173,7 +177,7 @@ fun AppRouteContent(
                 onCopyToClipboard = { text ->
                     val clipboard =
                         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("课表导入提示词", text)
+                    val clip = ClipData.newPlainText(AndroidMiscStr.aiImportClipLabel(), text)
                     clipboard.setPrimaryClip(clip)
                 },
             )
@@ -207,7 +211,7 @@ fun AppRouteContent(
             CourseReminderRoute(
                 router = router,
                 reminderController = remember { AndroidReminderController(context) },
-                testActionLabel = if (islandEnabled) "测试小米超级岛" else "测试实时活动",
+                testActionLabel = if (islandEnabled) SettingsStr.testXiaomiSuperIsland() else SettingsStr.testLiveActivity(),
                 onSendTestNotification = {
                     FeatureLog.reminderFlow(
                         "test_notification",
@@ -216,11 +220,11 @@ fun AppRouteContent(
                     if (islandEnabled) {
                         IslandNotificationHelper.sendTestIslandNotification(context)
                         FeatureLog.reminderFlow("test_island_sent")
-                        showToast("已发送超级岛测试通知")
+                        showToast(AndroidMiscStr.islandTestSent())
                     } else {
                         CourseReminderHelper.sendTestLiveNotification(context)
                         FeatureLog.reminderFlow("test_live_sent")
-                        showToast("已发送实时活动测试通知")
+                        showToast(AndroidMiscStr.liveActivityTestSent())
                     }
                 },
             )
@@ -368,11 +372,11 @@ private fun AndroidAboutRoute(router: AppRouter) {
     }
     com.haooz.chedule.ui.navigation.AboutRoute(
         router = router,
-        appVersion = remember { packageInfo?.versionName ?: "未知版本" },
-        appName = remember {
+        appVersion = remember(AppLanguage.resolved) { packageInfo?.versionName ?: AboutStr.unknownVersion() },
+        appName = remember(AppLanguage.resolved) {
             packageInfo?.applicationInfo?.labelRes?.let { context.getString(it) }
                 ?: context.applicationInfo?.nonLocalizedLabel?.toString()
-                ?: "Nexio课程表"
+                ?: AboutStr.appName()
         },
         appIcon = aboutIcon,
         onExitApp = { activity?.finishAffinity() },

@@ -39,6 +39,8 @@ import com.haooz.chedule.ui.utils.ExtractedShareTools
 import com.haooz.chedule.data.school.AdapterData
 import com.haooz.chedule.data.school.SchoolData
 import com.haooz.chedule.data.school.SchoolRepository
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -107,7 +109,7 @@ fun AdapterSelectionBottomSheet(
             onClick = onDismissRequest,
             backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
             icon = MiuixIcons.Normal.Close,
-            contentDescription = "关闭",
+            contentDescription = CommonStr.close(),
             modifier = Modifier.padding(start = if (isTablet) 16.dp else 18.dp),
             iconSize = 24.dp,
             backdropAlpha = material.backdropAlpha,
@@ -128,7 +130,7 @@ fun AdapterSelectionBottomSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "该学校暂无适配器",
+                        text = ImportStr.noAdapters(),
                         style = MiuixTheme.textStyles.body1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                     )
@@ -152,10 +154,10 @@ fun AdapterSelectionBottomSheet(
                             AdapterRow(
                                 adapter = adapter,
                                 categoryName = when (adapter.category) {
-                                    AdapterData.CATEGORY_BACHELOR -> "本科"
-                                    AdapterData.CATEGORY_POSTGRADUATE -> "研究生"
-                                    AdapterData.CATEGORY_GENERAL_TOOL -> "通用工具"
-                                    else -> "其他"
+                                    AdapterData.CATEGORY_BACHELOR -> ImportStr.categoryUndergraduate()
+                                    AdapterData.CATEGORY_POSTGRADUATE -> ImportStr.categoryPostgraduate()
+                                    AdapterData.CATEGORY_GENERAL_TOOL -> ImportStr.generalTools()
+                                    else -> CommonStr.other()
                                 },
                                 onClick = {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
@@ -200,8 +202,8 @@ fun AdapterSelectionBottomSheet(
     }
 
     OverlayDialog(
-        title = "输入网址",
-        summary = "请输入要访问的教务系统网址",
+        title = ImportStr.enterUrl(),
+        summary = ImportStr.enterUrlHint(),
         show = showUrlDialog,
         onDismissRequest = { showUrlDialog = false },
     ) {
@@ -212,7 +214,7 @@ fun AdapterSelectionBottomSheet(
             NativeMiuixTextField(
                 value = customUrl,
                 onValueChange = { customUrl = it },
-                label = "网址",
+                label = ImportStr.urlLabel(),
                 modifier = Modifier.fillMaxWidth()
             )
             Row(
@@ -222,12 +224,12 @@ fun AdapterSelectionBottomSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = { showUrlDialog = false },
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定",
+                    text = CommonStr.ok(),
                     onClick = {
                         if (customUrl.isNotBlank()) {
                             pendingAdapter?.let { adapter ->
@@ -283,14 +285,14 @@ private fun AdapterRow(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = adapter.description.ifBlank { "暂无详细描述" },
+                text = adapter.description.ifBlank { ImportStr.noDescription() },
                 fontSize = 14.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
             if (adapter.maintainer.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "贡献者：${adapter.maintainer}",
+                    text = ImportStr.maintainerN(adapter.maintainer),
                     fontSize = 14.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                 )

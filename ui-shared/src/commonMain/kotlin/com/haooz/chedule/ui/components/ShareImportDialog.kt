@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.data.parseIcsFile
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.BackupStr
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.screens.applyScheduleData
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
@@ -87,7 +90,7 @@ fun ShareImportDialog(
 
             if (success && data != null) {
                 val scheduleName =
-                    if (isIcs) "ICS导入课表" else (data["schedule_name"] as? String) ?: "导入的课表"
+                    if (isIcs) BackupStr.icsImportedScheduleName() else (data["schedule_name"] as? String) ?: BackupStr.importedScheduleName()
                 shareImportData = data
                 shareImportScheduleName = scheduleName
                 showShareImportDialog = true
@@ -95,13 +98,13 @@ fun ShareImportDialog(
                 showToast(message)
             }
         } catch (e: Exception) {
-            showToast("导入失败: ${e.message}")
+            showToast(ImportStr.importFailedReason(e.message))
         }
     }
 
     OverlayDialog(
-        title = "导入课表",
-        summary = "是否导入课表「$shareImportScheduleName」？\n确定导入将创建一个新的课表",
+        title = BackupStr.importSchedule(),
+        summary = BackupStr.importScheduleConfirmSummaryN(shareImportScheduleName),
         show = showShareImportDialog,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = {
@@ -117,7 +120,7 @@ fun ShareImportDialog(
             NativeMiuixTextField(
                 value = shareImportScheduleName,
                 onValueChange = { shareImportScheduleName = it },
-                label = "课表名称",
+                label = BackupStr.scheduleNameLabel(),
                 modifier = Modifier.fillMaxWidth(),
                 requestFocus = showShareImportDialog
             )
@@ -126,7 +129,7 @@ fun ShareImportDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         showShareImportDialog = false
                         shareImportData = null
@@ -135,7 +138,7 @@ fun ShareImportDialog(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "确定导入",
+                    text = BackupStr.confirmImport(),
                     onClick = {
                         if (shareImportScheduleName.isNotBlank() && shareImportData != null) {
                             // applyScheduleData 已迁 :ui-shared；context 形参从未被函数体使用，去掉

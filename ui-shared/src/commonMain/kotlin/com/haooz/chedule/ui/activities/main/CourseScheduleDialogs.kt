@@ -21,6 +21,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.i18n.ChromeStr
+import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.kyant.backdrop.Backdrop
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -45,11 +47,11 @@ internal fun DeleteWeekCourseDialog(
 ) {
     var deleteAllWeeks by remember(show) { mutableStateOf(false) }
     OverlayDialog(
-        title = if (deleteAllWeeks) "删除课程" else "删除本周课程",
+        title = if (deleteAllWeeks) ChromeStr.deleteCourse() else ChromeStr.deleteThisWeekCourse(),
         summary = if (deleteAllWeeks) {
-            "确定要删除「${course?.name}」的全部课程吗？\n此操作不可撤销。"
+            ChromeStr.deleteAllSummary(course?.name)
         } else {
-            "确定要删除「${course?.name}」在第${week}周的课程吗？\n此操作不可撤销。"
+            ChromeStr.deleteWeekSummary(course?.name, week)
         },
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -71,12 +73,12 @@ internal fun DeleteWeekCourseDialog(
                 Spacer(modifier = Modifier.size(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "删除全部周",
+                        text = ChromeStr.deleteAllWeeksLabel(),
                         style = MiuixTheme.textStyles.body1,
                         color = MiuixTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (deleteAllWeeks) "删除该课程的所有周次" else "关闭则仅删除第${week}周",
+                        text = if (deleteAllWeeks) ChromeStr.deleteAllWeeksDesc() else ChromeStr.deleteOnlyThisWeekDesc(week),
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                     )
@@ -89,7 +91,7 @@ internal fun DeleteWeekCourseDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 TextButton(
-                    text = "取消",
+                    text = CommonStr.cancel(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         onDismiss()
@@ -97,7 +99,7 @@ internal fun DeleteWeekCourseDialog(
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(
-                    text = "删除",
+                    text = CommonStr.delete(),
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                         course?.let {
@@ -124,8 +126,8 @@ internal fun PasteRangeDialog(
     onDismiss: () -> Unit,
 ) {
     OverlayDialog(
-        title = "粘贴课程",
-        summary = "选择「${courseName}」的粘贴范围",
+        title = ChromeStr.pasteCourse(),
+        summary = ChromeStr.pasteRangeSummary(courseName),
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = onDismiss
@@ -137,7 +139,7 @@ internal fun PasteRangeDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             TextButton(
-                text = "全部周",
+                text = ChromeStr.allWeeks(),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                     onPaste(true)
@@ -145,7 +147,7 @@ internal fun PasteRangeDialog(
                 modifier = Modifier.weight(1f)
             )
             TextButton(
-                text = "当前周",
+                text = ChromeStr.currentWeekOption(),
                 textColor = MiuixTheme.colorScheme.primary,
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -177,8 +179,8 @@ internal fun RescheduleConflictDialog(
     onDismissFinished: () -> Unit,
 ) {
     OverlayDialog(
-        title = "该位置已有课程",
-        summary = "请选择课程处理方式",
+        title = ChromeStr.slotOccupiedTitle(),
+        summary = ChromeStr.chooseResolutionSummary(),
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
         onDismissRequest = onCancel,
@@ -192,7 +194,7 @@ internal fun RescheduleConflictDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                text = "覆盖",
+                text = ChromeStr.overwrite(),
                 textColor = Color(0xFFFF9800),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
@@ -201,7 +203,7 @@ internal fun RescheduleConflictDialog(
                 },
             )
             TextButton(
-                text = "交换",
+                text = ChromeStr.swap(),
                 textColor = MiuixTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
@@ -210,7 +212,7 @@ internal fun RescheduleConflictDialog(
                 },
             )
             TextButton(
-                text = "取消",
+                text = CommonStr.cancel(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -248,19 +250,20 @@ internal fun RescheduleConflictConfirmDialog(
 ) {
     val crossWeek = draggedWeek != dropTargetWeek
     val summary = when {
-        source == null || target == null -> "确定要执行此操作吗？"
+        source == null || target == null -> ChromeStr.confirmOperationSummary()
         resolution == ConflictResolution.OVERWRITE && crossWeek ->
-            "将删除「${target.name}」第${dropTargetWeek}周的课程，\n" +
-                    "并把「${source.name}」从第${draggedWeek}周调到第${dropTargetWeek}周的此位置。"
+            ChromeStr.overwriteCrossWeekSummary(
+                target.name, dropTargetWeek, source.name, draggedWeek, dropTargetWeek
+            )
         resolution == ConflictResolution.OVERWRITE ->
-            "将删除「${target.name}」本周的课程，\n并把「${source.name}」调到此位置。"
+            ChromeStr.overwriteThisWeekSummary(target.name, source.name)
         crossWeek ->
-            "将把「${source.name}」第${draggedWeek}周与「${target.name}」第${dropTargetWeek}周的两节课互换位置。"
+            ChromeStr.swapCrossWeekSummary(source.name, draggedWeek, target.name, dropTargetWeek)
         else ->
-            "将把「${source.name}」与「${target.name}」本周的两节课互换位置。"
+            ChromeStr.swapThisWeekSummary(source.name, target.name)
     }
     OverlayDialog(
-        title = if (resolution == ConflictResolution.OVERWRITE) "确认覆盖" else "确认交换",
+        title = if (resolution == ConflictResolution.OVERWRITE) ChromeStr.confirmOverwrite() else ChromeStr.confirmSwap(),
         summary = summary,
         show = show,
         liquidGlassBackdrop = liquidGlassBackdrop,
@@ -274,7 +277,7 @@ internal fun RescheduleConflictConfirmDialog(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TextButton(
-                text = "取消",
+                text = CommonStr.cancel(),
                 modifier = Modifier.weight(1f),
                 onClick = {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -282,7 +285,7 @@ internal fun RescheduleConflictConfirmDialog(
                 },
             )
             TextButton(
-                text = "确定",
+                text = CommonStr.ok(),
                 textColor = if (resolution == ConflictResolution.OVERWRITE) {
                     Color(0xFFFF9800)
                 } else {

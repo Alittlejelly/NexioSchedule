@@ -1,5 +1,7 @@
 package com.haooz.chedule.ui.activities.classschedule
 
+import com.haooz.chedule.i18n.SchedStr
+
 internal data class CourseCardBadge(
     val text: String,
     val usesWorkSwapStyle: Boolean,
@@ -11,8 +13,8 @@ internal fun resolveCourseCardBadge(
     isWorkSwap: Boolean,
     isCurrentWeek: Boolean,
 ): CourseCardBadge? = when {
-    isHoliday -> CourseCardBadge("假", isWorkSwap && isCurrentWeek)
-    isCourseCancelled -> CourseCardBadge("假", usesWorkSwapStyle = false)
-    isWorkSwap -> CourseCardBadge("调", isCurrentWeek)
+    isHoliday -> CourseCardBadge(SchedStr.badgeHoliday(), isWorkSwap && isCurrentWeek)
+    isCourseCancelled -> CourseCardBadge(SchedStr.badgeHoliday(), usesWorkSwapStyle = false)
+    isWorkSwap -> CourseCardBadge(SchedStr.badgeAdjusted(), isCurrentWeek)
     else -> null
 }

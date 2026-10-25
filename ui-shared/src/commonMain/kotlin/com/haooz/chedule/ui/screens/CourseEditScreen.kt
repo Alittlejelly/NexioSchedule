@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.CourseEditStr
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -236,8 +238,8 @@ fun CourseEditScreen(
         NativeDocumentEditorEffect(
             if (exiting) null else NativeDocumentEditorChrome(
                 title = courseName,
-                cancel = NativeDocumentAction("chevron.backward", "返回", enabled = !showAddCourseSheet && !showEditCourseSheet) { closeEditor() },
-                save = NativeDocumentAction("plus", "添加课程", enabled = !showAddCourseSheet && !showEditCourseSheet) {
+                cancel = NativeDocumentAction("chevron.backward", CommonStr.back(), enabled = !showAddCourseSheet && !showEditCourseSheet) { closeEditor() },
+                save = NativeDocumentAction("plus", CourseEditStr.addCourse(), enabled = !showAddCourseSheet && !showEditCourseSheet) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                     showAddCourseSheet = true
                 },
@@ -361,7 +363,7 @@ fun CourseEditScreen(
                                         onClick = { morph.close() },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.ChevronBackward,
-                                        contentDescription = "返回",
+                                        contentDescription = CommonStr.back(),
                                         performHapticFeedback = false,
                                         iconSize = 25.dp,
                                         iconOffset = DpOffset(x = (-2).dp, y = 0.dp),
@@ -378,7 +380,7 @@ fun CourseEditScreen(
                                         },
                                         backdrop = liquidGlassBackdrop,
                                         icon = MiuixIcons.Add,
-                                        contentDescription = "添加课程",
+                                        contentDescription = CourseEditStr.addCourse(),
                                         iconSize = 24.dp,
                                         backdropAlpha = backdropAlpha,
                                         shadowAlpha = shadowAlpha,
@@ -488,7 +490,7 @@ fun CourseEditScreen(
                                     ) {
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             Text(
-                                                text = "课程颜色",
+                                                text = CourseEditStr.courseColor(),
                                                 fontSize = 17.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = MiuixTheme.colorScheme.onSurface,
@@ -605,7 +607,7 @@ fun CourseEditScreen(
                                                                     if (!isCustomColor) {
                                                                         Icon(
                                                                             imageVector = MiuixIcons.Add,
-                                                                            contentDescription = "自定义颜色",
+                                                                            contentDescription = CourseEditStr.customColorLabel(),
                                                                             modifier = Modifier.size(
                                                                                 18.dp
                                                                             ),
@@ -678,7 +680,7 @@ fun CourseEditScreen(
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    "删除",
+                                                    CommonStr.delete(),
                                                     fontSize = 17.sp,
                                                     fontWeight = FontWeight.Medium,
                                                     color = Color(0xFFF44336)
@@ -692,7 +694,7 @@ fun CourseEditScreen(
                     }
 
                     OverlayDialog(
-                        title = "选择颜色",
+                        title = CourseEditStr.selectColorTitle(),
                         show = showColorDialog,
                         liquidGlassBackdrop = dialogGlass,
                         onDismissRequest = { showColorDialog = false }
@@ -714,7 +716,7 @@ fun CourseEditScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 TextButton(
-                                    text = "取消",
+                                    text = CommonStr.cancel(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         showColorDialog = false
@@ -722,7 +724,7 @@ fun CourseEditScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 TextButton(
-                                    text = "确定",
+                                    text = CommonStr.ok(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         selectedColor =
@@ -742,8 +744,10 @@ fun CourseEditScreen(
                     }
 
                     OverlayDialog(
-                        title = "删除课程",
-                        summary = "确定要删除课程「${pendingDeleteGroup?.courses?.firstOrNull()?.name ?: ""}」吗？\n此操作不可撤销。",
+                        title = CourseEditStr.deleteCourse(),
+                        summary = CourseEditStr.deleteCourseConfirm(
+                            pendingDeleteGroup?.courses?.firstOrNull()?.name ?: ""
+                        ),
                         show = showDeleteDialog,
                         liquidGlassBackdrop = dialogGlass,
                         onDismissRequest = { showDeleteDialog = false }
@@ -755,7 +759,7 @@ fun CourseEditScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             TextButton(
-                                text = "取消",
+                                text = CommonStr.cancel(),
                                 onClick = {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                     showDeleteDialog = false
@@ -763,7 +767,7 @@ fun CourseEditScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             TextButton(
-                                text = "删除",
+                                text = CommonStr.delete(),
                                 onClick = {
                                     hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                     showDeleteDialog = false
@@ -843,9 +847,18 @@ private fun CourseGroupCard(
     onEdit: (CourseGroup) -> Unit
 ) {
     val course = group.courses.first()
-    val dayLabels = listOf("", "周一", "周二", "周三", "周四", "周五", "周六", "周日")
-    val weekText = course.getWeekText().ifEmpty { "未设置" }
-    val sectionText = course.getTimeDisplayText().ifEmpty { "未设置" }
+    val dayLabels = listOf(
+        "",
+        CommonStr.weekdayMon(),
+        CommonStr.weekdayTue(),
+        CommonStr.weekdayWed(),
+        CommonStr.weekdayThu(),
+        CommonStr.weekdayFri(),
+        CommonStr.weekdaySat(),
+        CommonStr.weekdaySun(),
+    )
+    val weekText = course.weekTextLocalized().ifEmpty { CommonStr.notSet() }
+    val sectionText = course.timeDisplayTextLocalized().ifEmpty { CommonStr.notSet() }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // 分组标题用「周几 + 时间」而非周次：列表按时段排序，
@@ -854,7 +867,7 @@ private fun CourseGroupCard(
             text = if (course.dayOfWeek in 1..7) {
                 "${dayLabels[course.dayOfWeek]} $sectionText"
             } else {
-                "未设置时间"
+                CourseEditStr.notSetTime()
             }
         )
 
@@ -870,14 +883,14 @@ private fun CourseGroupCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "地点",
+                        text = CourseEditStr.location(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = course.classroom.ifBlank { "未设置" },
+                        text = course.classroom.ifBlank { CommonStr.notSet() },
                         modifier = Modifier.fillMaxWidth(0.8f),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
@@ -893,14 +906,14 @@ private fun CourseGroupCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "教师",
+                        text = CourseEditStr.teacher(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = course.teacher.ifBlank { "未设置" },
+                        text = course.teacher.ifBlank { CommonStr.notSet() },
                         modifier = Modifier.fillMaxWidth(0.8f),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
@@ -924,7 +937,7 @@ private fun CourseGroupCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "上课时间",
+                        text = CourseEditStr.classTime(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface
@@ -948,7 +961,7 @@ private fun CourseGroupCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "上课周次",
+                        text = CourseEditStr.classWeeks(),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface
@@ -968,7 +981,7 @@ private fun CourseGroupCard(
 
         if (group.courses.size > 1) {
             Text(
-                text = "包含 ${group.courses.size} 个相同配置的课程",
+                text = CourseEditStr.coursesShareConfig(group.courses.size),
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 modifier = Modifier.padding(start = 32.dp, top = 4.dp)

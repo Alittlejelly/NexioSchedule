@@ -46,18 +46,18 @@ fun parseBackupPayload(json: String): BackupPayload {
     // 原 Gson TypeToken<Map<String,Any>> 逐类一致，下游 as? Number/String 判断不受影响。
     @Suppress("UNCHECKED_CAST")
     val data = (jsonToPlainValue(parseJsonObject(json)) as? Map<String, Any>)
-        ?: throw IllegalArgumentException("文件内容不是有效的 JSON 对象")
+        ?: throw IllegalArgumentException(displayText("文件内容不是有效的 JSON 对象", "The file is not a valid JSON object"))
 
     val scheduleName = data["schedule_name"]
     val courses = data["courses"]
     if (scheduleName is String && courses is List<*>) {
         require(!data.containsKey("settings")) {
-            "这是普通课表 JSON，请使用课表 JSON 导入入口，不能按本地备份恢复"
+            displayText("这是普通课表 JSON，请使用课表 JSON 导入入口，不能按本地备份恢复", "This is a plain schedule JSON. Use the schedule JSON import entry instead of restoring it as a local backup.")
         }
         val courseList = courses.map { rawCourse ->
             val fields = rawCourse as? Map<*, *>
-                ?: throw IllegalArgumentException("单课表备份包含无效课程数据")
-            require(fields.keys.all { it is String }) { "单课表备份包含无效课程字段" }
+                ?: throw IllegalArgumentException(displayText("单课表备份包含无效课程数据", "The single-schedule backup contains invalid course data"))
+            require(fields.keys.all { it is String }) { displayText("单课表备份包含无效课程字段", "The single-schedule backup contains invalid course fields") }
             @Suppress("UNCHECKED_CAST")
             fields as Map<String, Any>
         }
@@ -67,26 +67,26 @@ fun parseBackupPayload(json: String): BackupPayload {
             null
         } else {
             val rawSettings = data["semester_settings"] as? Map<*, *>
-                ?: throw IllegalArgumentException("单课表备份的学期设置无效")
+                ?: throw IllegalArgumentException(displayText("单课表备份的学期设置无效", "Invalid semester settings in the single-schedule backup"))
             fun exactInteger(key: String, positive: Boolean = false): Int? {
                 if (!rawSettings.containsKey(key)) return null
                 val number = (rawSettings[key] as? Number)?.toDouble()
-                    ?: throw IllegalArgumentException("单课表备份的${key}无效")
+                    ?: throw IllegalArgumentException(displayText("单课表备份的${key}无效", "Invalid $key in the single-schedule backup"))
                 require(number.isFinite() && number % 1.0 == 0.0 &&
                     number >= Int.MIN_VALUE.toDouble() && number <= Int.MAX_VALUE.toDouble()
-                ) { "单课表备份的${key}无效" }
+                ) { displayText("单课表备份的${key}无效", "Invalid $key in the single-schedule backup") }
                 val value = number.toInt()
-                require(!positive || value > 0) { "单课表备份的${key}无效" }
+                require(!positive || value > 0) { displayText("单课表备份的${key}无效", "Invalid $key in the single-schedule backup") }
                 require(key != "total_weeks" || value <= CourseRepository.MAX_TOTAL_WEEKS) {
-                    "单课表备份的总周数超出支持范围"
+                    displayText("单课表备份的总周数超出支持范围", "Total weeks in the single-schedule backup exceed the supported range")
                 }
                 return value
             }
             val classStartTime = if (rawSettings.containsKey("class_start_time")) {
                 val raw = rawSettings["class_start_time"] as? String
-                    ?: throw IllegalArgumentException("单课表备份的开学日期无效")
+                    ?: throw IllegalArgumentException(displayText("单课表备份的开学日期无效", "Invalid semester start date in the single-schedule backup"))
                 CourseRepository.normalizeClassStartDate(raw)
-                    ?: throw IllegalArgumentException("单课表备份的开学日期无效")
+                    ?: throw IllegalArgumentException(displayText("单课表备份的开学日期无效", "Invalid semester start date in the single-schedule backup"))
             } else null
             SemesterSettings(
                 classStartTime = classStartTime,
@@ -106,7 +106,7 @@ fun parseBackupPayload(json: String): BackupPayload {
         ).takeIf { reorganizationFieldPresent }
         if (reorganizationFieldPresent) {
             require(semesterSettings?.classStartTime != null) {
-                "包含教学周重组的单课表备份必须有有效开学日期"
+                displayText("包含教学周重组的单课表备份必须有有效开学日期", "A single-schedule backup with teaching-week reorganization must have a valid semester start date")
             }
         }
         return BackupPayload.Single(
@@ -121,7 +121,7 @@ fun parseBackupPayload(json: String): BackupPayload {
     val looksLikeFullBackup =
         data.containsKey("schedule_names") || data.keys.any { it.startsWith("schedule_") }
     if (!looksLikeFullBackup) {
-        throw IllegalArgumentException("不是本应用导出的备份文件")
+        throw IllegalArgumentException(displayText("不是本应用导出的备份文件", "This backup was not exported by Nexio Schedule"))
     }
     validateFullScheduleBackupStructure(data)
     HolidayManager.decodeBackupData(data)

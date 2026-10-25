@@ -11,6 +11,10 @@ import android.graphics.Typeface
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.SchedStr
+import com.haooz.chedule.i18n.SettingsStr
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
 import com.haooz.chedule.data.NexioLog
@@ -151,19 +155,19 @@ class TodayCoursesProvider : ContentProvider() {
         val isHoliday = currentWeek > totalWeeks || (currentWeek >= 1 && currentWeek > lastWeekWithCourses)
 
         // 标题星期用日历日，不用调休映射日（周日补周二课时写「周日」而非「周二」）
-        val title = DAY_NAMES[(resolution.calendarDayOfWeek - 1).coerceIn(0, 6)]
+        val title = dayNames()[(resolution.calendarDayOfWeek - 1).coerceIn(0, 6)]
         val weekText = when {
-            isHoliday -> "放假中"
-            currentWeek < 1 -> "未开始"
-            else -> "第${resolution.displayWeek}周"
+            isHoliday -> SchedStr.onBreak()
+            currentWeek < 1 -> SettingsStr.notStarted()
+            else -> CommonStr.weekN(resolution.displayWeek)
         }
         val emptyText = when {
-            isHoliday -> "假期中，暂无课程"
-            currentWeek < 1 -> "学期暂未开始"
-            resolution.isHolidayDate -> "假期中，暂无课程"
-            showTomorrow -> "明日无课"
-            todayCourses.isEmpty() -> "今日无课"
-            else -> "今日课程已上完"
+            isHoliday -> AndroidMiscStr.holidayNoCourses()
+            currentWeek < 1 -> AndroidMiscStr.semesterNotStartedYet()
+            resolution.isHolidayDate -> AndroidMiscStr.holidayNoCourses()
+            showTomorrow -> AndroidMiscStr.noCoursesTomorrow()
+            todayCourses.isEmpty() -> AndroidMiscStr.noCoursesToday()
+            else -> AndroidMiscStr.todayCoursesFinished()
         }
         return DisplayState(title, weekText, emptyText, if (showTomorrow) 1 else 0, displayCourses)
     }
@@ -190,7 +194,7 @@ class TodayCoursesProvider : ContentProvider() {
         val remaining = if (isNow == 1) {
             CourseTimeSpan.endOffsetMinutes(startMinutes, endMinutes) - currentMinutes
         } else 0
-        val sectionText = course.getSectionText()
+        val sectionText = course.sectionTextLocalized()
         val startText = start.orEmpty()
         // 详情按规格区分：2x2=开始时间｜地点；4x2=节次｜地点｜教师；自定义时间课不显示节次
 val showSection = sectionText.isNotEmpty() && !course.hasValidCustomTime()
@@ -248,7 +252,7 @@ val subText = when {
             COLUMN_ROW_BG to if (isNow == 1) "#1A2196F3" else "#14FFFFFF",
             COLUMN_SUB_TEXT to displaySubText,
             COLUMN_SUB_COLOR to if (isNow == 1) "#A7D0FF" else "#B3FFFFFF",
-            COLUMN_REMAINING_TEXT to if (isNow == 1) "${remaining}分钟结束" else "",
+            COLUMN_REMAINING_TEXT to if (isNow == 1) AndroidMiscStr.minutesToEndN(remaining) else "",
             COLUMN_TIME_RANGE to timeRange,
             COLUMN_LOCATION_TEACHER to displayLocationTeacher,
         )
@@ -379,7 +383,11 @@ val subText = when {
             COLUMN_SHOW_TOMORROW,
         )
 
-        val DAY_NAMES = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        // 标题星期名按当前语言取值（调用时求值，语言切换后跟着变）
+        private fun dayNames(): List<String> = listOf(
+            CommonStr.weekdayMon(), CommonStr.weekdayTue(), CommonStr.weekdayWed(),
+            CommonStr.weekdayThu(), CommonStr.weekdayFri(), CommonStr.weekdaySat(), CommonStr.weekdaySun(),
+        )
 
         val uriMatcher = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(AUTHORITY, PATH_TODAY, TODAY_COURSES)

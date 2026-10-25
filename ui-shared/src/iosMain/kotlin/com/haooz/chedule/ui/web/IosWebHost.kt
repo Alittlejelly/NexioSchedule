@@ -15,6 +15,7 @@ import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.parseJsonArray
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.utils.IosUiHost
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSError
@@ -413,11 +414,11 @@ private class IosWebHostController {
             resolve(promiseId, result)
         } catch (e: EduBridgeReject) {
             NexioLog.w(TAG, "$name 被拒绝: ${e.message}")
-            showToast(e.message ?: "导入失败")
-            reject(promiseId, e.message ?: "导入失败")
+            showToast(e.message ?: L("导入失败", "Import failed")())
+            reject(promiseId, e.message ?: L("导入失败", "Import failed")())
         } catch (e: Exception) {
             NexioLog.e(TAG, "$name 处理异常", e)
-            reject(promiseId, "导入失败: ${e.message}")
+            reject(promiseId, L("导入失败：%s", "Import failed: %s")(e.message ?: ""))
         }
     }
 
