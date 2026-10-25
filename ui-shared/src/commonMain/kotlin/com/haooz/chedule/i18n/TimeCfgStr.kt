@@ -34,6 +34,8 @@ object TimeCfgStr {
     val addRoutineSummary = L("同一套节次，换一套时间", "Same sections, different times")
     val routineNameLabel = L("作息名称", "Routine Name")
     val defaultRoutineName = L("作息", "Routine")
+    // ⚠ 中文侧必须与 core TimeConfig.DEFAULT_ROUTINE_NAME 逐字一致(旧数据迁移/兜底配置播种名)
+    val seededRoutineName = L("默认作息", "Default routine")
     val effectiveFromN = L("即「%d月%d日」起使用这套时间", "These times take effect from %d/%d")
     val routineDateTaken = L("该日期已有作息，请换一个生效日期", "A routine already exists on this date. Choose another date")
 

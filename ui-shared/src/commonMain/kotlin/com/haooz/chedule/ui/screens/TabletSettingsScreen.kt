@@ -67,6 +67,7 @@ import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SettingsStr
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
@@ -231,7 +232,7 @@ fun TabletSettingsChromeOverlay() {
                 ),
             contentAlignment = Alignment.Center
         ) {
-            collapsedTitle(SettingsStr.mineTab())
+            collapsedTitle(ChromeStr.profile())
         }
 
         // 关于应用内嵌自绘顶栏标题 / 编辑屏打开时，设置页叠加层不再画右栏标题，避免重合
@@ -829,7 +830,7 @@ fun TabletSettingsScreen(
                                         )
                                         Spacer(modifier = Modifier.height(20.dp))
                                         TextButton(
-                                            text = SettingsStr.gotIt(),
+                                            text = CommonStr.done(),
                                             onClick = {
                                                 hapticFeedback.performHapticFeedback(
                                                     HapticFeedbackType.Confirm

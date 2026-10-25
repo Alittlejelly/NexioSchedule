@@ -48,7 +48,9 @@ import com.haooz.chedule.data.TimeRoutine
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.i18n.TimeCfgStr
+import com.haooz.chedule.i18n.orDefaultName
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -235,7 +237,7 @@ fun CourseTimeSettingsScreen(
                                     val isActive = config.effectiveRoutineId() == routine.id
                                     val isMorphing = morphingRoutineId == routine.id
                                     ArrowPreference(
-                                        title = routine.name,
+                                        title = routine.name.orDefaultName(TimeCfgStr.defaultRoutineName, TimeCfgStr.seededRoutineName, ImportStr.defaultRoutineName),
                                         // 只有一套作息时没有切换对象，显示「始终生效」而不是日期
                                         summary = if (config.safeRoutines.size > 1) {
                                             TimeCfgStr.effectiveFrom(routine.effectiveLabel)

@@ -100,10 +100,13 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import androidx.compose.ui.graphics.Color as ComposeColor
 import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.i18n.AppLanguage
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.CourseEditStr
 import com.haooz.chedule.i18n.TimeCfgStr
+import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.i18n.TimeEditStr
+import com.haooz.chedule.i18n.orDefaultName
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 
@@ -220,7 +223,12 @@ fun TimeConfigEditScreen(
 
     val screenTitle = TimeEditStr.editRoutine()
     val usesNativeControls = LocalNativeDocumentChrome.current != null
-    var routineName by remember(timeConfig) { mutableStateOf(timeConfig.safeRoutines.firstOrNull { it.id == routineId }?.name ?: "") }
+    var routineName by remember(timeConfig, AppLanguage.resolved) {
+        mutableStateOf(
+            (timeConfig.safeRoutines.firstOrNull { it.id == routineId }?.name ?: "")
+                .orDefaultName(TimeCfgStr.defaultRoutineName, TimeCfgStr.seededRoutineName, ImportStr.defaultRoutineName)
+        )
+    }
 
     var morningSections by remember(timeConfig) { mutableIntStateOf(timeConfig.morningSections) }
     var afternoonSections by remember(timeConfig) { mutableIntStateOf(timeConfig.afternoonSections) }
@@ -1171,8 +1179,8 @@ fun TimeConfigEditScreen(
                                                 showDeleteRoutineDialog = true
                                             },
                                             colors = ButtonDefaults.buttonColors(
-                                                color = if (isDark) Color.White.copy(alpha = 0.04f)
-                                                else Color.Black.copy(alpha = 0.04f)
+                                                color = if (isDark) Color.White.copy(alpha = 0.1f)
+                                                else Color.Black.copy(alpha = 0.06f)
                                             ),
                                         ) {
                                             Icon(
@@ -1811,7 +1819,7 @@ fun TimeConfigEditScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 TextButton(
-                                    text = TimeEditStr.gotIt(),
+                                    text = CommonStr.done(),
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                                         showOverlapDialog = false
@@ -1952,7 +1960,9 @@ fun TimeConfigEditScreen(
                         // ---- 删除作息 ----
                         OverlayDialog(
                             title = TimeEditStr.deleteRoutine(),
-                            summary = TimeEditStr.deleteRoutineConfirm(editingRoutine?.name ?: routineName),
+                            summary = TimeEditStr.deleteRoutineConfirm(
+                                (editingRoutine?.name ?: routineName).orDefaultName(TimeCfgStr.defaultRoutineName, TimeCfgStr.seededRoutineName, ImportStr.defaultRoutineName)
+                            ),
                             show = showDeleteRoutineDialog,
                             liquidGlassBackdrop = liquidGlassBackdrop,
                             onDismissRequest = { showDeleteRoutineDialog = false }

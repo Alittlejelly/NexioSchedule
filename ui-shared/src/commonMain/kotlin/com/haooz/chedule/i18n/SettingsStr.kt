@@ -72,22 +72,20 @@ object SettingsStr {
     val destAcademicImport = L("教务系统导入", "Academic System Import")
     val destLocalBackup = L("本地备份", "Local Backup")
     val destWebDav = L("WebDAV 云同步", "WebDAV Cloud Sync")
-    val destAppreciate = L("捐赠支持", "Donate & Support")
+    val destAppreciate = L("捐赠支持", "Donate")
     val destCommunication = L("交流与反馈", "Community & Feedback")
     val groupImportExport = L("导入与导出", "Import & Export")
     val groupBackup = L("备份", "Backup")
 
     // ---- 平板外壳 ----
-    val mineTab = L("我的", "Me")
 
     // ---- 小部件引导 ----
     val addToHomeScreen = L("添加到桌面", "Add to Home Screen")
     val addWidgetDialogTitle = L("添加桌面小部件", "Add Home Screen Widget")
     val widgetGuideSteps = L(
         "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加",
-        "1. Long-press an empty area on the home screen\n2. Choose \"Widgets\" under \"All apps\"\n3. Find \"Nexio Schedule\" and add it",
+        "1. Touch and hold an empty area of the Home Screen\n2. Choose “Widgets” under “All apps”\n3. Find “Nexio Schedule” and add it",
     )
-    val gotIt = L("我知道了", "Got it")
 
     // ---- WebDAV ----
     val backingUp = L("备份中…", "Backing up…")

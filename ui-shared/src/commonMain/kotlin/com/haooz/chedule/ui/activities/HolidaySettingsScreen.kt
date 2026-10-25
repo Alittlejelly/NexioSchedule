@@ -2,13 +2,11 @@ package com.haooz.chedule.ui.activities
 
 import com.haooz.chedule.ui.components.CardExpand
 import com.haooz.chedule.data.HolidayEntry
-
 import com.haooz.chedule.data.lengthOfMonth
 import com.haooz.chedule.data.minusDays
 import com.haooz.chedule.data.plusDays
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.isoDayNumber
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -122,6 +120,7 @@ import kotlin.math.floor
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.HolidayStr
+import com.haooz.chedule.i18n.orDefaultName
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 
 private val YEAR_RANGE = 2024..2035
@@ -360,7 +359,10 @@ fun HolidaySettingsScreen(
         dialogType = entry.type
         editingEntry = entry
         editingEntryStorageYear = year
-        name = entry.name
+        name = entry.name.orDefaultName(
+            if (entry.type == HolidayManager.TYPE_WORKSWAP) HolidayStr.defaultWorkswapName
+            else HolidayStr.defaultHolidayName
+        )
         startYear = start.year
         startMonth = start.monthNumber
         startDay = start.dayOfMonth
@@ -1104,8 +1106,8 @@ private fun TeachingWeekRuleEditDialog(
                         onDelete()
                     },
                     colors = ButtonDefaults.buttonColors(
-                        color = if (isDark) Color.White.copy(alpha = 0.1f)
-                        else Color.Black.copy(alpha = 0.06f),
+                        color = if (isDark) Color.White.copy(alpha = 0.04f)
+                        else Color.Black.copy(alpha = 0.04f)
                     ),
                 ) {
                     Icon(
@@ -1864,7 +1866,10 @@ private fun EntryRow(
     onEdit: (HolidayEntry) -> Unit,
 ) {
     ArrowPreference(
-        title = entry.name,
+        title = entry.name.orDefaultName(
+            if (entry.type == HolidayManager.TYPE_HOLIDAY) HolidayStr.defaultHolidayName
+            else HolidayStr.defaultWorkswapName
+        ),
         summary = entrySummary(entry),
         onClick = { onEdit(entry) },
     )
@@ -2164,8 +2169,8 @@ private fun EntryEditDialog(
                         onDeleteClick()
                     },
                     colors = ButtonDefaults.buttonColors(
-                        color = if (isDark) Color.White.copy(alpha = 0.1f)
-                        else Color.Black.copy(alpha = 0.06f),
+                        color = if (isDark) Color.White.copy(alpha = 0.04f)
+                        else Color.Black.copy(alpha = 0.04f)
                     ),
                 ) {
                     Icon(

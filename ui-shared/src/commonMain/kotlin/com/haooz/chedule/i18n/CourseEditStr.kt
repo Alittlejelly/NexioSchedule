@@ -22,7 +22,7 @@ object CourseEditStr {
     val timeSameError = L("开始与结束时间不能相同", "Start and end time cannot be the same")
 
     // ---- 表单字段 ----
-    val courseName = L("课程名称", "Course name")
+    val courseName = L("课程名称", "Course Name")
     val required = L("必填", "Required")
     val location = L("地点", "Location")
     val teacher = L("教师", "Teacher")
@@ -33,9 +33,9 @@ object CourseEditStr {
     val periodsRange = L("第%d - %d节", "Periods %d-%d")
     val classWeeks = L("上课周次", "Weeks")
     val all = L("全部", "All")
-    val oddWeeks = L("单周", "Odd weeks")
-    val evenWeeks = L("双周", "Even weeks")
-    val courseColor = L("课程颜色", "Course color")
+    val oddWeeks = L("单周", "Odd")
+    val evenWeeks = L("双周", "Even")
+    val courseColor = L("课程颜色", "Course Color")
     val customColorLabel = L("自定义颜色", "Custom color")
     val notSetTime = L("未设置时间", "Unscheduled")
     val coursesShareConfig = L("包含 %d 个相同配置的课程", "%d courses share this configuration")

@@ -56,7 +56,7 @@ object ChromeStr {
 
     val jumpToWeek = L("跳转周数", "Jump to Week")
     val jumpToDate = L("跳转日期", "Jump to Date")
-    val courseManage = L("课程管理", "Manage Courses")
+    val courseManage = L("课程管理", "Course Management")
     val scheduleAppearance = L("课表外观", "Appearance")
     val profile = L("我的", "Profile")
     val todayIsDow = L("今天是%s", "Today is %s")
@@ -80,7 +80,7 @@ object ChromeStr {
     val shiftSchedule = L("排班课表", "Shift Schedule")
     val switchSchedule = L("切换课表", "Switch Schedule")
     val navigationLabel = L("导航", "Navigation")
-    val dataManagement = L("数据管理", "Data")
+    val dataManagement = L("数据管理", "Data Management")
 
     // ── 路由壳页面 ──
 
@@ -91,7 +91,7 @@ object ChromeStr {
     val openSourceLicenses = L("开源协议", "Open Source License")
     val privacyPolicy = L("隐私政策", "Privacy Policy")
     val communityFeedback = L("交流与反馈", "Community & Feedback")
-    val donate = L("捐赠支持", "Donate & Support")
+    val donate = L("捐赠支持", "Donate")
 
     val appPreferences = L("应用偏好设置", "App Preferences")
     val updateSettingsTitle = L("更新设置", "Update Settings")
@@ -114,7 +114,6 @@ object ChromeStr {
         "1. 长按桌面空白处\n2. 选择「全部应用」内的「安卓小部件」\n3. 找到「Nexio课程表」并添加",
         "1. Touch and hold an empty area of the Home Screen\n2. Choose “Widgets” under “All apps”\n3. Find “Nexio Schedule” and add it"
     )
-    val gotIt = L("我知道了", "Got it")
 
     val testNotification = L("测试通知", "Test Notification")
     val courseReminders = L("课程提醒", "Course Reminders")

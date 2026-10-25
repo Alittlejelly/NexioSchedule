@@ -42,6 +42,7 @@ import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.rememberTopBarMaterialAlpha
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.LocalHostNavigation
@@ -150,6 +151,8 @@ fun ScheduleTopBar(
         topInsetAdjustment = nativeBarInset,
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,
+        // 无材质档没有模糊层，遮罩是顶栏唯一的材质：跟按钮背景一起出现
+        maskAlpha = rememberTopBarMaterialAlpha(scrollBehavior),
     ) {
         Box {
             // 平板：标题避让左侧侧栏后左对齐（手机仍居中）

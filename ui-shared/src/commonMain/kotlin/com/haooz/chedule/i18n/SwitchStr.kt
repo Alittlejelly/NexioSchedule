@@ -2,6 +2,8 @@ package com.haooz.chedule.i18n
 
 /** 切换课表 / 课程管理 / 排班模式相关页面文案 */
 object SwitchStr {
+    // ⚠ 中文侧必须与 core CourseRepository.DEFAULT_FOLDER_NAME 逐字一致
+    val defaultFolderName = L("默认文件夹", "Default folder")
 
     // —— 切换课表（列表与标题） ——
     val editSchedule = L("编辑课表", "Edit Schedule")
@@ -32,7 +34,7 @@ object SwitchStr {
     // —— 分享确认 ——
     val shareScheduleTitle = L("分享课表", "Share Schedule")
     val shareConfirmSummary =
-        L("将课表「%s」上传生成分享口令？\n口令 30 分钟内有效", "Upload \"%s\" to generate a share code?\nThe code is valid for 30 minutes")
+        L("将课表「%s」上传生成分享口令？\n口令 30 分钟内有效", "Upload schedule \"%s\" to generate a share code?\nThe code is valid for 30 minutes")
     val confirmShare = L("确认分享", "Share")
 
     // —— 删除 / 解散确认 ——
@@ -69,11 +71,11 @@ object SwitchStr {
     val deleteCourse = L("删除课程", "Delete Course")
     val deleteCourseRecordsConfirm = L(
         "确定要删除课程「%s」的 %d 条记录吗？\n此操作不可撤销。",
-        "Delete course \"%s\" and its %d records?\nThis cannot be undone."
+        "Delete course \"%s\" and its %d records?\nThis action cannot be undone."
     )
     val deleteCourseConfirm = L(
         "确定要删除课程「%s」吗？\n此操作不可撤销。",
-        "Delete course \"%s\"?\nThis cannot be undone."
+        "Delete course \"%s\"?\nThis action cannot be undone."
     )
     val sectionCountN = L("%d 节", "%dP")
     val tapToSetTime = L("点击设置时间", "Tap to set time")

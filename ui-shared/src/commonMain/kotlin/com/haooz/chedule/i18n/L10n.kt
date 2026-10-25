@@ -17,6 +17,9 @@ package com.haooz.chedule.i18n
  */
 class L10n(private val zh: String, private val en: String) {
 
+    /** 值是否为本条目的某一语言原文（默认名匹配等基础设施用） */
+    internal fun matchesRaw(text: String): Boolean = text == zh || text == en
+
     operator fun invoke(vararg args: Any?): String {
         val template = if (AppLanguage.isZh) zh else en
         if (args.isEmpty()) return template
@@ -39,3 +42,11 @@ class L10n(private val zh: String, private val en: String) {
 
 /** 创建双语字符串，见 [L10n]。 */
 fun L(zh: String, en: String): L10n = L10n(zh, en)
+
+/**
+ * 存储的默认名称 → 显示文本：值与 [defaults] 中任一默认名的中/英文原文一致
+ * （即用户从未自定义）时随当前语言显示默认名；自定义过则原样返回。
+ * 仅做显示映射，不回写存储——同一份数据切回原语言仍显示原默认名。
+ */
+fun String.orDefaultName(vararg defaults: L10n): String =
+    defaults.firstOrNull { it.matchesRaw(this) }?.invoke() ?: this

@@ -6,7 +6,6 @@ object TimeEditStr {
     // ---- 页面骨架 ----
     val editRoutine = L("编辑作息", "Edit Routine")
     val saveAndClose = L("保存并关闭", "Save & Close")
-    val gotIt = L("知道了", "Got it")
 
     // ---- 作息元信息 ----
     val routineNamePlaceholder = L("请输入作息名称", "Enter a routine name")

@@ -97,6 +97,7 @@ import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.ScheduleFolder
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SwitchStr
+import com.haooz.chedule.i18n.orDefaultName
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -392,7 +393,7 @@ fun SwitchScheduleScreen(
         itemModifier: Modifier
     ) {
         FolderCardRow(
-            folderName = folder.name,
+            folderName = folder.name.orDefaultName(SwitchStr.defaultFolderName),
             scheduleCount = folder.schedules.count { it in scheduleNames },
             expanded = folder.id in expandedFolderIds,
             isEditMode = isEditMode,
@@ -821,7 +822,7 @@ fun SwitchScheduleScreen(
                                             val folder = folders.find { it.id == folderId }
                                             if (folder != null) {
                                                 editingFolderId = folder.id
-                                                editFolderName = folder.name
+                                                editFolderName = folder.name.orDefaultName(SwitchStr.defaultFolderName)
                                                 showEditFolderDialog = true
                                             }
                                             return@BottomBarItem
@@ -1454,7 +1455,7 @@ fun SwitchScheduleScreen(
                     )
                     folders.forEach { folder ->
                         MoveTargetRow(
-                            title = folder.name,
+                            title = folder.name.orDefaultName(SwitchStr.defaultFolderName),
                             subtitle = SwitchStr.scheduleCountN(folder.schedules.size),
                             icon = MiuixIcons.Folder,
                             onClick = {

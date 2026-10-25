@@ -522,7 +522,7 @@ fun WidgetIntroRoute(
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                     TextButton(
-                        text = ChromeStr.gotIt(),
+                        text = CommonStr.done(),
                         onClick = {
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                             showGuideDialog = false

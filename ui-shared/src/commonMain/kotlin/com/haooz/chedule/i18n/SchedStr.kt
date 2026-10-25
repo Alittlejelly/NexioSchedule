@@ -15,7 +15,7 @@ object SchedStr {
     val badgeAdjusted = L("调", "Adj")
 
     // ── 课表网格 / 课程详情 ──
-    val specialCourses = L("特殊课程", "Special courses")
+    val specialCourses = L("特殊课程", "Special block")
     val unnamed = L("未命名", "Unnamed")
     val lunchBreak = L("午休", "Lunch break")
     val dinnerBreak = L("晚休", "Dinner break")

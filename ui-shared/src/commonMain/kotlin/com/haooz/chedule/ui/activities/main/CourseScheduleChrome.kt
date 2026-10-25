@@ -39,6 +39,7 @@ import com.haooz.chedule.ui.basic.LiquidGlassDropdownShadowPadding
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.ui.components.rememberTopBarMaterialAlpha
 import com.haooz.chedule.ui.components.tabletNavRailStartPadding
 import com.haooz.chedule.ui.theme.rememberAppThemeController
 import com.haooz.chedule.ui.utils.hostVerticalBarEdge
@@ -378,6 +379,8 @@ internal fun TodayTopBar(
         modifier = Modifier.graphicsLayer { alpha = if (visible) 1f else 0f },
         resampleKey = blurResampleKey,
         sampleTrack = blurSampleTrack,
+        // 无材质档没有模糊层，遮罩是顶栏唯一的材质：跟按钮背景一起出现
+        maskAlpha = rememberTopBarMaterialAlpha(scrollBehavior),
     ) {
         CollapsibleTopAppBar(
             title = titleText,

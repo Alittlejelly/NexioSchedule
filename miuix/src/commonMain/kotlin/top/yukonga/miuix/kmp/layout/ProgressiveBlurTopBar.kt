@@ -50,6 +50,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 private val progressiveBlurShaderSeq = AtomicInt(0)
 private val NoSampleTrack: () -> Float = { 0f }
+private val FullMaskAlpha: () -> Float = { 1f }
 
 /** 顶部最大模糊半径（dp）：糊带的半径从这里随 Y 收到 0 */
 private val BlurMaxRadius = 12.dp
@@ -147,6 +148,13 @@ fun ProgressiveBlurTopBar(
      * 默认从 [LocalMaterialNoneEnabled] 读，App 在根部 provide；也可显式传参覆盖。
      */
     useGradientMask: Boolean = LocalMaterialNoneEnabled.current,
+    /**
+     * 渐变遮罩的额外不透明度（0–1），在绘制期读，只失效绘制。
+     *
+     * 无材质档没有模糊层，遮罩就是顶栏唯一的「材质」；今日 / 课表页传顶栏材质 alpha，
+     * 让它跟按钮背景同时出现（滚到顶时整条留空）。
+     */
+    maskAlpha: () -> Float = FullMaskAlpha,
     /** 底端透明淡出起点（0–1，相对糊层高度）。越小过渡越长。 */
     edgeFadeStart: Float = 0.88f,
     /** 侧栏伸缩等导致采样源位移后自增，强制重建糊层采样 */
@@ -216,7 +224,7 @@ fun ProgressiveBlurTopBar(
             when {
                 // 无材质档：渐变遮罩，不采样 backdrop，无模糊
                 useGradientMask -> {
-                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha)
+                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha, maskAlpha)
                 }
                 // 真渐进：AGSL 守 API 33+（31–32 上 runtimeShaderEffect 会静默 no-op，掉进这分支会整条糊带消失）
                 isRuntimeShaderSupported() && !useFakeProgressiveBlur -> {
@@ -286,7 +294,7 @@ fun ProgressiveBlurTopBar(
                 }
                 // 兜底仍走渐变遮罩：模糊能力缺失时不降级为纯色（统一限制后理论不可达，见顶部文档）
                 else -> {
-                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha)
+                    ProgressiveBlurGradientMask(totalHeight, tintColor, blurAlpha, maskAlpha)
                 }
             }
         }
@@ -297,23 +305,26 @@ fun ProgressiveBlurTopBar(
 /**
  * 渐变遮罩：无模糊，表面色 alpha 纵向渐变淡出。
  * 无材质档的渐进模糊形态，也是能力缺失时的兜底（替代旧「纯色渐变」降级）。
+ *
+ * [maskAlpha] 在绘制期读：顶栏材质 alpha 逐帧变化时只失效这一层的绘制。
  */
 @Composable
 private fun ProgressiveBlurGradientMask(
     totalHeight: Dp,
     fillColor: Color,
     blurAlpha: Float,
+    maskAlpha: () -> Float,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(totalHeight)
-            .graphicsLayer { alpha = blurAlpha }
+            .graphicsLayer { alpha = blurAlpha * maskAlpha() }
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(
-                        0.0f to fillColor.copy(alpha = 0.9f),
-                        0.4f to fillColor.copy(alpha = 0.82f),
+                        0.0f to fillColor.copy(alpha = 0.98f),
+                        0.4f to fillColor.copy(alpha = 0.92f),
                         0.7f to fillColor.copy(alpha = 0.6f),
                         1.0f to fillColor.copy(alpha = 0.0f)
                     ),

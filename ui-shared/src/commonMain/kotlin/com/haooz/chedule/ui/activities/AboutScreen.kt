@@ -101,6 +101,8 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import com.haooz.chedule.ui.utils.AppMaterialSettings
+import com.haooz.chedule.ui.components.rememberTopBarMaterialAlpha
 import com.haooz.chedule.data.DiagnosticRecorder
 import com.haooz.chedule.data.NoopDiagnosticRecorder
 import com.haooz.chedule.data.showToast
@@ -173,6 +175,9 @@ fun AboutScreen(
     val tabletHorizontalPadding = if (isTablet) 4.dp else 0.dp
 
     val backdrop = rememberBlurBackdrop()
+    // 无材质档玻璃全关：卡片退回标准实色，纹理模糊一并停用（采样层此时没挂，采不到东西）
+    val noneTier = AppMaterialSettings.isNoneTier()
+    val glassCards = backdrop != null && !noneTier
     val lazyListState = rememberLazyListState()
     val uiScope = rememberCoroutineScope()
     var recordingActive by remember { mutableStateOf(diagnosticRecorder.isRecording) }
@@ -263,6 +268,8 @@ fun AboutScreen(
                 backdrop = liquidGlassBackdrop,
                 topInsetAdjustment = nativeBarInset,
                 noTopStatusBar = hostVerticalBarEdge(),
+                // 无材质档没有模糊层：遮罩跟着返回按钮的材质一起出现（本页按 scrollProgress 才上材质）
+                maskAlpha = rememberTopBarMaterialAlpha(scrollProgress >= 1f),
             ) {
                 CollapsibleTopAppBar(
                     title = AboutStr.aboutApp(),
@@ -296,7 +303,7 @@ fun AboutScreen(
                 .background(MiuixTheme.colorScheme.background)
                 .then(
                     // 无材质档：玻璃全关，采样录屏层不挂
-                    if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) Modifier
+                    if (noneTier) Modifier
                     else Modifier.liquidGlassLayerBackdrop(liquidGlassBackdrop)
                 )
         ) {
@@ -305,9 +312,7 @@ fun AboutScreen(
                 isFullSize = true,
                 modifier = Modifier.fillMaxSize(),
                 // 背景特效采的是内容模糊录屏层，无材质档一并停录
-                bgModifier = if (backdrop != null &&
-                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()
-                ) {
+                bgModifier = if (backdrop != null && !noneTier) {
                     Modifier.layerBackdrop(backdrop)
                 } else Modifier,
                 alpha = { 1f - scrollProgress },
@@ -362,7 +367,7 @@ fun AboutScreen(
                                 scaleY = 1 - (nameProgress * 0.05f)
                             }
                             .then(
-                                if (backdrop != null) {
+                                if (glassCards) {
                                     Modifier.textureBlur(
                                         backdrop = backdrop,
                                         shape = ContinuousRoundedRectangle(16.dp),
@@ -428,7 +433,7 @@ fun AboutScreen(
                             modifier = Modifier
                                 .padding(start = 16.dp, end = 16.dp, top = 16.dp)
                                 .then(
-                                    if (backdrop != null) {
+                                    if (glassCards) {
                                         Modifier.textureBlur(
                                             backdrop = backdrop,
                                             shape = ContinuousRoundedRectangle(20.dp),
@@ -439,10 +444,12 @@ fun AboutScreen(
                                         Modifier
                                     },
                                 ),
-                            colors = CardDefaults.defaultColors(
-                                if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
-                                Color.Transparent,
-                            ),
+                            colors = if (glassCards) {
+                                CardDefaults.defaultColors(Color.Transparent, Color.Transparent)
+                            } else {
+                                // 无材质档：卡片标准实色
+                                CardDefaults.defaultColors()
+                            },
                         ) {
                             Column(
                                 modifier = Modifier.fillMaxWidth()
@@ -486,7 +493,7 @@ fun AboutScreen(
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
                                 .then(
-                                    if (backdrop != null) {
+                                    if (glassCards) {
                                         Modifier.textureBlur(
                                             backdrop = backdrop,
                                             shape = ContinuousRoundedRectangle(20.dp),
@@ -497,10 +504,12 @@ fun AboutScreen(
                                         Modifier
                                     },
                                 ),
-                            colors = CardDefaults.defaultColors(
-                                if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
-                                Color.Transparent,
-                            ),
+                            colors = if (glassCards) {
+                                CardDefaults.defaultColors(Color.Transparent, Color.Transparent)
+                            } else {
+                                // 无材质档：卡片标准实色
+                                CardDefaults.defaultColors()
+                            },
                         ) {
                             Column(
                                 modifier = Modifier.fillMaxWidth()
@@ -660,7 +669,7 @@ fun AboutScreen(
                                     .clip(ContinuousRoundedRectangle(20.dp))
                                     .clickable { expanded = !expanded }
                                     .then(
-                                        if (backdrop != null) {
+                                        if (glassCards) {
                                             Modifier.textureBlur(
                                                 backdrop = backdrop,
                                                 shape = ContinuousRoundedRectangle(20.dp),
@@ -671,10 +680,12 @@ fun AboutScreen(
                                             Modifier
                                         },
                                     ),
-                                colors = CardDefaults.defaultColors(
-                                    if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
-                                    Color.Transparent,
-                                ),
+                                colors = if (glassCards) {
+                                    CardDefaults.defaultColors(Color.Transparent, Color.Transparent)
+                                } else {
+                                    // 无材质档：卡片标准实色
+                                    CardDefaults.defaultColors()
+                                },
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -866,7 +877,7 @@ fun AboutScreen(
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp)
                                     .then(
-                                        if (backdrop != null) {
+                                        if (glassCards) {
                                             Modifier.textureBlur(
                                                 backdrop = backdrop,
                                                 shape = ContinuousRoundedRectangle(20.dp),
@@ -877,10 +888,12 @@ fun AboutScreen(
                                             Modifier
                                         }
                                     ),
-                                colors = CardDefaults.defaultColors(
-                                    if (backdrop != null) Color.Transparent else MiuixTheme.colorScheme.background,
-                                    Color.Transparent,
-                                ),
+                                colors = if (glassCards) {
+                                    CardDefaults.defaultColors(Color.Transparent, Color.Transparent)
+                                } else {
+                                    // 无材质档：卡片标准实色
+                                    CardDefaults.defaultColors()
+                                },
                             ) {
                                 Column(
                                     modifier = Modifier
