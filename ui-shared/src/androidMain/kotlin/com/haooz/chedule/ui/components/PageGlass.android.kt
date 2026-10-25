@@ -1,0 +1,296 @@
+package com.haooz.chedule.ui.components
+
+import android.os.Build
+import androidx.annotation.RequiresApi
+import android.graphics.RenderEffect as PlatformRenderEffect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import com.kyant.backdrop.RuntimeShader
+import com.kyant.backdrop.asAndroidRuntimeShader
+import com.kyant.backdrop.backdrops.SharedBlurBackdrop
+import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.isRuntimeShaderSupported
+import com.kyant.capsule.ContinuousRoundedRectangle
+
+/**
+ * 页级玻璃（Android 实现）。
+ *
+ * 一页只挂**一个**采样节点：把页内所有课卡的轮廓合并成一条路径去裁壁纸，再让一次 AGSL
+ * 折射 pass 覆盖整页。相比「每张卡各自 drawBackdrop」：
+ *  - Compose 侧失效源 N → 1（不再每帧从整页重录 N 份采样 display list）
+ *  - GPU 侧折射离屏 pass N → 1
+ *  - 形状仍走 Compose 的 `clipPath`，与卡片轮廓逐点同源（`ContinuousRoundedRectangle`），
+ *    不存在「shader 复刻连续圆角」的 1~2px 角部差异
+ *
+ * 表面色与描边**不进 shader**：它们留在卡片上由 Compose 绘制。实验页量过，省下的那点录制成本
+ * 只有 0.2ms，却要拿形状保真去换，不划算。
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+actual fun PageGlass(
+    registry: GlassCardRegistry,
+    backdrop: SharedBlurBackdrop,
+    bakedLayer: GraphicsLayer?,
+    bakeScale: Float,
+    refractionHeight: Float,
+    refractionAmount: Float,
+    modifier: Modifier
+) {
+    if (bakedLayer == null || !isRenderEffectSupported()) return
+    val sourceCoordinates: LayoutCoordinates = backdrop.sourceLayerCoordinates ?: return
+
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val nodeCoordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    // 本节点的 root 位置：卡片登记的是 root 坐标，绘制期换算成节点局部坐标。
+    // 普通字段而非 state —— 绘制期读 state，滚动就会变成每帧主动失效。
+    val nodeRoot = remember { floatArrayOf(0f, 0f) }
+    val tick = remember { mutableIntStateOf(0) }
+
+    val slots = remember(registry) { Array(registry.capacity) { SlotOutline() } }
+    val unionPath = remember { Path() }
+    val localRects = remember(registry) { FloatArray(registry.capacity * 4) }
+    val localRadii = remember(registry) { FloatArray(registry.capacity * 4) }
+
+    val wantsRefraction = refractionHeight > 0f && refractionAmount > 0f
+    val shader = if (wantsRefraction && isRuntimeShaderSupported()) {
+        remember { RuntimeShader(PAGE_GLASS_REFRACTION_SHADER) }
+    } else null
+    val platformShader = remember(shader) { shader?.asAndroidRuntimeShader() }
+
+    // 卡片几何变化 → 让本节点重绘一次；静止时 version 不变，零开销
+    SideEffect { registry.onInvalidate = { tick.intValue = registry.version } }
+    DisposableEffect(registry) {
+        onDispose { registry.onInvalidate = null }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates ->
+                nodeCoordinates[0] = coordinates
+                val pos = try {
+                    coordinates.positionInRoot()
+                } catch (_: Exception) {
+                    null
+                }
+                if (pos != null) {
+                    nodeRoot[0] = pos.x
+                    nodeRoot[1] = pos.y
+                }
+            }
+            .graphicsLayer {
+                // 版本号一读即被观察：卡片挪动时让 layer 重录并把新矩形传给 shader
+                tick.intValue
+                if (platformShader != null) {
+                    val count = registry.cardCount
+                    if (count <= 0) {
+                        // 本页没有登记任何卡（无壁纸 / 不采样 / 全在视口外）：不能挂着空的全页
+                        // RenderEffect —— 空内容也要分配整页离屏缓冲，翻页时几页叠加就是纯亏。
+                        if (renderEffect != null) renderEffect = null
+                        return@graphicsLayer
+                    }
+                    val nx = nodeRoot[0]
+                    val ny = nodeRoot[1]
+                    for (i in 0 until count) {
+                        val base = i * 4
+                        localRects[base] = registry.rects[base] - nx
+                        localRects[base + 1] = registry.rects[base + 1] - ny
+                        localRects[base + 2] = registry.rects[base + 2] - nx
+                        localRects[base + 3] = registry.rects[base + 3] - ny
+                        for (k in 0 until 4) {
+                            localRadii[base + k] = registry.radii[base + k]
+                        }
+                    }
+                    platformShader.setFloatUniform("cardRects", localRects)
+                    platformShader.setFloatUniform("cardRadii", localRadii)
+                    platformShader.setIntUniform("cardCount", count)
+                    platformShader.setFloatUniform("refractionHeight", refractionHeight)
+                    // 与原 lens() 一致：位移方向取负（向卡内采）
+                    platformShader.setFloatUniform("refractionAmount", -refractionAmount)
+                    platformShader.setFloatUniform("depthEffect", 0f)
+                    // 每帧换新实例：uniform 变化本身不会让 hwui 感知到，只有换 effect 才强制重算
+                    renderEffect = PlatformRenderEffect
+                        .createRuntimeShaderEffect(platformShader, "content")
+                        .asComposeRenderEffect()
+                }
+            }
+            .drawWithContent {
+                tick.intValue
+                val coordinates = nodeCoordinates[0]
+                if (coordinates != null) {
+                    val nx = nodeRoot[0]
+                    val ny = nodeRoot[1]
+                    unionPath.rewind()
+                    val count = registry.cardCount
+                    var drawn = 0
+                    for (i in 0 until count) {
+                        if (!registry.isOccupied(i)) continue
+                        val base = i * 4
+                        val l = registry.rects[base] - nx
+                        val t = registry.rects[base + 1] - ny
+                        val r = registry.rects[base + 2] - nx
+                        val b = registry.rects[base + 3] - ny
+                        val w = r - l
+                        val h = b - t
+                        if (w <= 0f || h <= 0f) continue
+                        val radius = registry.radii[base]
+                        val slot = slots[i]
+                        val outlinePath = slot.pathFor(w, h, radius, density, layoutDirection)
+                        unionPath.addPath(outlinePath, Offset(l, t))
+                        drawn++
+                    }
+                    if (drawn > 0) {
+                        val offset = try {
+                            sourceCoordinates.localPositionOf(coordinates, Offset.Zero)
+                        } catch (_: Exception) {
+                            Offset.Zero
+                        }
+                        clipPath(unionPath) {
+                            withTransform({
+                                translate(-offset.x, -offset.y)
+                                if (bakeScale != 1f && bakeScale > 0f) {
+                                    scale(1f / bakeScale, 1f / bakeScale, Offset.Zero)
+                                }
+                            }) {
+                                drawLayer(bakedLayer)
+                            }
+                        }
+                    }
+                }
+                drawContent()
+            }
+    )
+}
+
+/** 每槽一个复用的轮廓 Path：卡片尺寸/圆角不变时不重建（一页 30 张卡、每帧都 new Path 会造成 GC 抖动）。 */
+private class SlotOutline {
+    private val path = Path()
+    private val shape = ContinuousRoundedRectangle(CornerSize(0f))
+    private var w = -1f
+    private var h = -1f
+    private var radius = -1f
+    private var cornerSize = CornerSize(0f)
+
+    fun pathFor(
+        width: Float,
+        height: Float,
+        radiusPx: Float,
+        density: androidx.compose.ui.unit.Density,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection
+    ): Path {
+        if (w == width && h == height && radius == radiusPx) return path
+        w = width
+        h = height
+        radius = radiusPx
+        cornerSize = CornerSize(radiusPx)
+        val outline = ContinuousRoundedRectangle(cornerSize)
+            .createOutline(Size(width, height), layoutDirection, density)
+        path.rewind()
+        when (outline) {
+            is Outline.Generic -> path.addPath(outline.path)
+            is Outline.Rounded -> path.addRoundRect(outline.roundRect)
+            is Outline.Rectangle -> path.addRect(outline.rect)
+        }
+        return path
+    }
+}
+
+/**
+ * 只做「折射位移」的页级 shader。
+ *
+ * 形状、抗锯齿、裁剪全部由 Compose 的 `clipPath` 完成（路径与卡片同源），所以这里不需要
+ * SDF 判形状、也不需要 `smoothstep` 描边。唯一的必要条件是：要知道每个像素相对**它所属那张卡**
+ * 的位置，才能算出局部位移方向 —— 这正是 `cardRects` 数组的用途。
+ *
+ * 透明像素（卡片之外）直接早退：滚动期它们占页面的一半以上，早退省下的带宽比逐卡比较更值。
+ */
+private val PAGE_GLASS_REFRACTION_SHADER = """
+uniform shader content;
+uniform float4 cardRects[88];
+uniform float4 cardRadii[88];
+uniform int cardCount;
+uniform float refractionHeight;
+uniform float refractionAmount;
+uniform float depthEffect;
+
+float radiusAt(float2 coord, float4 radii) {
+    if (coord.x >= 0.0) {
+        if (coord.y <= 0.0) { return radii.y; }
+        else { return radii.z; }
+    } else {
+        if (coord.y <= 0.0) { return radii.x; }
+        else { return radii.w; }
+    }
+}
+
+float sdRoundedRect(float2 coord, float2 halfSize, float radius) {
+    float2 cornerCoord = abs(coord) - (halfSize - float2(radius));
+    float outside = length(max(cornerCoord, 0.0)) - radius;
+    float inside = min(max(cornerCoord.x, cornerCoord.y), 0.0);
+    return outside + inside;
+}
+
+float2 gradSdRoundedRect(float2 coord, float2 halfSize, float radius) {
+    float2 cornerCoord = abs(coord) - (halfSize - float2(radius));
+    if (cornerCoord.x >= 0.0 || cornerCoord.y >= 0.0) {
+        return sign(coord) * normalize(max(cornerCoord, 0.0) + float2(0.00001));
+    } else {
+        float gradX = step(cornerCoord.y, cornerCoord.x);
+        return sign(coord) * float2(gradX, 1.0 - gradX);
+    }
+}
+
+float circleMap(float x) {
+    return 1.0 - sqrt(1.0 - x * x);
+}
+
+half4 main(float2 coord) {
+    half4 base = content.eval(coord);
+    if (base.a < 0.004) { return base; }
+    if (refractionHeight <= 0.0) { return base; }
+    for (int i = 0; i < 88; i++) {
+        if (i >= cardCount) { break; }
+        float4 r = cardRects[i];
+        if (coord.x < r.x || coord.y < r.y || coord.x > r.z || coord.y > r.w) { continue; }
+        float2 halfSize = (r.zw - r.xy) * 0.5;
+        float2 centered = coord - (r.xy + halfSize);
+        float radius = radiusAt(centered, cardRadii[i]);
+        float sd = sdRoundedRect(centered, halfSize, radius);
+        if (sd > 0.0) { continue; }
+        float depth = -sd;
+        if (depth >= refractionHeight) { return base; }
+        float d = circleMap(1.0 - depth / refractionHeight) * refractionAmount;
+        float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
+        float2 grad = normalize(
+            gradSdRoundedRect(centered, halfSize, gradRadius)
+            + depthEffect * normalize(centered + float2(0.0001))
+        );
+        return content.eval(coord + d * grad);
+    }
+    return base;
+}
+""".trimIndent()

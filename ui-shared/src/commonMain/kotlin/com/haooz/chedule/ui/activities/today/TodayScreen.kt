@@ -1078,7 +1078,7 @@ fun TodayScreen(
                                 LocalDate(datePickerYear, datePickerMonth + 1, datePickerDay)
                             val now = todayLocalDate()
                             val days = now.daysUntil(target)
-                            val targetPage = MAX_DATE_OFFSET + days.toInt()
+                            val targetPage = MAX_DATE_OFFSET + days
                             scope.launch {
                                 // 选日期可能跨几十上百天：借位后只滑一页，不逐页组合中间每一天
                                 val dest = targetPage.coerceIn(

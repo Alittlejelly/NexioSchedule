@@ -15,9 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.haooz.chedule.ui.components.LocalGlassCards
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -160,6 +163,16 @@ fun CourseCard(
      */
     val needsBackdropSampling = hasBlur &&
             (cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF)
+    /**
+     * 页级玻璃接管：课表页用**一个**采样节点替所有卡采样（见 components/PageGlass.kt）。
+     * 命中时本卡不再挂 `drawBackdrop`，只登记矩形并自己画表面色与描边。
+     */
+    val externalGlass = LocalGlassCards.current
+    val usesExternalGlass = hasBlur && needsBackdropSampling && externalGlass != null
+    val glassSlot = remember(externalGlass) { externalGlass?.alloc() ?: -1 }
+    DisposableEffect(externalGlass, glassSlot) {
+        onDispose { externalGlass?.free(glassSlot) }
+    }
     val effectiveCornerRadius = if (isTablet) (cardCornerRadius * 1.3f) else cardCornerRadius
     val scope = rememberCoroutineScope()
     val localDensity = LocalDensity.current
@@ -347,6 +360,19 @@ fun CourseCard(
             val outlineCache = remember { OutlineCache() }
             // 静止卡不挂 graphicsLayer：几十张×两页的合成层是周滑 draw 热点
             val needTransformLayer = sinkPressed || sinkActive || isDragging || rippleAnimating
+            val glassRadiusPx = with(localDensity) { effectiveCornerRadius.dp.toPx() }
+            // 拖拽期本卡被 alpha=0 隐藏（改由浮层呈现），玻璃不能跟着留下；
+            // 这个分支不会走 onGloballyPositioned（位置没变），所以必须用 SideEffect 兜住。
+            SideEffect {
+                if (usesExternalGlass) {
+                    if (isDragging) externalGlass.clearCard(glassSlot)
+                    else externalGlass.setCard(glassSlot, cardCoords[0], glassRadiusPx)
+                } else {
+                    // 材质档换成「无模糊/无折射」时布局没变、onGloballyPositioned 不会重跑，
+                    // 旧矩形得在这里撤掉，否则页级玻璃还会照旧画这一块。
+                    externalGlass?.clearCard(glassSlot)
+                }
+            }
 
             Box(
                 modifier = modifier
@@ -371,7 +397,16 @@ fun CourseCard(
                         }
                     )
                     // 只存坐标：布局期不再逐卡 localToRoot，消费点自己 refreshCardBounds
-                    .onGloballyPositioned { cardCoords[0] = it }
+                    // 页级玻璃接管时，同一份坐标顺手登记给页级节点（矩形 + 圆角 → 合并路径）
+                    .onGloballyPositioned { coordinates ->
+                        cardCoords[0] = coordinates
+                        if (usesExternalGlass && !isDragging) {
+                            externalGlass.setCard(glassSlot, coordinates, glassRadiusPx)
+                        } else if (usesExternalGlass) {
+                            // 拖拽期本卡被 alpha=0 隐藏（由浮层接管），玻璃不能跟着留下
+                            externalGlass.clearCard(glassSlot)
+                        }
+                    }
                     // 垫底纯色画在采样层之前（更靠外=更早画），被玻璃采样盖住属预期
                     .then(
                         if (solidBackingColor != null) {
@@ -381,8 +416,11 @@ fun CourseCard(
                         }
                     )
                     .then(
-                        // 不采样时退化成一次圆角纯色填充：下面就是同一张壁纸，视觉等价
-                        if (needsBackdropSampling) {
+                        // 页级玻璃接管：玻璃已在页级节点画好，这里只叠半透明表面色；
+                        // 形状同源（同一 ContinuousRoundedRectangle），描边仍由下面 drawWithContent 画
+                        if (usesExternalGlass) {
+                            Modifier.background(surfaceColor, backdropShape)
+                        } else if (needsBackdropSampling) {
                             Modifier.drawBackdrop(
                                 backdrop = wallpaperBackdrop,
                                 shape = { backdropShape },
@@ -425,10 +463,7 @@ fun CourseCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                // 内容单独成层：采样节点每帧失效会触发整页 draw pass，
-                // 有层的子树只需 drawLayer，不必重建文字/路径（卡片文字+圆角是重录大头）。
-                // 实测（release 包，切 tab 4 轮）：janky 3.7%→2.3%，draw p90 8.7→7.0ms；
-                // debug 包更明显（40%→30%），因为解释执行放大了重录成本。
+                // 内容单独成层：采样节点每帧失效会触发整页 draw pass
                 // 与上面 needTransformLayer 不冲突：那是拖拽缩放的**变换层**（按需挂），
                 // 这是常驻的**内容缓存层**，位置不同（内容层在采样层内侧），职责也不同。
                 Box(
@@ -438,7 +473,6 @@ fun CourseCard(
                 ) {
                     CardContent(
                         course,
-                        sectionCount,
                         textColor,
                         hasMultipleCourses,
                         isTablet,
@@ -518,7 +552,6 @@ fun CourseCard(
         ) {
             CardContent(
                 course,
-                sectionCount,
                 textColor,
                 hasMultipleCourses,
                 isTablet,
@@ -585,7 +618,7 @@ private fun Modifier.courseCardGesture(
         /**
          * 指针位置换算到 root 坐标。
          *
-         * ⚠ 浮层挂在 root 上、锚点 [bounds] 也是 root 坐标，而 [PointerInputChange.position]
+         * ⚠ 浮层挂在 root 上、锚点 [bounds] 也是 root 坐标，而 [androidx.compose.ui.input.pointer.PointerInputChange.position]
          * 是**课卡本地**坐标。课卡住在周 pager 的页里：翻周（页平移一屏）、页内上下滚，
          * 手指不动本地坐标也会变 —— 直接拿本地差值会让浮层反向飞出一屏（翻页即「丢失」），
          * 上下滚则越拖越偏（不跟手）。换算到 root 后只剩手指自身位移。
@@ -618,11 +651,10 @@ private fun Modifier.courseCardGesture(
                 if (change == null) {
                     // 指针不在事件里 = 被系统取消（翻页时合成 cancel / 手势被抢）。
                     // 必须收尾，否则浮层 offset 冻在最后一帧、卡在屏幕外。
-                    if (dragOwned && !dragClosed) {
+                    if (dragOwned) {
                         dragClosed = true
-                        val st = touchState
-                        val trackerOwns = st != null &&
-                            (st.dragTrackerActive || st.dragEndHandled)
+                        val trackerOwns = touchState != null &&
+                            (touchState.dragTrackerActive || touchState.dragEndHandled)
                         if (!trackerOwns) onDragCancel()
                     }
                     break
@@ -645,7 +677,7 @@ private fun Modifier.courseCardGesture(
                                     dragClosed = true
                                 }
 
-                                !dragClosed -> {
+                                else -> {
                                     dragClosed = true
                                     onDragEnd()
                                 }
@@ -654,13 +686,12 @@ private fun Modifier.courseCardGesture(
 
                         menuShown -> Unit
                         else -> {
-                            val up = change
-                            up.consume()
+                            change.consume()
                             // 多指时不点击：系统手势（三指截图）拦截后 Compose 会补发一个
                             // 合成的「全部抬起」事件，看起来和松手一样，只能靠页面级多指标记区分
                             val multiTouch = touchState?.multiTouch == true
                             if (!isLongPress && !multiTouch &&
-                                (up.position - downPosition).getDistance() < slop
+                                (change.position - downPosition).getDistance() < slop
                             ) onClick()
                         }
                     }
@@ -732,18 +763,15 @@ private fun Modifier.courseCardGesture(
             // 浮层不收尾会永远停在最后一帧。页面级 tracker 还活着时由它收尾（它能跨周跟手），
             // 只有 tracker 没接管才在这里兜底；且只取消、不写库。
             if (dragOwned && !dragClosed) {
-                dragClosed = true
-                val st = touchState
-                val trackerOwns = st != null &&
-                    (st.dragTrackerActive || st.dragEndHandled)
+                val trackerOwns = touchState != null &&
+                    (touchState.dragTrackerActive || touchState.dragEndHandled)
                 if (!trackerOwns) onDragCancel()
             }
-            val state = touchState
-            if (state != null &&
-                !state.dragTrackerActive && !state.dragEndHandled &&
-                state.draggingPointerId == down.id
+            if (touchState != null &&
+                !touchState.dragTrackerActive && !touchState.dragEndHandled &&
+                touchState.draggingPointerId == down.id
             ) {
-                state.clearDragTracking()
+                touchState.clearDragTracking()
             }
         }
     }
@@ -752,7 +780,6 @@ private fun Modifier.courseCardGesture(
 @Composable
 private fun BoxScope.CardContent(
     course: Course,
-    sectionCount: Int,
     textColor: Color,
     hasMultipleCourses: Boolean,
     isTablet: Boolean = false,

@@ -122,6 +122,9 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.pagerAxisTakeoverGesture
 import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.schedulePageBackgroundColor
+import com.haooz.chedule.ui.components.GlassCardRegistry
+import com.haooz.chedule.ui.components.LocalGlassCards
+import com.haooz.chedule.ui.components.PageGlass
 import com.haooz.chedule.ui.utils.screenHeightDp
 import com.haooz.chedule.ui.utils.screenWidthDp
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -136,6 +139,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.isRenderEffectSupported
+import com.kyant.backdrop.isRuntimeShaderSupported
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -344,7 +348,7 @@ fun MainScheduleScreen(
     // 详见 scheduleContentTopPadding
     val verticalBarEdge = hostVerticalBarEdge()
     val statusBarHeight = (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() -
-        nativeBarInset).coerceAtLeast(0.dp)
+            nativeBarInset).coerceAtLeast(0.dp)
     val contentTopPaddingDp = remember(statusBarHeight, verticalBarEdge) {
         scheduleContentTopPadding(statusBarHeight, verticalBarEdge)
     }
@@ -352,8 +356,14 @@ fun MainScheduleScreen(
     // 填满短边不露底；最小缩放 = cover/fit
     val minWallpaperScale = remember(wallpaperBitmap, screenWidthPx, screenHeightPx) {
         if (wallpaperBitmap != null && wallpaperBitmap.width > 0 && wallpaperBitmap.height > 0) {
-            val fitScale = minOf(screenWidthPx / wallpaperBitmap.width, screenHeightPx / wallpaperBitmap.height)
-            val coverScale = maxOf(screenWidthPx / wallpaperBitmap.width, screenHeightPx / wallpaperBitmap.height)
+            val fitScale = minOf(
+                screenWidthPx / wallpaperBitmap.width,
+                screenHeightPx / wallpaperBitmap.height
+            )
+            val coverScale = maxOf(
+                screenWidthPx / wallpaperBitmap.width,
+                screenHeightPx / wallpaperBitmap.height
+            )
             if (fitScale > 0f) coverScale / fitScale else 1f
         } else 1f
     }
@@ -407,8 +417,10 @@ fun MainScheduleScreen(
                 val startParts = parts[0].split(":")
                 val endParts = parts[1].split(":")
                 if (startParts.size != 2 || endParts.size != 2) continue
-                val startMinutes = (startParts[0].toIntOrNull() ?: 0) * 60 + (startParts[1].toIntOrNull() ?: 0)
-                val endMinutes = (endParts[0].toIntOrNull() ?: 0) * 60 + (endParts[1].toIntOrNull() ?: 0)
+                val startMinutes =
+                    (startParts[0].toIntOrNull() ?: 0) * 60 + (startParts[1].toIntOrNull() ?: 0)
+                val endMinutes =
+                    (endParts[0].toIntOrNull() ?: 0) * 60 + (endParts[1].toIntOrNull() ?: 0)
                 if (currentMinutes in startMinutes until endMinutes) {
                     result = section
                 }
@@ -455,7 +467,8 @@ fun MainScheduleScreen(
             LocalDate.parse(classStartTime.replace("/", "-"))
         }.getOrNull() ?: todayLocalDate()
     }
-    val semesterStartMonday = semesterStartDate.minusDays((semesterStartDate.dayOfWeek.isoDayNumber - 1).toLong())
+    val semesterStartMonday =
+        semesterStartDate.minusDays((semesterStartDate.dayOfWeek.isoDayNumber - 1).toLong())
     val teachingWeekReorganizations = remember(
         scheduleRepository,
         currentScheduleId,
@@ -479,6 +492,7 @@ fun MainScheduleScreen(
     }
     val semesterLastDate = dateForTeachingPosition(totalWeeks, 7)
         ?: semesterStartMonday.plusWeeks((totalWeeks - 1).toLong()).plusDays(6)
+
     /**
      * 调休条目 → 该课表下的 (周次, 星期)。库存的是绝对日期，这里按当前课表的学期
      * 开始时间现算，切换课表后同一天会算出不同周次，调休列自动跟随那一周的课。
@@ -580,8 +594,9 @@ fun MainScheduleScreen(
                         workswapIndex[it]?.let { swap -> followPositionFor(swap) != null }
                     } == true
                     return courses.any { it.dayOfWeek == calendarDay && it.isActiveInWeek(week) } ||
-                        hasWorkSwap
+                            hasWorkSwap
                 }
+
                 val satActive = hasWeekendCourses(satDate, 6)
                 val sunActive = hasWeekendCourses(sunDate, 7)
                 result[week] = buildSet {
@@ -651,7 +666,8 @@ fun MainScheduleScreen(
                             emptySet()
                         } else {
                             val swapForDay = workswapIndex[dateForDay.toString()]
-                            val displayWeek = swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
+                            val displayWeek =
+                                swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
                             (weekFilteredCourses[page]?.get(dayOfWeek)?.third ?: emptyList())
                                 .asSequence()
                                 .filter { it.isActiveInWeek(displayWeek) }
@@ -703,7 +719,8 @@ fun MainScheduleScreen(
                             emptySet()
                         } else {
                             val swapForDay = workswapIndex[dateForDay.toString()]
-                            val displayWeek = swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
+                            val displayWeek =
+                                swapForDay?.let { followPositionFor(it)?.first } ?: weekForPage
                             HolidayCourseExclusion.cancelledCourseIdsOnDate(
                                 entriesByYear = holidayEntriesByYear,
                                 date = dateForDay,
@@ -795,6 +812,19 @@ fun MainScheduleScreen(
         onDispose { sharedBlurManager?.release() }
     }
 
+    /**
+     * 页级玻璃是否接管采样。
+     *
+     * 条件必须满足「有共享烘焙层」+「AGSL 可用」：前者是玻璃层的纹理来源，后者是折射位移的唯一实现。
+     * 任一不满足就整页退回旧路径（每张卡各自 drawBackdrop），行为与本次改动前完全一致。
+     */
+    val pageGlassActive = hasSharedBlur && isRuntimeShaderSupported()
+    // OFF 档两个值都是 0，传下去等于不折射
+    val pageGlassRefractionHeightPx =
+        with(density) { cardRefraction.lensRadiusDp.dp.toPx() }
+    val pageGlassRefractionAmountPx =
+        with(density) { cardRefraction.lensStrengthDp.dp.toPx() }
+
     // 非 state：滚动不触发重组
     val scheduleViewport = remember { BackdropViewport() }
 
@@ -816,1005 +846,1154 @@ fun MainScheduleScreen(
     CompositionLocalProvider(
         LocalBackdropViewport provides scheduleViewport
     ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInWindow()
-                scheduleViewport.update(
-                    left = pos.x,
-                    top = pos.y,
-                    right = pos.x + coordinates.size.width,
-                    bottom = pos.y + coordinates.size.height
-                )
-            }
-    ) {
-        if (wallpaperBitmap != null && !useSharedWallpaper) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        Modifier.kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
-                    )
-            ) {
-                val brightnessFilter = remember(wallpaperBrightness) {
-                    if (wallpaperBrightness != 0f) {
-                        val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                        ColorFilter.colorMatrix(
-                            ColorMatrix(
-                                floatArrayOf(
-                                    b, 0f, 0f, 0f, 0f,
-                                    0f, b, 0f, 0f, 0f,
-                                    0f, 0f, b, 0f, 0f,
-                                    0f, 0f, 0f, 1f, 0f
-                                )
-                            )
-                        )
-                    } else null
-                }
-                val wallpaperBlurEffect = remember(wallpaperBlur) {
-                    val blurRadiusPx = 12f * density.density
-                    // ⚠ 必须查 wallpaperBlur：非共享路径（排班模式）本页壁纸 alpha=1f、
-                    // 不透明可见，漏判会让「壁纸模糊」开关关着也照糊。共享层
-                    // CourseScheduleApp 那份判了，这两处（此处 + TodayScreen）当初漏了。
-                    if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
-                        BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
-                    } else null
-                }
-                Image(
-                    bitmap = wallpaperBitmap,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
-                            scaleX = effectiveScale
-                            scaleY = effectiveScale
-                            // 只有非共享路径才可见（共享层负责显示）
-                            alpha = 1f
-                            translationX = wallpaperOffset.x
-                            translationY = wallpaperOffset.y
-                            renderEffect = wallpaperBlurEffect
-                        },
-                    contentScale = ContentScale.Fit,
-                    colorFilter = brightnessFilter
-                )
-            }
-        } else if (wallpaperBitmap == null) {
-            // 无壁纸：无人采样 courseCardBackdrop，跳过 LayerBackdrop 录制
-            //（每帧把整页课表录进 GPU 层是左右滑白烧）
-            // ⚠ 共享壁纸分支（wallpaperBitmap != null && useSharedWallpaper）走不到这里：
-            // 那层壁纸由主 pager 后的共享层绘制，本页必须保持透明
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(wallpaperBackdropColor)
-            )
-        }
-
-        // 不可见预渲染：壁纸录制到降采样+模糊层，供所有课卡共享采样
-        if (hasSharedBlur) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = 0f }
-                    .then(sharedBlurManager.preRenderModifier(
-                        blurRadiusPx = with(density) { cardBlurRadius.dp.toPx() },
-                        sourceKey = wallpaperRecordKey
-                    ))
-            )
-        }
-
-        // rememberUpdatedState：pointerInput(Unit) 读到最新值，避免捕获陈旧状态
-        val latestWallpaperScale by rememberUpdatedState(wallpaperScale)
-        val latestWallpaperOffset by rememberUpdatedState(wallpaperOffset)
-        val latestOnScaleChange by rememberUpdatedState(onWallpaperScaleChange)
-        val latestOnOffsetChange by rememberUpdatedState(onWallpaperOffsetChange)
-        val latestMinWallpaperScale by rememberUpdatedState(minWallpaperScale)
-        val latestWallpaperBitmap by rememberUpdatedState(wallpaperBitmap)
-        val latestScreenWidthPx by rememberUpdatedState(screenWidthPx)
-        val latestScreenHeightPx by rememberUpdatedState(screenHeightPx)
-
-        // 指针作用域内无法直接 animate，经状态触发回弹
-        var bounceBackTrigger by remember { mutableIntStateOf(0) }
-        var gestureEndScale by remember { mutableFloatStateOf(1f) }
-        LaunchedEffect(bounceBackTrigger) {
-            if (bounceBackTrigger > 0 && gestureEndScale < latestMinWallpaperScale) {
-                animate(
-                    initialValue = gestureEndScale,
-                    targetValue = latestMinWallpaperScale,
-                    animationSpec = tween(
-                        durationMillis = 350,
-                        easing = CubicBezierEasing(0.34f, 1.1f, 0.3f, 1f)
-                    )
-                ) { value, _ ->
-                    onWallpaperScaleChange(value)
-                }
-            }
-        }
-
-
-        // 翻页预组合策略收在 WeekPagerHost（见其注释）：滚动中收拢到 1、
-        // 停稳 250ms 后扩到 2、边缘驻留扩到 3。beyond 翻转只重组 Host，
-        // 不重建页内容 lambda，已组合的周页不会被连带重组。
-        WeekPagerHost(
-            state = pagerState,
-            dwellHint = edgeDwellHint,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 页面级多指统计：多指（如三指下滑截图）时抑制卡片点击/长按
-                .pointerInput(touchState) {
-                    awaitPointerEventScope {
-                        var active = false
-                        while (true) {
-                            val downCount = awaitPointerEvent(PointerEventPass.Initial)
-                                .changes.count { it.pressed }
-                            if (downCount == 0) {
-                                // 全部抬起：不清零，让最后一帧仍能被卡片读到「本手势是多指」
-                                active = false
-                            } else {
-                                if (!active) touchState.multiTouch = false
-                                if (downCount > 1) touchState.multiTouch = true
-                                active = true
-                            }
-                        }
-                    }
+                .onGloballyPositioned { coordinates ->
+                    val pos = coordinates.positionInWindow()
+                    scheduleViewport.update(
+                        left = pos.x,
+                        top = pos.y,
+                        right = pos.x + coordinates.size.width,
+                        bottom = pos.y + coordinates.size.height
+                    )
                 }
-                // 横竖主导手势（与今日页共用）：横向接管 pager，纵向仍归页内滚动
-                .pagerAxisTakeoverGesture(
-                    pagerState = pagerState,
-                    gestureState = pagerGestureState,
-                    // 拖课卡那根手指由 blockedPointer 屏蔽；整页禁用会连「另一只手翻周」一起挡掉
-                    blockGesture = { latestIsWallpaperEditing },
-                    blockedPointer = { touchState.draggingPointerId },
-                    // 第二只手纵向滑动直接滚屏（verticalScroll 在跟被屏蔽那根手指）
-                    onVerticalScroll = { dy -> externalScrollState.dispatchRawDelta(-dy) },
-                )
-                // 跨周调课：跟手位移与收尾放在 pager 上。课卡所在周页翻过去会被回收，
-                // 卡片自己的 pointerInput 跟着取消；pager 不重建，拖到第几周都能继续跟手。
-                .onGloballyPositioned { dragOwnerCoords[0] = it }
-                .courseDragOwnerGesture(
-                    touchState = touchState,
-                    coordinates = dragOwnerCoords,
-                    onDrag = { id, dx, dy -> latestOnCourseDrag.value(id, dx, dy) },
-                    onDragEnd = { id -> latestOnCourseDragEnd.value(id) },
-                    onDragCancel = { id -> latestOnCourseDragCancel.value(id) },
-                ),
-        ) { physicalPage ->
-            // 借位页：长距跳转期间这一页临时按目标周出内容
-            val page = jumpNeighbor?.resolve(physicalPage) ?: physicalPage
-            val week = page + 1
-            // 借位页是「同一页换数据」而不是值更新：整屏文字直接换，不播交叉模糊。
-            // 否则一屏卡片的字各糊一遍 460ms，看起来像整页重播入场动画。
-            val borrowedPage = jumpNeighbor?.isBorrowed(physicalPage) == true
-            CompositionLocalProvider(LocalTextMotionInstant provides borrowedPage) {
-
-
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (scheduleScrollBehavior != null) Modifier.nestedScroll(scheduleScrollBehavior.nestedScrollConnection)
-                        else Modifier
-                    )
-                    // overScroll 必须在 verticalScroll 外侧，作为滚动容器的 parent 才能收到 fling
-                    .overScrollVertical()
-                    .scrollEndHaptic(
-                        hapticFeedbackType = HapticFeedbackType.TextHandleMove
-                    )
-                    .verticalScroll(externalScrollState)
-                    // 底部留白直接计入滚动内容高度；强制无界测量，避免 fillMaxSize/测量链把内容压回视口高
-                    .layout { measurable, constraints ->
-                        val topPad = contentTopPaddingDp.roundToPx().coerceAtLeast(0)
-                        val bottomPad = scheduleEndSpacer.roundToPx().coerceAtLeast(0)
-                        val placeable = measurable.measure(
-                            constraints.copy(
-                                minHeight = 0,
-                                maxHeight = Constraints.Infinity
-                            )
-                        )
-                        layout(placeable.width, placeable.height + topPad + bottomPad) {
-                            placeable.place(0, topPad)
-                        }
-                    }
-            ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    val dayBoundsArray = remember { arrayOfNulls<FloatArray>(8) }
-                    var lastDayBoundsVersion by remember { mutableIntStateOf(0) }
-                    val isScheduleScrolling by scheduleScrollInProgress
-                    LaunchedEffect(isScheduleScrolling) {
-                        // 停滑后冲刷：滑动中 onGloballyPositioned 只写数组不递增版本号
-                        if (!isScheduleScrolling) lastDayBoundsVersion++
-                    }
-                    // 用当前（始终实时写入的）dayBounds 数组拼几何。
-                    // 长按瞬间同步推一次，避免“停滑冲刷”晚于长按导致上层拿到旧页 dayBounds（菜单错位/浮层消失）
-                    fun buildGridGeometry(): ScheduleGridGeometry {
-                        val boundsMap = mutableMapOf<Int, FloatArray>()
-                        val dataMap = mutableMapOf<Int, Pair<Int, Int>>()
-                        val blocked = mutableSetOf<Int>()
-                        for (i in 1..7) {
-                            dayBoundsArray[i]?.let { boundsMap[i] = it }
-                            weekFilteredCourses[page]?.get(i)?.let { info ->
-                                dataMap[i] = info.first to info.second
-                            }
-                            // 教学周重组休课日：dateForPosition 返回 null，该列永远空白
-                            if (dateForTeachingPosition(week, i) == null) blocked.add(i)
-                        }
-                        return ScheduleGridGeometry(
-                            dayBounds = boundsMap,
-                            sectionHeightPx = with(density) { cardHeightPerSection.dp.toPx() },
-                            morningSections = morningSections,
-                            afternoonSections = afternoonSections,
-                            eveningSections = eveningSections,
-                            showBreakDividers = showBreakDividers,
-                            columnDataPosition = dataMap,
-                            pageWeek = week,
-                            blockedColumns = blocked,
-                            // 节次顶的权威来源：含特殊块挤占，浮层/落点定位都依赖它
-                            sectionTopDp = specialGrid.sectionTop,
-                        )
-                    }
-                    val pushFreshGeometry by rememberUpdatedState {
-                        onGridGeometryChange(buildGridGeometry())
-                    }
-                    // 提升到 Row 之外：特殊横带按同一套列宽切分内部星期子块
-                    val pageDayRange = remember(weekendDaysByWeek, week) {
-                        (1..5).toList() + (weekendDaysByWeek[week] ?: emptySet()).filter { it in 6..7 }
-                    }
-                    // 每个可见列实际显示的星期（调休列画的是被调星期的课）；横带子块必须
-                    // 跟着它走，与下面 DayColumn 的 displayDayForCol 同源，别再拿列下标当星期。
-                    val pageColumnDays = remember(pageDayRange, weekFilteredCourses, page) {
-                        pageDayRange.map { col ->
-                            weekFilteredCourses[page]?.get(col)?.first ?: col
-                        }
-                    }
-                    val bandStartPadding = (if (isTablet) 24.dp else 0.dp) + scheduleSectionColumnWidth(isTablet)
-                    val bandEndPadding = if (isTablet) 24.dp else 2.dp
-                    // 特殊课程横带：作为 Row 下层背景条带，起止时间由左侧时间列标注
-                    specialGrid.specialBands.forEach { band ->
-                        val bandItems = remember(specialBlocks, band.blockId) {
-                            specialBlocks.firstOrNull { it.id == band.blockId }?.safeItems ?: emptyList()
-                        }
-                        // 只覆盖周一~周日列，不盖左侧时间轴
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(band.height.dp)
-                                .offset(y = band.top.dp)
-                                // end 与下方 Row 的 end padding 一致，子块才能与 DayColumn 逐列对齐
-                                .padding(start = bandStartPadding, end = bandEndPadding)
-                        ) {
-                            SpecialBandOverlay(
-                                name = band.name,
-                                startTime = band.startTime,
-                                endTime = band.endTime,
-                                hasBlur = wallpaperBitmap != null,
-                                isDark = scheduleIsDark,
-                                cardCornerRadius = cardCornerRadius,
-                                cardBlurRadius = cardBlurRadius,
-                                cardAlpha = cardAlpha,
-                                cardSurfaceAlpha = cardSurfaceAlpha,
-                                cardRefraction = cardRefraction,
-                                isTablet = isTablet,
-                                wallpaperBackdrop = activeCardBackdrop,
-                                items = bandItems,
-                                dayRange = pageColumnDays
-                            )
-                        }
-                    }
-
-                    // 调课落点示意：跨列/节连续位移，出现从源格滑入，消失仅透明度
-                    AnimatedDropTargetMask(
-                        dropHighlight = dropHighlight,
-                        dropHighlightOrigin = dropHighlightOrigin,
-                        pageDayRange = pageDayRange,
-                        grid = specialGrid,
-                        cardHeightPerSection = cardHeightPerSection,
-                        cardCornerRadius = cardCornerRadius,
-                        isTablet = isTablet,
-                        isDark = scheduleIsDark,
-                        hasWallpaper = wallpaperBitmap != null,
-                        wallpaperBackdrop = activeCardBackdrop,
-                        cardBlurRadius = cardBlurRadius,
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(
-                                if (isTablet) Modifier.padding(horizontal = 24.dp) else Modifier.padding(end = 2.dp)
-                            )
-                    ) {
-                        SectionColumn(
-                            totalSections = totalSections,
-                            morningSections = morningSections,
-                            afternoonSections = afternoonSections,
-                            eveningSections = eveningSections,
-                            sectionTimes = sectionTimes,
-                            sectionNames = sectionNames,
-                            specialBlocks = specialBlocks,
-                            grid = specialGrid,
-                            cardHeightPerSection = cardHeightPerSection,
-                            showBreakDividers = showBreakDividers,
-                            currentSection = if (week == currentWeek) currentSection else -1,
-                            isTablet = isTablet
-                        )
-
-                        pageDayRange.forEach { dayOfWeek ->
-                            val (displayDayForCol, displayWeekForDay, filteredDayCourses) =
-                                weekFilteredCourses[page]?.get(dayOfWeek)
-                                    ?: Triple(dayOfWeek, week, emptyList())
-                            val dayFlags = weekDayFlags[page]?.get(dayOfWeek) ?: (false to false)
-                            val isHoliday = dayFlags.first
-                            val isWorkSwap = dayFlags.second
-                            val holidayExemptCourseIds =
-                                weekHolidayExemptCourseIds[page]?.get(dayOfWeek).orEmpty()
-                            val holidayCancelledCourseIds =
-                                weekHolidayCancelledCourseIds[page]?.get(dayOfWeek).orEmpty()
-                            // 调课日空白格添加：落到 follow 星期/周（周五课调到周二 → 点周二默认周五）
-                            val addDayForCol = if (isWorkSwap) displayDayForCol else dayOfWeek
-                            val addWeekForCol = if (isWorkSwap) displayWeekForDay else -1
-                            val stableOnCourseClick: (Course) -> Unit =
-                                remember(page, dayOfWeek, week, displayWeekForDay) {
-                                    { course ->
-                                        // 调休日用被调星期+映射周次查槽位，避免弹出原始课程
-                                        val coursesAtSlot = viewModel.getCoursesAtSlot(
-                                            displayWeekForDay,
-                                            course.dayOfWeek,
-                                            course.startSection,
-                                            course.endSection
-                                        )
-                                        selectedCourses = coursesAtSlot
-                                        selectedCourse = coursesAtSlot.find { it.id == course.id } ?: course
-                                        showCourseDetail = true
-                                        onPopupStateChange(true)
-                                    }
-                                }
-                            // 休课日列永远渲染为空：加/粘的课在课表与今日页都看不见。键里带
-                            // dateForTeachingPosition（随重组数据重建），否则改完重组回主页会沿用旧判断
-                            val pausedColumn = remember(page, dayOfWeek, dateForTeachingPosition) {
-                                dateForTeachingPosition(week, dayOfWeek) == null
-                            }
-                            val stableOnEmptyClick: (Int) -> Unit =
-                                remember(dayOfWeek, addDayForCol, addWeekForCol, pausedColumn) {
-                                    { section ->
-                                        if (!pausedColumn) {
-                                            val defaultWeeks =
-                                                if (addWeekForCol > 0) setOf(addWeekForCol) else emptySet()
-                                            viewModel.showAddDialog(addDayForCol, section, null, defaultWeeks)
-                                        }
-                                    }
-                                }
-                            val stableOnEmptyLongPress: (Int, Float, Float, Float, Float) -> Unit =
-                                remember(dayOfWeek, addDayForCol, addWeekForCol, onEmptyLongPress, pausedColumn) {
-                                    { section, centerX, cellTopY, width, height ->
-                                        if (!pausedColumn) {
-                                            // 长按进菜单时清掉 pending，避免两层交互叠加
-                                            pendingDay = -1
-                                            pendingSection = -1
-                                            onEmptyLongPress(
-                                                dayOfWeek,
-                                                section,
-                                                centerX,
-                                                cellTopY,
-                                                width,
-                                                height,
-                                                addDayForCol,
-                                                addWeekForCol,
-                                            )
-                                        }
-                                    }
-                                }
-                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, Backdrop?, Int) -> Unit =
-                                remember(page, dayOfWeek) {
-                                    { course, left, top, width, height, _, cWeek ->
-                                        // 同步补一次最新几何，保证上层锚点用当前页 dayBounds
-                                        pushFreshGeometry()
-                                        val backdrop = activeCardBackdrop ?: courseCardBackdrop
-                                        onCourseLongPress(course, left, top, width, height, backdrop, cWeek)
-                                    }
-                                }
-                            DayColumn(
-                                dayOfWeek = dayOfWeek,
-                                touchState = touchState,
-                                courses = filteredDayCourses,
-                                onCourseClick = stableOnCourseClick,
-                                onEmptyClick = stableOnEmptyClick,
-                                onEmptyLongPress = stableOnEmptyLongPress,
-                                morningSections = morningSections,
-                                afternoonSections = afternoonSections,
-                                eveningSections = eveningSections,
-                                sectionTimes = sectionTimes,
-                                specialBlocks = specialBlocks,
-                                grid = specialGrid,
-                                currentWeek = displayWeekForDay,
-                                isHoliday = isHoliday,
-                                holidayExemptCourseIds = holidayExemptCourseIds,
-                                holidayCancelledCourseIds = holidayCancelledCourseIds,
-                                isWorkSwap = isWorkSwap,
-                                pendingDay = pendingDay,
-                                pendingSection = pendingSection,
-                                onPendingChange = onPendingChange,
-                                wallpaperBackdrop = activeCardBackdrop,
-                                solidBackingColor = cardSolidBacking,
-                                cardBlurRadius = cardBlurRadius,
-                                cardAlpha = cardAlpha,
-                                cardSurfaceAlpha = cardSurfaceAlpha,
-                                cardHeightPerSection = cardHeightPerSection,
-                                cardCornerRadius = cardCornerRadius,
-                                showBreakDividers = showBreakDividers,
-                                isTablet = isTablet,
-                                cardContentAlignment = cardContentAlignment,
-                                cardTextColor = cardTextColor,
-                                cardTextScale = cardTextScale,
-                                showClassroom = showClassroom,
-                                showTeacher = showTeacher,
-                                cardRefraction = cardRefraction,
-                                draggingCourseSlots = draggingCourseSlots,
-                                onCourseLongPress = stableOnCourseLongPress,
-                                onCourseDragStart = onCourseDragStart,
-                                onCourseDrag = onCourseDrag,
-                                onCourseDragEnd = onCourseDragEnd,
-                                onCourseDragCancel = onCourseDragCancel,
-                                onCourseMenuDismiss = onCourseMenuDismiss,
-                                isDark = scheduleIsDark,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .onGloballyPositioned { coordinates ->
-                                        val pos = coordinates.positionInRoot()
-                                        val w = coordinates.size.width.toFloat()
-                                        val arr = dayBoundsArray[dayOfWeek]
-                                        // 滑动中只写数组不递增版本号，避免逐帧重组；停后由 LaunchedEffect 冲刷
-                                        if (arr == null) {
-                                            dayBoundsArray[dayOfWeek] = floatArrayOf(pos.x, pos.x + w, pos.y)
-                                            if (!touchState.scrolling) lastDayBoundsVersion++
-                                        } else if (arr[0] != pos.x || arr[1] != pos.x + w || arr[2] != pos.y) {
-                                            arr[0] = pos.x
-                                            arr[1] = pos.x + w
-                                            arr[2] = pos.y
-                                            if (!touchState.scrolling) lastDayBoundsVersion++
-                                        }
-                                    }
-                            )
-                        }
-                    }
-
-                    // 点击层必须在 Row 之上：空节次层会消费整列点击
-                    specialGrid.specialBands.forEach { band ->
-                        val bandItems = remember(specialBlocks, band.blockId) {
-                            specialBlocks.firstOrNull { it.id == band.blockId }?.safeItems ?: emptyList()
-                        }
-                        // 壁纸编辑态手势归编辑用，横带不再抢点击（否则误触会弹出「添加安排」）
-                        if (isWallpaperEditing) return@forEach
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(band.height.dp)
-                                .offset(y = band.top.dp)
-                                .padding(start = bandStartPadding, end = bandEndPadding)
-                        ) {
-                            SpecialBandClickLayer(
-                                items = bandItems,
-                                dayRange = pageColumnDays,
-                                onItemClick = { item ->
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    specialItemEditingBlockId = band.blockId
-                                    specialItemEditingId = item.id
-                                    specialItemName = item.name
-                                    specialItemSelectedDays = (item.startDay..item.endDay).toSet()
-                                    showSpecialItemDialog = true
-                                },
-                                onEmptyClick = { day ->
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    specialItemEditingBlockId = band.blockId
-                                    specialItemEditingId = -1L
-                                    specialItemName = ""
-                                    specialItemSelectedDays = setOf(day)
-                                    showSpecialItemDialog = true
-                                }
-                            )
-                        }
-                    }
-
-                    // 仅当前页上报；几何实际变化时才触发回调，避免每次重组分配新对象
-                    val sectionHeightPx = with(density) { cardHeightPerSection.dp.toPx() }
-                    val prevBoundsVersion = remember { mutableIntStateOf(lastDayBoundsVersion) }
-                    val prevSectionHeight = remember { mutableFloatStateOf(sectionHeightPx) }
-                    val prevMorning = remember { mutableIntStateOf(morningSections) }
-                    val prevAfternoon = remember { mutableIntStateOf(afternoonSections) }
-                    val prevEvening = remember { mutableIntStateOf(eveningSections) }
-                    val prevShowBreak = remember { mutableStateOf(showBreakDividers) }
-                    SideEffect {
-                        if (page == pagerState.currentPage) {
-                            val changed = prevBoundsVersion.intValue != lastDayBoundsVersion
-                                    || prevSectionHeight.floatValue != sectionHeightPx
-                                    || prevMorning.intValue != morningSections
-                                    || prevAfternoon.intValue != afternoonSections
-                                    || prevEvening.intValue != eveningSections
-                                    || prevShowBreak.value != showBreakDividers
-                            if (changed) {
-                                prevBoundsVersion.intValue = lastDayBoundsVersion
-                                prevSectionHeight.floatValue = sectionHeightPx
-                                prevMorning.intValue = morningSections
-                                prevAfternoon.intValue = afternoonSections
-                                prevEvening.intValue = eveningSections
-                                prevShowBreak.value = showBreakDividers
-                                onGridGeometryChange(buildGridGeometry())
-                            }
-                        }
-                    }
-                    // 跨周调课：翻周停下后补推一次几何。上面的 SideEffect 只在组合重跑时才推，
-                    // 而翻页停下不一定伴随重组 —— 落点会一直用上一页的周次映射，课写进错的周。
-                    LaunchedEffect(Unit) {
-                        snapshotFlow { pagerState.isScrollInProgress }
-                            .collect { scrolling ->
-                                if (!scrolling && page == pagerState.currentPage) {
-                                    onGridGeometryChange(buildGridGeometry())
-                                }
-                            }
-                    }
-
-                    val morningHeight = specialGrid.dividerY.getOrNull(0)?.toInt() ?: (morningSections * cardHeightPerSection).toInt()
-                    val afternoonHeight = (afternoonSections * cardHeightPerSection).toInt()
-                    val dividerOffset = if (showBreakDividers) 24 else 0
-                    val dinnerBreakY = specialGrid.dividerY.getOrNull(1)?.toInt()
-                        ?: (morningHeight + dividerOffset + afternoonHeight)
-
-                    if (showBreakDividers) {
-                    val dividerShape = ContinuousRoundedRectangle(12.dp)
-                    val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
-                    val dividerDensity = LocalDensity.current
-                    // ⚠ remember 放外层、with 放内层：with(density){remember{...}} 的双层接收者
-                    // lambda 在 commonMain 目标下类型推断失败（Cannot infer R/T），交换嵌套语义等价
-                    val dividerBlurPx = remember(cardBlurRadius) { with(dividerDensity) { cardBlurRadius.dp.toPx() } }
-                    val dividerLensRadiusPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
-                    val dividerLensStrengthPx = remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
-                    val hasWallpaperDivider = wallpaperBitmap != null
-                    val dividerBaseColor = when {
-                        hasWallpaperDivider -> Color.Transparent
-                        MiuixTheme.isDynamicColor -> MiuixTheme.colorScheme.surfaceContainerHigh
-                        scheduleIsDark -> Color(0xFF121212)
-                        else -> Color(0xFFF0F0F0)
-                    }
-                    // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）
-                    val dividerSurfaceAlphaAt15 = if (scheduleIsDark) 0.64f else 0.50f
-                    val dividerBlurShape = remember { ContinuousRoundedRectangle(12.dp) }
-
-                    @Composable
-                    fun BreakDivider(offsetY: Int, text: String) {
-                        // 0%→0，15%→当前，100%→1；两段线性映射（仅作用于有壁纸玻璃表面）
-                        val p = cardSurfaceAlpha.coerceIn(0f, 1f)
-                        val surfaceAlpha = if (p <= 0.15f) {
-                            (p / 0.15f) * dividerSurfaceAlphaAt15
-                        } else {
-                            dividerSurfaceAlphaAt15 +
-                                ((p - 0.15f) / 0.85f) * (1f - dividerSurfaceAlphaAt15)
-                        }
-                        // 无壁纸底色保持实色，不随「卡片不透明度」变化
-                        val dividerFgBase = dividerBaseColor
-                        val dividerFgSurface = if (MiuixTheme.isDynamicColor) {
-                            MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = surfaceAlpha)
-                        } else if (scheduleIsDark) {
-                            Color(0xFF323232).copy(alpha = surfaceAlpha)
-                        } else {
-                            Color.White.copy(alpha = surfaceAlpha)
-                        }
-                        // 描边只在有壁纸（玻璃）时画：纯色模式下分界线本身就是实色，加轮廓只会显脏
-                        val dividerOutlineColor = remember(dividerFgSurface, scheduleIsDark) {
-                            scheduleOutlineColor(dividerFgSurface, scheduleIsDark)
-                        }
-                        val dividerOutlineWidthPx = remember(dividerDensity) {
-                            with(dividerDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
-                        }
-                        val dividerOutlineCache = remember { OutlineCache() }
-                        Box(
-                            modifier = Modifier.fillMaxWidth().offset(y = offsetY.dp)
-                                .height(24.dp)
-                                .padding(vertical = 2.dp)
-                                .padding(horizontal = dividerHorizontalPadding)
-                                .background(dividerFgBase, dividerShape)
-                                .then(
-                                    if (hasWallpaperDivider) {
-                                        val dividerBackdrop = activeCardBackdrop ?: courseCardBackdrop
-                                        // 同课程卡：模糊 0 且无折射时，采样回来的就是分界带正下方的
-                                        // 壁纸像素，退化成一次圆角填充（每个周页 2 条，3 个周页常驻）
-                                        val dividerNeedsSampling =
-                                            cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
-                                        if (dividerNeedsSampling) {
-                                            val dividerEffects: BackdropEffectScope.() -> Unit =
-                                                remember(dividerBackdrop, dividerBlurPx, dividerLensRadiusPx, dividerLensStrengthPx) {
-                                                    {
-                                                        if (dividerBackdrop !is SharedBlurBackdrop) {
-                                                            blur(dividerBlurPx)
-                                                        }
-                                                        lens(dividerLensRadiusPx, dividerLensStrengthPx)
-                                                    }
-                                                }
-                                            Modifier.drawBackdrop(
-                                                backdrop = dividerBackdrop,
-                                                shape = { dividerBlurShape },
-                                                effects = dividerEffects,
-                                                highlight = null,
-                                                shadow = null,
-                                                viewport = LocalBackdropViewport.current,
-                                                onDrawSurface = remember(dividerFgSurface) {
-                                                    {
-                                                        drawRect(dividerFgSurface)
-                                                    }
-                                                }
-                                            )
-                                        } else {
-                                            Modifier.background(dividerFgSurface, dividerBlurShape)
-                                        }
-                                    } else Modifier
-                                )
-                                .then(
-                                    if (hasWallpaperDivider) {
-                                        Modifier.drawWithContent {
-                                            drawContent()
-                                            drawScheduleOutline(
-                                                cache = dividerOutlineCache,
-                                                cornerRadius = 12.dp,
-                                                color = dividerOutlineColor,
-                                                strokeWidthPx = dividerOutlineWidthPx,
-                                                layoutDirection = layoutDirection,
-                                            )
-                                        }
-                                    } else Modifier
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = text,
-                                style = MiuixTheme.textStyles.footnote2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
-                    BreakDivider(morningHeight, "午休")
-                    BreakDivider(dinnerBreakY, "晚休")
-                    }
-                }
-            }
-            }
-
-            if (isWallpaperEditing && wallpaperBitmap != null) {
+        ) {
+            if (wallpaperBitmap != null && !useSharedWallpaper) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                down.consume()
-                                var gestureScale = latestWallpaperScale
-                                var lastDisplayScale = gestureScale
-                                do {
-                                    val event = awaitPointerEvent()
-                                    val zoom = event.calculateZoom()
-                                    val pan = event.calculatePan()
-                                    gestureScale *= zoom
-                                    val newScale = if (gestureScale < latestMinWallpaperScale) {
-                                        val diff = gestureScale - latestMinWallpaperScale
-                                        latestMinWallpaperScale + diff * 0.3f
-                                    } else {
-                                        gestureScale
-                                    }
-                                    lastDisplayScale = newScale
-                                    val bmp = latestWallpaperBitmap
-                                    if (bmp != null && bmp.width > 0 && bmp.height > 0) {
-                                        val fitScale = minOf(latestScreenWidthPx / bmp.width, latestScreenHeightPx / bmp.height)
-                                        val scaledW = bmp.width * fitScale * newScale
-                                        val scaledH = bmp.height * fitScale * newScale
-                                        val maxOffsetX = ((scaledW - latestScreenWidthPx) / 2f).coerceAtLeast(0f)
-                                        val maxOffsetY = ((scaledH - latestScreenHeightPx) / 2f).coerceAtLeast(0f)
-                                        val newOffset = latestWallpaperOffset + pan
-                                        latestOnScaleChange(newScale)
-                                        latestOnOffsetChange(
-                                            Offset(
-                                                newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
-                                                newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
-                                            )
-                                        )
-                                    } else {
-                                        latestOnScaleChange(newScale)
-                                        latestOnOffsetChange(latestWallpaperOffset + pan)
-                                    }
-                                    event.changes.forEach { it.consume() }
-                                } while (event.changes.any { it.pressed })
-                                gestureEndScale = lastDisplayScale
-                                bounceBackTrigger++
-                            }
-                        }
+                        .then(
+                            Modifier.kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
+                        )
+                ) {
+                    val brightnessFilter = remember(wallpaperBrightness) {
+                        if (wallpaperBrightness != 0f) {
+                            val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
+                            ColorFilter.colorMatrix(
+                                ColorMatrix(
+                                    floatArrayOf(
+                                        b, 0f, 0f, 0f, 0f,
+                                        0f, b, 0f, 0f, 0f,
+                                        0f, 0f, b, 0f, 0f,
+                                        0f, 0f, 0f, 1f, 0f
+                                    )
+                                )
+                            )
+                        } else null
+                    }
+                    val wallpaperBlurEffect = remember(wallpaperBlur) {
+                        val blurRadiusPx = 12f * density.density
+                        // ⚠ 必须查 wallpaperBlur：非共享路径（排班模式）本页壁纸 alpha=1f、
+                        // 不透明可见，漏判会让「壁纸模糊」开关关着也照糊。共享层
+                        // CourseScheduleApp 那份判了，这两处（此处 + TodayScreen）当初漏了。
+                        if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
+                            BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
+                        } else null
+                    }
+                    Image(
+                        bitmap = wallpaperBitmap,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
+                                scaleX = effectiveScale
+                                scaleY = effectiveScale
+                                // 只有非共享路径才可见（共享层负责显示）
+                                alpha = 1f
+                                translationX = wallpaperOffset.x
+                                translationY = wallpaperOffset.y
+                                renderEffect = wallpaperBlurEffect
+                            },
+                        contentScale = ContentScale.Fit,
+                        colorFilter = brightnessFilter
+                    )
+                }
+            } else if (wallpaperBitmap == null) {
+                // 无壁纸：无人采样 courseCardBackdrop，跳过 LayerBackdrop 录制
+                //（每帧把整页课表录进 GPU 层是左右滑白烧）
+                // ⚠ 共享壁纸分支（wallpaperBitmap != null && useSharedWallpaper）走不到这里：
+                // 那层壁纸由主 pager 后的共享层绘制，本页必须保持透明
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(wallpaperBackdropColor)
                 )
             }
-        }
 
-        val detailEndAction: @Composable () -> Unit = {
-            val scope = rememberCoroutineScope()
-            val material = LocalSheetTopBarMaterial.current
-            LiquidTopBarButton(
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    val course = selectedCourse ?: selectedCourses.firstOrNull()
-                    showCourseDetail = false
-                    // 等关闭动画后再开添加弹窗
-                    scope.launch {
-                        delay(100.milliseconds)
-                        if (course != null) {
-                            viewModel.showAddDialog(
-                                course.dayOfWeek,
-                                course.startSection,
-                                course.endSection
+            // 不可见预渲染：壁纸录制到降采样+模糊层，供所有课卡共享采样
+            if (hasSharedBlur) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = 0f }
+                        .then(
+                            sharedBlurManager.preRenderModifier(
+                                blurRadiusPx = with(density) { cardBlurRadius.dp.toPx() },
+                                sourceKey = wallpaperRecordKey
                             )
-                        } else {
-                            viewModel.showAddDialog()
+                        )
+                )
+            }
+
+            // rememberUpdatedState：pointerInput(Unit) 读到最新值，避免捕获陈旧状态
+            val latestWallpaperScale by rememberUpdatedState(wallpaperScale)
+            val latestWallpaperOffset by rememberUpdatedState(wallpaperOffset)
+            val latestOnScaleChange by rememberUpdatedState(onWallpaperScaleChange)
+            val latestOnOffsetChange by rememberUpdatedState(onWallpaperOffsetChange)
+            val latestMinWallpaperScale by rememberUpdatedState(minWallpaperScale)
+            val latestWallpaperBitmap by rememberUpdatedState(wallpaperBitmap)
+            val latestScreenWidthPx by rememberUpdatedState(screenWidthPx)
+            val latestScreenHeightPx by rememberUpdatedState(screenHeightPx)
+
+            // 指针作用域内无法直接 animate，经状态触发回弹
+            var bounceBackTrigger by remember { mutableIntStateOf(0) }
+            var gestureEndScale by remember { mutableFloatStateOf(1f) }
+            LaunchedEffect(bounceBackTrigger) {
+                if (bounceBackTrigger > 0 && gestureEndScale < latestMinWallpaperScale) {
+                    animate(
+                        initialValue = gestureEndScale,
+                        targetValue = latestMinWallpaperScale,
+                        animationSpec = tween(
+                            durationMillis = 350,
+                            easing = CubicBezierEasing(0.34f, 1.1f, 0.3f, 1f)
+                        )
+                    ) { value, _ ->
+                        onWallpaperScaleChange(value)
+                    }
+                }
+            }
+
+
+            // 翻页预组合策略收在 WeekPagerHost（见其注释）：滚动中收拢到 1、
+            // 停稳 250ms 后扩到 2、边缘驻留扩到 3。beyond 翻转只重组 Host，
+            // 不重建页内容 lambda，已组合的周页不会被连带重组。
+            WeekPagerHost(
+                state = pagerState,
+                dwellHint = edgeDwellHint,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 页面级多指统计：多指（如三指下滑截图）时抑制卡片点击/长按
+                    .pointerInput(touchState) {
+                        awaitPointerEventScope {
+                            var active = false
+                            while (true) {
+                                val downCount = awaitPointerEvent(PointerEventPass.Initial)
+                                    .changes.count { it.pressed }
+                                if (downCount == 0) {
+                                    // 全部抬起：不清零，让最后一帧仍能被卡片读到「本手势是多指」
+                                    active = false
+                                } else {
+                                    if (!active) touchState.multiTouch = false
+                                    if (downCount > 1) touchState.multiTouch = true
+                                    active = true
+                                }
+                            }
+                        }
+                    }
+                    // 横竖主导手势（与今日页共用）：横向接管 pager，纵向仍归页内滚动
+                    .pagerAxisTakeoverGesture(
+                        pagerState = pagerState,
+                        gestureState = pagerGestureState,
+                        // 拖课卡那根手指由 blockedPointer 屏蔽；整页禁用会连「另一只手翻周」一起挡掉
+                        blockGesture = { latestIsWallpaperEditing },
+                        blockedPointer = { touchState.draggingPointerId },
+                        // 第二只手纵向滑动直接滚屏（verticalScroll 在跟被屏蔽那根手指）
+                        onVerticalScroll = { dy -> externalScrollState.dispatchRawDelta(-dy) },
+                    )
+                    // 跨周调课：跟手位移与收尾放在 pager 上。课卡所在周页翻过去会被回收，
+                    // 卡片自己的 pointerInput 跟着取消；pager 不重建，拖到第几周都能继续跟手。
+                    .onGloballyPositioned { dragOwnerCoords[0] = it }
+                    .courseDragOwnerGesture(
+                        touchState = touchState,
+                        coordinates = dragOwnerCoords,
+                        onDrag = { id, dx, dy -> latestOnCourseDrag.value(id, dx, dy) },
+                        onDragEnd = { id -> latestOnCourseDragEnd.value(id) },
+                        onDragCancel = { id -> latestOnCourseDragCancel.value(id) },
+                    ),
+            ) { physicalPage ->
+                // 借位页：长距跳转期间这一页临时按目标周出内容
+                val page = jumpNeighbor?.resolve(physicalPage) ?: physicalPage
+                val week = page + 1
+                // 借位页是「同一页换数据」而不是值更新：整屏文字直接换，不播交叉模糊。
+                // 否则一屏卡片的字各糊一遍 460ms，看起来像整页重播入场动画。
+                val borrowedPage = jumpNeighbor?.isBorrowed(physicalPage) == true
+                CompositionLocalProvider(LocalTextMotionInstant provides borrowedPage) {
+                    // 页级玻璃：一页挂一个采样节点，替掉页内 N 张卡各自的 drawBackdrop。
+                    // 每页一个（而不是整块 pager 一个）是有意的：pager 平移会把整页连同玻璃层一起移
+                    val pageGlassRegistry = remember { GlassCardRegistry() }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (pageGlassActive) {
+                            PageGlass(
+                                registry = pageGlassRegistry,
+                                backdrop = sharedBlurManager,
+                                bakedLayer = sharedBlurManager.blurredLayer,
+                                bakeScale = sharedBlurManager.blurredScale,
+                                refractionHeight = pageGlassRefractionHeightPx,
+                                refractionAmount = pageGlassRefractionAmountPx,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        CompositionLocalProvider(
+                            LocalGlassCards provides if (pageGlassActive) pageGlassRegistry else null
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(
+                                        if (scheduleScrollBehavior != null) Modifier.nestedScroll(
+                                            scheduleScrollBehavior.nestedScrollConnection
+                                        )
+                                        else Modifier
+                                    )
+                                    // overScroll 必须在 verticalScroll 外侧，作为滚动容器的 parent 才能收到 fling
+                                    .overScrollVertical()
+                                    .scrollEndHaptic(
+                                        hapticFeedbackType = HapticFeedbackType.TextHandleMove
+                                    )
+                                    .verticalScroll(externalScrollState)
+                                    // 底部留白直接计入滚动内容高度；强制无界测量，避免 fillMaxSize/测量链把内容压回视口高
+                                    .layout { measurable, constraints ->
+                                        val topPad =
+                                            contentTopPaddingDp.roundToPx().coerceAtLeast(0)
+                                        val bottomPad =
+                                            scheduleEndSpacer.roundToPx().coerceAtLeast(0)
+                                        val placeable = measurable.measure(
+                                            constraints.copy(
+                                                minHeight = 0,
+                                                maxHeight = Constraints.Infinity
+                                            )
+                                        )
+                                        layout(
+                                            placeable.width,
+                                            placeable.height + topPad + bottomPad
+                                        ) {
+                                            placeable.place(0, topPad)
+                                        }
+                                    }
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    val dayBoundsArray = remember { arrayOfNulls<FloatArray>(8) }
+                                    var lastDayBoundsVersion by remember { mutableIntStateOf(0) }
+                                    val isScheduleScrolling by scheduleScrollInProgress
+                                    LaunchedEffect(isScheduleScrolling) {
+                                        // 停滑后冲刷：滑动中 onGloballyPositioned 只写数组不递增版本号
+                                        if (!isScheduleScrolling) lastDayBoundsVersion++
+                                    }
+                                    // 用当前（始终实时写入的）dayBounds 数组拼几何。
+                                    // 长按瞬间同步推一次，避免“停滑冲刷”晚于长按导致上层拿到旧页 dayBounds（菜单错位/浮层消失）
+                                    fun buildGridGeometry(): ScheduleGridGeometry {
+                                        val boundsMap = mutableMapOf<Int, FloatArray>()
+                                        val dataMap = mutableMapOf<Int, Pair<Int, Int>>()
+                                        val blocked = mutableSetOf<Int>()
+                                        for (i in 1..7) {
+                                            dayBoundsArray[i]?.let { boundsMap[i] = it }
+                                            weekFilteredCourses[page]?.get(i)?.let { info ->
+                                                dataMap[i] = info.first to info.second
+                                            }
+                                            // 教学周重组休课日：dateForPosition 返回 null，该列永远空白
+                                            if (dateForTeachingPosition(
+                                                    week,
+                                                    i
+                                                ) == null
+                                            ) blocked.add(i)
+                                        }
+                                        return ScheduleGridGeometry(
+                                            dayBounds = boundsMap,
+                                            sectionHeightPx = with(density) { cardHeightPerSection.dp.toPx() },
+                                            morningSections = morningSections,
+                                            afternoonSections = afternoonSections,
+                                            eveningSections = eveningSections,
+                                            showBreakDividers = showBreakDividers,
+                                            columnDataPosition = dataMap,
+                                            pageWeek = week,
+                                            blockedColumns = blocked,
+                                            // 节次顶的权威来源：含特殊块挤占，浮层/落点定位都依赖它
+                                            sectionTopDp = specialGrid.sectionTop,
+                                        )
+                                    }
+
+                                    val pushFreshGeometry by rememberUpdatedState {
+                                        onGridGeometryChange(buildGridGeometry())
+                                    }
+                                    // 提升到 Row 之外：特殊横带按同一套列宽切分内部星期子块
+                                    val pageDayRange = remember(weekendDaysByWeek, week) {
+                                        (1..5).toList() + (weekendDaysByWeek[week]
+                                            ?: emptySet()).filter { it in 6..7 }
+                                    }
+                                    // 每个可见列实际显示的星期（调休列画的是被调星期的课）；横带子块必须
+                                    // 跟着它走，与下面 DayColumn 的 displayDayForCol 同源，别再拿列下标当星期。
+                                    val pageColumnDays =
+                                        remember(pageDayRange, weekFilteredCourses, page) {
+                                            pageDayRange.map { col ->
+                                                weekFilteredCourses[page]?.get(col)?.first ?: col
+                                            }
+                                        }
+                                    val bandStartPadding =
+                                        (if (isTablet) 24.dp else 0.dp) + scheduleSectionColumnWidth(
+                                            isTablet
+                                        )
+                                    val bandEndPadding = if (isTablet) 24.dp else 2.dp
+                                    // 特殊课程横带：作为 Row 下层背景条带，起止时间由左侧时间列标注
+                                    specialGrid.specialBands.forEach { band ->
+                                        val bandItems = remember(specialBlocks, band.blockId) {
+                                            specialBlocks.firstOrNull { it.id == band.blockId }?.safeItems
+                                                ?: emptyList()
+                                        }
+                                        // 只覆盖周一~周日列，不盖左侧时间轴
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(band.height.dp)
+                                                .offset(y = band.top.dp)
+                                                // end 与下方 Row 的 end padding 一致，子块才能与 DayColumn 逐列对齐
+                                                .padding(
+                                                    start = bandStartPadding,
+                                                    end = bandEndPadding
+                                                )
+                                        ) {
+                                            SpecialBandOverlay(
+                                                name = band.name,
+                                                startTime = band.startTime,
+                                                endTime = band.endTime,
+                                                hasBlur = wallpaperBitmap != null,
+                                                isDark = scheduleIsDark,
+                                                cardCornerRadius = cardCornerRadius,
+                                                cardBlurRadius = cardBlurRadius,
+                                                cardAlpha = cardAlpha,
+                                                cardSurfaceAlpha = cardSurfaceAlpha,
+                                                cardRefraction = cardRefraction,
+                                                isTablet = isTablet,
+                                                wallpaperBackdrop = activeCardBackdrop,
+                                                items = bandItems,
+                                                dayRange = pageColumnDays
+                                            )
+                                        }
+                                    }
+
+                                    // 调课落点示意：跨列/节连续位移，出现从源格滑入，消失仅透明度
+                                    AnimatedDropTargetMask(
+                                        dropHighlight = dropHighlight,
+                                        dropHighlightOrigin = dropHighlightOrigin,
+                                        pageDayRange = pageDayRange,
+                                        grid = specialGrid,
+                                        cardHeightPerSection = cardHeightPerSection,
+                                        cardCornerRadius = cardCornerRadius,
+                                        isTablet = isTablet,
+                                        isDark = scheduleIsDark,
+                                        hasWallpaper = wallpaperBitmap != null,
+                                        wallpaperBackdrop = activeCardBackdrop,
+                                        cardBlurRadius = cardBlurRadius,
+                                    )
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .then(
+                                                if (isTablet) Modifier.padding(horizontal = 24.dp) else Modifier.padding(
+                                                    end = 2.dp
+                                                )
+                                            )
+                                    ) {
+                                        SectionColumn(
+                                            totalSections = totalSections,
+                                            morningSections = morningSections,
+                                            afternoonSections = afternoonSections,
+                                            eveningSections = eveningSections,
+                                            sectionTimes = sectionTimes,
+                                            sectionNames = sectionNames,
+                                            specialBlocks = specialBlocks,
+                                            grid = specialGrid,
+                                            cardHeightPerSection = cardHeightPerSection,
+                                            showBreakDividers = showBreakDividers,
+                                            currentSection = if (week == currentWeek) currentSection else -1,
+                                            isTablet = isTablet
+                                        )
+
+                                        pageDayRange.forEach { dayOfWeek ->
+                                            val (displayDayForCol, displayWeekForDay, filteredDayCourses) =
+                                                weekFilteredCourses[page]?.get(dayOfWeek)
+                                                    ?: Triple(dayOfWeek, week, emptyList())
+                                            val dayFlags = weekDayFlags[page]?.get(dayOfWeek)
+                                                ?: (false to false)
+                                            val isHoliday = dayFlags.first
+                                            val isWorkSwap = dayFlags.second
+                                            val holidayExemptCourseIds =
+                                                weekHolidayExemptCourseIds[page]?.get(dayOfWeek)
+                                                    .orEmpty()
+                                            val holidayCancelledCourseIds =
+                                                weekHolidayCancelledCourseIds[page]?.get(dayOfWeek)
+                                                    .orEmpty()
+                                            // 调课日空白格添加：落到 follow 星期/周（周五课调到周二 → 点周二默认周五）
+                                            val addDayForCol =
+                                                if (isWorkSwap) displayDayForCol else dayOfWeek
+                                            val addWeekForCol =
+                                                if (isWorkSwap) displayWeekForDay else -1
+                                            val stableOnCourseClick: (Course) -> Unit =
+                                                remember(page, dayOfWeek, week, displayWeekForDay) {
+                                                    { course ->
+                                                        // 调休日用被调星期+映射周次查槽位，避免弹出原始课程
+                                                        val coursesAtSlot =
+                                                            viewModel.getCoursesAtSlot(
+                                                                displayWeekForDay,
+                                                                course.dayOfWeek,
+                                                                course.startSection,
+                                                                course.endSection
+                                                            )
+                                                        selectedCourses = coursesAtSlot
+                                                        selectedCourse =
+                                                            coursesAtSlot.find { it.id == course.id }
+                                                                ?: course
+                                                        showCourseDetail = true
+                                                        onPopupStateChange(true)
+                                                    }
+                                                }
+                                            // 休课日列永远渲染为空：加/粘的课在课表与今日页都看不见。键里带
+                                            // dateForTeachingPosition（随重组数据重建），否则改完重组回主页会沿用旧判断
+                                            val pausedColumn =
+                                                remember(page, dayOfWeek, dateForTeachingPosition) {
+                                                    dateForTeachingPosition(week, dayOfWeek) == null
+                                                }
+                                            val stableOnEmptyClick: (Int) -> Unit =
+                                                remember(
+                                                    dayOfWeek,
+                                                    addDayForCol,
+                                                    addWeekForCol,
+                                                    pausedColumn
+                                                ) {
+                                                    { section ->
+                                                        if (!pausedColumn) {
+                                                            val defaultWeeks =
+                                                                if (addWeekForCol > 0) setOf(
+                                                                    addWeekForCol
+                                                                ) else emptySet()
+                                                            viewModel.showAddDialog(
+                                                                addDayForCol,
+                                                                section,
+                                                                null,
+                                                                defaultWeeks
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            val stableOnEmptyLongPress: (Int, Float, Float, Float, Float) -> Unit =
+                                                remember(
+                                                    dayOfWeek,
+                                                    addDayForCol,
+                                                    addWeekForCol,
+                                                    onEmptyLongPress,
+                                                    pausedColumn
+                                                ) {
+                                                    { section, centerX, cellTopY, width, height ->
+                                                        if (!pausedColumn) {
+                                                            // 长按进菜单时清掉 pending，避免两层交互叠加
+                                                            pendingDay = -1
+                                                            pendingSection = -1
+                                                            onEmptyLongPress(
+                                                                dayOfWeek,
+                                                                section,
+                                                                centerX,
+                                                                cellTopY,
+                                                                width,
+                                                                height,
+                                                                addDayForCol,
+                                                                addWeekForCol,
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            val stableOnCourseLongPress: (Course, Float, Float, Float, Float, Backdrop?, Int) -> Unit =
+                                                remember(page, dayOfWeek) {
+                                                    { course, left, top, width, height, _, cWeek ->
+                                                        // 同步补一次最新几何，保证上层锚点用当前页 dayBounds
+                                                        pushFreshGeometry()
+                                                        val backdrop =
+                                                            activeCardBackdrop ?: courseCardBackdrop
+                                                        onCourseLongPress(
+                                                            course,
+                                                            left,
+                                                            top,
+                                                            width,
+                                                            height,
+                                                            backdrop,
+                                                            cWeek
+                                                        )
+                                                    }
+                                                }
+                                            DayColumn(
+                                                dayOfWeek = dayOfWeek,
+                                                touchState = touchState,
+                                                courses = filteredDayCourses,
+                                                onCourseClick = stableOnCourseClick,
+                                                onEmptyClick = stableOnEmptyClick,
+                                                onEmptyLongPress = stableOnEmptyLongPress,
+                                                morningSections = morningSections,
+                                                afternoonSections = afternoonSections,
+                                                eveningSections = eveningSections,
+                                                sectionTimes = sectionTimes,
+                                                specialBlocks = specialBlocks,
+                                                grid = specialGrid,
+                                                currentWeek = displayWeekForDay,
+                                                isHoliday = isHoliday,
+                                                holidayExemptCourseIds = holidayExemptCourseIds,
+                                                holidayCancelledCourseIds = holidayCancelledCourseIds,
+                                                isWorkSwap = isWorkSwap,
+                                                pendingDay = pendingDay,
+                                                pendingSection = pendingSection,
+                                                onPendingChange = onPendingChange,
+                                                wallpaperBackdrop = activeCardBackdrop,
+                                                solidBackingColor = cardSolidBacking,
+                                                cardBlurRadius = cardBlurRadius,
+                                                cardAlpha = cardAlpha,
+                                                cardSurfaceAlpha = cardSurfaceAlpha,
+                                                cardHeightPerSection = cardHeightPerSection,
+                                                cardCornerRadius = cardCornerRadius,
+                                                showBreakDividers = showBreakDividers,
+                                                isTablet = isTablet,
+                                                cardContentAlignment = cardContentAlignment,
+                                                cardTextColor = cardTextColor,
+                                                cardTextScale = cardTextScale,
+                                                showClassroom = showClassroom,
+                                                showTeacher = showTeacher,
+                                                cardRefraction = cardRefraction,
+                                                draggingCourseSlots = draggingCourseSlots,
+                                                onCourseLongPress = stableOnCourseLongPress,
+                                                onCourseDragStart = onCourseDragStart,
+                                                onCourseDrag = onCourseDrag,
+                                                onCourseDragEnd = onCourseDragEnd,
+                                                onCourseDragCancel = onCourseDragCancel,
+                                                onCourseMenuDismiss = onCourseMenuDismiss,
+                                                isDark = scheduleIsDark,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .onGloballyPositioned { coordinates ->
+                                                        val pos = coordinates.positionInRoot()
+                                                        val w = coordinates.size.width.toFloat()
+                                                        val arr = dayBoundsArray[dayOfWeek]
+                                                        // 滑动中只写数组不递增版本号，避免逐帧重组；停后由 LaunchedEffect 冲刷
+                                                        if (arr == null) {
+                                                            dayBoundsArray[dayOfWeek] =
+                                                                floatArrayOf(
+                                                                    pos.x,
+                                                                    pos.x + w,
+                                                                    pos.y
+                                                                )
+                                                            if (!touchState.scrolling) lastDayBoundsVersion++
+                                                        } else if (arr[0] != pos.x || arr[1] != pos.x + w || arr[2] != pos.y) {
+                                                            arr[0] = pos.x
+                                                            arr[1] = pos.x + w
+                                                            arr[2] = pos.y
+                                                            if (!touchState.scrolling) lastDayBoundsVersion++
+                                                        }
+                                                    }
+                                            )
+                                        }
+                                    }
+
+                                    // 点击层必须在 Row 之上：空节次层会消费整列点击
+                                    specialGrid.specialBands.forEach { band ->
+                                        val bandItems = remember(specialBlocks, band.blockId) {
+                                            specialBlocks.firstOrNull { it.id == band.blockId }?.safeItems
+                                                ?: emptyList()
+                                        }
+                                        // 壁纸编辑态手势归编辑用，横带不再抢点击（否则误触会弹出「添加安排」）
+                                        if (isWallpaperEditing) return@forEach
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(band.height.dp)
+                                                .offset(y = band.top.dp)
+                                                .padding(
+                                                    start = bandStartPadding,
+                                                    end = bandEndPadding
+                                                )
+                                        ) {
+                                            SpecialBandClickLayer(
+                                                items = bandItems,
+                                                dayRange = pageColumnDays,
+                                                onItemClick = { item ->
+                                                    hapticFeedback.performHapticFeedback(
+                                                        HapticFeedbackType.Confirm
+                                                    )
+                                                    specialItemEditingBlockId = band.blockId
+                                                    specialItemEditingId = item.id
+                                                    specialItemName = item.name
+                                                    specialItemSelectedDays =
+                                                        (item.startDay..item.endDay).toSet()
+                                                    showSpecialItemDialog = true
+                                                },
+                                                onEmptyClick = { day ->
+                                                    hapticFeedback.performHapticFeedback(
+                                                        HapticFeedbackType.Confirm
+                                                    )
+                                                    specialItemEditingBlockId = band.blockId
+                                                    specialItemEditingId = -1L
+                                                    specialItemName = ""
+                                                    specialItemSelectedDays = setOf(day)
+                                                    showSpecialItemDialog = true
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    // 仅当前页上报；几何实际变化时才触发回调，避免每次重组分配新对象
+                                    val sectionHeightPx =
+                                        with(density) { cardHeightPerSection.dp.toPx() }
+                                    val prevBoundsVersion =
+                                        remember { mutableIntStateOf(lastDayBoundsVersion) }
+                                    val prevSectionHeight =
+                                        remember { mutableFloatStateOf(sectionHeightPx) }
+                                    val prevMorning =
+                                        remember { mutableIntStateOf(morningSections) }
+                                    val prevAfternoon =
+                                        remember { mutableIntStateOf(afternoonSections) }
+                                    val prevEvening =
+                                        remember { mutableIntStateOf(eveningSections) }
+                                    val prevShowBreak =
+                                        remember { mutableStateOf(showBreakDividers) }
+                                    SideEffect {
+                                        if (page == pagerState.currentPage) {
+                                            val changed =
+                                                prevBoundsVersion.intValue != lastDayBoundsVersion
+                                                        || prevSectionHeight.floatValue != sectionHeightPx
+                                                        || prevMorning.intValue != morningSections
+                                                        || prevAfternoon.intValue != afternoonSections
+                                                        || prevEvening.intValue != eveningSections
+                                                        || prevShowBreak.value != showBreakDividers
+                                            if (changed) {
+                                                prevBoundsVersion.intValue = lastDayBoundsVersion
+                                                prevSectionHeight.floatValue = sectionHeightPx
+                                                prevMorning.intValue = morningSections
+                                                prevAfternoon.intValue = afternoonSections
+                                                prevEvening.intValue = eveningSections
+                                                prevShowBreak.value = showBreakDividers
+                                                onGridGeometryChange(buildGridGeometry())
+                                            }
+                                        }
+                                    }
+                                    // 跨周调课：翻周停下后补推一次几何。上面的 SideEffect 只在组合重跑时才推，
+                                    // 而翻页停下不一定伴随重组 —— 落点会一直用上一页的周次映射，课写进错的周。
+                                    LaunchedEffect(Unit) {
+                                        snapshotFlow { pagerState.isScrollInProgress }
+                                            .collect { scrolling ->
+                                                if (!scrolling && page == pagerState.currentPage) {
+                                                    onGridGeometryChange(buildGridGeometry())
+                                                }
+                                            }
+                                    }
+
+                                    val morningHeight = specialGrid.dividerY.getOrNull(0)?.toInt()
+                                        ?: (morningSections * cardHeightPerSection).toInt()
+                                    val afternoonHeight =
+                                        (afternoonSections * cardHeightPerSection).toInt()
+                                    val dividerOffset = if (showBreakDividers) 24 else 0
+                                    val dinnerBreakY = specialGrid.dividerY.getOrNull(1)?.toInt()
+                                        ?: (morningHeight + dividerOffset + afternoonHeight)
+
+                                    if (showBreakDividers) {
+                                        val dividerShape = ContinuousRoundedRectangle(12.dp)
+                                        val dividerHorizontalPadding = if (isTablet) 24.dp else 4.dp
+                                        val dividerDensity = LocalDensity.current
+                                        // ⚠ remember 放外层、with 放内层：with(density){remember{...}} 的双层接收者
+                                        // lambda 在 commonMain 目标下类型推断失败（Cannot infer R/T），交换嵌套语义等价
+                                        val dividerBlurPx =
+                                            remember(cardBlurRadius) { with(dividerDensity) { cardBlurRadius.dp.toPx() } }
+                                        val dividerLensRadiusPx =
+                                            remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensRadiusDp * 0.67f).dp.toPx() } }
+                                        val dividerLensStrengthPx =
+                                            remember(cardRefraction) { with(dividerDensity) { (cardRefraction.lensStrengthDp * 1f).dp.toPx() } }
+                                        val hasWallpaperDivider = wallpaperBitmap != null
+                                        val dividerBaseColor = when {
+                                            hasWallpaperDivider -> Color.Transparent
+                                            MiuixTheme.isDynamicColor -> MiuixTheme.colorScheme.surfaceContainerHigh
+                                            scheduleIsDark -> Color(0xFF121212)
+                                            else -> Color(0xFFF0F0F0)
+                                        }
+                                        // 15% 锚定当前视觉；百分比映射到 0..1（仅作用于有壁纸玻璃表面）
+                                        val dividerSurfaceAlphaAt15 =
+                                            if (scheduleIsDark) 0.64f else 0.50f
+                                        val dividerBlurShape =
+                                            remember { ContinuousRoundedRectangle(12.dp) }
+
+                                        @Composable
+                                        fun BreakDivider(offsetY: Int, text: String) {
+                                            // 0%→0，15%→当前，100%→1；两段线性映射（仅作用于有壁纸玻璃表面）
+                                            val p = cardSurfaceAlpha.coerceIn(0f, 1f)
+                                            val surfaceAlpha = if (p <= 0.15f) {
+                                                (p / 0.15f) * dividerSurfaceAlphaAt15
+                                            } else {
+                                                dividerSurfaceAlphaAt15 +
+                                                        ((p - 0.15f) / 0.85f) * (1f - dividerSurfaceAlphaAt15)
+                                            }
+                                            // 无壁纸底色保持实色，不随「卡片不透明度」变化
+                                            val dividerFgBase = dividerBaseColor
+                                            val dividerFgSurface = if (MiuixTheme.isDynamicColor) {
+                                                MiuixTheme.colorScheme.surfaceContainerHigh.copy(
+                                                    alpha = surfaceAlpha
+                                                )
+                                            } else if (scheduleIsDark) {
+                                                Color(0xFF323232).copy(alpha = surfaceAlpha)
+                                            } else {
+                                                Color.White.copy(alpha = surfaceAlpha)
+                                            }
+                                            // 描边只在有壁纸（玻璃）时画：纯色模式下分界线本身就是实色，加轮廓只会显脏
+                                            val dividerOutlineColor =
+                                                remember(dividerFgSurface, scheduleIsDark) {
+                                                    scheduleOutlineColor(
+                                                        dividerFgSurface,
+                                                        scheduleIsDark
+                                                    )
+                                                }
+                                            val dividerOutlineWidthPx = remember(dividerDensity) {
+                                                with(dividerDensity) { SCHEDULE_OUTLINE_WIDTH.toPx() }
+                                            }
+                                            val dividerOutlineCache = remember { OutlineCache() }
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .offset(y = offsetY.dp)
+                                                    .height(24.dp)
+                                                    .padding(vertical = 2.dp)
+                                                    .padding(horizontal = dividerHorizontalPadding)
+                                                    .background(dividerFgBase, dividerShape)
+                                                    .then(
+                                                        if (hasWallpaperDivider) {
+                                                            val dividerBackdrop = activeCardBackdrop
+                                                                ?: courseCardBackdrop
+                                                            // 同课程卡：模糊 0 且无折射时，采样回来的就是分界带正下方的
+                                                            // 壁纸像素，退化成一次圆角填充（每个周页 2 条，3 个周页常驻）
+                                                            val dividerNeedsSampling =
+                                                                cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
+                                                            if (dividerNeedsSampling) {
+                                                                val dividerEffects: BackdropEffectScope.() -> Unit =
+                                                                    remember(
+                                                                        dividerBackdrop,
+                                                                        dividerBlurPx,
+                                                                        dividerLensRadiusPx,
+                                                                        dividerLensStrengthPx
+                                                                    ) {
+                                                                        {
+                                                                            if (dividerBackdrop !is SharedBlurBackdrop) {
+                                                                                blur(dividerBlurPx)
+                                                                            }
+                                                                            lens(
+                                                                                dividerLensRadiusPx,
+                                                                                dividerLensStrengthPx
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                Modifier.drawBackdrop(
+                                                                    backdrop = dividerBackdrop,
+                                                                    shape = { dividerBlurShape },
+                                                                    effects = dividerEffects,
+                                                                    highlight = null,
+                                                                    shadow = null,
+                                                                    viewport = LocalBackdropViewport.current,
+                                                                    onDrawSurface = remember(
+                                                                        dividerFgSurface
+                                                                    ) {
+                                                                        {
+                                                                            drawRect(
+                                                                                dividerFgSurface
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                )
+                                                            } else {
+                                                                Modifier.background(
+                                                                    dividerFgSurface,
+                                                                    dividerBlurShape
+                                                                )
+                                                            }
+                                                        } else Modifier
+                                                    )
+                                                    .then(
+                                                        if (hasWallpaperDivider) {
+                                                            Modifier.drawWithContent {
+                                                                drawContent()
+                                                                drawScheduleOutline(
+                                                                    cache = dividerOutlineCache,
+                                                                    cornerRadius = 12.dp,
+                                                                    color = dividerOutlineColor,
+                                                                    strokeWidthPx = dividerOutlineWidthPx,
+                                                                    layoutDirection = layoutDirection,
+                                                                )
+                                                            }
+                                                        } else Modifier
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = text,
+                                                    style = MiuixTheme.textStyles.footnote2,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                                    textAlign = TextAlign.Center,
+                                                )
+                                            }
+                                        }
+                                        BreakDivider(morningHeight, "午休")
+                                        BreakDivider(dinnerBreakY, "晚休")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isWallpaperEditing && wallpaperBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown()
+                                    down.consume()
+                                    var gestureScale = latestWallpaperScale
+                                    var lastDisplayScale = gestureScale
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        val zoom = event.calculateZoom()
+                                        val pan = event.calculatePan()
+                                        gestureScale *= zoom
+                                        val newScale = if (gestureScale < latestMinWallpaperScale) {
+                                            val diff = gestureScale - latestMinWallpaperScale
+                                            latestMinWallpaperScale + diff * 0.3f
+                                        } else {
+                                            gestureScale
+                                        }
+                                        lastDisplayScale = newScale
+                                        val bmp = latestWallpaperBitmap
+                                        if (bmp != null && bmp.width > 0 && bmp.height > 0) {
+                                            val fitScale = minOf(
+                                                latestScreenWidthPx / bmp.width,
+                                                latestScreenHeightPx / bmp.height
+                                            )
+                                            val scaledW = bmp.width * fitScale * newScale
+                                            val scaledH = bmp.height * fitScale * newScale
+                                            val maxOffsetX =
+                                                ((scaledW - latestScreenWidthPx) / 2f).coerceAtLeast(
+                                                    0f
+                                                )
+                                            val maxOffsetY =
+                                                ((scaledH - latestScreenHeightPx) / 2f).coerceAtLeast(
+                                                    0f
+                                                )
+                                            val newOffset = latestWallpaperOffset + pan
+                                            latestOnScaleChange(newScale)
+                                            latestOnOffsetChange(
+                                                Offset(
+                                                    newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                                                    newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                                                )
+                                            )
+                                        } else {
+                                            latestOnScaleChange(newScale)
+                                            latestOnOffsetChange(latestWallpaperOffset + pan)
+                                        }
+                                        event.changes.forEach { it.consume() }
+                                    } while (event.changes.any { it.pressed })
+                                    gestureEndScale = lastDisplayScale
+                                    bounceBackTrigger++
+                                }
+                            }
+                    )
+                }
+            }
+
+            val detailEndAction: @Composable () -> Unit = {
+                val scope = rememberCoroutineScope()
+                val material = LocalSheetTopBarMaterial.current
+                LiquidTopBarButton(
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                        val course = selectedCourse ?: selectedCourses.firstOrNull()
+                        showCourseDetail = false
+                        // 等关闭动画后再开添加弹窗
+                        scope.launch {
+                            delay(100.milliseconds)
+                            if (course != null) {
+                                viewModel.showAddDialog(
+                                    course.dayOfWeek,
+                                    course.startSection,
+                                    course.endSection
+                                )
+                            } else {
+                                viewModel.showAddDialog()
+                            }
+                        }
+                    },
+                    backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
+                    icon = MiuixIcons.Add,
+                    contentDescription = "添加课程",
+                    modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
+                    iconSize = 24.dp,
+                    containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
+                        .copy(alpha = if (isAppDarkTheme()) 0.4f else 0.6f)
+                    else if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
+                    else Color(0xFFFFFFFF).copy(0.6f),
+                    backdropAlpha = material.backdropAlpha,
+                    shadowAlpha = material.shadowAlpha,
+                )
+            }
+            val detailContent: @Composable () -> Unit = {
+                val scope = rememberCoroutineScope()
+                val coursesToShow = remember(selectedCourses, selectedCourse, viewingWeek) {
+                    selectedCourses.ifEmpty { listOfNotNull(selectedCourse) }
+                        .sortedWith(
+                            compareByDescending<Course> { it.isActiveInWeek(viewingWeek) }
+                                .thenBy {
+                                    val distance = if (it.isActiveInWeek(viewingWeek)) 0
+                                    else if (viewingWeek < it.startWeek) it.startWeek - viewingWeek
+                                    else viewingWeek - it.endWeek
+                                    distance
+                                }
+                        )
+                }
+                // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁；
+                // 逐张错开由 CardRevealSpec 的 index 负责
+                Column(
+                    modifier = Modifier
+                        // overScroll 在 verticalScroll 外侧
+                        .overScrollVertical()
+                        .scrollEndHaptic(
+                            hapticFeedbackType = HapticFeedbackType.TextHandleMove
+                        )
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
+                    coursesToShow.forEachIndexed { index, course ->
+                        key(course.id) {
+                            val summaryText = buildString {
+                                append(course.getWeekText())
+                                append(" ｜ ")
+                                append(course.getTimeDisplayText())
+                                if (course.classroom.isNotEmpty()) {
+                                    append("\n")
+                                    append(course.classroom)
+                                }
+                                if (course.teacher.isNotEmpty()) {
+                                    if (course.classroom.isNotEmpty()) append(" ｜ ")
+                                    append(course.teacher)
+                                }
+                            }
+                            val isCurrentWeekCourse = course.isActiveInWeek(viewingWeek)
+                            val isHidden = course.id in hiddenCourseIds
+                            val cardLayer = rememberGraphicsLayer()
+                            // 普通 holder 零重组；key 用 course.id 防列表重排错位
+                            val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
+                            // 动画结束后去掉离屏层
+                            val cardReveal = rememberCardRevealState(index = index)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isHidden || cardReveal.isAnimating) {
+                                            Modifier.cardRevealLayer(
+                                                reveal = cardReveal,
+                                                // 隐藏的课程只留占位：透明度乘 0，图层照样要挂
+                                                alphaMultiplier = if (isHidden) 0f else 1f,
+                                            )
+                                        } else Modifier
+                                    )
+                            ) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .onGloballyPositioned { coordinates ->
+                                            val position =
+                                                coordinates.localToRoot(Offset.Zero)
+                                            val size = coordinates.size
+                                            cardBoundsHolder.rect = Rect(
+                                                left = position.x,
+                                                top = position.y,
+                                                right = position.x + size.width,
+                                                bottom = position.y + size.height
+                                            )
+                                        }
+                                        .drawWithContent {
+                                            // The outer visibility/reveal transform is deliberately not recorded.
+                                            if (!isHidden) {
+                                                cardLayer.record { this@drawWithContent.drawContent() }
+                                            }
+                                            drawLayer(cardLayer)
+                                        },
+                                    insideMargin = PaddingValues(0.dp),
+                                    pressFeedbackType = PressFeedbackType.None,
+                                    showIndication = true,
+                                    colors = CardDefaults.defaultColors(
+                                        color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isAppDarkTheme()) Color(
+                                            0xFF303030
+                                        ) else Color(0xFFFFFFFF),
+                                        contentColor = MiuixTheme.colorScheme.onSurface
+                                    ),
+                                    onClick = {
+                                        val coursesForDetail =
+                                            courses.filter { it.name == course.name }
+                                        // 本周有课用当前查看周，否则回退到最近上课周
+                                        val targetWeek =
+                                            if (course.isActiveInWeek(viewingWeek)) viewingWeek
+                                            else if (viewingWeek < course.startWeek) course.startWeek
+                                            else course.endWeek
+                                        val bounds = cardBoundsHolder.rect
+                                        if (bounds != null) {
+                                            onCourseClick(
+                                                coursesForDetail,
+                                                bounds.left,
+                                                bounds.top,
+                                                bounds.width,
+                                                bounds.height,
+                                                TransitionLayerSnapshot(cardLayer),
+                                                course.id,
+                                                targetWeek
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isCurrentWeekCourse) course.name else "${course.name}（非本周）",
+                                                style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
+                                                fontWeight = FontWeight.Medium,
+                                                color = MiuixTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = summaryText,
+                                                style = MiuixTheme.textStyles.body2.copy(fontSize = 14.sp),
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(ContinuousRoundedRectangle(20.dp))
+                                                .background(
+                                                    MiuixTheme.colorScheme.primary.copy(
+                                                        alpha = 0.1f
+                                                    )
+                                                )
+                                                .clickable {
+                                                    showCourseDetail = false
+                                                    onPopupStateChange(false)
+                                                    // 等关闭动画后再开编辑弹窗
+                                                    scope.launch {
+                                                        delay(100.milliseconds)
+                                                        viewModel.showEditDialog(course)
+                                                    }
+                                                }
+                                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "编辑",
+                                                style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
+                                                fontWeight = FontWeight.Medium,
+                                                color = MiuixTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            } // Column (isHidden)
+                        } // key(course.id)
+                    }
+                    Spacer(modifier = Modifier.height(if (isTablet) 0.dp else 260.dp))
+                }
+            }
+            // show 状态下沉到子作用域：顶层读会在点卡片那帧重组整页，压在弹窗动画头两帧
+            CourseDetailSheet(
+                showState = externalShowCourseDetail,
+                isTablet = isTablet,
+                onDismiss = {
+                    showCourseDetail = false
+                    onPopupStateChange(false)
+                },
+                endAction = detailEndAction,
+                content = detailContent,
+            )
+
+            val editingBlock = specialBlocks.firstOrNull { it.id == specialItemEditingBlockId }
+            // 编辑时排除自己，否则无法取消自己占用的格子
+            val occupiedDays = (editingBlock?.safeItems ?: emptyList())
+                .filter { it.id != specialItemEditingId }
+                .flatMap { it.startDay..it.endDay }
+                .toSet()
+            SpecialItemEditDialog(
+                show = showSpecialItemDialog,
+                isEditing = specialItemEditingId != -1L,
+                name = specialItemName,
+                selectedDays = specialItemSelectedDays,
+                occupiedDays = occupiedDays,
+                liquidGlassBackdrop = liquidGlassBackdrop,
+                onNameChange = { specialItemName = it },
+                onDayToggle = { day ->
+                    specialItemSelectedDays = if (day in specialItemSelectedDays) {
+                        specialItemSelectedDays - day
+                    } else {
+                        specialItemSelectedDays + day
+                    }
+                },
+                onDismiss = { showSpecialItemDialog = false },
+                onSave = {
+                    if (editingBlock == null) {
+                        showSpecialItemDialog = false
+                    } else {
+                        val trimmedName = specialItemName.trim()
+                        val selected = specialItemSelectedDays.sorted()
+                        when {
+                            trimmedName.isBlank() -> {
+                                showToast("请输入名称")
+                            }
+
+                            selected.isEmpty() -> {
+                                showToast("请选择至少一个星期")
+                            }
+
+                            else -> {
+                                // 不连续点选合并为连续区间，如 {1,3,4} → 两个子块。
+                                // id 由 nextSpecialItemIds 保证一批内互不相同（见该函数注释）。
+                                val ranges = mergeConsecutiveDays(selected)
+                                val base =
+                                    editingBlock.safeItems.filter { it.id != specialItemEditingId }
+                                val ids = nextSpecialItemIds(base, ranges.size)
+                                val newItems = ranges.mapIndexed { i, (s, e) ->
+                                    SpecialItem(
+                                        id = ids[i],
+                                        name = trimmedName,
+                                        startDay = s,
+                                        endDay = e
+                                    )
+                                }
+                                val finalItems = (base + newItems).sortedBy { it.startDay }
+                                settingsViewModel.updateSpecialBlocks(
+                                    specialBlocks.map {
+                                        if (it.id == specialItemEditingBlockId) it.copy(items = finalItems) else it
+                                    }
+                                )
+                                showSpecialItemDialog = false
+                            }
                         }
                     }
                 },
-                backdrop = LocalSheetContentBackdrop.current ?: liquidGlassBackdrop!!,
-                icon = MiuixIcons.Add,
-                contentDescription = "添加课程",
-                modifier = Modifier.padding(end = if (isTablet) 16.dp else 18.dp),
-                iconSize = 24.dp,
-                containerColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh
-                    .copy(alpha = if (isAppDarkTheme()) 0.4f else 0.6f)
-                else if (isAppDarkTheme()) Color(0xFF363636).copy(0.4f)
-                else Color(0xFFFFFFFF).copy(0.6f),
-                backdropAlpha = material.backdropAlpha,
-                shadowAlpha = material.shadowAlpha,
+                onDelete = {
+                    if (editingBlock != null) {
+                        settingsViewModel.updateSpecialBlocks(
+                            specialBlocks.map {
+                                if (it.id == specialItemEditingBlockId) {
+                                    it.copy(items = editingBlock.safeItems.filter { item -> item.id != specialItemEditingId })
+                                } else it
+                            }
+                        )
+                    }
+                    showSpecialItemDialog = false
+                }
             )
         }
-        val detailContent: @Composable () -> Unit = {
-            val scope = rememberCoroutineScope()
-            val coursesToShow = remember(selectedCourses, selectedCourse, viewingWeek) {
-                selectedCourses.ifEmpty { listOfNotNull(selectedCourse) }
-                    .sortedWith(
-                        compareByDescending<Course> { it.isActiveInWeek(viewingWeek) }
-                            .thenBy {
-                                val distance = if (it.isActiveInWeek(viewingWeek)) 0
-                                else if (viewingWeek < it.startWeek) it.startWeek - viewingWeek
-                                else viewingWeek - it.endWeek
-                                distance
-                            }
-                    )
-                }
-            // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁；
-            // 逐张错开由 CardRevealSpec 的 index 负责
-            Column(
-                modifier = Modifier
-                    // overScroll 在 verticalScroll 外侧
-                    .overScrollVertical()
-                    .scrollEndHaptic(
-                        hapticFeedbackType = HapticFeedbackType.TextHandleMove
-                    )
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
-                coursesToShow.forEachIndexed { index, course ->
-                    key(course.id) {
-                    val summaryText = buildString {
-                        append(course.getWeekText())
-                        append(" ｜ ")
-                        append(course.getTimeDisplayText())
-                        if (course.classroom.isNotEmpty()) {
-                            append("\n")
-                            append(course.classroom)
-                        }
-                        if (course.teacher.isNotEmpty()) {
-                            if (course.classroom.isNotEmpty()) append(" ｜ ")
-                            append(course.teacher)
-                        }
-                    }
-                    val isCurrentWeekCourse = course.isActiveInWeek(viewingWeek)
-                    val isHidden = course.id in hiddenCourseIds
-                    val cardLayer = rememberGraphicsLayer()
-                    // 普通 holder 零重组；key 用 course.id 防列表重排错位
-                    val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
-                    // 动画结束后去掉离屏层
-                    val cardReveal = rememberCardRevealState(index = index)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(
-                                if (isHidden || cardReveal.isAnimating) {
-                                    Modifier.cardRevealLayer(
-                                        reveal = cardReveal,
-                                        // 隐藏的课程只留占位：透明度乘 0，图层照样要挂
-                                        alphaMultiplier = if (isHidden) 0f else 1f,
-                                    )
-                                } else Modifier
-                            )
-                    ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .onGloballyPositioned { coordinates ->
-                                val position =
-                                    coordinates.localToRoot(Offset.Zero)
-                                val size = coordinates.size
-                                cardBoundsHolder.rect = Rect(
-                                    left = position.x,
-                                    top = position.y,
-                                    right = position.x + size.width,
-                                    bottom = position.y + size.height
-                                )
-                            }
-                            .drawWithContent {
-                                // The outer visibility/reveal transform is deliberately not recorded.
-                                if (!isHidden) {
-                                    cardLayer.record { this@drawWithContent.drawContent() }
-                                }
-                                drawLayer(cardLayer)
-                            },
-                        insideMargin = PaddingValues(0.dp),
-                        pressFeedbackType = PressFeedbackType.None,
-                        showIndication = true,
-                        colors = CardDefaults.defaultColors(
-                            color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isAppDarkTheme()) Color(0xFF303030) else Color(0xFFFFFFFF),
-                            contentColor = MiuixTheme.colorScheme.onSurface
-                        ),
-                        onClick = {
-                            val coursesForDetail = courses.filter { it.name == course.name }
-                            // 本周有课用当前查看周，否则回退到最近上课周
-                            val targetWeek = if (course.isActiveInWeek(viewingWeek)) viewingWeek
-                            else if (viewingWeek < course.startWeek) course.startWeek
-                            else course.endWeek
-                            val bounds = cardBoundsHolder.rect
-                            if (bounds != null) {
-                                onCourseClick(
-                                    coursesForDetail,
-                                    bounds.left,
-                                    bounds.top,
-                                    bounds.width,
-                                    bounds.height,
-                                    TransitionLayerSnapshot(cardLayer),
-                                    course.id,
-                                    targetWeek
-                                )
-                            }
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isCurrentWeekCourse) course.name else "${course.name}（非本周）",
-                                    style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
-                                    fontWeight = FontWeight.Medium,
-                                    color = MiuixTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = summaryText,
-                                    style = MiuixTheme.textStyles.body2.copy(fontSize = 14.sp),
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(ContinuousRoundedRectangle(20.dp))
-                                    .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                    .clickable {
-                                        showCourseDetail = false
-                                        onPopupStateChange(false)
-                                        // 等关闭动画后再开编辑弹窗
-                                        scope.launch {
-                                            delay(100.milliseconds)
-                                            viewModel.showEditDialog(course)
-                                        }
-                                    }
-                                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "编辑",
-                                    style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
-                                    fontWeight = FontWeight.Medium,
-                                    color = MiuixTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    } // Column (isHidden)
-                    } // key(course.id)
-                }
-                Spacer(modifier = Modifier.height(if (isTablet) 0.dp else 260.dp))
-            }
-        }
-        // show 状态下沉到子作用域：顶层读会在点卡片那帧重组整页，压在弹窗动画头两帧
-        CourseDetailSheet(
-            showState = externalShowCourseDetail,
-            isTablet = isTablet,
-            liquidGlassBackdrop = liquidGlassBackdrop,
-            onDismiss = {
-                showCourseDetail = false
-                onPopupStateChange(false)
-            },
-            endAction = detailEndAction,
-            content = detailContent,
-        )
-
-        val editingBlock = specialBlocks.firstOrNull { it.id == specialItemEditingBlockId }
-        // 编辑时排除自己，否则无法取消自己占用的格子
-        val occupiedDays = (editingBlock?.safeItems ?: emptyList())
-            .filter { it.id != specialItemEditingId }
-            .flatMap { it.startDay..it.endDay }
-            .toSet()
-        SpecialItemEditDialog(
-            show = showSpecialItemDialog,
-            isEditing = specialItemEditingId != -1L,
-            name = specialItemName,
-            selectedDays = specialItemSelectedDays,
-            occupiedDays = occupiedDays,
-            liquidGlassBackdrop = liquidGlassBackdrop,
-            onNameChange = { specialItemName = it },
-            onDayToggle = { day ->
-                specialItemSelectedDays = if (day in specialItemSelectedDays) {
-                    specialItemSelectedDays - day
-                } else {
-                    specialItemSelectedDays + day
-                }
-            },
-            onDismiss = { showSpecialItemDialog = false },
-            onSave = {
-                if (editingBlock == null) {
-                    showSpecialItemDialog = false
-                } else {
-                    val trimmedName = specialItemName.trim()
-                    val selected = specialItemSelectedDays.sorted()
-                    when {
-                        trimmedName.isBlank() -> {
-                            showToast("请输入名称")
-                        }
-                        selected.isEmpty() -> {
-                            showToast("请选择至少一个星期")
-                        }
-                        else -> {
-                            // 不连续点选合并为连续区间，如 {1,3,4} → 两个子块。
-                            // id 由 nextSpecialItemIds 保证一批内互不相同（见该函数注释）。
-                            val ranges = mergeConsecutiveDays(selected)
-                            val base = editingBlock.safeItems.filter { it.id != specialItemEditingId }
-                            val ids = nextSpecialItemIds(base, ranges.size)
-                            val newItems = ranges.mapIndexed { i, (s, e) ->
-                                SpecialItem(
-                                    id = ids[i],
-                                    name = trimmedName,
-                                    startDay = s,
-                                    endDay = e
-                                )
-                            }
-                            val finalItems = (base + newItems).sortedBy { it.startDay }
-                            settingsViewModel.updateSpecialBlocks(
-                                specialBlocks.map {
-                                    if (it.id == specialItemEditingBlockId) it.copy(items = finalItems) else it
-                                }
-                            )
-                            showSpecialItemDialog = false
-                        }
-                    }
-                }
-            },
-            onDelete = {
-                if (editingBlock != null) {
-                    settingsViewModel.updateSpecialBlocks(
-                        specialBlocks.map {
-                            if (it.id == specialItemEditingBlockId) {
-                                it.copy(items = editingBlock.safeItems.filter { item -> item.id != specialItemEditingId })
-                            } else it
-                        }
-                    )
-                }
-                showSpecialItemDialog = false
-            }
-        )
-    }
     } // CompositionLocalProvider
 }
 
@@ -1822,7 +2001,6 @@ fun MainScheduleScreen(
 private fun CourseDetailSheet(
     showState: MutableState<Boolean>,
     isTablet: Boolean,
-    liquidGlassBackdrop: Backdrop?,
     onDismiss: () -> Unit,
     endAction: @Composable () -> Unit,
     content: @Composable () -> Unit,
@@ -1985,7 +2163,10 @@ private fun AnimatedDropTargetMask(
         LaunchedEffect(targetBox) {
             if (targetBox == null) {
                 // 带出：仅透明度
-                alpha.animateTo(0f, tween(durationMillis = 180, easing = CubicBezierEasing(0.4f, 0f, 1f, 1f)))
+                alpha.animateTo(
+                    0f,
+                    tween(durationMillis = 180, easing = CubicBezierEasing(0.4f, 0f, 1f, 1f))
+                )
                 lastTarget.value = null
             } else {
                 val prev = lastTarget.value
@@ -2000,7 +2181,13 @@ private fun AnimatedDropTargetMask(
                     height.snapTo(from.height)
                     alpha.snapTo(0f)
                     launch {
-                        alpha.animateTo(1f, tween(durationMillis = 180, easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)))
+                        alpha.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = 180,
+                                easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)
+                            )
+                        )
                     }
                     if (from != targetBox) {
                         launch { left.animateTo(targetBox.left, spec) }
@@ -2023,13 +2210,15 @@ private fun AnimatedDropTargetMask(
         }
 
         val hasWallpaperMask = hasWallpaper && wallpaperBackdrop != null
-        val solidColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
-            .copy(alpha = if (isDark) 0.13f else 0.15f)
+        val solidColor =
+            (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
+                .copy(alpha = if (isDark) 0.13f else 0.15f)
         val glassSurface = if (MiuixTheme.isDynamicColor) {
             MiuixTheme.colorScheme.surfaceContainerHigh.copy(alpha = if (isDark) 0.64f else 0.5f)
         } else if (isDark) Color(0xFF242424).copy(alpha = 0.64f) else Color(0xFFF0F0F0).copy(alpha = 0.5f)
         val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }
-        val maskShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
+        val maskShape =
+            remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
         // 稳定引用：内联 lambda 会让 drawBackdrop 每次重组重建 RenderEffect
         val maskEffects: BackdropEffectScope.() -> Unit =
             remember(wallpaperBackdrop, blurPx) {
