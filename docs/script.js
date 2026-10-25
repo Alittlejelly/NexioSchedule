@@ -1,203 +1,544 @@
-// ==================== 工具函数 ====================
-function debounce(fn, ms) {
-  let t;
-  return function () { clearTimeout(t); t = setTimeout(() => fn.apply(this, arguments), ms); };
-}
+/* ===================================================================
+   Nexio 课程表 · 官网脚本（首页专用；法务页自带内联脚本，不引用本文件）
+   =================================================================== */
+(function () {
+  'use strict';
 
-// ==================== GitHub 数据统计（带 sessionStorage 缓存） ====================
-async function fetchStats() {
-  var cacheKey = 'gh_stats';
-  var cacheTTL = 30 * 60 * 1000; // 30 分钟
-  try {
-    var cached = JSON.parse(sessionStorage.getItem(cacheKey));
-    if (cached && Date.now() - cached.ts < cacheTTL) {
-      document.getElementById('stars-count').textContent = cached.stars;
-      document.getElementById('downloads-count').textContent = cached.downloads;
-      return;
+  var root = document.documentElement;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fine = window.matchMedia('(pointer: fine)').matches;
+  var $ = function (s, c) { return (c || document).querySelector(s); };
+  var $$ = function (s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); };
+  var raf = function (fn) { var q = false; return function () { if (q) return; q = true; requestAnimationFrame(function () { q = false; fn(); }); }; };
+  var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
+
+  /* ==================== 主题 ==================== */
+  var toggle = $('#theme-toggle');
+  var meta = document.querySelector('meta[name="theme-color"]');
+
+  function paint(t) {
+    root.setAttribute('data-theme', t);
+    try { localStorage.setItem('theme', t); } catch (e) {}
+    if (meta) meta.setAttribute('content', t === 'dark' ? '#070c15' : '#e9eff8');
+    if (toggle) {
+      toggle.setAttribute('aria-label', t === 'dark' ? '切换为浅色主题' : '切换为深色主题');
+      toggle.setAttribute('aria-pressed', String(t === 'dark'));
     }
-  } catch (e) {}
+  }
 
-  try {
-    var res = await fetch('https://api.github.com/repos/HaoZai000/NexioSchedule');
-    if (!res.ok) throw new Error(res.status);
-    var data = await res.json();
-    var stars = data.stargazers_count || 0;
+  function setTheme(t, ox, oy) {
+    var cur = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    if (cur === t) return;
 
-    var relRes = await fetch('https://api.github.com/repos/HaoZai000/NexioSchedule/releases');
-    var releases = await relRes.json();
-    var dl = 0;
-    if (Array.isArray(releases)) {
-      releases.forEach(function (r) { (r.assets || []).forEach(function (a) { dl += a.download_count || 0; }); });
+    if (!document.startViewTransition || reduce) { paint(t); return; }
+
+    var x = typeof ox === 'number' ? ox : window.innerWidth - 40;
+    var y = typeof oy === 'number' ? oy : 40;
+    var r = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    root.style.setProperty('--vt-x', x + 'px');
+    root.style.setProperty('--vt-y', y + 'px');
+    root.style.setProperty('--vt-r', r + 'px');
+    root.classList.add('vt');
+    try {
+      var vt = document.startViewTransition(function () { paint(t); });
+      vt.finished.finally(function () { root.classList.remove('vt'); });
+    } catch (e) {
+      root.classList.remove('vt');
+      paint(t);
+    }
+  }
+
+  if (toggle) {
+    paint(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+    toggle.addEventListener('click', function (e) {
+      var r = toggle.getBoundingClientRect();
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      setTheme(next, r.left + r.width / 2, r.top + r.height / 2);
+    });
+  }
+
+  /* ==================== GitHub 取数 ==================== */
+  (function () {
+    var starsEl = $('#stars-count');
+    var dlEl = $('#downloads-count');
+    var verEls = [$('#app-version'), $('#app-version-2')];
+    var sizeEl = $('#apk-size');
+    if (!starsEl && !dlEl && !verEls[0] && !verEls[1]) return;
+
+    var KEY = 'gh_stats_v2';
+    var TTL = 30 * 60 * 1000;
+
+    function fmt(n) {
+      if (n >= 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      return n.toLocaleString('en-US');
     }
 
-    document.getElementById('stars-count').textContent = stars;
-    document.getElementById('downloads-count').textContent = dl;
-
-    var latestTag = releases[0] && releases[0].tag_name;
-    var verEl = document.getElementById('app-version');
-    if (verEl && latestTag) verEl.textContent = latestTag;
+    function render(d) {
+      var row = document.querySelector('.stats');
+      if (row) { row.hidden = false; row.classList.add('show'); }
+      $$('[data-stat]').forEach(function (el) { el.hidden = false; });
+      if (starsEl) starsEl.textContent = fmt(d.stars);
+      if (dlEl) dlEl.textContent = fmt(d.downloads);
+      if (d.tag) verEls.forEach(function (el) { if (el) el.textContent = d.tag; });
+      if (sizeEl && d.size) {
+        sizeEl.textContent = ' · ' + (d.size / 1048576).toFixed(1) + ' MB';
+        sizeEl.hidden = false;
+      }
+    }
 
     try {
-      sessionStorage.setItem(cacheKey, JSON.stringify({ stars: stars, downloads: dl, ts: Date.now() }));
+      var cached = JSON.parse(sessionStorage.getItem(KEY));
+      if (cached && Date.now() - cached.ts < TTL) { render(cached); return; }
     } catch (e) {}
-  } catch (e) {
-    document.getElementById('stars-count').textContent = '—';
-    document.getElementById('downloads-count').textContent = '—';  }
-}
-fetchStats();
 
-// ==================== 页内锚点平滑滚动 ====================
-document.querySelectorAll('a[href^="#"]').forEach(function (a) {
-  a.addEventListener('click', function (e) {
-    var t = document.querySelector(a.getAttribute('href'));
-    if (!t) return;
-    e.preventDefault();
-    t.scrollIntoView({ behavior: 'smooth' });
-    // 关闭移动菜单
-    closeMobileMenu();
-  });
-});
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 6000) : null;
 
-// ==================== 滚动时导航栏背景 ====================
-var navbar = document.querySelector('.navbar');
-var onScroll = function () {
-  navbar.classList.toggle('scrolled', window.scrollY > 20);
-};
-window.addEventListener('scroll', onScroll, { passive: true });
-onScroll();
+    fetch('https://api.github.com/repos/HaoZai000/NexioSchedule', ctrl ? { signal: ctrl.signal } : {})
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (repo) {
+        return fetch('https://api.github.com/repos/HaoZai000/NexioSchedule/releases', ctrl ? { signal: ctrl.signal } : {})
+          .then(function (r) { return r.ok ? r.json() : []; })
+          .then(function (rel) {
+            var dl = 0;
+            if (Array.isArray(rel)) rel.forEach(function (x) { (x.assets || []).forEach(function (a) { dl += a.download_count || 0; }); });
+            var tag = Array.isArray(rel) && rel[0] && rel[0].tag_name ? rel[0].tag_name : '';
+            var size = 0;
+            if (Array.isArray(rel) && rel[0]) {
+              (rel[0].assets || []).forEach(function (a) {
+                if (/\.apk$/i.test(a.name || '') && (a.size || 0) > size) size = a.size;
+              });
+            }
+            var data = { stars: repo.stargazers_count || 0, downloads: dl, tag: tag, size: size, ts: Date.now() };
+            render(data);
+            try { sessionStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+          });
+      })
+      .catch(function () {
+        // 取不到就只留静态数字（248 所高校 / 13+ 模块），别把「—」留在首屏
+        $$('[data-stat]').forEach(function (el) { el.parentNode && el.parentNode.removeChild(el); });
+        var row = document.querySelector('.stats');
+        if (row) row.classList.add('show');
+      })
+      .finally(function () { if (timer) clearTimeout(timer); });
+  })();
 
-// ==================== 入场动效 ====================
-var io = new IntersectionObserver(function (entries) {
-  entries.forEach(function (e) {
-    if (e.isIntersecting) {
-      e.target.classList.add('visible');
-      io.unobserve(e.target);
-    }
-  });
-}, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  /* ==================== 滚动状态 ==================== */
+  var navbar = $('#navbar');
+  var backTop = $('#back-to-top');
+  var sections = $$('main section[id]');
+  var navLinks = $$('[data-nav]');
+  var dockLinks = $$('[data-dock]');
 
-// ==================== 主题切换 ====================
-var themeToggle = document.getElementById('theme-toggle');
-function setTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  try { localStorage.setItem('theme', t); } catch (e) {}
-  themeToggle.setAttribute('aria-label', t === 'dark' ? '切换为浅色主题' : '切换为深色主题');
-  themeToggle.setAttribute('aria-pressed', String(t === 'dark'));
-}
-themeToggle.addEventListener('click', function () {
-  var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-  setTheme(cur === 'dark' ? 'light' : 'dark');
-});
-setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+  var onScroll = raf(function () {
+    var y = window.scrollY;
+    if (navbar) navbar.classList.toggle('scrolled', y > 24);
+    if (backTop) backTop.classList.toggle('visible', y > 620);
 
-// ==================== 功能卡片光标聚光（节流） ====================
-var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-if (!reduceMotion && window.matchMedia('(pointer: fine)').matches) {
-  document.querySelectorAll('.feature-card').forEach(function (card) {
-    var ticking = false;
-    card.addEventListener('mousemove', function (e) {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(function () {
-        var r = card.getBoundingClientRect();
-        card.style.setProperty('--gx', (e.clientX - r.left) + 'px');
-        card.style.setProperty('--gy', (e.clientY - r.top) + 'px');
-        ticking = false;
-      });
+    var mid = window.innerHeight * 0.38;
+    var active = '';
+    sections.forEach(function (s) {
+      var r = s.getBoundingClientRect();
+      if (r.top <= mid && r.bottom > mid) active = s.id;
     });
+    navLinks.forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === active); });
+    dockLinks.forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-dock') === active); });
   });
-}
 
-// ==================== 汉堡菜单 ====================
-var hamburger = document.getElementById('hamburger');
-var mobileMenu = document.getElementById('mobile-menu');
-var menuBackdrop = null;
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 
-function createBackdrop() {
-  if (menuBackdrop) return;
-  menuBackdrop = document.createElement('div');
-  menuBackdrop.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.18);opacity:0;transition:opacity .25s ease;pointer-events:none';
-  document.body.appendChild(menuBackdrop);
-  requestAnimationFrame(function () { menuBackdrop.style.opacity = '1'; });
-}
+  // 顶部哨兵：程序化滚动 / 回弹时也可靠地切换导航玻璃态
+  if ('IntersectionObserver' in window && navbar) {
+    var sentinel = document.createElement('div');
+    sentinel.setAttribute('aria-hidden', 'true');
+    sentinel.style.cssText = 'position:absolute;top:64px;left:0;width:1px;height:1px;pointer-events:none;opacity:0';
+    document.body.appendChild(sentinel);
+    new IntersectionObserver(function (es) {
+      navbar.classList.toggle('scrolled', !es[0].isIntersecting);
+    }, { threshold: 0 }).observe(sentinel);
+  }
 
-function removeBackdrop() {
-  if (!menuBackdrop) return;
-  menuBackdrop.style.opacity = '0';
-  var el = menuBackdrop;
-  setTimeout(function () { el.remove(); }, 260);
-  menuBackdrop = null;
-}
+  if (backTop) {
+    backTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); });
+  }
 
-function closeMobileMenu() {
-  hamburger.setAttribute('aria-expanded', 'false');
-  hamburger.setAttribute('aria-label', '打开菜单');
-  mobileMenu.classList.remove('open');
-  mobileMenu.setAttribute('aria-hidden', 'true');
-  removeBackdrop();
-}
-
-hamburger.addEventListener('click', function () {
-  var open = hamburger.getAttribute('aria-expanded') === 'true';
-  if (open) {
-    closeMobileMenu();
+  /* ==================== 逐段入场 ==================== */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -6% 0px' });
+    $$('.reveal').forEach(function (el) { io.observe(el); });
   } else {
-    hamburger.setAttribute('aria-expanded', 'true');
-    hamburger.setAttribute('aria-label', '关闭菜单');
-    mobileMenu.classList.add('open');
-    mobileMenu.setAttribute('aria-hidden', 'false');
-    createBackdrop();
+    $$('.reveal').forEach(function (el) { el.classList.add('in'); });
   }
-});
 
-// 点击遮罩关闭
-document.addEventListener('click', function (e) {
-  if (mobileMenu.classList.contains('open') && !mobileMenu.contains(e.target) && !hamburger.contains(e.target)) {
-    closeMobileMenu();
-  }
-});
+  /* ==================== 指针：光斑 / 聚光 / 倾斜 / 磁吸 ==================== */
+  if (fine && !reduce) {
+    var cursor = $('#bg-cursor');
+    var mx = window.innerWidth / 2, my = window.innerHeight * 0.4;
+    var moveCursor = raf(function () {
+      if (cursor) cursor.style.setProperty('--mx', mx + 'px'), cursor.style.setProperty('--my', my + 'px');
+    });
+    window.addEventListener('pointermove', function (e) {
+      mx = e.clientX; my = e.clientY; moveCursor();
+    }, { passive: true });
 
-// ESC 关闭
-document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape' && mobileMenu.classList.contains('open')) {
-    closeMobileMenu();
-    hamburger.focus();
-  }
-});
+    // 卡片聚光
+    document.addEventListener('pointermove', function (e) {
+      var card = e.target.closest ? e.target.closest('[data-spot]') : null;
+      if (!card) return;
+      var r = card.getBoundingClientRect();
+      card.style.setProperty('--sx', (e.clientX - r.left) + 'px');
+      card.style.setProperty('--sy', (e.clientY - r.top) + 'px');
+    }, { passive: true });
 
-// ==================== 回到顶部 ====================
-var backToTop = document.getElementById('back-to-top');
-var onScrollTop = function () {
-  backToTop.classList.toggle('visible', window.scrollY > 500);
-};
-window.addEventListener('scroll', onScrollTop, { passive: true });
-backToTop.addEventListener('click', function () {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
-
-// ==================== 预览展示台缩略图切换 ====================
-var previewImg = document.getElementById('preview-img');
-var previewTitle = document.getElementById('preview-title');
-var previewDesc = document.getElementById('preview-desc');
-var thumbs = document.querySelectorAll('.thumb');
-if (previewImg && thumbs.length) {
-  thumbs.forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      thumbs.forEach(function (t) {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
+    // 首屏倾斜
+    var stage = $('[data-tilt]');
+    var inner = $('[data-tilt-inner]');
+    var phone = $('.stage-phone');
+    if (stage && inner) {
+      var tx = 0, ty = 0, cx = 0, cy = 0, ticking = false;
+      var loop = function () {
+        cx += (tx - cx) * 0.12;
+        cy += (ty - cy) * 0.12;
+        inner.style.transform = 'rotateX(' + cx.toFixed(2) + 'deg) rotateY(' + cy.toFixed(2) + 'deg)';
+        // 手机是平面层，用位移跟着指针浮起来（不参与 3D，避免穿模）
+        if (phone) {
+          phone.style.transform = 'translate3d(' + (cy * 1.6).toFixed(2) + 'px,' + (-cx * 1.3).toFixed(2) + 'px,0) rotate(2.2deg)';
+        }
+        if (Math.abs(tx - cx) > 0.02 || Math.abs(ty - cy) > 0.02) requestAnimationFrame(loop);
+        else ticking = false;
+      };
+      stage.addEventListener('pointermove', function (e) {
+        var r = stage.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width - 0.5;
+        var py = (e.clientY - r.top) / r.height - 0.5;
+        ty = px * 10;
+        tx = -py * 8;
+        if (!ticking) { ticking = true; requestAnimationFrame(loop); }
       });
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected', 'true');
-      previewImg.classList.add('swap-out');
-      setTimeout(function () {
-        previewImg.src = btn.dataset.src;
-        previewImg.alt = btn.dataset.title;
-        if (previewTitle) previewTitle.textContent = btn.dataset.title;
-        if (previewDesc) previewDesc.textContent = btn.dataset.desc;
-        previewImg.classList.remove('swap-out');
-      }, 180);
+      stage.addEventListener('pointerleave', function () {
+        tx = 0; ty = 0;
+        if (!ticking) { ticking = true; requestAnimationFrame(loop); }
+      });
+    }
+
+    // 磁吸按钮
+    $$('[data-magnet]').forEach(function (btn) {
+      btn.addEventListener('pointermove', function (e) {
+        var r = btn.getBoundingClientRect();
+        var dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+        var dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+        btn.style.transform = 'translate(' + (dx * 6).toFixed(2) + 'px,' + (dy * 4 - 2).toFixed(2) + 'px)';
+      });
+      btn.addEventListener('pointerleave', function () { btn.style.transform = ''; });
+    });
+  }
+
+  /* ==================== 课表盘：真实时间 ==================== */
+  var PERIODS = [
+    ['08:00', '08:45'], ['08:50', '09:35'], ['09:55', '10:40'], ['10:45', '11:30'],
+    ['11:35', '12:20'], ['14:00', '14:45'], ['14:50', '15:35'], ['15:50', '16:35'],
+    ['16:40', '17:25'], ['18:25', '19:10'], ['19:15', '20:00'], ['20:05', '20:50']
+  ];
+  var DAY_NAMES = ['一', '二', '三', '四', '五'];
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function minutesOf(str) { var p = str.split(':'); return +p[0] * 60 + +p[1]; }
+
+  function nowInfo() {
+    var d = new Date();
+    var dow = d.getDay() === 0 ? 7 : d.getDay(); // 周一=1 ... 周日=7
+    var mins = d.getHours() * 60 + d.getMinutes();
+    var period = 0, progress = 0;
+    for (var i = 0; i < PERIODS.length; i++) {
+      var s = minutesOf(PERIODS[i][0]), e = minutesOf(PERIODS[i][1]);
+      if (mins >= s && mins < e) { period = i + 1; progress = (mins - s) / (e - s); break; }
+    }
+    return { dow: dow, mins: mins, period: period, progress: progress, date: d };
+  }
+
+  (function board() {
+    var el = $('[data-board]');
+    if (!el) return;
+    var info = nowInfo();
+    var monday = new Date(info.date.getFullYear(), info.date.getMonth(), info.date.getDate() - (info.dow - 1));
+    var range = $('[data-week-range]', el);
+    if (range) {
+      var f = new Date(monday.getTime() + 4 * 864e5);
+      range.textContent = pad(monday.getMonth() + 1) + '/' + pad(monday.getDate()) + ' – ' + pad(f.getMonth() + 1) + '/' + pad(f.getDate());
+    }
+    $$('[data-date]', el).forEach(function (s) {
+      var i = +s.getAttribute('data-date');
+      var d = new Date(monday.getTime() + (i - 1) * 864e5);
+      s.textContent = pad(d.getDate());
+    });
+
+    var heads = $$('.bh', el);
+    heads.forEach(function (h, i) {
+      if (i > 0) h.classList.toggle('today', i === info.dow);
+    });
+
+    var line = $('[data-nowline]', el);
+    var label = $('[data-now-label]', el);
+    var todayChips = $$('.chip[data-day="' + info.dow + '"]', el);
+
+    function paintLabel(txt) {
+      if (!label) return;
+      if (!txt) { label.textContent = ''; label.hidden = true; return; }
+      label.textContent = txt;
+      label.hidden = false;
+    }
+
+    if (info.period) {
+      var chip = todayChips.filter(function (c) { return +c.getAttribute('data-period') === info.period; })[0];
+      if (chip && line) {
+        var rowVal = chip.style.getPropertyValue('--row') || '';
+        var span = (rowVal.match(/span\s+(\d+)/) || [0, 1])[1];
+        var top = chip.offsetTop + (chip.offsetHeight / span) * info.progress;
+        line.style.top = top + 'px';
+        line.classList.add('on');
+        paintLabel('现在 · 第 ' + info.period + ' 节');
+      } else {
+        paintLabel(info.dow > 5 ? '周末愉快' : '课间休息');
+      }
+    } else {
+      var next = todayChips.filter(function (c) { return +c.getAttribute('data-period') > 0; }).filter(function (c) {
+        var p = +c.getAttribute('data-period');
+        return minutesOf(PERIODS[p - 1][0]) > info.mins;
+      })[0];
+      if (next) paintLabel('下一节 ' + PERIODS[+next.getAttribute('data-period') - 1][0]);
+      else paintLabel(info.dow > 5 ? '周末愉快' : '今天收工');
+    }
+
+    /* --- 移动端「今天」卡片 --- */
+    var rail = $('[data-today-rail]');
+    var count = $('[data-today-count]');
+    if (!rail) return;
+
+    var chips = $$('.chip', el);
+    function chipData(c) {
+      var p = +c.getAttribute('data-period');
+      return {
+        day: +c.getAttribute('data-day'),
+        period: p,
+        time: PERIODS[p - 1] ? PERIODS[p - 1][0] : '',
+        name: (c.childNodes[0] && c.childNodes[0].textContent || '').trim(),
+        room: (c.querySelector('small') && c.querySelector('small').textContent || '').trim(),
+        color: (c.className.match(/c-[a-z]+/) || [''])[0]
+      };
+    }
+    var all = chips.map(chipData);
+    var todays = all.filter(function (c) { return c.day === info.dow; });
+
+    function cardHTML(c, isNow) {
+      return '<div class="tcard ' + c.color + (isNow ? ' now' : '') + '">' +
+        '<div class="t-time">' + c.time + '</div>' +
+        '<div class="t-name">' + c.name + '</div>' +
+        '<div class="t-room">' + c.room + '</div></div>';
+    }
+
+    if (todays.length) {
+      rail.innerHTML = todays.map(function (c) { return cardHTML(c, c.period === info.period); }).join('');
+      if (count) count.textContent = todays.length + ' 节';
+    } else {
+      var nextDay = info.dow;
+      var found = null;
+      var d = info.dow;
+      for (var k = 0; k < 7; k++) {
+        d = d >= 5 ? 1 : d + 1;      // 周五/周六/周日之后都回到周一
+        var hit = all.filter(function (c) { return c.day === d; })[0];
+        if (hit) { nextDay = d; found = hit; break; }
+      }
+      if (found) {
+        rail.innerHTML = '<div class="tcard c-sand rest"><div class="t-time">今天没课</div>' +
+          '<div class="t-name">下一节 · 周' + DAY_NAMES[nextDay - 1] + ' ' + found.time + '</div>' +
+          '<div class="t-room">' + found.name + ' · ' + found.room + '</div></div>';
+      } else {
+        rail.innerHTML = '<div class="tcard rest"><div class="t-time">今天没课</div><div class="t-name">好好休息</div></div>';
+      }
+      if (count) count.textContent = '0 节';
+    }
+  })();
+
+  /* ==================== 截图卷轴 ==================== */
+  (function reel() {
+    var el = $('[data-reel]');
+    if (!el) return;
+    var shots = $$('.shot', el);
+    var title = $('[data-reel-title]');
+    var desc = $('[data-reel-desc]');
+    var cap = $('[data-reel-cap]');
+    var indexEl = $('[data-reel-index]');
+    var dotsWrap = $('[data-reel-dots]');
+    var current = -1;
+
+    var dots = shots.map(function (_, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-label', '第 ' + (i + 1) + ' 张');
+      b.addEventListener('click', function () { go(i); });
+      if (dotsWrap) dotsWrap.appendChild(b);
+      return b;
+    });
+
+    function centerOf(shot) {
+      var r = shot.getBoundingClientRect();
+      var rr = el.getBoundingClientRect();
+      return r.left - rr.left + el.scrollLeft + r.width / 2;
+    }
+
+    function go(i, smooth) {
+      i = clamp(i, 0, shots.length - 1);
+      var target = centerOf(shots[i]) - el.clientWidth / 2;
+      el.scrollTo({ left: target, behavior: smooth === false || reduce ? 'auto' : 'smooth' });
+      setActive(i);
+    }
+
+    function setActive(i, silent) {
+      if (i === current && silent) return;
+      current = i;
+      shots.forEach(function (s, k) { s.classList.toggle('on', k === i); });
+      dots.forEach(function (d, k) { d.classList.toggle('on', k === i); });
+      if (indexEl) indexEl.textContent = pad(i + 1);
+      var s = shots[i];
+      if (title && desc && cap) {
+        cap.classList.add('swap');
+        setTimeout(function () {
+          title.textContent = s.getAttribute('data-title') || '';
+          desc.textContent = s.getAttribute('data-desc') || '';
+          cap.classList.remove('swap');
+        }, reduce ? 0 : 160);
+      }
+    }
+
+    var syncActive = raf(function () {
+      var mid = el.scrollLeft + el.clientWidth / 2;
+      var best = 0, dist = Infinity;
+      shots.forEach(function (s, i) {
+        var d = Math.abs(centerOf(s) - mid);
+        if (d < dist) { dist = d; best = i; }
+      });
+      setActive(best, true);
+    });
+
+    el.addEventListener('scroll', syncActive, { passive: true });
+    setActive(0, true);
+
+    // 进入视口自动向右轮播；到两端折返，避免跳帧
+    if (!reduce) {
+      var dir = 1, inView = false, hovering = false, holdUntil = 0;
+      window.setInterval(function () {
+        if (!inView || hovering || down || document.hidden) return;
+        if (Date.now() < holdUntil) return;
+        var next = current + dir;
+        if (next > shots.length - 1) { dir = -1; next = current - 1; }
+        else if (next < 0) { dir = 1; next = current + 1; }
+        go(next);
+      }, 3600);
+
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (es) {
+          inView = es[0].intersectionRatio > 0.35;
+        }, { threshold: [0, 0.35, 0.6] }).observe(el);
+      } else {
+        inView = true;
+      }
+
+      if (fine) {
+        el.addEventListener('pointerenter', function () { hovering = true; });
+        el.addEventListener('pointerleave', function () { hovering = false; });
+      }
+      el.addEventListener('pointerdown', function () { holdUntil = Date.now() + 7000; });
+      el.addEventListener('focusin', function () { hovering = true; });
+      el.addEventListener('focusout', function () { hovering = false; });
+    }
+
+    var prev = $('[data-reel-prev]');
+    var next = $('[data-reel-next]');
+    if (prev) prev.addEventListener('click', function () { go(current - 1); });
+    if (next) next.addEventListener('click', function () { go(current + 1); });
+
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(current - 1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(current + 1); }
+    });
+
+    // 鼠标拖拽（触摸端用原生滚动）
+    var down = false, startX = 0, startLeft = 0, moved = false;
+    el.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      down = true; moved = false;
+      startX = e.clientX; startLeft = el.scrollLeft;
+      el.classList.add('dragging');
+      el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      var dx = e.clientX - startX;
+      if (Math.abs(dx) > 4) moved = true;
+      el.scrollLeft = startLeft - dx;
+    });
+    function endDrag(e) {
+      if (!down) return;
+      down = false;
+      el.classList.remove('dragging');
+      if (moved) {
+        var mid = el.scrollLeft + el.clientWidth / 2;
+        var best = 0, dist = Infinity;
+        shots.forEach(function (s, i) {
+          var d = Math.abs(centerOf(s) - mid);
+          if (d < dist) { dist = d; best = i; }
+        });
+        go(best);
+      }
+    }
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);
+    el.addEventListener('pointerleave', endDrag);
+    el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+
+    var onResize = raf(function () { go(current, false); });
+    window.addEventListener('resize', onResize);
+  })();
+
+  /* ==================== 移动端功能区手风琴 ==================== */
+  (function accordion() {
+    var cards = $$('[data-fcard], .fcard');
+    if (!cards.length) return;
+    var isMobile = function () { return window.matchMedia('(max-width: 860px)').matches; };
+
+    $$('[data-fc-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        var card = btn.closest('.fcard');
+        if (!card) return;
+        var open = card.classList.toggle('open');
+        btn.setAttribute('aria-expanded', String(open));
+      });
+    });
+
+    if (isMobile() && cards[0]) {
+      cards[0].classList.add('open');
+      var b = $('[data-fc-toggle]', cards[0]);
+      if (b) b.setAttribute('aria-expanded', 'true');
+    }
+  })();
+
+  /* ==================== 锚点：修正滚动偏移 ==================== */
+  $$('a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href');
+      if (!id || id === '#') return;
+      var t = document.querySelector(id);
+      if (!t) return;
+      e.preventDefault();
+      var top = t.getBoundingClientRect().top + window.scrollY - (id === '#top' ? 0 : 84);
+      window.scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
+      if (history.replaceState) history.replaceState(null, '', id);
     });
   });
-}
+})();
