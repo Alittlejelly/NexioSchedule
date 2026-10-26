@@ -49,9 +49,18 @@ class NexioApplication : Application() {
         // 尽早初始化，主界面首帧可读取壁纸与卡片参数。
         com.haooz.chedule.data.ScheduleAppearance.init(this)
         // WallpaperStore 走「接口 + 启动注入」，Android 原样委托 ScheduleAppearance（降采样/LruCache/WebP 80 口径不变）。必须在 ScheduleAppearance.init 之后。
-        com.haooz.chedule.data.WallpaperStore.backend =
-            com.haooz.chedule.data.AndroidWallpaperBackend()
-        // 课程变更后的平台副作用（重排提醒/手表同步/刷新小组件）。VM 已进 :ui-shared 不能直接碰 reminder/widget，只能经 ScheduleEffects 回调至此；未注入静默丢弃。
+        val wallpaperBackend = com.haooz.chedule.data.AndroidWallpaperBackend()
+        com.haooz.chedule.data.WallpaperStore.backend = wallpaperBackend
+        val wallpaperPreload = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "nexio-wallpaper-preload")
+        }.submit(java.util.concurrent.Callable {
+            com.haooz.chedule.data.AppearanceStore.currentStyle()
+            runCatching { wallpaperBackend.loadNow() }.getOrNull()
+        })
+        com.haooz.chedule.data.WallpaperStore.synchronousLoader = {
+            runCatching { wallpaperPreload.get(3, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()
+        }
+        // 课程变更后的平台副作用
         com.haooz.chedule.data.ScheduleEffects.init(AndroidScheduleEffects(this))
         // 同步预测性返回动画开关到全局单例。
         PredictiveBackSettings.enabled = AppStorage.store("app_preferences")
@@ -109,7 +118,8 @@ class NexioApplication : Application() {
     private fun warmUpSharedPreferences() {
         // 按启动路径上的命中顺序排列：最大的课程数据文件优先
         val names = arrayOf(
-            "course_schedule_prefs",   // 课程 / 设置 / 搭配外观（体积最大）
+            "appearance_settings",     // 壁纸变换 + 卡片参数
+            "course_schedule_prefs",   // 课程 / 设置（体积最大）
             "app_preferences",         // 隐藏后台等主界面开关
             "course_reminder_prefs",   // 提醒开关（startReminderService 会读）
             "app_theme_prefs"          // 主题模式（首帧计算深浅色需要）

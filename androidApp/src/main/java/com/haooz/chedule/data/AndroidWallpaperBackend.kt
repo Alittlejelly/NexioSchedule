@@ -21,6 +21,14 @@ class AndroidWallpaperBackend : WallpaperBackend {
         return ScheduleAppearance.loadWallpaper()?.asImageBitmap()
     }
 
+    /**
+     * 同步取壁纸，供首帧使用（注入到 `WallpaperStore.synchronousLoader`）。
+     *
+     * 与 [decode] 同一条链路（降采样 + LruCache），只是不走协程：首帧前必须拿到，
+     * 否则首帧只有底色，等异步加载完再跳成用户设定。
+     */
+    fun loadNow(): ImageBitmap? = ScheduleAppearance.loadWallpaper()?.asImageBitmap()
+
     override suspend fun encode(image: ImageBitmap, quality: Int): ByteArray? {
         // quality 由 WallpaperStore 固定传 80（与内部一致），保留参数让质量决策留在共享层（iOS 用 JPEG 80）。
         // ⚠ 落盘由 ScheduleAppearance.saveWallpaper 自己完成；这里再读一次盘取回字节供 WallpaperStore 判定成功，

@@ -1,9 +1,7 @@
 package com.haooz.chedule.data
 
 /**
- * 课表外观配置：全部可调参数收敛为不可变值对象，取代原先 N 字段 × 4 状态的写法以避免手工同步遗漏。
- * ⚠️ 从 `:androidApp` 拆到 `:core`（页面参数需跨平台可见），纯数据拆分零风险；
- * 原 android 版 `fromCombination` 已删除，现役在 `:ui-shared` 的 `CourseScheduleAppTypes.kt`。
+ * 课表外观配置：全部可调参数收敛为不可变值对象
  */
 data class AppearanceConfig(
     val cardBlurRadius: Float = 4f,
@@ -26,3 +24,26 @@ data class AppearanceConfig(
 ) {
     companion object
 }
+
+/**
+ * [AppearanceStyle]（落盘快照）→ 外观配置。
+ *
+ * 用于「搭配还没加载完」的首帧兜底：与 `AppearanceConfig.fromCombination` 字段一一对应，
+ * 保证兜底值与加载完成后派生的值相同，不会闪一帧默认值。
+ */
+fun AppearanceConfig.Companion.fromStyle(style: AppearanceStyle): AppearanceConfig = AppearanceConfig(
+    cardBlurRadius = style.cardBlur,
+    cardAlpha = style.cardAlpha.coerceIn(0f, 1f),
+    cardSurfaceAlpha = style.safeCardSurfaceAlpha,
+    cardHeight = style.safeCardHeight,
+    cardCornerRadius = style.cardCornerRadius,
+    wallpaperBrightness = style.wallpaperBrightness,
+    showBreakDividers = style.showBreakDividers,
+    cardContentAlignment = style.safeAlignment,
+    cardTextColor = style.safeTextColor,
+    cardTextScale = style.safeCardTextScale,
+    showClassroom = style.showClassroom,
+    showTeacher = style.showTeacher,
+    cardRefraction = style.safeRefraction,
+    wallpaperBlur = style.wallpaperBlur,
+)

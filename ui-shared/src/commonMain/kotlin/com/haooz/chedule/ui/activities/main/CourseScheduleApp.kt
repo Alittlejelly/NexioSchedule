@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.AppearanceStore
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
 import com.haooz.chedule.i18n.AppLanguage
@@ -281,6 +280,10 @@ fun CourseScheduleApp(
         latestScreenWPx = screenWPx
         latestScreenHPx = screenHPx
 
+        // 首帧搭配：壁纸位图（宿主已同步解码）+ 卡片参数一起读，同步装好。
+        // 放在画 UI 之前 —— 首帧就是用户设定，不需要等一帧再跳、也不需要过渡动画。
+        ensureInitialCombination()
+
         // 首帧后预热 RenderEffect，避免首次开 BlurBottomSheet 掉帧
         LaunchedEffect(Unit) { blurWarmupReady = true }
         if (blurWarmupReady) {
@@ -337,61 +340,6 @@ fun CourseScheduleApp(
         appSettingDark = rememberAppSettingDark()
         LaunchedEffect(effectiveIsDark, appSettingDark) {
             onSystemBarsChanged(effectiveIsDark, appSettingDark)
-        }
-
-        // 加载单搭配；有伴生缓存则跳过 IO
-        LaunchedEffect(Unit) {
-            val cached = WallpaperStore.currentImageBitmap()
-
-            val comb = if (cached != null) {
-                buildCombination(cached)
-            } else {
-                withContext(ioDispatcher) { buildCombination(WallpaperStore.load()) }
-            }
-            // 单搭配恒为下标 0
-            combinations = listOf(comb)
-            currentCombinationIndex = 0
-
-            val curr = combinations.getOrNull(0)
-            if (curr != null) {
-                val curW = latestScreenWPx
-                val curH = latestScreenHPx
-                val refW = AppearanceStore.getOffsetRefW()
-                val refH = AppearanceStore.getOffsetRefH()
-                // 有参考尺寸且与当前屏不一致时重映射；旧数据 ref=0 时原样加载
-                val (mappedOffset, mappedScale) = if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
-                    remapWallpaperForScreen(
-                        curr.offset,
-                        curr.scale,
-                        curr.bitmap,
-                        refW,
-                        refH,
-                        curW,
-                        curH
-                    )
-                } else {
-                    curr.offset to curr.scale
-                }
-                wallpaperBitmap = curr.bitmap
-                wallpaperOffset = mappedOffset
-                // 不把当前方向的 minScale 写回用户 scale：绘制层已 max(scale, minScale)，
-                // 这里烘焙会导致旋转回原方向时缩放被抬高、画面错位
-                wallpaperScale = mappedScale
-                wallpaperScreenRef = curW to curH
-                savedWallpaperBitmap = curr.bitmap
-                savedWallpaperOffset = mappedOffset
-                savedWallpaperScale = mappedScale
-                savedAppearance = AppearanceConfig.fromCombination(curr)
-                originalWallpaperBitmap = curr.bitmap
-                originalWallpaperOffset = mappedOffset
-                originalWallpaperScale = mappedScale
-                if (mappedOffset != curr.offset || mappedScale != curr.scale) {
-                    combinations = combinations.toMutableList().also { list ->
-                        list[0] = list[0].copy(offset = mappedOffset, scale = mappedScale)
-                    }
-                }
-                WallpaperStore.saveTransform(mappedOffset, mappedScale)
-            }
         }
 
         // 横竖屏（含自由窗口）尺寸变化：把当前显示中的变换从旧屏重映射到新屏

@@ -33,6 +33,88 @@ internal class IosWallpaperBackend : WallpaperBackend {
         }
     }
 
+    /**
+     * 同步取壁纸，供首帧使用（注入到 `WallpaperStore.synchronousLoader`）。
+     *
+     * 读盘 + skia 解码本身就是同步的，[decode] 只是为了满足接口才标 suspend。
+     * 首帧前必须拿到，否则先画一帧底色再跳成用户设定。
+     *
+     * 解码结果按原始像素缓存一份（[RAW_CACHE]）：壁纸只在换图时变，每次启动重解 JPEG 是纯浪费。
+     */
+    fun loadNow(): ImageBitmap? {
+        val source = AppFiles.root.resolve(WallpaperStore.FILE_NAME)
+        val cache = AppFiles.root.resolve(RAW_CACHE)
+        // 壁纸已被清掉但像素缓存还在：作废，否则会读回一张已经删掉的壁纸
+        if (cache.exists() && !source.exists()) runCatching { cache.delete() }
+        decodeRaw(cache)?.let { return it }
+        if (!source.exists()) return null
+        return try {
+            Image.makeFromEncoded(source.readBytes()).toComposeImageBitmap().also { saveRaw(it, cache) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 写原始像素缓存：`宽(4) + 高(4) + ARGB 平铺`；失败静默，只影响下次启动速度 */
+    private fun saveRaw(image: ImageBitmap, file: AppFile) {
+        runCatching {
+            val w = image.width
+            val h = image.height
+            if (w <= 0 || h <= 0) return
+            val pixels = IntArray(w * h)
+            image.readPixels(
+                buffer = pixels,
+                startX = 0,
+                startY = 0,
+                width = w,
+                height = h,
+                bufferOffset = 0,
+                stride = w,
+            )
+            val bytes = ByteArray(8 + w * h * 4)
+            bytes[0] = (w shr 24).toByte()
+            bytes[1] = (w shr 16).toByte()
+            bytes[2] = (w shr 8).toByte()
+            bytes[3] = w.toByte()
+            bytes[4] = (h shr 24).toByte()
+            bytes[5] = (h shr 16).toByte()
+            bytes[6] = (h shr 8).toByte()
+            bytes[7] = h.toByte()
+            for (i in pixels.indices) {
+                val p = pixels[i]
+                val o = 8 + i * 4
+                bytes[o] = (p and 0xFF).toByte()
+                bytes[o + 1] = ((p shr 8) and 0xFF).toByte()
+                bytes[o + 2] = ((p shr 16) and 0xFF).toByte()
+                bytes[o + 3] = ((p shr 24) and 0xFF).toByte()
+            }
+            file.writeBytes(bytes)
+        }
+    }
+
+    /** 读原始像素缓存；不存在/损坏/尺寸对不上都返回 null，由调用方回落到解码 */
+    private fun decodeRaw(file: AppFile): ImageBitmap? = runCatching {
+        if (!file.exists()) return@runCatching null
+        val bytes = file.readBytes()
+        if (bytes.size < 8) return@runCatching null
+        val w = ((bytes[0].toInt() and 0xFF) shl 24) or ((bytes[1].toInt() and 0xFF) shl 16) or
+            ((bytes[2].toInt() and 0xFF) shl 8) or (bytes[3].toInt() and 0xFF)
+        val h = ((bytes[4].toInt() and 0xFF) shl 24) or ((bytes[5].toInt() and 0xFF) shl 16) or
+            ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
+        if (w <= 0 || h <= 0 || bytes.size != 8 + w * h * 4) return@runCatching null
+        // toComposeImageBitmap 的接收者是 skia Image，不是 Bitmap（与上面 encode/scale 同一条转换）
+        val bitmap = Bitmap().apply {
+            allocN32Pixels(w, h)
+            installPixels(bytes.copyOfRange(8, bytes.size))
+        }
+        Image.makeFromBitmap(bitmap).toComposeImageBitmap()
+    }.getOrNull()
+
+    companion object {
+        /** 解码结果的原始像素缓存（纯派生数据，删了只是多解一次） */
+        private const val RAW_CACHE = "appearance_wallpaper.pixels"
+    }
+
     override suspend fun encode(image: ImageBitmap, quality: Int): ByteArray? {
         val w = image.width
         val h = image.height

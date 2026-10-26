@@ -97,10 +97,6 @@ class MainActivity : ComponentActivity() {
                 com.haooz.chedule.data.WallpaperStore.wallpaperOffset, value
             )
 
-        @Volatile
-        var cachedAppearance: com.haooz.chedule.data.AppearanceConfig =
-            com.haooz.chedule.data.AppearanceConfig()
-
         fun setTaskExcludedFromRecents(context: Context, hidden: Boolean) {
             runCatching {
                 val manager = context.getSystemService(ActivityManager::class.java)
@@ -200,62 +196,10 @@ class MainActivity : ComponentActivity() {
             StatsReporter.reportInstallOnce()
         }
 
-        // 异步预加载搭配壁纸，Compose 侧已处理「无壁纸」的情况
-        if (cachedWallpaperBitmap == null) {
-            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    // 单搭配：无 id 维度，直接读外观文件。
-                    //
-                    // 壁纸与变换的缓存已下沉到共享层 WallpaperStore（桌面/iOS 的
-                    // CourseScheduleApp 要读同一份）。这里负责「解码 → remap → 回填」。
-                    val bitmap = ScheduleAppearance.loadWallpaper()
-                    var offset = Offset(
-                        ScheduleAppearance.getOffsetX(),
-                        ScheduleAppearance.getOffsetY()
-                    )
-                    var scale = ScheduleAppearance.getScale()
-                    val refW = ScheduleAppearance.getOffsetRefW()
-                    val refH = ScheduleAppearance.getOffsetRefH()
-                    val metrics = this@MainActivity.resources.displayMetrics
-                    val curW = metrics.widthPixels.toFloat()
-                    val curH = metrics.heightPixels.toFloat()
-                    if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
-                        val mapped = remapWallpaperForScreen(
-                            offset, scale, bitmap, refW, refH, curW, curH
-                        )
-                        offset = mapped.first
-                        scale = mapped.second
-                    }
-                    // 回填共享层（ImageBitmap 视图，不复制像素）
-                    bitmap?.asImageBitmap()?.let {
-                        com.haooz.chedule.data.WallpaperStore.setCached(it)
-                    }
-                    com.haooz.chedule.data.WallpaperStore.saveTransform(offset, scale)
-                    cachedAppearance = com.haooz.chedule.data.AppearanceConfig(
-                        cardBlurRadius = ScheduleAppearance.getCardBlur(),
-                        cardAlpha = ScheduleAppearance.getCardAlpha(),
-                        cardSurfaceAlpha = ScheduleAppearance.getCardSurfaceAlpha(),
-                        cardHeight = ScheduleAppearance.getCardHeight(),
-                        cardCornerRadius = ScheduleAppearance.getCardCornerRadius(),
-                        wallpaperBrightness = ScheduleAppearance.getWallpaperBrightness(),
-                        showBreakDividers = ScheduleAppearance.getShowBreakDividers(),
-                        cardContentAlignment = ScheduleAppearance.getCardContentAlignment(),
-                        cardTextColor = ScheduleAppearance.getCardTextColor(),
-                        cardTextScale = ScheduleAppearance.getCardTextScale(),
-                        showClassroom = ScheduleAppearance.getShowClassroom(),
-                        showTeacher = ScheduleAppearance.getShowTeacher(),
-                        cardRefraction = ScheduleAppearance.getCardRefraction(),
-                        wallpaperBlur = ScheduleAppearance.getWallpaperBlur()
-                    )
-                } catch (_: Exception) {
-                }
-            }
-        }
 
         setContent {
             CourseScheduleTheme {
-                // 合规：未同意隐私政策前不申请权限、不收集信息（由 privacyConsented 门禁网络副作用）；
-                // 主界面仍照常组合（预加载），这样点「同意」后即时进入，不会卡顿
+                // 合规：未同意隐私政策前不申请权限、不收集信息
                 var privacyAgreed by remember {
                     mutableStateOf(PrivacyConsent.hasConsented())
                 }

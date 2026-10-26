@@ -1,7 +1,5 @@
 package com.haooz.chedule.data
 
-import kotlin.concurrent.Volatile
-
 /**
  * 外观存储（跨平台）：键名、快照编解码与缓存。getter/setter 与 Android 同名，切换零改动。
  * ⚠ 键名与文件位置是数据兼容契约（[AppearancePrefs.FILE]/[AppearancePrefs.FILE_STYLE_KEY]），改了等于老用户外观读不出来。
@@ -18,10 +16,13 @@ object AppearanceStore {
     private var cached: AppearanceStyle? = null
 
     /**
-     * 冷启动兜底缓存：首帧搭配未加载完时用它兜底，避免壁纸测光/卡片参数闪一帧默认值。仅内存不落盘。
+     * 首帧兜底配置：搭配（壁纸位图 + 参数）还没加载完时由界面侧读它。
+     *
+     * 直接从盘上快照同步派生，和搭配加载走同一份数据，所以兜底值与加载结果恒等，不会跳变。
+     * 不要做成「等外部写入的 var」—— 一旦没人写，首帧就画默认卡片高度/模糊，加载完再跳一次。
      */
-    @Volatile
-    var cachedConfig: AppearanceConfig = AppearanceConfig()
+    val cachedConfig: AppearanceConfig
+        get() = AppearanceConfig.fromStyle(currentStyle())
 
     /** 是否处于 [batchSave] 块内 */
     private var inBatch = false

@@ -69,6 +69,15 @@ object WallpaperStore {
     var backend: WallpaperBackend? = null
 
     /**
+     * 同步取壁纸（读盘 + 解码，不走协程）。首帧前就要拿到，否则首帧只有底色、
+     * 等异步加载完再跳成用户设定。
+     *
+     * 宿主注入：Android = `ScheduleAppearance.loadWallpaper()`（自带 LruCache 与降采样），
+     * iOS = skia 同步解码；桌面不注入（无壁纸）。未注入时首帧加载交给异步兜底。
+     */
+    var synchronousLoader: (() -> ImageBitmap?)? = null
+
+    /**
      * 内存缓存；Android 主缓存在 `ScheduleAppearance.LruCache`，此处仅兜底避免
      * 同会话重复读盘，故改壁纸须两侧都清。
      */

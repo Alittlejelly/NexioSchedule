@@ -3,7 +3,6 @@ package com.haooz.chedule.ui.activities.main
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -52,10 +51,6 @@ import com.haooz.chedule.data.WallpaperTransform
 import com.haooz.chedule.data.todayLocalDate
 import com.haooz.chedule.ui.activities.today.TodayAssistantCardData
 import com.haooz.chedule.ui.components.SharedFileIntent
-import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_FADE_MILLIS
-import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_HOLD_MILLIS
-import com.haooz.chedule.ui.effects.motion.CUSTOMIZE_COVER_SCALE_MILLIS
-import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.navigation.AppRouter
@@ -197,7 +192,12 @@ class CourseScheduleAppState {
      */
     var glowAlpha by mutableFloatStateOf(0f)
     var persistedScheduleThemeMode: ThemeMode = ThemeMode.FOLLOW_APP
-    var initialCombWallpaperIsLight: Boolean? = null
+
+    /**
+     * 搭配未加载完时的壁纸测光兜底。直接读盘上快照（与 [buildCombination] 同源），
+     * 所以加载完不会跳主题；留 null 会让首帧按系统深浅画，壁纸到位再翻一次。
+     */
+    var initialCombWallpaperIsLight: Boolean? = AppearanceStore.getWallpaperIsLight()
 
     // ── 3. 宿主注入的平台能力 ─────────────────────────────────────────────
     var privacyConsented: Boolean = true
@@ -543,7 +543,59 @@ class CourseScheduleAppState {
             wallpaperBlur = AppearanceStore.getWallpaperBlur()
         )
 
-    // 加载单搭配；有伴生缓存则跳过 IO
+    /**
+     * 首帧搭配：壁纸位图 + 参数一起读，必须在画 UI 之前调用（见 `CourseScheduleApp`）。
+     *
+     * 壁纸由宿主在 Application 阶段就后台解码好（[WallpaperStore.synchronousLoader]），
+     * 这里只是取结果；没赶上才等它剩下的时间。没有壁纸/平台没提供通道时就是无壁纸搭配。
+     */
+    fun ensureInitialCombination() {
+        if (combinations.isNotEmpty()) return
+        val bitmap = WallpaperStore.currentImageBitmap()
+            ?: WallpaperStore.synchronousLoader?.invoke()?.also { WallpaperStore.setCached(it) }
+        installInitialCombination(bitmap)
+    }
+
+    /** 装上首个搭配并把壁纸变换摆到当前屏。 */
+    fun installInitialCombination(bitmap: ImageBitmap?) {
+        if (combinations.isNotEmpty()) return
+        val comb = buildCombination(bitmap)
+        // 单搭配恒为下标 0
+        combinations = listOf(comb)
+        currentCombinationIndex = 0
+
+        val curW = latestScreenWPx
+        val curH = latestScreenHPx
+        val refW = AppearanceStore.getOffsetRefW()
+        val refH = AppearanceStore.getOffsetRefH()
+        // 有参考尺寸且与当前屏不一致时重映射；旧数据 ref=0 时原样加载
+        val (mappedOffset, mappedScale) =
+            if (refW > 0f && refH > 0f && (refW != curW || refH != curH)) {
+                remapWallpaperForScreen(comb.offset, comb.scale, comb.bitmap, refW, refH, curW, curH)
+            } else {
+                comb.offset to comb.scale
+            }
+        wallpaperBitmap = comb.bitmap
+        wallpaperOffset = mappedOffset
+        // 不把当前方向的 minScale 写回用户 scale：绘制层已 max(scale, minScale)，
+        // 这里烘焙会导致旋转回原方向时缩放被抬高、画面错位
+        wallpaperScale = mappedScale
+        wallpaperScreenRef = curW to curH
+        savedWallpaperBitmap = comb.bitmap
+        savedWallpaperOffset = mappedOffset
+        savedWallpaperScale = mappedScale
+        savedAppearance = AppearanceConfig.fromCombination(comb)
+        originalWallpaperBitmap = comb.bitmap
+        originalWallpaperOffset = mappedOffset
+        originalWallpaperScale = mappedScale
+        if (mappedOffset != comb.offset || mappedScale != comb.scale) {
+            combinations = combinations.toMutableList().also { list ->
+                list[0] = list[0].copy(offset = mappedOffset, scale = mappedScale)
+            }
+        }
+        WallpaperStore.saveTransform(mappedOffset, mappedScale)
+    }
+
     // 横竖屏（含自由窗口）尺寸变化：把当前显示中的变换从旧屏重映射到新屏
     val cutoutMainScale = Animatable(1f)
     var cutoutCenterYRatio by mutableFloatStateOf(0.5f)

@@ -112,7 +112,10 @@ fun bootstrapNexioIos() {
     )
 
     // 壁纸后端：iOS 用 UIImage（JPEG）+ 共享 AppFiles 落盘；与 Android 同一条接口+注入链路。
-    WallpaperStore.backend = IosWallpaperBackend()
+    val wallpaperBackend = IosWallpaperBackend()
+    WallpaperStore.backend = wallpaperBackend
+    // 首帧壁纸同步解码（skia 本身同步）：首帧就要带上用户壁纸，等协程会先画一帧底色再跳。
+    WallpaperStore.synchronousLoader = { wallpaperBackend.loadNow() }
 
     // 原生提示条：把 showToast 接到 UIKit HUD；不注入则 native actual 只打日志，用户「点了没反应」。
     IosToast.install()
