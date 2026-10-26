@@ -26,18 +26,27 @@ import com.kyant.backdrop.internal.setRuntimeShader
 import com.kyant.backdrop.isRuntimeShaderSupported
 import kotlin.math.ceil
 
+/**
+ * outline 缓存按引用相等判定（`cachedOutlineShape === shape`），只能覆盖「换了个 Shape 对象」。
+ * 形状内部参数在 draw 期变化时（底栏融球把圆钮并进胶囊），要靠 [EdgeLightElement.outlineRevision]
+ * 变化才重建。必须是单例：写成 `= { 0L }` 会让既有调用方的 element 相等性失效。
+ */
+private val ZeroOutlineRevision: () -> Long = { 0L }
+
 internal class EdgeLightElement(
     val shape: androidx.compose.ui.graphics.Shape,
-    val edgeLight: () -> EdgeLight?
+    val edgeLight: () -> EdgeLight?,
+    val outlineRevision: () -> Long = ZeroOutlineRevision
 ) : ModifierNodeElement<EdgeLightNode>() {
 
     override fun create(): EdgeLightNode {
-        return EdgeLightNode(shape, edgeLight)
+        return EdgeLightNode(shape, edgeLight, outlineRevision)
     }
 
     override fun update(node: EdgeLightNode) {
         node.shape = shape
         node.edgeLight = edgeLight
+        node.outlineRevision = outlineRevision
         node.invalidateOutlineCache()
         node.invalidateDraw()
     }
@@ -53,19 +62,22 @@ internal class EdgeLightElement(
         if (other !is EdgeLightElement) return false
         if (shape != other.shape) return false
         if (edgeLight != other.edgeLight) return false
+        if (outlineRevision != other.outlineRevision) return false
         return true
     }
 
     override fun hashCode(): Int {
         var result = shape.hashCode()
         result = 31 * result + edgeLight.hashCode()
+        result = 31 * result + outlineRevision.hashCode()
         return result
     }
 }
 
 internal class EdgeLightNode(
     var shape: androidx.compose.ui.graphics.Shape,
-    var edgeLight: () -> EdgeLight?
+    var edgeLight: () -> EdgeLight?,
+    var outlineRevision: () -> Long = ZeroOutlineRevision
 ) : DrawModifierNode, Modifier.Node() {
 
     override val shouldAutoInvalidate: Boolean = false
@@ -93,17 +105,19 @@ internal class EdgeLightNode(
     private var recordedOutlineHashCode: Int = 0
     private var needsRecord = true
 
-    // outline 仅在 (shape, size, layoutDirection) 变化时重建：原先每帧都重走一次路径构建
+    // outline 只在 (shape, size, layoutDirection, revision) 变化时重建
     private var cachedOutline: Outline? = null
     private var cachedOutlineShape: Any? = null
     private var cachedOutlineSize: Size? = null
     private var cachedOutlineLayoutDirection: LayoutDirection? = null
+    private var cachedOutlineRevision: Long = Long.MIN_VALUE
 
     fun invalidateOutlineCache() {
         cachedOutline = null
         cachedOutlineShape = null
         cachedOutlineSize = null
         cachedOutlineLayoutDirection = null
+        cachedOutlineRevision = Long.MIN_VALUE
     }
 
     override fun ContentDrawScope.draw() {
@@ -131,11 +145,13 @@ internal class EdgeLightNode(
                 cachedSafeSize
             }
 
+            val revision = outlineRevision()
             val outline =
                 if (cachedOutline != null &&
                     cachedOutlineShape === shape &&
                     cachedOutlineSize == size &&
-                    cachedOutlineLayoutDirection == layoutDirection
+                    cachedOutlineLayoutDirection == layoutDirection &&
+                    cachedOutlineRevision == revision
                 ) {
                     cachedOutline!!
                 } else {
@@ -143,6 +159,7 @@ internal class EdgeLightNode(
                         cachedOutlineShape = shape
                         cachedOutlineSize = size
                         cachedOutlineLayoutDirection = layoutDirection
+                        cachedOutlineRevision = revision
                         cachedOutline = it
                     }
                 }
@@ -253,24 +270,28 @@ internal class EdgeLightNode(
 
 fun Modifier.edgeLight(
     shape: androidx.compose.ui.graphics.Shape,
-    edgeLight: EdgeLight = EdgeLight.Default
+    edgeLight: EdgeLight = EdgeLight.Default,
+    outlineRevision: () -> Long = ZeroOutlineRevision
 ): Modifier {
     return this.then(
         EdgeLightElement(
             shape = shape,
-            edgeLight = { edgeLight }
+            edgeLight = { edgeLight },
+            outlineRevision = outlineRevision,
         )
     )
 }
 
 fun Modifier.edgeLight(
     shape: androidx.compose.ui.graphics.Shape,
-    edgeLight: () -> EdgeLight? = { EdgeLight.Default }
+    edgeLight: () -> EdgeLight? = { EdgeLight.Default },
+    outlineRevision: () -> Long = ZeroOutlineRevision
 ): Modifier {
     return this.then(
         EdgeLightElement(
             shape = shape,
-            edgeLight = edgeLight
+            edgeLight = edgeLight,
+            outlineRevision = outlineRevision,
         )
     )
 }
