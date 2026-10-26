@@ -5,7 +5,6 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,13 +60,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -77,7 +71,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -164,8 +157,6 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
-import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
 
 // 普通 holder 而非 state：避免 onGloballyPositioned 每次写入触发卡片重组
 private class CardBoundsHolder {
@@ -785,29 +776,14 @@ fun MainScheduleScreen(
         hasWallpaper = wallpaperBitmap != null
     )
 
-    // onDraw 必须稳定：每次新建会换掉 LayerBackdrop 实例，SharedBlur 与全部课卡采样跟着重建
-    val wallpaperBackColorState = rememberUpdatedState(wallpaperBackdropColor)
-    val wallpaperOnDraw: ContentDrawScope.() -> Unit =
-        remember {
-            {
-                drawRect(wallpaperBackColorState.value)
-                drawContent()
-            }
-        }
-
-    // key 含 wallpaperBitmap：壁纸变化时强制重建并重录
-    // 共享壁纸时直接用主层 backdrop，卡片才能采到真实壁纸像素
-    val localCourseCardBackdrop = key(wallpaperBitmap) {
-        rememberKyantLayerBackdrop(onDraw = wallpaperOnDraw)
-    }
-    val courseCardBackdrop: LayerBackdrop =
-        if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
-        else localCourseCardBackdrop
+    // 壁纸像素一律来自主 pager 后的共享层：本页不自挂录制层（非共享壁纸路径已不存在）。
+    // 共享层没挂（无壁纸 / 非共享模式）时这里为 null，卡片与分界带退回纯色底。
+    val courseCardBackdrop: LayerBackdrop? =
+        if (useSharedWallpaper) sharedWallpaperBackdrop else null
 
     // 仅壁纸路径需要共享模糊层。
-    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效），
-    // 壁纸采样录屏层与共享层照常挂载
-    val sharedBlurManager = if (wallpaperBitmap != null) {
+    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效）
+    val sharedBlurManager = if (courseCardBackdrop != null) {
         remember(courseCardBackdrop) { SharedBlurBackdrop(courseCardBackdrop) }
     } else null
     // blur=0 也走共享层：省掉每卡独立重录；滚动 LOD 时可直接 blit 共享采样
@@ -871,62 +847,9 @@ fun MainScheduleScreen(
                     )
                 }
         ) {
-            if (wallpaperBitmap != null && !useSharedWallpaper) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            Modifier.kyantLayerBackdrop(courseCardBackdrop, wallpaperRecordKey)
-                        )
-                ) {
-                    val brightnessFilter = remember(wallpaperBrightness) {
-                        if (wallpaperBrightness != 0f) {
-                            val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                            ColorFilter.colorMatrix(
-                                ColorMatrix(
-                                    floatArrayOf(
-                                        b, 0f, 0f, 0f, 0f,
-                                        0f, b, 0f, 0f, 0f,
-                                        0f, 0f, b, 0f, 0f,
-                                        0f, 0f, 0f, 1f, 0f
-                                    )
-                                )
-                            )
-                        } else null
-                    }
-                    val wallpaperBlurEffect = remember(wallpaperBlur) {
-                        val blurRadiusPx = 12f * density.density
-                        // ⚠ 必须查 wallpaperBlur：非共享路径（排班模式）本页壁纸 alpha=1f、
-                        // 不透明可见，漏判会让「壁纸模糊」开关关着也照糊。共享层
-                        // CourseScheduleApp 那份判了，这两处（此处 + TodayScreen）当初漏了。
-                        if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
-                            BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
-                        } else null
-                    }
-                    Image(
-                        bitmap = wallpaperBitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
-                                scaleX = effectiveScale
-                                scaleY = effectiveScale
-                                // 只有非共享路径才可见（共享层负责显示）
-                                alpha = 1f
-                                translationX = wallpaperOffset.x
-                                translationY = wallpaperOffset.y
-                                renderEffect = wallpaperBlurEffect
-                            },
-                        contentScale = ContentScale.Fit,
-                        colorFilter = brightnessFilter
-                    )
-                }
-            } else if (wallpaperBitmap == null) {
-                // 无壁纸：无人采样 courseCardBackdrop，跳过 LayerBackdrop 录制
-                //（每帧把整页课表录进 GPU 层是左右滑白烧）
-                // ⚠ 共享壁纸分支（wallpaperBitmap != null && useSharedWallpaper）走不到这里：
-                // 那层壁纸由主 pager 后的共享层绘制，本页必须保持透明
+            if (courseCardBackdrop == null) {
+                // 没有共享壁纸层（无壁纸 / 非共享模式）：本页垫页底色。
+                // 有共享层时壁纸由主 pager 后那层绘制，本页必须保持透明。
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1576,7 +1499,7 @@ fun MainScheduleScreen(
                                                             // 壁纸像素，退化成一次圆角填充（每个周页 2 条，3 个周页常驻）
                                                             val dividerNeedsSampling =
                                                                 cardBlurRadius > 0f || cardRefraction != CardRefractionLevel.OFF
-                                                            if (dividerNeedsSampling) {
+                                                            if (dividerNeedsSampling && dividerBackdrop != null) {
                                                                 val dividerEffects: BackdropEffectScope.() -> Unit =
                                                                     remember(
                                                                         dividerBackdrop,

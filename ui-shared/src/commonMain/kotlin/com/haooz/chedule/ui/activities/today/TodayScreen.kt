@@ -1,17 +1,13 @@
 package com.haooz.chedule.ui.activities.today
 
-import androidx.compose.foundation.Image
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
-
 import com.haooz.chedule.data.formatChineseDate
 import com.haooz.chedule.data.millisBetween
 import com.haooz.chedule.data.parseHourMinute
-
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.L10n
 import com.haooz.chedule.i18n.TodayStr
-
 import com.haooz.chedule.data.lengthOfMonth
 import com.haooz.chedule.data.localDateTimeAt
 import com.haooz.chedule.data.nowLocalTime
@@ -19,7 +15,6 @@ import com.haooz.chedule.data.plusDays
 import com.haooz.chedule.data.todayLocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,19 +59,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -112,7 +100,6 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.coroutines.delay
@@ -130,15 +117,8 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
-import com.kyant.backdrop.backdrops.layerBackdrop as kyantLayerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop as rememberKyantLayerBackdrop
-import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.utils.screenHeightDp
 import com.kyant.backdrop.BackdropEffectScope
 
-// 有壁纸 backdrop 才走毛玻璃半透明路径，与模糊半径无关（blur=0 仍采样壁纸）
-// 原 TIME_FORMATTER("HH:mm") / DATE_FORMATTER("yyyy年M月d日") 是 JVM 侧的 DateTimeFormatter，
-// 已换成 :core 的 parseHourMinute() / formatChineseDate()；localDateTimeAt() 也改用 :core 的同名函数。
 
 // 由 BlurCard 统一应用折射档位
 val LocalCardRefraction = staticCompositionLocalOf { CardRefractionLevel.DEFAULT }
@@ -398,15 +378,10 @@ fun TodayScreen(
     scrollToTodayTrigger: Int = 0,
     jumpToDateTrigger: Int = 0,
     onJumpToDateProcessed: () -> Unit = {},
-    wallpaperBitmap: ImageBitmap? = null,
-    wallpaperOffset: Offset = Offset.Zero,
-    wallpaperScale: Float = 1f,
-    wallpaperBrightness: Float = 0f,
     cardBlurRadius: Float = 0f,
     cardRefraction: CardRefractionLevel = CardRefractionLevel.DEFAULT,
     /** 有壁纸时白/黑底不透明度（卡片不透明度） */
     cardSurfaceAlpha: Float = 0.15f,
-    wallpaperBlur: Boolean = false,
     // true：壁纸由主 pager 后共享层绘制，本页透明叠上，切 tab 时不随页平移
     useSharedWallpaper: Boolean = false,
     // 共享壁纸层的 backdrop，供卡片玻璃采样（useSharedWallpaper 时必传）
@@ -430,19 +405,9 @@ fun TodayScreen(
     val smartWeekend by settingsViewModel.smartWeekend.collectAsState()
     val holidayDataRevision by HolidayManager.dataRevision.collectAsState()
 
-    val density = LocalDensity.current
     // 当日/次日课表解析用（原提醒侧解析内部 new 的就是 CourseRepository()，
     // 而 CourseRepository() 返回单例，语义等价）
     val resolveRepository = remember { CourseRepository() }
-    val screenWidthPx = with(density) { screenWidthDp().dp.toPx() }
-    val screenHeightPx = with(density) { screenHeightDp().dp.toPx() }
-    val minWallpaperScale = remember(wallpaperBitmap, screenWidthPx, screenHeightPx) {
-        if (wallpaperBitmap != null && wallpaperBitmap.width > 0 && wallpaperBitmap.height > 0) {
-            val fitScale = minOf(screenWidthPx / wallpaperBitmap.width, screenHeightPx / wallpaperBitmap.height)
-            val coverScale = maxOf(screenWidthPx / wallpaperBitmap.width, screenHeightPx / wallpaperBitmap.height)
-            if (fitScale > 0f) coverScale / fitScale else 1f
-        } else 1f
-    }
 
     val MAX_DATE_OFFSET = 1000
     var currentLocalDateTime by remember {
@@ -530,18 +495,10 @@ fun TodayScreen(
     // externalListState 仅作兼容参数保留，不再驱动列表
     val hapticFeedback = LocalHapticFeedback.current
 
-    val backgroundColor = MiuixTheme.colorScheme.surface
-    // 供今日页卡片 drawBackdrop 采样壁纸：共享层时直接用主层 backdrop，否则录本页壁纸
-    val localCardBackdrop = rememberKyantLayerBackdrop {
-        drawRect(backgroundColor)
-        drawContent()
-    }
-    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效），
-    // 壁纸采样录屏层照常挂载
-    val cardBackdrop: Backdrop =
-        if (useSharedWallpaper && sharedWallpaperBackdrop != null) sharedWallpaperBackdrop
-        else localCardBackdrop
-    val hasWallpaper = wallpaperBitmap != null
+    // 卡片玻璃一律采主 pager 后的共享壁纸层：本页不自挂录制层（非共享壁纸路径已不存在）。
+    // 无材质档模糊/折射由 displayAppearance 钳 0，但卡片仍采壁纸（着色/不透明度照常生效）。
+    val cardBackdrop: Backdrop? =
+        if (useSharedWallpaper) sharedWallpaperBackdrop else null
     // 默认 15% 锚定当前观感（课程卡 0.45 / 格言卡 0.6），其余按百分比线性映射到 1
     val p = cardSurfaceAlpha.coerceIn(0f, 1f)
     fun anchorOpacity(anchor: Float): Float = if (p <= 0.15f) {
@@ -564,7 +521,7 @@ fun TodayScreen(
     Scaffold(
         topBar = {},
         // 共享壁纸时本页必须透明，否则会盖住主 pager 后面的壁纸层
-        containerColor = if (useSharedWallpaper && wallpaperBitmap != null) {
+        containerColor = if (cardBackdrop != null) {
             Color.Transparent
         } else {
             MiuixTheme.colorScheme.surface
@@ -574,57 +531,6 @@ fun TodayScreen(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            if (wallpaperBitmap != null && !useSharedWallpaper) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            Modifier.kyantLayerBackdrop(localCardBackdrop)
-                        )
-                ) {
-                    val brightnessFilter = if (wallpaperBrightness != 0f) {
-                        val b = (1f + wallpaperBrightness / 50f).coerceIn(0f, 2f)
-                        ColorFilter.colorMatrix(
-                            ColorMatrix(
-                                floatArrayOf(
-                                    b, 0f, 0f, 0f, 0f,
-                                    0f, b, 0f, 0f, 0f,
-                                    0f, 0f, b, 0f, 0f,
-                                    0f, 0f, 0f, 1f, 0f
-                                )
-                            )
-                        )
-                    } else null
-                    val todayWallpaperBlurEffect = remember(wallpaperBlur) {
-                        // 跨平台模糊模板：半径表达式与原实现逐字一致
-                        val blurRadiusPx = 24f * density.density
-                        // ⚠ 同 MainScheduleScreen：漏判 wallpaperBlur 会让关闭开关后
-                        // 非共享路径（alpha=1f）仍强制全屏高斯模糊，半径还大一倍。
-                        if (wallpaperBlur && blurRadiusPx > 0f && isRenderEffectSupported()) {
-                            BlurEffect(null, blurRadiusPx, blurRadiusPx, TileMode.Clamp)
-                        } else null
-                    }
-                    Image(
-                        bitmap = wallpaperBitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                val effectiveScale = maxOf(wallpaperScale, minWallpaperScale)
-                                scaleX = effectiveScale
-                                scaleY = effectiveScale
-                                // 只有非共享路径才可见（共享层负责显示）
-                                alpha = 1f
-                                translationX = wallpaperOffset.x
-                                translationY = wallpaperOffset.y
-                                renderEffect = todayWallpaperBlurEffect
-                            },
-                        contentScale = ContentScale.Fit,
-                        colorFilter = brightnessFilter
-                    )
-                }
-            }
-
             HorizontalPager(
                 state = pagerState,
                 // 与课表周 pager 同款预组合：翻日/返回今日时下一日页面在第一帧就要露出，
@@ -881,7 +787,7 @@ fun TodayScreen(
                                 todayCourses = if (isPageToday) pageCourses else emptyList(),
                                 tomorrowCourses = tomorrowCourses,
                                 sectionTimes = sectionTimes,
-                                wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                wallpaperBackdrop = cardBackdrop,
                                 blurRadius = cardBlurRadius,
                                 surfaceOpacity = highlightCardOpacity
                             )
@@ -896,7 +802,7 @@ fun TodayScreen(
                                         afternoonSections = afternoonSections,
                                         showClassroom = showClassroom,
                                         showTeacher = showTeacher,
-                                        wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                        wallpaperBackdrop = cardBackdrop,
                                         blurRadius = cardBlurRadius,
                                         surfaceOpacity = highlightCardOpacity,
                                     )
@@ -923,7 +829,7 @@ fun TodayScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, if (hasWallpaper) cardBackdrop else null, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
                         }
                     }
                 } else {
@@ -976,7 +882,7 @@ fun TodayScreen(
                                 todayCourses = if (isPageToday) pageCourses else emptyList(),
                                 tomorrowCourses = tomorrowCourses,
                                 sectionTimes = sectionTimes,
-                                wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                wallpaperBackdrop = cardBackdrop,
                                 blurRadius = cardBlurRadius,
                                 surfaceOpacity = highlightCardOpacity
                             )
@@ -992,14 +898,14 @@ fun TodayScreen(
                                         afternoonSections = afternoonSections,
                                         showClassroom = showClassroom,
                                         showTeacher = showTeacher,
-                                        wallpaperBackdrop = if (hasWallpaper) cardBackdrop else null,
+                                        wallpaperBackdrop = cardBackdrop,
                                         blurRadius = cardBlurRadius,
                                         surfaceOpacity = highlightCardOpacity,
                                     )
                                 )
                             }
                         }
-                        addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, if (hasWallpaper) cardBackdrop else null, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                        addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
                     }
                 }
             }

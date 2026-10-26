@@ -449,8 +449,10 @@ internal fun CourseScheduleAppMainContent(
                         ) {
                             if (showScheduleTitle) {
                                 val scheduleTitleIndex = if (isShiftMode) 0 else 1
-                                // 空闲停在本页时 delta=0：不挂 graphicsLayer，免掉顶栏整棵离屏合成。
-                                // 切 tab 过程中才开层，用 size.width 跟 pager 对齐。
+                                // 空闲停在本页时 delta=0，不加位移节点。
+                                // 切 tab 过程中只做 place 位移（`offset {}` 的 lambda 版不进 constraints，
+                                // 不会 re-measure）：比 graphicsLayer 少一整块全宽离屏合成，
+                                // 也少掉它带来的软件裁剪遮罩（实测每帧 ~2.5ms）。
                                 val scheduleTitleIdle by remember(scheduleTitleIndex, navBarStyle) {
                                     derivedStateOf {
                                         val page = mainPagerState.currentPage
@@ -465,17 +467,18 @@ internal fun CourseScheduleAppMainContent(
                                             if (scheduleTitleIdle) {
                                                 Modifier
                                             } else {
-                                                Modifier.graphicsLayer {
+                                                Modifier.offset {
                                                     val page = mainPagerState.currentPage
                                                     val off =
                                                         mainPagerState.currentPageOffsetFraction
                                                     val delta = scheduleTitleIndex - page - off
                                                     if (useVerticalMainPager) {
-                                                        translationX = 0f
-                                                        translationY = delta * screenHPx
+                                                        IntOffset(0, (delta * screenHPx).roundToInt())
                                                     } else {
-                                                        translationY = 0f
-                                                        translationX = delta * size.width
+                                                        IntOffset(
+                                                            (delta * screenWPx).roundToInt(),
+                                                            0
+                                                        )
                                                     }
                                                 }
                                             }
@@ -896,16 +899,11 @@ internal fun CourseScheduleAppMainContent(
                                                             onJumpToDateProcessed = {
                                                                 todayJumpToDateTrigger = 0
                                                             },
-                                                            wallpaperBitmap = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperImage else wallpaperImage,
-                                                            wallpaperOffset = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperOffset else wallpaperOffset,
-                                                            wallpaperScale = if (showCustomizePage && !isWindowCutoutActive) originalWallpaperScale else wallpaperScale,
                                                             useSharedWallpaper = !isShiftMode && wallpaperBitmap != null,
                                                             sharedWallpaperBackdrop = sharedWallpaperBackdrop,
-                                                            wallpaperBrightness = displayAppearance.wallpaperBrightness,
                                                             cardBlurRadius = displayAppearance.cardBlurRadius,
                                                             cardRefraction = displayAppearance.cardRefraction,
                                                             cardSurfaceAlpha = displayAppearance.cardSurfaceAlpha,
-                                                            wallpaperBlur = displayAppearance.wallpaperBlur,
                                                             liquidGlassBackdrop = liquidGlassBackdrop,
                                                             showClassroom = displayAppearance.showClassroom,
                                                             showTeacher = displayAppearance.showTeacher,

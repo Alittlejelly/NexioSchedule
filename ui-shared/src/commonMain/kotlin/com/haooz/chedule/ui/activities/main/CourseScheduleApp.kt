@@ -705,12 +705,16 @@ fun CourseScheduleApp(
                     drawContent()
 
                 }) {
+            // 材质档位必须进 remember key：切档时这里要当场重算，
+            // 否则卡片模糊/折射要等下次重启（key 没变 → 返回旧 base）。
+            val materialLevel = com.haooz.chedule.ui.utils.AppMaterialSettings.level
             val displayAppearance = remember(
                 showCustomizePage,
                 isWindowCutoutActive,
                 originalCombination,
                 combinations,
                 currentCombinationIndex,
+                materialLevel,
             ) {
                 // 开洞前显示已应用外观，避免快照过渡期闪编辑值
                 val base = if (showCustomizePage && !isWindowCutoutActive) {
@@ -721,7 +725,7 @@ fun CourseScheduleApp(
                 }
                 // 无材质档：卡片模糊/折射渲染强制关（设置项已锁死，存档保留原值）。
                 // 卡片仍采壁纸——着色程度/不透明度照常生效；只有玻璃采样录屏层不挂
-                if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
+                if (materialLevel == com.haooz.chedule.ui.utils.AppMaterialSettings.NONE) {
                     base.copy(
                         cardBlurRadius = 0f,
                         cardRefraction = CardRefractionLevel.OFF,
