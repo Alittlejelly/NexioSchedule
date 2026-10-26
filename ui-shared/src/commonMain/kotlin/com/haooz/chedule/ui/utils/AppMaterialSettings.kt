@@ -66,6 +66,9 @@ object AppMaterialSettings {
     /** 是否通透玻璃档（折射 + 低模糊那一档）。 */
     fun isBestTier(): Boolean = level == BEST
 
+    /** 是否性能优先档：折射在渲染侧被强制关掉，卡片模糊仍保留。 */
+    fun isPerformanceTier(): Boolean = level == PERFORMANCE
+
     /** 是否无材质档：玻璃模糊 / 折射 / vibrancy 全关，渐进模糊降级为渐变遮罩。 */
     fun isNoneTier(): Boolean = level == NONE
 

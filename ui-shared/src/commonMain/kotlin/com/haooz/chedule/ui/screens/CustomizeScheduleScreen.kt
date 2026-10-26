@@ -1519,13 +1519,17 @@ fun CustomizeScheduleScreen(
                             )
                             RefractionItem(
                                 value = cardRefractionValue,
+                                // 无材质档整体关；性能优先档渲染侧强制 OFF（折射是这个档最贵的一项）
                                 enabled = hasWallpaper &&
-                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier(),
+                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier() &&
+                                    !com.haooz.chedule.ui.utils.AppMaterialSettings.isPerformanceTier(),
                                 onValueChange = { if (hasWallpaper) cardRefractionValue = it },
-                                disabledText = if (com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier()) {
-                                    SchedStr.noMaterial()
-                                } else {
-                                    SchedStr.wallpaperRequired()
+                                disabledText = when {
+                                    com.haooz.chedule.ui.utils.AppMaterialSettings.isNoneTier() ->
+                                        SchedStr.noMaterial()
+                                    com.haooz.chedule.ui.utils.AppMaterialSettings.isPerformanceTier() ->
+                                        SchedStr.performanceMode()
+                                    else -> SchedStr.wallpaperRequired()
                                 }
                             )
                         }

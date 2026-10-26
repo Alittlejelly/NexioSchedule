@@ -44,6 +44,7 @@ object SchedStr {
     val cardBlur = L("卡片模糊", "Card blur")
     val cardRefraction = L("卡片折射", "Card refraction")
     val noMaterial = L("无材质", "No Material")
+    val performanceMode = L("性能优先", "Performance")
     val wallpaperRequired = L("需设置壁纸", "Wallpaper required")
     val courseCardHeight = L("课程卡片高度", "Course card height")
     val courseCardCornerRadius = L("课程卡片圆角", "Course card corner radius")
