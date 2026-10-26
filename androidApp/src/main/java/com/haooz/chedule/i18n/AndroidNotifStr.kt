@@ -11,8 +11,8 @@ object AndroidNotifStr {
     val channelIslandDesc = L("课程提醒超级岛通知", "Super Island notifications")
 
     // ---- 通知动作按钮 ----
-    val viewSchedule = L("查看课表", "View schedule")
-    val dndAction = L("上课勿扰", "Mute for class")
+    val viewSchedule = L("查看课表", "Schedule")
+    val dndAction = L("上课勿扰", "Mute")
 
     // ---- 课前倒计时 ----
     val classInN = L("%d分钟后上课", "Class in %d min")
@@ -64,8 +64,8 @@ object AndroidNotifStr {
     val dndDisabled = L("已关闭上课勿扰", "Class mute turned off")
     val dndNeedPermission = L("请先在「课程提醒」中授予勿扰权限", "Grant Do Not Disturb permission in Course reminders first")
     val dndEnableFailed = L("开启失败，请检查勿扰权限", "Failed to enable. Check Do Not Disturb permission")
-    val dndModeSilent = L("静音", "Silent mode")
-    val dndModePriority = L("勿扰模式", "Do Not Disturb")
+    val dndModeSilent = L("静音", "Silent")
+    val dndModePriority = L("勿扰模式", "DND")
     val dndModeNormal = L("勿扰", "Mute")
     val dndTailInClass = L("，下课自动恢复", ", auto-restore after class")
     val dndTailManual = L("，再次点击可关闭", ", tap again to turn off")

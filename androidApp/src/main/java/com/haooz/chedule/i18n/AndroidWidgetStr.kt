@@ -16,5 +16,5 @@ object AndroidWidgetStr {
     val noOtherClasses = L("没有其他课程", "No other classes")
 
     /** 课程信息项分隔符（教室｜教师），供小组件与超级岛展开态共用 */
-    val infoSeparator = L("｜", "|")
+    val infoSeparator = L("｜", " | ")
 }
