@@ -95,7 +95,7 @@ fun ScheduleBottomBar(
                 .height(BOTTOM_BAR_CIRCLE),
         ) {
             if (isShiftMode) {
-                LiquidBottomTab(index = 0, onClick = { onTabSelected(0) }) {
+                LiquidBottomTab() {
                     Image(
                         modifier = Modifier.size(24.dp),
                         imageVector = MiuixIcons.Months,
@@ -105,7 +105,7 @@ fun ScheduleBottomBar(
                     Text(ChromeStr.shiftSchedule(), fontSize = 11.sp, color = iconTint)
                 }
             } else {
-                LiquidBottomTab(index = 0, onClick = { onTabSelected(0) }) {
+                LiquidBottomTab() {
                     Image(
                         modifier = Modifier.size(24.dp),
                         imageVector = MiuixIcons.Album,
@@ -114,7 +114,7 @@ fun ScheduleBottomBar(
                     )
                     Text(CommonStr.today(), fontSize = 11.sp, color = iconTint)
                 }
-                LiquidBottomTab(index = 1, onClick = { onTabSelected(1) }) {
+                LiquidBottomTab() {
                     Image(
                         modifier = Modifier.size(24.dp),
                         imageVector = MiuixIcons.Months,

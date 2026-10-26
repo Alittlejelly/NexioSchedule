@@ -71,6 +71,7 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.RuntimeShader
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -78,6 +79,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.runtimeShaderEffect
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
@@ -86,6 +88,7 @@ import com.kyant.capsule.ContinuousCapsule
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -94,7 +97,6 @@ import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.tanh
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal val LocalLiquidBottomTabScale =
     staticCompositionLocalOf { { 1f } }
@@ -130,8 +132,6 @@ data class LiquidBottomTrailing(
 /** 底部导航 tab：纯视觉，手势由 [LiquidBottomTabs] 统一处理 */
 @Composable
 fun RowScope.LiquidBottomTab(
-    index: Int,
-    onClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -168,7 +168,6 @@ fun LiquidBottomTabs(
     tabsCount: Int,
     modifier: Modifier = Modifier,
     containerHeight: Dp = 56.dp,
-    highlightHeight: Dp = 48.dp,
     selectorHeight: Dp = 48.dp,
     trailing: LiquidBottomTrailing? = null,
     content: @Composable RowScope.() -> Unit
@@ -213,6 +212,8 @@ fun LiquidBottomTabs(
         val pillPx = constraints.maxWidth.toFloat() - extraPx
         val pillWidthDp = with(density) { pillPx.toDp() }
         val tabWidth = (pillPx - padPx * 2f) / tabsCount
+        // 滑块（可按压的那块玻璃）左右各收 1dp，宽度减 2dp，位置补回 1dp 保持居中
+        val selectorInsetPx = with(density) { BottomBarSelectorInset.toPx() }
 
         val offsetAnimation = remember { Animatable(0f) }
         val panelOffset by remember(density) {
@@ -301,12 +302,11 @@ fun LiquidBottomTabs(
             InteractiveHighlight(
                 animationScope = animationScope,
                 position = { _, finger ->
-                    val center = pillCenterInMaterial
                     val s = pressScaleOf()
                     val local = finger + Offset(bleedX, bleedY) - Offset(panelOffset, 0f)
                     Offset(
-                        (local.x - center.x) / s + center.x,
-                        (local.y - center.y) / s + center.y
+                        (local.x - pillCenterInMaterial.x) / s + pillCenterInMaterial.x,
+                        (local.y - pillCenterInMaterial.y) / s + pillCenterInMaterial.y
                     )
                 },
                 // 节点比可见底栏大一圈，光晕半径不能由 min(size) 决定
@@ -318,15 +318,88 @@ fun LiquidBottomTabs(
         val chromeLens = AppMaterialSettings.chromeLensEnabled()
         val glassBlur = AppMaterialSettings.glassBlurDp()
         val glassEffectsOn = AppMaterialSettings.glassEffectsEnabled()
+        val refractionShaderRef = remember { arrayOfNulls<RuntimeShader>(1) }
+        val refractionScaleRef = remember { floatArrayOf(1f) }
+        val feedRefraction: () -> Unit = {
+            val sh = refractionShaderRef[0]
+            if (sh != null) {
+                val scale = refractionScaleRef[0]
+                val s = pressScaleOf()
+                val ts = trailingScaleOf()
+                val t = trailingTranslationOf()
+                val pillHalfW = pillPx / 2f * s
+                val pillHalfH = heightPx / 2f * s
+                val pillCx = bleedX + pillPx / 2f + panelOffset
+                val pillCy = bleedY + heightPx / 2f
+                val circleCx = bleedX + pillPx + gapPx + heightPx / 2f + t.x
+                val circleCy = pillCy + t.y
+                val circleRx = heightPx / 2f * ts.x
+                val circleRy = heightPx / 2f * ts.y
+                val neck = barNeckGeometryPx(
+                    pillCenterX = pillCx,
+                    pillCenterY = pillCy,
+                    pillHalfWidth = pillHalfW,
+                    pillHalfHeight = pillHalfH,
+                    circleCenterX = circleCx,
+                    circleCenterY = circleCy,
+                    circleRadiusX = circleRx,
+                    circleRadiusY = circleRy,
+                    maxNeckHalfPx = heightPx * NeckStrength,
+                    density = density,
+                )
+                val pillRadiusPx = minOf(pillHalfW, pillHalfH)
+                sh.setFloatUniform("offset", 0f, 0f)
+                sh.setFloatUniform("pillCenter", pillCx * scale, pillCy * scale)
+                sh.setFloatUniform("pillHalf", pillHalfW * scale, pillHalfH * scale)
+                sh.setFloatUniform("pillRadius", pillRadiusPx * scale)
+                sh.setFloatUniform("circleCenter", circleCx * scale, circleCy * scale)
+                sh.setFloatUniform("circleRadii", circleRx * scale, circleRy * scale)
+                // 山丘参数无条件传：它在颈出现之前就有了，折射必须跟着鼓起来
+                sh.setFloatUniform("bulgeH", (neck?.bulgeH ?: 0f) * scale)
+                sh.setFloatUniform("bulgeAngle", neck?.bulgeAngle ?: 0f)
+                sh.setFloatUniform("bulgePhiPill", neck?.phiPill ?: 0f)
+                sh.setFloatUniform("bulgePhiCircle", neck?.phiCircle ?: 0f)
+                sh.setFloatUniform("bulgeGaussEdge", neck?.gaussEdge ?: 0f)
+                if (neck != null && neck.hasNeck) {
+                    sh.setFloatUniform("pu", neck.pu.x * scale, neck.pu.y * scale)
+                    sh.setFloatUniform("c1u", neck.c1u.x * scale, neck.c1u.y * scale)
+                    sh.setFloatUniform("c2u", neck.c2u.x * scale, neck.c2u.y * scale)
+                    sh.setFloatUniform("cu", neck.cu.x * scale, neck.cu.y * scale)
+                    sh.setFloatUniform("pl", neck.pl.x * scale, neck.pl.y * scale)
+                    sh.setFloatUniform("c1l", neck.c1l.x * scale, neck.c1l.y * scale)
+                    sh.setFloatUniform("c2l", neck.c2l.x * scale, neck.c2l.y * scale)
+                    sh.setFloatUniform("cl", neck.cl.x * scale, neck.cl.y * scale)
+                    sh.setFloatUniform("neckRadius", 1f)
+                } else {
+                    sh.setFloatUniform("neckRadius", 0f)
+                }
+                sh.setFloatUniform("refractionHeight", with(density) { 6f.dp.toPx() } * scale)
+                sh.setFloatUniform("refractionAmount", with(density) { -36f.dp.toPx() } * scale)
+            }
+        }
         val panelEffects: BackdropEffectScope.() -> Unit =
-            remember(chromeLens, glassBlur, glassEffectsOn) {
+            remember(
+                chromeLens, glassBlur, glassEffectsOn,
+                pillPx, gapPx, heightPx, bleedX, bleedY, density, feedRefraction,
+            ) {
                 {
                     if (glassEffectsOn) {
                         vibrancy()
                         // Mirror：默认的 Clamp 会把边缘采样钳到最外一行，边缘一圈模糊退化
                         blur(glassBlur.dp.toPx(), TileMode.Mirror)
                         padding = 0f
-                        if (chromeLens) lens(6f.dp.toPx(), 36f.dp.toPx())
+                        if (chromeLens) {
+                            refractionScaleRef[0] = downsampleScale
+                            refractionShaderRef[0] =
+                                obtainRuntimeShader("BottomBarRefraction", BottomBarRefractionShader)
+                            runtimeShaderEffect(
+                                key = "BottomBarRefraction",
+                                shaderString = BottomBarRefractionShader,
+                                uniformShaderName = "content",
+                            ) {
+                                feedRefraction()
+                            }
+                        }
                     }
                 }
             }
@@ -379,7 +452,12 @@ fun LiquidBottomTabs(
                     shape = barShapeFactory,
                     effects = panelEffects,
                     highlight = null,
-                    onDrawSurface = panelSurface
+                    onDrawSurface = panelSurface,
+                    // 每帧刷折射几何：拖动 / 按压 / 拉伸时形状在变，而 updateEffects 不会重跑
+                    onDrawBackdrop = { drawBackdrop ->
+                        feedRefraction()
+                        drawBackdrop()
+                    },
                 )
                 // 高光在 drawBackdrop 的 clipPath 之内，自然沿融合后的边缘裁切
                 .then(interactiveHighlight.modifier)
@@ -477,8 +555,8 @@ fun LiquidBottomTabs(
                 .padding(horizontal = 4f.dp)
                 .graphicsLayer {
                     translationX =
-                        if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
+                        if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset + selectorInsetPx
+                        else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset + selectorInsetPx
                 }
                 .drawBackdrop(
                     // 页面 + 捕获层（图标随 lens 一起折射，轮廓天然一致）
@@ -524,7 +602,7 @@ fun LiquidBottomTabs(
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }
                 )
-                .width(with(density) { tabWidth.toDp() })
+                .width(with(density) { (tabWidth - selectorInsetPx * 2f).toDp() })
                 .height(selectorHeight)
         )
 

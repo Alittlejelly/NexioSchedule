@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.kyant.capsule.Continuity
 import kotlin.math.PI
 import kotlin.math.asin
 import kotlin.math.atan2
@@ -33,6 +34,381 @@ internal val MaterialBleedY = 28.dp
 /** 分离态：颈半高 / 底栏高度。越大颈越粗、融合越明显 */
 internal const val NeckStrength = 0.36f
 
+/** 滑块（可按压的选中玻璃）左右各收窄的量；宽度减 2×本值、位置补 1×本值保持居中 */
+internal val BottomBarSelectorInset = 0.5.dp
+
+/**
+ * 融合颈的完整几何：两条**三次**贝塞尔的八个点 + 山丘参数。
+ *
+ * 每条边 `pu → c1u → c2u → cu`，两个控制点分别沿「胶囊在 pu 处的切线」和
+ * 「圆钮在 cu 处的切线」。这样颈边在本体上是**相切**出去的，而不是垂直插入 ——
+ * 垂直插入时颈越细、与本体夹角越大（接近 90°），凹角越尖；相切之后夹角恒为 0。
+ *
+ * 山丘（bulge）是颈出现**之前**就有的隆起，所以 [hasNeck] 为 false 时这八个点是无效的，
+ * 但 [bulgeH] 等参数仍然有效 —— 折射必须把它算进去，否则那一段轮廓会凭空少一圈。
+ */
+internal class BarNeckGeometry(
+    val hasNeck: Boolean,
+    val pu: Offset,
+    val c1u: Offset,
+    val c2u: Offset,
+    val cu: Offset,
+    val pl: Offset,
+    val c1l: Offset,
+    val c2l: Offset,
+    val cl: Offset,
+    val bulgeH: Float,
+    val bulgeAngle: Float,
+    val phiPill: Float,
+    val phiCircle: Float,
+    val gaussEdge: Float,
+)
+
+/** 角度 [a] 处的单位切线，方向取与 [toward] 同侧的那个。 */
+private fun tangentAt(a: Float, toward: Offset): Offset {
+    val tx = -sin(a)
+    val ty = cos(a)
+    val dot = tx * toward.x + ty * toward.y
+    return if (dot >= 0f) Offset(tx, ty) else Offset(-tx, -ty)
+}
+
+/**
+ * 算出融合颈的八个点。公式与 [BarShape] 内部逐字一致；没有颈时返回 null。
+ *
+ * 之所以要单独抽一份：折射必须和真实轮廓共用同一份几何，各算各的必然对不上。
+ */
+internal fun barNeckGeometryPx(
+    pillCenterX: Float,
+    pillCenterY: Float,
+    pillHalfWidth: Float,
+    pillHalfHeight: Float,
+    circleCenterX: Float,
+    circleCenterY: Float,
+    circleRadiusX: Float,
+    circleRadiusY: Float,
+    maxNeckHalfPx: Float,
+    density: Density,
+): BarNeckGeometry? {
+    val pillRadius = minOf(pillHalfWidth, pillHalfHeight)
+    if (pillRadius <= 0f) return null
+    val axisLeft = pillCenterX - pillHalfWidth + pillRadius
+    val axisRight = pillCenterX + pillHalfWidth - pillRadius
+    val axisX = circleCenterX.coerceIn(minOf(axisLeft, axisRight), maxOf(axisLeft, axisRight))
+    val vx = circleCenterX - axisX
+    val vy = circleCenterY - pillCenterY
+    val dist = sqrt(vx * vx + vy * vy)
+    if (dist < 0.5f) return null
+    val ang = atan2(vy, vx)
+    val circleDirR = ellipseRadiusAt(circleRadiusX, circleRadiusY, ang)
+    val surfaceGap = dist - pillRadius - circleDirR
+
+    // 山丘先算：它在颈出现**之前**就有了（gap 从 10dp 开始鼓），
+    // 所以即使没有颈也要把这组参数交给折射，否则那段轮廓会凭空少一圈。
+    val neckThresholdPx = with(density) { (FusionBulgeMaxDp * 2f).dp.toPx() }
+    val bulgeRangePx = with(density) { FusionBulgeRangeDp.dp.toPx() }
+    val bulgeT = if (surfaceGap >= bulgeRangePx) {
+        0f
+    } else {
+        ((bulgeRangePx - surfaceGap) / (bulgeRangePx - neckThresholdPx)).coerceIn(0f, 1f)
+    }
+    val bulgeH = with(density) { FusionBulgeMaxDp.dp.toPx() } * (bulgeT * bulgeT)
+    val gaussEdge = exp(-0.25f / (2f * FusionBulgeSigma * FusionBulgeSigma))
+    val circleAvgR = (circleRadiusX + circleRadiusY) / 2f
+    val phiPill = ((bulgeH * FusionBulgeWidthRatio) / pillRadius)
+        .coerceIn(FusionBulgeMinAngle, 1.2f)
+    val phiCircle = ((bulgeH * FusionBulgeWidthRatio) / circleAvgR)
+        .coerceIn(FusionBulgeMinAngle, 1.2f)
+    val pi = PI.toFloat()
+
+    fun bulgeOnly() = BarNeckGeometry(
+        hasNeck = false,
+        pu = Offset.Zero,
+        c1u = Offset.Zero,
+        c2u = Offset.Zero,
+        cu = Offset.Zero,
+        pl = Offset.Zero,
+        c1l = Offset.Zero,
+        c2l = Offset.Zero,
+        cl = Offset.Zero,
+        bulgeH = bulgeH,
+        bulgeAngle = ang,
+        phiPill = phiPill,
+        phiCircle = phiCircle,
+        gaussEdge = gaussEdge,
+    )
+
+    if (surfaceGap >= neckThresholdPx) return bulgeOnly()
+    val k = ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(FusionRampPower)
+    if (k <= 0.001f) return bulgeOnly()
+
+    val overlapLeadPx = with(density) { FusionOverlapLeadDp.dp.toPx() }
+    val effDist = (dist - overlapLeadPx).coerceAtLeast(1f)
+    val intersectHh = if (effDist < pillRadius + circleDirR) {
+        val proj =
+            (effDist * effDist + pillRadius * pillRadius - circleDirR * circleDirR) / (2f * effDist)
+        sqrt((pillRadius * pillRadius - proj * proj).coerceAtLeast(0f))
+    } else {
+        0f
+    }
+    val neck = (maxNeckHalfPx * k + intersectHh * NeckOverlapGrow).coerceAtMost(pillRadius)
+
+    fun bumpAt(angle: Float, center: Float, phi: Float): Float {
+        val t = (angle - (center - phi)) / (2f * phi)
+        if (t <= 0f || t >= 1f) return 0f
+        val dx = t - 0.5f
+        val rawG = exp(-(dx * dx) / (2f * FusionBulgeSigma * FusionBulgeSigma))
+        return ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
+    }
+
+    fun onPill(a: Float): Offset {
+        val r = pillRadius + bulgeH * bumpAt(a, ang, phiPill)
+        return Offset(axisX + r * cos(a), pillCenterY + r * sin(a))
+    }
+
+    fun onCircle(a: Float): Offset {
+        val r = ellipseRadiusAt(circleRadiusX, circleRadiusY, a) +
+            bulgeH * bumpAt(a, ang + pi, phiCircle)
+        return Offset(circleCenterX + r * cos(a), circleCenterY + r * sin(a))
+    }
+
+    val phi1 = asin((neck / (pillRadius + bulgeH)).coerceIn(-1f, 1f))
+    val circleNearR = ellipseRadiusAt(circleRadiusX, circleRadiusY, ang + pi)
+    val phi2 = asin((neck / (circleNearR + bulgeH).coerceAtLeast(0.5f)).coerceIn(-1f, 1f))
+
+    val a1u = ang + phi1
+    val a1l = ang - phi1
+    val a2u = ang + pi - phi2
+    val a2l = ang + pi + phi2
+    val pu = onPill(a1u)
+    val pl = onPill(a1l)
+    val cu = onCircle(a2u)
+    val cl = onCircle(a2l)
+
+    // 两端控制点沿各自表面的切线：颈边相切出去，与本体夹角恒为 0
+    val chordU = cu - pu
+    val chordL = cl - pl
+    val lenU = sqrt(chordU.x * chordU.x + chordU.y * chordU.y).coerceAtLeast(0.001f)
+    val lenL = sqrt(chordL.x * chordL.x + chordL.y * chordL.y).coerceAtLeast(0.001f)
+    val tu = tangentAt(a1u, chordU)
+    val tcu = tangentAt(a2u, Offset(-chordU.x, -chordU.y))
+    val tl = tangentAt(a1l, chordL)
+    val tcl = tangentAt(a2l, Offset(-chordL.x, -chordL.y))
+
+    return BarNeckGeometry(
+        hasNeck = true,
+        pu = pu,
+        c1u = Offset(pu.x + tu.x * lenU / 3f, pu.y + tu.y * lenU / 3f),
+        c2u = Offset(cu.x + tcu.x * lenU / 3f, cu.y + tcu.y * lenU / 3f),
+        cu = cu,
+        pl = pl,
+        c1l = Offset(pl.x + tl.x * lenL / 3f, pl.y + tl.y * lenL / 3f),
+        c2l = Offset(cl.x + tcl.x * lenL / 3f, cl.y + tcl.y * lenL / 3f),
+        cl = cl,
+        bulgeH = bulgeH,
+        bulgeAngle = ang,
+        phiPill = phiPill,
+        phiCircle = phiCircle,
+        gaussEdge = gaussEdge,
+    )
+}
+
+/** 椭圆在角度 [a] 方向上的极半径（不是参数方程的 t）。rx == ry 时退化成正圆。 */
+internal fun ellipseRadiusAt(rx: Float, ry: Float, a: Float): Float {
+    val c = cos(a)
+    val s = sin(a)
+    val d = (ry * c) * (ry * c) + (rx * s) * (rx * s)
+    return if (d <= 1e-6f) 0f else rx * ry / sqrt(d)
+}
+
+/**
+ * 底栏专用折射 shader。
+ *
+ * 这里用解析 SDF 描述整条轮廓：胶囊（圆角矩形）∪ 圆钮（圆），两者用 `smin` 融出颈，
+ * 于是边缘一圈折射会沿着「胶囊 + 融合 + 圆钮」的完整轮廓走。
+ */
+internal const val BottomBarRefractionShader = """
+uniform shader content;
+
+uniform float2 offset;
+uniform float2 pillCenter;
+uniform float2 pillHalf;
+uniform float pillRadius;
+uniform float2 circleCenter;
+uniform float2 circleRadii;
+uniform float2 pu;
+uniform float2 c1u;
+uniform float2 c2u;
+uniform float2 cu;
+uniform float2 pl;
+uniform float2 c1l;
+uniform float2 c2l;
+uniform float2 cl;
+uniform float neckRadius;
+uniform float refractionHeight;
+uniform float refractionAmount;
+uniform float bulgeH;
+uniform float bulgeAngle;
+uniform float bulgePhiPill;
+uniform float bulgePhiCircle;
+uniform float bulgeGaussEdge;
+
+float sdRoundRect(float2 p, float2 c, float2 h, float r) {
+    float2 q = abs(p - c) - (h - r);
+    return length(max(q, float2(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// angle 来自 atan()，在 ±π 处跳变；圆钮的山丘中心恒为 ang+π，
+// 角度差先折到 (-π, π] 再比，否则有一半山丘落在张角外（融合区沿水平轴一条硬缝）。
+float bumpAt(float angle, float center, float phi) {
+    float da = angle - center;
+    da = da - 6.2831853 * floor(da / 6.2831853 + 0.5);
+    float t = (da + phi) / (2.0 * phi);
+    if (t <= 0.0 || t >= 1.0) {
+        return 0.0;
+    }
+    float dx = t - 0.5;
+    float rawG = exp(-(dx * dx) / (2.0 * 0.2 * 0.2));
+    return clamp((rawG - bulgeGaussEdge) / (1.0 - bulgeGaussEdge), 0.0, 1.0);
+}
+
+float sdEllipse(float2 p, float2 c, float2 ab) {
+    float2 d = p - c;
+    float t = atan(d.y / max(ab.y, 1e-4), d.x / max(ab.x, 1e-4));
+    for (int i = 0; i < 4; i++) {
+        float ct = cos(t);
+        float st = sin(t);
+        float2 q = float2(ab.x * ct, ab.y * st);
+        float2 dq = float2(-ab.x * st, ab.y * ct);
+        float2 d2q = float2(-ab.x * ct, -ab.y * st);
+        float f = dot(q - d, dq);
+        float df = dot(dq, dq) + dot(q - d, d2q);
+        t = t - f / (abs(df) > 1e-4 ? df : 1e-4);
+    }
+    float2 q = float2(ab.x * cos(t), ab.y * sin(t));
+    float dist = length(d - q);
+    return (length(d / ab) < 1.0) ? -dist : dist;
+}
+
+float2 cBez(float2 a, float2 b, float2 c, float2 d, float t) {
+    float mt = 1.0 - t;
+    float mt2 = mt * mt;
+    float t2 = t * t;
+    return mt2 * mt * a + (3.0 * mt2 * t) * b + (3.0 * mt * t2) * c + t2 * t * d;
+}
+
+float2 dBez(float2 a, float2 b, float2 c, float2 d, float t) {
+    float mt = 1.0 - t;
+    return 3.0 * mt * mt * (b - a) + 6.0 * mt * t * (c - b) + 3.0 * t * t * (d - c);
+}
+
+float2 d2Bez(float2 a, float2 b, float2 c, float2 d, float t) {
+    float mt = 1.0 - t;
+    return 6.0 * mt * (c - 2.0 * b + a) + 6.0 * t * (d - 2.0 * c + b);
+}
+
+float nearestT(float2 p, float2 a, float2 b, float2 c, float2 d) {
+    float bestD = 1e9;
+    float bestT = 0.0;
+    for (int k = 0; k < 2; k++) {
+        float t = (k == 0) ? 0.25 : 0.75;
+        for (int i = 0; i < 5; i++) {
+            float2 q = cBez(a, b, c, d, t);
+            float2 dq = dBez(a, b, c, d, t);
+            float2 d2q = d2Bez(a, b, c, d, t);
+            float f = dot(q - p, dq);
+            float df = dot(dq, dq) + dot(q - p, d2q);
+            t = clamp(t - f / (abs(df) > 1e-4 ? df : 1e-4), 0.0, 1.0);
+        }
+        float dd = length(cBez(a, b, c, d, t) - p);
+        if (dd < bestD) {
+            bestD = dd;
+            bestT = t;
+        }
+    }
+    return bestT;
+}
+
+float sdNeck(float2 p) {
+    float tu = nearestT(p, pu, c1u, c2u, cu);
+    float tl = nearestT(p, pl, c1l, c2l, cl);
+    float2 qu = cBez(pu, c1u, c2u, cu, tu);
+    float2 ql = cBez(pl, c1l, c2l, cl, tl);
+
+    float2 du = dBez(pu, c1u, c2u, cu, tu);
+    float2 dl = dBez(pl, c1l, c2l, cl, tl);
+    if (tu < 0.02 || tu > 0.98) {
+        du = cu - pu;
+    }
+    if (tl < 0.02 || tl > 0.98) {
+        dl = cl - pl;
+    }
+    float sU = (du.x * (p.y - qu.y) - du.y * (p.x - qu.x)) / max(length(du), 1e-4);
+    float sL = (dl.x * (p.y - ql.y) - dl.y * (p.x - ql.x)) / max(length(dl), 1e-4);
+
+    float2 ax = cu - pu;
+    ax = ax / max(length(ax), 1e-4);
+    float dLong = max(-dot(p - pu, ax), dot(p - cu, ax));
+    return max(sU, -sL) + max(0.0, dLong);
+}
+
+float sminSoft(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float bodySdf(float2 p) {
+    float2 q = p - pillCenter;
+    float axisHalf = max(pillHalf.x - pillRadius, 0.0);
+    float2 nearest = float2(clamp(q.x, -axisHalf, axisHalf), 0.0);
+    float2 d = q - nearest;
+    float distP = length(d);
+    float rEff = pillRadius;
+    if (bulgeH > 0.01 && distP > 1e-4) {
+        rEff = pillRadius + bulgeH * bumpAt(atan(d.y, d.x), bulgeAngle, bulgePhiPill);
+    }
+    float dPill = distP - rEff;
+
+    float dCirc = sdEllipse(p, circleCenter, circleRadii);
+    if (bulgeH > 0.01) {
+        float2 dc = p - circleCenter;
+        dCirc = dCirc - bulgeH * bumpAt(atan(dc.y, dc.x), bulgeAngle + 3.14159265, bulgePhiCircle);
+    }
+    return min(dPill, dCirc);
+}
+
+float sceneSdf(float2 p) {
+    float d = bodySdf(p);
+    if (neckRadius > 0.001) {
+        d = min(d, sdNeck(p));
+    }
+    return d;
+}
+
+float circleMap(float x) {
+    return 1.0 - sqrt(1.0 - x * x);
+}
+
+half4 main(float2 coord) {
+    float2 p = coord + offset;
+    float sd = sceneSdf(p);
+    float rh = refractionHeight;
+    if (-sd >= rh) {
+        return content.eval(coord);
+    }
+    sd = min(sd, 0.0);
+    float d = circleMap(1.0 - -sd / rh) * refractionAmount;
+
+    float eps = 0.75;
+    float2 g = float2(
+        sceneSdf(p + float2(eps, 0.0)) - sceneSdf(p - float2(eps, 0.0)),
+        sceneSdf(p + float2(0.0, eps)) - sceneSdf(p - float2(0.0, eps))
+    );
+    float gl = length(g);
+    float2 grad = gl > 0.0001 ? g / gl : float2(0.0, 0.0);
+    return content.eval(coord + d * grad);
+}
+"""
+
 /** 重叠态：每单位「自然交点距离 hh」额外增加的颈半宽，决定重叠后腰变粗的快慢 */
 private const val NeckOverlapGrow = 0.35f
 
@@ -43,7 +419,7 @@ private const val FusionOverlapLeadDp = 4f
 private const val FusionRampPower = 0.22f
 
 /** 山丘凸起：从多远开始鼓包（dp） */
-private const val FusionBulgeRangeDp = 10f
+internal const val FusionBulgeRangeDp = 10f
 
 /** 山丘凸起：最大隆起高度（dp） */
 private const val FusionBulgeMaxDp = 2.6f
@@ -103,16 +479,25 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         val pillRadius = minOf(halfW, halfH)
 
         val capsule = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    left = cx - halfW,
-                    top = cy - halfH,
-                    right = cx + halfW,
-                    bottom = cy + halfH,
-                    radiusX = pillRadius,
-                    radiusY = pillRadius,
-                )
+            val outline = Continuity.Default.createCapsuleOutline(
+                Size(halfW * 2f, halfH * 2f)
             )
+            val continuous = (outline as? Outline.Generic)?.path
+            if (continuous != null) {
+                addPath(continuous, Offset(cx - halfW, cy - halfH))
+                close()
+            } else {
+                addRoundRect(
+                    RoundRect(
+                        left = cx - halfW,
+                        top = cy - halfH,
+                        right = cx + halfW,
+                        bottom = cy + halfH,
+                        radiusX = pillRadius,
+                        radiusY = pillRadius,
+                    )
+                )
+            }
         }
         if (p.extraPx <= 0f) return Outline.Generic(capsule)
 
@@ -154,17 +539,8 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         // 沿连线方向量间隙：纵向拉伸后（ry > rx）用平均半径会把间隙算小，山丘和桥提前出现
         val circleDirR = ellipseRadiusAt(circleRx, circleRy, ang)
         val surfaceGap = dist - pillRadius - circleDirR
-        val overlapLeadPx = with(density) { FusionOverlapLeadDp.dp.toPx() }
         // 相交判定整体外移到吸附范围之外，gap 从 10dp 一路贴近到重叠都由同一个量驱动，
         // hh 在 gap = lead 处恰为 0，桥与山丘同时从零宽起步。
-        val effDist = (dist - overlapLeadPx).coerceAtLeast(1f)
-        val intersectHh = if (effDist < pillRadius + circleDirR) {
-            val proj =
-                (effDist * effDist + pillRadius * pillRadius - circleDirR * circleDirR) / (2f * effDist)
-            sqrt((pillRadius * pillRadius - proj * proj).coerceAtLeast(0f))
-        } else {
-            0f
-        }
         // 阈值 = 2 × 山丘最大高度，让「两座山丘碰上」与「桥出现」落在同一时刻
         val neckThresholdPx = with(density) { (FusionBulgeMaxDp * 2f).dp.toPx() }
         val k = if (surfaceGap >= neckThresholdPx) {
@@ -173,12 +549,7 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
             ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(FusionRampPower)
         }
         if (dist < 0.5f) return Outline.Generic(merged)
-        val anchorX = axisX
         // 连线方向 / 法向单位向量，吸附凸起与融合桥共用
-        val ux = vx / dist
-        val uy = vy / dist
-        val nx = -uy
-        val ny = ux
         val pi = PI.toFloat()
 
         // 山丘强度只由间隙决定，融合之后也不撤：两座山丘先贴到一起，桥再把那道缝填实
@@ -198,7 +569,6 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
             .coerceIn(FusionBulgeMinAngle, 1.2f)
         val phiCircle = ((bulgeH * FusionBulgeWidthRatio) / circleAvgR)
             .coerceIn(FusionBulgeMinAngle, 1.2f)
-        val bulgeCenterPill = ang
         val bulgeCenterCircle = ang + pi
 
         /** 某个角度上的山丘高度系数（0..1）；落在张角之外为 0 */
@@ -209,11 +579,6 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
             val rawG = exp(-(dx * dx) / (2f * FusionBulgeSigma * FusionBulgeSigma))
             return ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
         }
-
-        /** 胶囊侧 / 圆钮侧在给定角度上的实际半径（椭圆极半径 + 该处山丘高度） */
-        fun pillRadiusAt(a: Float) = pillRadius + bulgeH * bumpAt(a, bulgeCenterPill, phiPill)
-        fun circleRadiusAt(a: Float) =
-            ellipseRadiusAt(circleRx, circleRy, a) + bulgeH * bumpAt(a, bulgeCenterCircle, phiCircle)
 
         /** 山丘扇形；[rx] / [ry] 必须与本体一致，否则扇形的底边压不到边界上，union 后是一圈毛刺 */
         fun hillPath(
@@ -241,7 +606,7 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
 
         fun bulgeAt(): Path? {
             if (bulgeH < 0.3f) return null
-            val a = hillPath(axisX, cy, pillRadius, pillRadius, bulgeCenterPill, phiPill)
+            val a = hillPath(axisX, cy, pillRadius, pillRadius, ang, phiPill)
             val b = hillPath(circleCx, circleCy, circleRx, circleRy, bulgeCenterCircle, phiCircle)
             if (a == null || b == null) return null
             return Path().apply { op(a, b, PathOperation.Union) }
@@ -259,47 +624,40 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         if (k <= 0.001f) return unionWith(bulge) ?: Outline.Generic(merged)
 
         // 两段相加：k 覆盖刚进入融合那一段，hh 在重叠后接管。取大不行 —— neckBase 会成天花板。
-        val neck = (p.maxNeckHalfPx * k + intersectHh * NeckOverlapGrow)
-            .coerceAtMost(pillRadius)
 
-        // 桥不分支：分离时接上，重叠时继续撑宽。
-        // hh < neck 时桥比自然轮廓宽、凸出来，接口保持平滑；hh 长过 neck 后桥被并集吞掉。
-        // phi 用「山丘已隆起后的半径」反解，锚点角度才够开。
-        val phi1 = asin((neck / (pillRadius + bulgeH)).coerceIn(-1f, 1f))
-        // 圆钮侧用「朝胶囊那一点的椭圆极半径」反解：竖椭圆下用平均半径会让上下锚点一内一外，曲线断裂
-        val circleNearR = ellipseRadiusAt(circleRx, circleRy, ang + pi)
-        val phi2 = asin((neck / (circleNearR + bulgeH).coerceAtLeast(0.5f)).coerceIn(-1f, 1f))
-
-        fun onPill(a: Float): Offset {
-            val r = pillRadiusAt(a)
-            return Offset(anchorX + r * cos(a), cy + r * sin(a))
+        // 颈的八个点直接取共享几何（与折射同一份）：
+        // 两端控制点沿本体表面的**切线**，颈边相切出去，与胶囊 / 圆钮的夹角恒为 0。
+        // 之前控制点朝连线收（垂直插入），颈越细夹角越接近 90°，四个凹角就越尖。
+        val neckGeom = barNeckGeometryPx(
+            pillCenterX = cx,
+            pillCenterY = cy,
+            pillHalfWidth = halfW,
+            pillHalfHeight = halfH,
+            circleCenterX = circleCx,
+            circleCenterY = circleCy,
+            circleRadiusX = circleRx,
+            circleRadiusY = circleRy,
+            maxNeckHalfPx = p.maxNeckHalfPx,
+            density = density,
+        )
+        if (neckGeom == null || !neckGeom.hasNeck) {
+            return unionWith(bulge) ?: Outline.Generic(merged)
         }
-
-        // 与 hillPath 同一套极半径，锚点正好落在山丘曲线上
-        fun onCircle(a: Float): Offset {
-            val r = circleRadiusAt(a)
-            return Offset(circleCx + r * cos(a), circleCy + r * sin(a))
-        }
-
-        // 各自朝向对方那侧：差一个 PI，符号要反过来才是同一侧
-        val pu = onPill(ang + phi1)
-        val pl = onPill(ang - phi1)
-        val cu = onCircle(ang + pi - phi2)
-        val cl = onCircle(ang + pi + phi2)
-
-        // 控制点各自朝连线收，颈才凹出腰。收腰量随重叠深度递减到 0：
-        // neck 顶到 pillRadius 时桥已覆盖整个圆，几何再也变不了，pinch 归零才让形状继续从花生过渡到整圆。
-        val overlapT = (intersectHh / pillRadius).coerceIn(0f, 1f)
-        val pinch = neck * 0.55f * (1f - overlapT)
-        val ctrlU = Offset((pu.x + cu.x) / 2f - nx * pinch, (pu.y + cu.y) / 2f - ny * pinch)
-        val ctrlL = Offset((pl.x + cl.x) / 2f + nx * pinch, (pl.y + cl.y) / 2f + ny * pinch)
 
         val neckPath = Path().apply {
-            moveTo(pu.x, pu.y)
-            quadraticTo(ctrlU.x, ctrlU.y, cu.x, cu.y)
+            moveTo(neckGeom.pu.x, neckGeom.pu.y)
+            cubicTo(
+                neckGeom.c1u.x, neckGeom.c1u.y,
+                neckGeom.c2u.x, neckGeom.c2u.y,
+                neckGeom.cu.x, neckGeom.cu.y,
+            )
             // 这一笔走在圆内部、会被圆盖住，只为闭合轮廓
-            lineTo(cl.x, cl.y)
-            quadraticTo(ctrlL.x, ctrlL.y, pl.x, pl.y)
+            lineTo(neckGeom.cl.x, neckGeom.cl.y)
+            cubicTo(
+                neckGeom.c2l.x, neckGeom.c2l.y,
+                neckGeom.c1l.x, neckGeom.c1l.y,
+                neckGeom.pl.x, neckGeom.pl.y,
+            )
             close()
         }
 
