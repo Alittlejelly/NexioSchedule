@@ -314,9 +314,9 @@ internal fun SettingsTopBar(
             sampleTrack = blurSampleTrack,
         ) {
             CollapsibleTopAppBar(
-                // 平板设置：顶栏不再显示「我的」，标题由 MainActivity 叠层绘制
-                title = if (isTablet) "" else ChromeStr.profile(),
-                largeTitle = if (isTablet) "" else ChromeStr.profile(),
+                // 平板设置：顶栏不再显示标题，标题由 MainActivity 叠层绘制
+                title = if (isTablet) "" else CommonStr.settings(),
+                largeTitle = if (isTablet) "" else CommonStr.settings(),
                 showLargeTitle = if (isTablet) false else null,
                 showSmallTitle = if (isTablet) true else null,
                 modifier = Modifier.zIndex(1f),

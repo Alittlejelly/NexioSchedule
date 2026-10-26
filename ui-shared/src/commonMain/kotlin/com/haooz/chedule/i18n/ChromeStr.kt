@@ -58,7 +58,6 @@ object ChromeStr {
     val jumpToDate = L("跳转日期", "Jump to Date")
     val courseManage = L("课程管理", "Course Management")
     val scheduleAppearance = L("课表外观", "Appearance")
-    val profile = L("我的", "Profile")
     val todayIsDow = L("今天是%s", "Today is %s")
 
     // ── 主内容层 ──

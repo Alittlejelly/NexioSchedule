@@ -65,6 +65,7 @@ import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.navigation.LocalBackupRoute
 import com.haooz.chedule.ui.navigation.PreferenceSettingsRoute
 import com.haooz.chedule.ui.navigation.PrivacyPolicyRoute
+import com.haooz.chedule.ui.navigation.SettingsRoute
 import com.haooz.chedule.ui.navigation.UpdateSettingsRoute
 import com.haooz.chedule.ui.navigation.WebImportRoute
 import com.haooz.chedule.ui.navigation.WebDavSettingsRoute
@@ -299,6 +300,22 @@ internal fun NexioIosNavigation(host: IosAppHost) {
 @Composable
 internal fun NexioIosRouteContent(router: AppRouter, route: AppRoute) {
     when (route) {
+        // 设置二级页（原主 pager 第三页）：iOS 走原生文档壳，标题/返回由 NavigationBar 给
+        AppRoute.Settings -> SettingsRoute(
+            router = router,
+            // iOS 走 App Store 更新 → 「更新设置」入口整个不渲染
+            showUpdateSettings = false,
+            settingsPane = { args ->
+                com.haooz.chedule.ui.screens.IosSettingsScreen(
+                    args = args,
+                    scheduleFileController = fileController,
+                    backupFileController = backupFileController,
+                    reminderController = reminderController,
+                    onHolidayDataChanged = onHolidayDataChanged,
+                )
+            },
+        )
+
         AppRoute.About -> AboutRoute(
             router = router,
             appVersion = AppInfo.version,

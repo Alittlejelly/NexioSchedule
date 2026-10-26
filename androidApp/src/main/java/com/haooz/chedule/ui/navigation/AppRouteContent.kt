@@ -72,6 +72,7 @@ import com.haooz.chedule.ui.activities.EduImportUpdater
 import com.haooz.chedule.ui.web.rememberAndroidWebHost
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
+import com.haooz.chedule.ui.screens.AndroidSettingsPane
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
@@ -117,6 +118,12 @@ fun AppRouteContent(
     route: AppRoute,
 ) {
     when (route) {
+        // 设置二级页（原主 pager 第三页）
+        AppRoute.Settings -> SettingsRoute(
+            router = router,
+            settingsPane = { args -> AndroidSettingsPane(args) },
+        )
+
         AppRoute.About -> AndroidAboutRoute(router)
 
         // 纯文档壳路由，直接调跨平台版

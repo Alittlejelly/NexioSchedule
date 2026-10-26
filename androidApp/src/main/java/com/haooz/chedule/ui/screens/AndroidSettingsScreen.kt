@@ -52,14 +52,29 @@ import com.haooz.chedule.i18n.AppLanguage
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 
 /**
- * `SettingsScreen` 的 **Android 宿主包装**。
- *
+ * [SettingsPaneArgs] → [AndroidSettingsScreen] 的装配入口
+ */
+@Composable
+fun AndroidSettingsPane(args: com.haooz.chedule.ui.activities.main.SettingsPaneArgs) {
+    AndroidSettingsScreen(
+        viewModel = args.viewModel,
+        scheduleViewModel = args.scheduleViewModel,
+        settingsViewModel = args.settingsViewModel,
+        shiftViewModel = args.shiftViewModel,
+        isShiftMode = args.isShiftMode,
+        onExitShiftMode = args.onExitShiftMode,
+        onEnterShiftMode = args.onEnterShiftMode,
+        navBarStyle = args.navBarStyle,
+        settingsScrollBehavior = args.settingsScrollBehavior,
+        liquidGlassBackdrop = args.liquidGlassBackdrop,
+        showUpdateSettings = args.showUpdateSettings,
+    )
+}
+
+ /**
  * 本文件只做一件事：把平板分支那 8 个平台专有 dest 的**接线**
  * （以及测试通知 / 小部件刷新 / 节假日拉取这几个平台副作用）装配好，
  * 通过注入参数交给共享页。
- *
- * 所以「设置页的 Android 代码」现在全在这个文件里 —— 页面迁走后本模块仍需要它的原因，
- * 一眼可见。iOS 侧要接的话，照 `TabletSettingsScreen` 的参数表给一份自己的装配即可。
  */
 @Composable
 fun AndroidSettingsScreen(

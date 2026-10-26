@@ -666,6 +666,8 @@ internal class NativeDocumentPage(
 internal fun AppRoute.isNativeDocument(): Boolean = nativeDocumentTitle() != null
 
 internal fun AppRoute.nativeDocumentTitle(): String? = when (this) {
+    // 设置二级页：走原生文档壳，顶栏与返回按钮由 iOS 原生 NavigationBar 给
+    AppRoute.Settings -> CommonStr.settings()
     AppRoute.Changelog -> ChromeStr.changelog()
     AppRoute.License -> ChromeStr.openSourceLicenses()
     AppRoute.PrivacyPolicy -> ChromeStr.privacyPolicy()

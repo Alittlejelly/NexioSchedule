@@ -751,7 +751,8 @@ private final class NativeChromeController: UITabBarController, UITabBarControll
     }
 
     func configure(tabCount: Int, shiftMode: Bool, selectedIndex: Int) {
-        let titles = shiftMode ? ["排班课表", "设置"] : ["今日", "课程表", "我的"]
+        // 第三格是设置页入口（原「我的」已改名）
+        let titles = shiftMode ? ["排班课表", "设置"] : ["今日", "课程表", "设置"]
         let count = min(titles.count, max(1, tabCount))
         if configuredShiftMode != shiftMode || configuredTabCount != count {
             configuredShiftMode = shiftMode

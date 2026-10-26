@@ -58,7 +58,7 @@ import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.activities.main.CourseScheduleApp
 import com.haooz.chedule.ui.activities.main.bitmapRecycler
 import com.haooz.chedule.ui.screens.PrivacyConsentScreen
-import com.haooz.chedule.ui.screens.AndroidSettingsScreen
+import com.haooz.chedule.ui.screens.AndroidSettingsPane
 import com.haooz.chedule.ui.screens.FireworksOverlay
 import com.haooz.chedule.ui.activities.today.TodayAssistantCard
 import com.haooz.chedule.ui.screens.rememberWeather
@@ -609,19 +609,7 @@ fun AndroidCourseScheduleApp(privacyConsented: Boolean) {
         },
         onShareIntentConsumed = { activity?.clearShareIntent() },
         settingsPane = { args ->
-            AndroidSettingsScreen(
-                viewModel = args.viewModel,
-                scheduleViewModel = args.scheduleViewModel,
-                settingsViewModel = args.settingsViewModel,
-                shiftViewModel = args.shiftViewModel,
-                isShiftMode = args.isShiftMode,
-                onExitShiftMode = args.onExitShiftMode,
-                onEnterShiftMode = args.onEnterShiftMode,
-                navBarStyle = args.navBarStyle,
-                settingsScrollBehavior = args.settingsScrollBehavior,
-                liquidGlassBackdrop = args.liquidGlassBackdrop,
-                showUpdateSettings = args.showUpdateSettings,
-            )
+            AndroidSettingsPane(args)
         },
         todayAssistantCard = { d ->
             // 天气/定位是 Android 能力（LocationManager + OkHttp），在宿主算好传给共享卡片

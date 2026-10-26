@@ -46,7 +46,8 @@ enum MiuixTabIcons {
         switch index {
         case 0: return imageAlbum
         case 1: return imageMonths
-        case 2: return imageContactsCircle
+        // 第三格是设置页（原「我的」），图标跟着换成齿轮，与 Compose 侧 Demibold.Settings 一致
+        case 2: return imageSettings
         default: return nil
         }
     }

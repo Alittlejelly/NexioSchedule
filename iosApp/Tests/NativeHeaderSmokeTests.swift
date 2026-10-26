@@ -95,22 +95,25 @@ final class NativeHeaderSmokeTests: XCTestCase {
         return y
     }
 
+    /// 设置页入口：底栏第三格（原「我的」已改名设置），排班模式下是第二格。
+    private var settingsEntry: XCUIElement {
+        app.tabBars.buttons["设置"].firstMatch
+    }
+
     private func showSettings() {
-        if !app.tabBars.buttons["我的"].waitForExistence(timeout: 5), item("完成").exists {
+        if !settingsEntry.waitForExistence(timeout: 5), item("完成").exists {
             item("完成").tap()
             settle()
         }
-        if app.tabBars.buttons["我的"].exists {
-            app.tabBars.buttons["我的"].tap()
-        } else if app.tabBars.buttons["设置"].exists {
-            app.tabBars.buttons["设置"].tap()
+        if settingsEntry.exists {
+            settingsEntry.tap()
         } else {
-            // Expanded width uses the original Compose rail, whose merged label includes its icon.
-            let railMy = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "我的")).firstMatch
-            if railMy.exists {
-                _ = stableFrame(of: railMy)
-                XCTAssertTrue(railMy.isHittable && app.frame.contains(railMy.frame), app.debugDescription)
-                railMy.tap()
+            // Expanded width uses the original Compose rail, whose settings row label includes its icon.
+            let railSettings = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "设置")).firstMatch
+            if railSettings.exists {
+                _ = stableFrame(of: railSettings)
+                XCTAssertTrue(railSettings.isHittable && app.frame.contains(railSettings.frame), app.debugDescription)
+                railSettings.tap()
             } else {
                 open("设置")
             }
@@ -356,8 +359,9 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertEqual(app.keyboards.count, 0)
         capture("Preferences - native back with original Compose controls")
         nativeBack()
-        XCTAssertEqual(app.navigationBars.count, 0)
-        XCTAssertTrue(app.tabBars.buttons["我的"].exists || item("设置").exists)
+        // 设置已是压栈的二级页：退回偏好设置后落在设置页，本身就是原生文档壳
+        requireNativeHeader("设置")
+        XCTAssertTrue(item("基本设置").exists, app.debugDescription)
     }
 
     func testHolidayNativeActionAndRotation() throws {
@@ -620,7 +624,7 @@ final class NativeHeaderSmokeTests: XCTestCase {
                        "Save exit changed the source-card layout")
         capture("Time settings - native save completed original reverse morph")
         nativeBack()
-        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable, app.debugDescription)
+        XCTAssertTrue(settingsEntry.isHittable, app.debugDescription)
         XCTAssertTrue(item("课程时间管理").isHittable, app.debugDescription)
         XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
     }
@@ -645,8 +649,8 @@ final class NativeHeaderSmokeTests: XCTestCase {
         XCTAssertFalse(app.navigationBars.buttons["保存并关闭"].exists)
         back.tap()
         settle()
-        XCTAssertTrue(app.tabBars.buttons["我的"].isHittable,
-                      "Parent back tap during editor exit did not restore the settings tab")
+        XCTAssertTrue(settingsEntry.isHittable,
+                      "Parent back tap during editor exit did not restore the settings page")
         XCTAssertTrue(item("课程时间管理").isHittable, app.debugDescription)
         XCTAssertFalse(app.navigationBars.buttons["返回"].exists)
         capture("Time settings - rapid native cancel and parent back without disabled controls")

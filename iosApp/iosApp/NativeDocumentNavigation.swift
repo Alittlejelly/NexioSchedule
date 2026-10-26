@@ -14,7 +14,8 @@ final class NativeDocumentNavigationController: UINavigationController,
     private var transitionStartDepth = 0
 
     /// 栈底那一层在返回菜单里的名字（主界面本身没有原生标题，但菜单要有）。
-    private static let rootMenuTitle = "我的"
+    /// 设置已改成压栈的二级页，栈底就是主 tab 界面，不再叫「我的」。
+    private static let rootMenuTitle = "主界面"
 
     init(host: IosAppHost, root: UIViewController) {
         self.host = host

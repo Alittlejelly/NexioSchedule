@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -62,6 +63,7 @@ import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.PageBackdropSnapshot
+import com.haooz.chedule.ui.utils.ShiftModeRequest
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
 import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
@@ -284,6 +286,22 @@ fun CourseScheduleApp(
         // 放在画 UI 之前 —— 首帧就是用户设定，不需要等一帧再跳、也不需要过渡动画。
         ensureInitialCombination()
 
+        // 排班模式切换请求：设置页现在是二级页（在路由栈里），它只投递请求；
+        // 真正的 loading 覆盖层、pager 重排、VM 切换都必须留在常驻底座执行。
+        // snapshotFlow 而不是 key：pending 变化不该把整个 CourseScheduleApp 重组一遍。
+        LaunchedEffect(Unit) {
+            snapshotFlow { ShiftModeRequest.pending }.collect { pending ->
+                val target = pending ?: return@collect
+                // 先消费再执行，避免同一个请求被重放
+                ShiftModeRequest.consume()
+                com.haooz.chedule.ui.utils.FeatureLog.shift(
+                    if (target) "enter_loading" else "exit_loading"
+                )
+                showShiftLoading = true
+                isExitingShift = !target
+            }
+        }
+
         // 首帧后预热 RenderEffect，避免首次开 BlurBottomSheet 掉帧
         LaunchedEffect(Unit) { blurWarmupReady = true }
         if (blurWarmupReady) {
@@ -490,10 +508,15 @@ fun CourseScheduleApp(
         LaunchedEffect(TabletNavSideState.pendingMainTab) {
             val pending = TabletNavSideState.pendingMainTab
             if (pending in 0..4 && shiftModeInitialized) {
-                // 手机端只有 3 页，侧栏带过来的页号要按实际页数收口
-                val target = pending.coerceAtMost(mainPagerPageCount - 1)
-                selectedTab = target
-                mainPagerState.scrollToPage(target)
+                if (pending == 2 && navBarStyle != "rail") {
+                    // 手机/排班的设置已是二级页：深链直接压栈，不碰 pager
+                    router.navigate(AppRoute.Settings)
+                } else {
+                    // 手机端只剩 2 页（排班 1 页），侧栏带过来的页号要按实际页数收口
+                    val target = pending.coerceAtMost(mainPagerPageCount - 1)
+                    selectedTab = target
+                    mainPagerState.scrollToPage(target)
+                }
                 TabletNavSideState.pendingMainTab = -1
             }
         }
@@ -574,30 +597,15 @@ fun CourseScheduleApp(
 
         screenCornerRadius = rememberScreenCornerRadiiPx()
 
-        // 设置页的「卡片」圆角 = 屏幕圆角（与 [AppNavHost] 的转场裁切同一把尺）
-        settingsPageClipShape = remember(screenCornerRadius, density) {
-            if (screenCornerRadius.maxRadius > 0f) screenCornerRadius.toShape(density) else null
-        }
-        // 顶栏糊带：只圆**顶部两角**（四角全圆会把 120dp 高的糊带变成药丸）
-        settingsTopBarClipShape = remember(screenCornerRadius, density) {
-            if (screenCornerRadius.maxRadius > 0f) {
-                screenCornerRadius.copy(bottomRight = 0f, bottomLeft = 0f).toShape(density)
-            } else {
-                null
-            }
-        }
-        settingsCardOnScreen = remember(mainPagerState, isShiftMode) {
-            {
-                val scrollPos = mainPagerState.currentPage +
-                        mainPagerState.currentPageOffsetFraction
-                scrollPos > settingsPageIndex - 1f
-            }
-        }
-
         coroutineScope = rememberCoroutineScope()
         latestMainTabSelected = onMainTabSelected
         DisposableEffect(hostNavigation) {
-            val callback: (Int) -> Unit = { latestMainTabSelected(it) }
+            val callback: (Int) -> Unit = { index ->
+                // 底栏最后一格是设置页**入口**（不是 pager 页）：页号越界即设置，
+                // 手机普通模式 2 页 / 排班 1 页，两种都靠这个判据收口
+                if (index >= mainPagerPageCount) router.navigate(AppRoute.Settings)
+                else latestMainTabSelected(index)
+            }
             hostNavigation?.onTabSelected = callback
             onDispose {
                 hostNavigation?.let { host ->
@@ -723,15 +731,17 @@ fun CourseScheduleApp(
                 } else {
                     currentAppearance()
                 }
-                // 无材质档：卡片模糊/折射渲染强制关（设置项已锁死，存档保留原值）。
-                // 卡片仍采壁纸——着色程度/不透明度照常生效；只有玻璃采样录屏层不挂
-                if (materialLevel == com.haooz.chedule.ui.utils.AppMaterialSettings.NONE) {
-                    base.copy(
+                when (materialLevel) {
+                    // 无材质档：卡片模糊/折射渲染强制关（设置项已锁死，存档保留原值）。
+                    // 卡片仍采壁纸——着色程度/不透明度照常生效；只有玻璃采样录屏层不挂
+                    com.haooz.chedule.ui.utils.AppMaterialSettings.NONE -> base.copy(
                         cardBlurRadius = 0f,
                         cardRefraction = CardRefractionLevel.OFF,
                     )
-                } else {
-                    base
+                    // 性能优先档：只关折射（外观页该项已置灰），卡片模糊保留
+                    com.haooz.chedule.ui.utils.AppMaterialSettings.PERFORMANCE ->
+                        base.copy(cardRefraction = CardRefractionLevel.OFF)
+                    else -> base
                 }
             }
             // 顶栏/底栏必须采主内容 liquidGlass，否则玻璃退化成纯色

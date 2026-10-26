@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
@@ -61,8 +60,6 @@ import com.haooz.chedule.ui.utils.PagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.captureScreenWithNativeChrome
-import com.haooz.chedule.ui.utils.clipDuringTransition
-import com.haooz.chedule.ui.utils.clipScreenCorners
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -173,9 +170,6 @@ class CourseScheduleAppState {
     var courses: List<Course> = emptyList()
     var dayRange: List<Int> = emptyList()
     var weekDates: List<LocalDate> = emptyList()
-    var settingsPageClipShape: Shape? = null
-    var settingsTopBarClipShape: Shape? = null
-    var settingsCardOnScreen: () -> Boolean = { false }
     var latestScreenWPx: Float = 0f
     var latestScreenHPx: Float = 0f
     var latestMainTabSelected: (Int) -> Unit = {}
@@ -699,9 +693,15 @@ class CourseScheduleAppState {
     val basePage get() = (currentWeek - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
     val todayMaxDateOffset get() = 1000
 
-    // 主 tab 平移容器：仅点底栏/侧栏 tab 驱动。手机端只有 3 页，
-    // 后两页（课程管理/切换课表）只有平板侧栏才到得了，按 5 页建会让它们常驻组合树白陪跑。
-    val mainPagerPageCount get() = if (isShiftMode) 2 else if (navBarStyle == "rail") 5 else 3
+    // 主 tab 平移容器：仅点底栏/侧栏 tab 驱动。
+    // 手机端只剩 2 页（今日 / 课表）—— 设置已改成二级页（`AppRoute.Settings`），不再是 tab；
+    // 排班模式只剩 1 页（排班课表），它的设置入口也从底栏推二级页。
+    // 平板 rail 保持原样：设置 / 课程管理 / 切换课表仍是内嵌页（后两页只有 rail 到得了）。
+    val mainPagerPageCount get() = when {
+        navBarStyle == "rail" -> if (isShiftMode) 2 else 5
+        isShiftMode -> 1
+        else -> 2
+    }
 
     // 程序化切 tab 期间为 true，避免 currentPage 在动画中途把 selectedTab 拉回去
     var mainTabProgrammatic by mutableStateOf(false)
@@ -737,28 +737,11 @@ class CourseScheduleAppState {
     // dataVersion + courses 引用都进 key：调课 size 可能不变，只靠 size 会让智能周末星期行停在旧值
     val viewingIsHoliday get() = viewModel.isWeekHoliday(currentViewingWeek)
 
-    // 设置页的「卡片」圆角 = 屏幕圆角（与 [AppNavHost] 的转场裁切同一把尺）
-    val settingsPageIndex get() = if (isShiftMode) 1 else 2
-
-    // 顶栏糊带：只圆**顶部两角**（四角全圆会把 120dp 高的糊带变成药丸）
-    // 平板（rail）主界面切页是瞬时的（scrollToPage，无动画），圆角卡片机制不参与。
+    // 主界面切页不做圆角裁切：三个 tab 页都方角铺满，设置页不再是从壁纸上滑过来的圆角卡片。
+    // 平板（rail）切页是瞬时的（scrollToPage，无动画），尺寸沿用原逻辑（不额外撑满）。
     val mainTabTransitionAnimated get() = navBarStyle != "rail"
     val settingsPageClipModifier
-        get() =
-            if (mainTabTransitionAnimated) {
-                Modifier
-                    .fillMaxSize()
-                    .clipScreenCorners(settingsPageClipShape)
-            } else {
-                Modifier
-            }
-    val settingsTopBarClipModifier
-        get() =
-            if (mainTabTransitionAnimated) {
-                Modifier.clipDuringTransition(settingsTopBarClipShape, settingsCardOnScreen)
-            } else {
-                Modifier
-            }
+        get() = if (mainTabTransitionAnimated) Modifier.fillMaxSize() else Modifier
     val mainTabAnimation = arrayOfNulls<Job>(1)
     val mainTabGeneration = intArrayOf(0)
     val onMainTabSelected: (Int) -> Unit = { index ->

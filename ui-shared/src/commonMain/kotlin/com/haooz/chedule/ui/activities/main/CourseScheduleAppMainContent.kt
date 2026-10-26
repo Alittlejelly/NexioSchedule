@@ -386,6 +386,8 @@ internal fun CourseScheduleAppMainContent(
                                     isShiftMode = isShiftMode,
                                     selectedTab = selectedTab,
                                     onTabSelected = onMainTabSelected,
+                                    // 「我的 / 设置」已改成二级页：只压栈，不切 pager
+                                    onOpenSettings = { router.navigate(AppRoute.Settings) },
                                     liquidGlassBackdrop = chromeBackdrop,
                                 )
                             }
@@ -483,9 +485,6 @@ internal fun CourseScheduleAppMainContent(
                                                 }
                                             }
                                         )
-                                        // 滑出中的课表糊带同样裁顶部两角：否则它在卡片左缘留一条
-                                        // 方切口，卡片上方的圆角被它顶掉。
-                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     // 锁本页主题：共享顶栏槽外层主题跟 selectedTab 变，
                                     // 切到设置页（浅色）时课程表顶栏遮罩会跟着跳浅
@@ -524,7 +523,10 @@ internal fun CourseScheduleAppMainContent(
                                     }
                                 }
                             }
-                            if (showSettingsTitle) {
+                            // 手机/排班的设置页已改成二级页（`AppRoute.Settings`），pager 里没有它。
+                            // 只有平板 rail 仍把设置内嵌成第 3 页，这条顶栏只服务它。
+                            // ⚠ 先判 rail 再读 showSettingsTitle：手机上直接短路，省掉一次 derivedState 求值。
+                            if (navBarStyle == "rail" && showSettingsTitle) {
                                 val settingsTitleIndex = if (isShiftMode) 1 else 2
                                 val settingsTitleIdle by remember(settingsTitleIndex, navBarStyle) {
                                     derivedStateOf {
@@ -555,9 +557,6 @@ internal fun CourseScheduleAppMainContent(
                                                 }
                                             }
                                         )
-                                        // ⚠ 顶栏槽画在 pager **之上**：不跟着裁，
-                                        // 这条全宽糊带会盖住卡片上方的两个圆角。
-                                        .then(settingsTopBarClipModifier)
                                 ) {
                                     SettingsTopBar(
                                         liquidGlassBackdrop = chromeBackdrop,
@@ -814,7 +813,7 @@ internal fun CourseScheduleAppMainContent(
                                             // 缩放/平移裁在自身 bounds 内，避免突出课程表页画进侧栏
                                             clip = true
                                             // 只用用户自己设的偏移：切页时壁纸是静止底图，
-                                            // 圆角卡片从它上面盖过来（见 settingsPageClipModifier）
+                                            // 设置页以不透明面从它上面滑过来盖住
                                             translationX = sharedWallpaperOffset.x
                                             translationY = sharedWallpaperOffset.y
                                             renderEffect = sharedBlurEffect

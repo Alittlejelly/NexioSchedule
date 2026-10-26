@@ -5,12 +5,19 @@ package com.haooz.chedule.ui.navigation
  *
  * ⚠ [id] 是持久化契约（`rememberSaveable` 进程/配置重建用）：已发布路由的 id 不要改，否则多任务切换回来会落回首页；改 id 必须写迁移。
  *
- * ⚠ 主界面不在此处：它是常驻底座、不参与 save/restore，在此加路由会让非 saveable 状态（`remember { mutableStateOf }`）丢失。要加主 tab 改 `CourseScheduleApp` 的 pager。
+ * ⚠ 主界面（今日 / 课表）不在此处：它是常驻底座、不参与 save/restore，在此加路由会让非 saveable
+ * 状态（`remember { mutableStateOf }`）丢失。要加主 tab 改 `CourseScheduleApp` 的 pager。
+ * 例外是 [Settings]（2026-10 起）：它是二级页而不是主 tab，页内状态全是临时 UI 态，出栈销毁无妨。
  */
 sealed interface AppRoute {
 
     /** 持久化标识。已发布的 id 不要改（见接口 KDoc）。 */
     val id: String
+
+    /** 设置（原主 pager 第三页，现为二级页）。 */
+    data object Settings : AppRoute {
+        override val id: String get() = "settings"
+    }
 
     /** 关于页。 */
     data object About : AppRoute {
@@ -125,6 +132,7 @@ sealed interface AppRoute {
     companion object {
         /** 按 [id] 还原路由；未知 id 返回 null（版本回退/脏数据时由调用方兜底）。 */
         fun fromId(id: String): AppRoute? = when (id) {
+            Settings.id -> Settings
             About.id -> About
             Changelog.id -> Changelog
             License.id -> License

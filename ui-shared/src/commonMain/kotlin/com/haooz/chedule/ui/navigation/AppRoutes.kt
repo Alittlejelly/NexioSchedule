@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -106,10 +107,15 @@ import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
+import com.haooz.chedule.ui.theme.rememberAppThemeController
+import com.haooz.chedule.ui.utils.LocalForcedDarkTheme
 import com.haooz.chedule.ui.utils.NativeDocumentOverlayEffect
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentActionEffect
+import com.haooz.chedule.ui.utils.ShiftModeRequest
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
+import com.haooz.chedule.ui.activities.main.RenderSettingsPane
+import com.haooz.chedule.ui.activities.main.SettingsPaneArgs
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
@@ -124,7 +130,9 @@ import com.haooz.chedule.ui.web.WebHostEvents
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.courseViewModel
+import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
+import com.haooz.chedule.viewmodel.shiftViewModel
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -263,6 +271,62 @@ fun AppreciateAuthorRoute(router: AppRouter) {
 }
 
 // ── 带能力注入的文档壳路由：壳在 commonMain，平台能力走参数 ──
+
+/**
+ * 设置（二级页）
+ * ⚠ 平板（rail）仍走 pager 内嵌那套，不经过这里。
+ * 壳用 [DocumentPageScaffold]：返回按钮、折叠标题、页内采样层、iOS 原生 chrome 都由它给，
+ *
+ * @param settingsPane 宿主装配（Android = `AndroidSettingsScreen`，iOS = `IosSettingsScreen`）；
+ *   null 时回落到共享 [SettingsScreen] 默认装配。
+ */
+@Composable
+fun SettingsRoute(
+    router: AppRouter,
+    showUpdateSettings: Boolean = true,
+    settingsPane: (@Composable (SettingsPaneArgs) -> Unit)? = null,
+) {
+    val shiftViewModel = shiftViewModel()
+    // 排班模式状态直接读 VM：本页可能从普通模式进、也可能从排班模式进
+    val isShiftMode by shiftViewModel.isShiftMode.collectAsState()
+    // 设置页始终跟应用主题、不被壁纸锁深色 —— 这层原先由 pager 的设置分支提供，
+    // 搬进路由后必须自己补上，否则深色壁纸下整页会被染深。
+    val settingsThemeController =
+        rememberAppThemeController(isDark = isAppDarkTheme())
+    DocumentPageScaffold(
+        title = CommonStr.settings(),
+        onBack = { router.popBack() },
+    ) { scrollBehavior, backdrop ->
+        MiuixTheme(controller = settingsThemeController) {
+            CompositionLocalProvider(LocalForcedDarkTheme provides null) {
+                RenderSettingsPane(
+                    settingsPane,
+                    SettingsPaneArgs(
+                        viewModel = courseViewModel(),
+                        scheduleViewModel = scheduleViewModel(),
+                        settingsViewModel = settingsViewModel(),
+                        shiftViewModel = shiftViewModel,
+                        isShiftMode = isShiftMode,
+                        // loading 转场与 pager 重排只能由主界面执行，这里只投递请求并退回主界面
+                        onExitShiftMode = {
+                            ShiftModeRequest.exit()
+                            router.popBack()
+                        },
+                        onEnterShiftMode = {
+                            ShiftModeRequest.enter()
+                            router.popBack()
+                        },
+                        navBarStyle = "standard",
+                        // DocumentPageScaffold 的 scrollBehavior：顶栏折叠与列表滚动共用一个
+                        settingsScrollBehavior = scrollBehavior,
+                        liquidGlassBackdrop = backdrop,
+                        showUpdateSettings = showUpdateSettings,
+                    ),
+                )
+            }
+        }
+    }
+}
 
 /**
  * 应用偏好设置路由。四个平台能力全部参数注入：定位权限检查 / 天气缓存清空 /

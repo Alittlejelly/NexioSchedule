@@ -76,7 +76,6 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.Backup
-import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.Months
 import top.yukonga.miuix.kmp.icon.extended.Settings
@@ -271,7 +270,7 @@ fun TabletNavSideBar(
         listOf(
             CommonStr.today() to MiuixIcons.Album,
             ChromeStr.schedule() to MiuixIcons.Months,
-            ChromeStr.profile() to MiuixIcons.ContactsCircle,
+            CommonStr.settings() to MiuixIcons.Demibold.Settings,
             ChromeStr.courseManage() to MiuixIcons.Backup,
             ChromeStr.switchSchedule() to MiuixIcons.ConvertFile,
         )

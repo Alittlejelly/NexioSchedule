@@ -81,6 +81,21 @@ import kotlin.math.sign
 internal val LocalLiquidBottomTabScale =
     staticCompositionLocalOf { { 1f } }
 
+/**
+ * 底栏胶囊底色。拆成函数是因为底栏右侧那颗设置圆钮要和胶囊**同一块材质**：
+ * 两处各写一份必然在「无材质档 / 莫奈取色 / 亮暗」三档里错开一格。
+ */
+@Composable
+internal fun bottomBarSurfaceColor(): Color {
+    val isLightTheme = !isAppDarkTheme()
+    return if (MiuixTheme.isDynamicColor) {
+        MiuixTheme.colorScheme.surfaceContainer
+            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
+    } else if (isLightTheme) Color(0xFFFAFAFA)
+        .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
+    else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
+}
+
 /** 底部导航 tab：纯视觉；手势由 [LiquidBottomTabs] 统一层处理 */
 @Composable
 fun RowScope.LiquidBottomTab(
@@ -127,13 +142,9 @@ fun LiquidBottomTabs(
         if (isLightTheme) Color.Black
         else Color.White
     // 胶囊底色：莫奈取色下跟随 surfaceContainer（与 DayColumn 待放格、教务导入胶囊同一套）；
-    // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）；无材质档实色
-    val containerColor = if (MiuixTheme.isDynamicColor) {
-        MiuixTheme.colorScheme.surfaceContainer
-            .copy(alpha = com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
-    } else if (isLightTheme) Color(0xFFFAFAFA)
-        .copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.5f))
-    else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.6f))
+    // 非莫奈保持原硬编码（亮 #FAFAFA / 暗 #242424，各带原 alpha）；无材质档实色。
+    // 抽成 bottomBarSurfaceColor()：底栏右侧的设置圆钮要跟胶囊同色
+    val containerColor = bottomBarSurfaceColor()
     val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()
