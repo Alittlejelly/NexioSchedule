@@ -116,8 +116,7 @@ fun LiquidTopBarButton(
                 val progress = interactiveHighlight.pressProgress.coerceAtLeast(0f)
                 val scale = lerp(1f, 1f + 4f.dp.toPx() / height, progress)
                 val offset = interactiveHighlight.offset
-                // 沿拖动方向的最大拉伸比例：2dp/高度（42dp 按钮约 4.8%），与 BackToNowFloatingButton 一致。
-                val maxDragScale = 2f.dp.toPx() / height
+                val maxDragScale = 1f.dp.toPx() / height
                 val offsetAngle = atan2(offset.y, offset.x)
                 scaleX =
                     scale +

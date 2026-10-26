@@ -122,10 +122,6 @@ fun LiquidGlassTextButton(
             // 位移放外层：阴影(drawBehind)与玻璃一起跟手，拖动时阴影不脱落。
             .graphicsLayer {
                 clip = false
-
-                // 与下拉菜单面板共用同一套形变算法（computeDragTransform），跟手手感一致。
-                // shapeAspectRatio = 1f：本按钮是 fillMaxWidth 的长条（360x40），
-                // 按实测长宽比算 penaltyY ≈ 0.11，纵向拉伸会被砍到九分之一。
                 val drag = computeDragTransform(
                     width = size.width,
                     height = size.height,

@@ -190,11 +190,8 @@ fun BackToNowFloatingButton(
                         scaleX = scale
                         scaleY = scale
 
-                        // 位移已由外层 graphicsLayer 承担，这里只做沿拖动方向拉伸
                         val offset = interactiveHighlight.offset
-                        // 沿拖动方向的最大拉伸比例：2dp/高度，与 LiquidTopBarButton 一致。
-                        // 注意上面 pressProgress 那个 4dp 是按压缩放，不要一起改。
-                        val maxDragScale = 2f.dp.toPx() / size.height
+                        val maxDragScale = 1f.dp.toPx() / size.height
                         val offsetAngle = atan2(offset.y, offset.x)
                         scaleX =
                             scale +
