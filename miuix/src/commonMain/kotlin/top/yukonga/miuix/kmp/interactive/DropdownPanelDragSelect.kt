@@ -59,6 +59,12 @@ import kotlin.math.tanh
 /** 沿拖动方向的最大拉伸比例（拖过行程基准时吃满） */
 private const val DragStretchRatio = 0.045f
 
+/** 跟手位移的 tanh 阻尼系数（默认档） */
+private const val DefaultTranslationDamping = 0.08f
+
+/** 按压放大档位：按下吃满时多放大的 dp（相对控件高度），默认档 */
+private const val DefaultPressScaleDp = 4f
+
 /**
  * 竖向行程基准相对横向的缩放（<1 = 更容易吃满），按展开进度插值。
  * 菜单只有几行高，竖向行程天然比横向短，用同一基准时竖拖明显迟钝。
@@ -95,6 +101,9 @@ data class DragTransform(
  *   **天生长条**的控件（整宽按钮 360x40）必须传 1f：否则 penaltyY = 40/360 ≈ 0.11，
  *   纵向拉伸被砍到九分之一，等于把这条轴的跟手感关掉。
  *   惩罚是为防「意外扁长」，不该 punish 设计上就长条的形状。
+ * @param stretchRatio 沿拖动方向的最大拉伸比例，默认 [DragStretchRatio]
+ * @param translationDamping tanh 跟手阻尼系数，默认 0.08；越大越跟手
+ * @param pressScaleDp 按压放大：按下吃满时额外放大的 dp 数（比例是 pressScaleDp / 控件高度），默认 4dp
  */
 fun computeDragTransform(
     width: Float,
@@ -104,10 +113,13 @@ fun computeDragTransform(
     offset: Offset,
     density: Density,
     shapeAspectRatio: Float? = null,
+    stretchRatio: Float = DragStretchRatio,
+    translationDamping: Float = DefaultTranslationDamping,
+    pressScaleDp: Float = DefaultPressScaleDp,
 ): DragTransform {
     val selfH = height.coerceAtLeast(1f)
     val minDim = minOf(width, selfH).coerceAtLeast(1f)
-    val pressScale = 1f + with(density) { 4f.dp.toPx() } / selfH * pressProgress.coerceAtLeast(0f)
+    val pressScale = 1f + with(density) { pressScaleDp.dp.toPx() } / selfH * pressProgress.coerceAtLeast(0f)
     // 竖向行程基准按展开进度收紧（菜单就几行高，竖向行程天然短）
     val refY = minDim * (1f - (1f - VerticalDragRefScale) * fraction.coerceIn(0f, 1f))
     val base = shapeAspectRatio
@@ -115,10 +127,10 @@ fun computeDragTransform(
     val penaltyY = (base?.let { 1f / it } ?: (selfH / width)).coerceAtMost(AspectPenaltyFloor)
     val angle = atan2(offset.y, offset.x)
     return DragTransform(
-        scaleX = pressScale + DragStretchRatio * abs(cos(angle) * offset.x / minDim) * penaltyX,
-        scaleY = pressScale + DragStretchRatio * abs(sin(angle) * offset.y / refY) * penaltyY,
-        translationX = minDim * tanh(0.08f * offset.x / minDim),
-        translationY = minDim * tanh(0.08f * offset.y / minDim),
+        scaleX = pressScale + stretchRatio * abs(cos(angle) * offset.x / minDim) * penaltyX,
+        scaleY = pressScale + stretchRatio * abs(sin(angle) * offset.y / refY) * penaltyY,
+        translationX = minDim * tanh(translationDamping * offset.x / minDim),
+        translationY = minDim * tanh(translationDamping * offset.y / minDim),
     )
 }
 

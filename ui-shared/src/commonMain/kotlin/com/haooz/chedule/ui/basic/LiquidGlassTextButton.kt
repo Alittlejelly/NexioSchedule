@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.edgelight.edgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
+import com.haooz.chedule.ui.components.GlassDragStretchRatio
+import com.haooz.chedule.ui.components.GlassDragTranslationDamping
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.Backdrop
@@ -36,8 +38,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-import com.kyant.capsule.ContinuousRoundedRectangle
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import com.kyant.capsule.ContinuousCapsule
 import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.interactive.computeDragTransform
@@ -53,8 +54,7 @@ fun LiquidGlassTextButton(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    cornerRadius: Dp = ButtonDefaults.CornerRadius,
-    minHeight: Dp = ButtonDefaults.MinHeight,
+    minHeight: Dp = 48.dp,
     primary: Boolean = true,
 ) {
     val animationScope = rememberCoroutineScope()
@@ -92,8 +92,8 @@ fun LiquidGlassTextButton(
     val shadowColor = if (primary) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface
     val shadowAlpha = 0.4f
 
-    val buttonShape: Shape = ContinuousRoundedRectangle(cornerRadius)
-    val buttonShapeBlock: () -> Shape = remember(cornerRadius) { { buttonShape } }
+    val buttonShape: Shape = remember { ContinuousCapsule() }
+    val buttonShapeBlock: () -> Shape = remember { { buttonShape } }
     val chromeLens = com.haooz.chedule.ui.utils.AppMaterialSettings.chromeLensEnabled()
     // 玻璃模糊随材质档位：通透玻璃档更低（折射接管通透感），其余档 8；无材质档整体关
     val glassBlur = com.haooz.chedule.ui.utils.AppMaterialSettings.glassBlurDp()
@@ -130,6 +130,8 @@ fun LiquidGlassTextButton(
                     offset = interactiveHighlight.offset,
                     density = this,
                     shapeAspectRatio = 1f,
+                    stretchRatio = GlassDragStretchRatio,
+                    translationDamping = GlassDragTranslationDamping,
                 )
                 translationX = drag.translationX
                 translationY = drag.translationY
@@ -137,7 +139,7 @@ fun LiquidGlassTextButton(
             .drawBehind {
                 val offsetY = 4.dp.toPx()
                 val blurRadius = 10f * density
-                val radius = cornerRadius.toPx()
+                val radius = size.height / 2f
                 // 跨平台阴影：compose Path + miuix 的 expect/actual（android=BlurMaskFilter / skiko=Skia）
                 val path = Path().apply {
                     addRoundRect(
@@ -184,13 +186,20 @@ fun LiquidGlassTextButton(
                             offset = interactiveHighlight.offset,
                             density = this,
                             shapeAspectRatio = 1f,
+                            stretchRatio = GlassDragStretchRatio,
+                            translationDamping = GlassDragTranslationDamping,
+                            // 文字按钮专属：按压放大比通用档小一半（4dp → 2dp）
+                            pressScaleDp = 2f,
                         )
                         scaleX = drag.scaleX
                         scaleY = drag.scaleY
                     },
                     onDrawSurface = buttonOnDrawSurface
                 )
-                .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
+                .edgeLight(
+                    shape = buttonShape,
+                    edgeLight = rememberDefaultEdgeLight(baseColor = Color.White),
+                )
                 .then(interactiveHighlight.modifier)
                 .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)
                 .defaultMinSize(minHeight = minHeight)

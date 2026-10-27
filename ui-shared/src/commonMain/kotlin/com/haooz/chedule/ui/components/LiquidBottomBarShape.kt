@@ -31,9 +31,6 @@ import kotlin.math.sqrt
 internal val MaterialBleedX = 16.dp
 internal val MaterialBleedY = 28.dp
 
-/** 分离态：颈半高 / 底栏高度。越大颈越粗、融合越明显 */
-internal const val NeckStrength = 0.36f
-
 /** 滑块（可按压的选中玻璃）左右各收窄的量；宽度减 2×本值、位置补 1×本值保持居中 */
 internal val BottomBarSelectorInset = 0.5.dp
 
@@ -76,6 +73,14 @@ private fun tangentAt(a: Float, toward: Offset): Offset {
  * 算出融合颈的八个点。公式与 [BarShape] 内部逐字一致；没有颈时返回 null。
  *
  * 之所以要单独抽一份：折射必须和真实轮廓共用同一份几何，各算各的必然对不上。
+ * [fusion] 必须与形状用的是同一个实例，否则山丘 / 颈的尺寸会对不上。
+ *
+ * @param pillRadiusX 本体端头的横向半径。**非等比缩放后的胶囊端头是椭圆**（rx ≠ ry），
+ *   按正圆算会把轴端点摆错位置，颈的锚点落进本体内部，接缝处就是一道折痕。
+ *   传 null（或两轴相等）= 正圆，与旧行为逐位一致。
+ * @param pillRadiusY 本体端头的纵向半径，同上。
+ * @param ellipseTangents 端头是椭圆时置 true：颈边控制点按椭圆的真实切线求，
+ *   不能用极角切线（`(-sin, cos)` 只对正圆成立）。
  */
 internal fun barNeckGeometryPx(
     pillCenterX: Float,
@@ -87,12 +92,40 @@ internal fun barNeckGeometryPx(
     circleRadiusX: Float,
     circleRadiusY: Float,
     maxNeckHalfPx: Float,
+    fusion: LiquidFusion,
     density: Density,
+    pillRadiusX: Float? = null,
+    pillRadiusY: Float? = null,
+    ellipseTangents: Boolean = false,
 ): BarNeckGeometry? {
-    val pillRadius = minOf(pillHalfWidth, pillHalfHeight)
-    if (pillRadius <= 0f) return null
-    val axisLeft = pillCenterX - pillHalfWidth + pillRadius
-    val axisRight = pillCenterX + pillHalfWidth - pillRadius
+    val circlePillRadius = minOf(pillHalfWidth, pillHalfHeight)
+    if (circlePillRadius <= 0f) return null
+    // 端头半径：给了就用椭圆的，没给退回正圆（min(半宽, 半高)）
+    val prx = pillRadiusX ?: circlePillRadius
+    val pry = pillRadiusY ?: circlePillRadius
+    val pillRadius = minOf(prx, pry)
+
+    /** 本体端头在极角 [a] 上的半径。两轴相等时直接回转出正圆，保证旧路径逐位一致。 */
+    fun pillRAt(a: Float): Float =
+        if (prx == pry) prx else ellipseRadiusAt(prx, pry, a)
+
+    /** 椭圆在极角 [a] 处的真实切线；正圆直接用解析式。方向取与 [toward] 同侧。 */
+    fun tangentOf(a: Float, rx: Float, ry: Float, toward: Offset): Offset {
+        if (!ellipseTangents || rx == ry) return tangentAt(a, toward)
+        val e = 0.002f
+        val r0 = ellipseRadiusAt(rx, ry, a - e)
+        val r1 = ellipseRadiusAt(rx, ry, a + e)
+        val dx = r1 * cos(a + e) - r0 * cos(a - e)
+        val dy = r1 * sin(a + e) - r0 * sin(a - e)
+        val len = sqrt(dx * dx + dy * dy).coerceAtLeast(1e-6f)
+        val tx = dx / len
+        val ty = dy / len
+        val dot = tx * toward.x + ty * toward.y
+        return Offset(if (dot >= 0f) tx else -tx, if (dot >= 0f) ty else -ty)
+    }
+
+    val axisLeft = pillCenterX - pillHalfWidth + prx
+    val axisRight = pillCenterX + pillHalfWidth - prx
     val axisX = circleCenterX.coerceIn(minOf(axisLeft, axisRight), maxOf(axisLeft, axisRight))
     val vx = circleCenterX - axisX
     val vy = circleCenterY - pillCenterY
@@ -100,24 +133,25 @@ internal fun barNeckGeometryPx(
     if (dist < 0.5f) return null
     val ang = atan2(vy, vx)
     val circleDirR = ellipseRadiusAt(circleRadiusX, circleRadiusY, ang)
-    val surfaceGap = dist - pillRadius - circleDirR
+    val surfaceGap = dist - pillRAt(ang) - circleDirR
 
     // 山丘先算：它在颈出现**之前**就有了（gap 从 10dp 开始鼓），
     // 所以即使没有颈也要把这组参数交给折射，否则那段轮廓会凭空少一圈。
-    val neckThresholdPx = with(density) { (FusionBulgeMaxDp * 2f).dp.toPx() }
-    val bulgeRangePx = with(density) { FusionBulgeRangeDp.dp.toPx() }
+    val neckThresholdPx = with(density) { (fusion.bulgeMaxDp * 2f).dp.toPx() }
+    val bulgeRangePx = with(density) { fusion.bulgeRangeDp.dp.toPx() }
     val bulgeT = if (surfaceGap >= bulgeRangePx) {
         0f
     } else {
         ((bulgeRangePx - surfaceGap) / (bulgeRangePx - neckThresholdPx)).coerceIn(0f, 1f)
     }
-    val bulgeH = with(density) { FusionBulgeMaxDp.dp.toPx() } * (bulgeT * bulgeT)
-    val gaussEdge = exp(-0.25f / (2f * FusionBulgeSigma * FusionBulgeSigma))
+    val bulgeH = with(density) { fusion.bulgeMaxDp.dp.toPx() } * (bulgeT * bulgeT)
+    val gaussEdge = exp(-0.25f / (2f * fusion.bulgeSigma * fusion.bulgeSigma))
     val circleAvgR = (circleRadiusX + circleRadiusY) / 2f
-    val phiPill = ((bulgeH * FusionBulgeWidthRatio) / pillRadius)
-        .coerceIn(FusionBulgeMinAngle, 1.2f)
-    val phiCircle = ((bulgeH * FusionBulgeWidthRatio) / circleAvgR)
-        .coerceIn(FusionBulgeMinAngle, 1.2f)
+    // 山丘张角在纵向上的铺开：用纵向半径（端头是椭圆时纵向才是决定张角的那一轴）
+    val phiPill = ((bulgeH * fusion.bulgeWidthRatio) / pry)
+        .coerceIn(fusion.bulgeMinAngle, fusion.bulgeMaxAngle)
+    val phiCircle = ((bulgeH * fusion.bulgeWidthRatio) / circleAvgR)
+        .coerceIn(fusion.bulgeMinAngle, fusion.bulgeMaxAngle)
     val pi = PI.toFloat()
 
     fun bulgeOnly() = BarNeckGeometry(
@@ -138,30 +172,32 @@ internal fun barNeckGeometryPx(
     )
 
     if (surfaceGap >= neckThresholdPx) return bulgeOnly()
-    val k = ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(FusionRampPower)
+    val k = ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(fusion.rampPower)
     if (k <= 0.001f) return bulgeOnly()
 
-    val overlapLeadPx = with(density) { FusionOverlapLeadDp.dp.toPx() }
+    val overlapLeadPx = with(density) { fusion.overlapLeadDp.dp.toPx() }
     val effDist = (dist - overlapLeadPx).coerceAtLeast(1f)
-    val intersectHh = if (effDist < pillRadius + circleDirR) {
+    // 重叠时两团已经连成一片：用交叠的弦高补一段颈，腰才不至于比自然重叠更细。
+    // 横向用 prx 判交叠位置，纵向用 pry 取弦高（端头是椭圆时这两轴不是一回事）。
+    val intersectHh = if (effDist < prx + circleDirR) {
         val proj =
-            (effDist * effDist + pillRadius * pillRadius - circleDirR * circleDirR) / (2f * effDist)
-        sqrt((pillRadius * pillRadius - proj * proj).coerceAtLeast(0f))
+            (effDist * effDist + prx * prx - circleDirR * circleDirR) / (2f * effDist)
+        sqrt((pry * pry - proj * proj).coerceAtLeast(0f))
     } else {
         0f
     }
-    val neck = (maxNeckHalfPx * k + intersectHh * NeckOverlapGrow).coerceAtMost(pillRadius)
+    val neck = (maxNeckHalfPx * k + intersectHh * fusion.neckOverlapGrow).coerceAtMost(pillRadius)
 
     fun bumpAt(angle: Float, center: Float, phi: Float): Float {
         val t = (angle - (center - phi)) / (2f * phi)
         if (t <= 0f || t >= 1f) return 0f
         val dx = t - 0.5f
-        val rawG = exp(-(dx * dx) / (2f * FusionBulgeSigma * FusionBulgeSigma))
+        val rawG = exp(-(dx * dx) / (2f * fusion.bulgeSigma * fusion.bulgeSigma))
         return ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
     }
 
     fun onPill(a: Float): Offset {
-        val r = pillRadius + bulgeH * bumpAt(a, ang, phiPill)
+        val r = pillRAt(a) + bulgeH * bumpAt(a, ang, phiPill)
         return Offset(axisX + r * cos(a), pillCenterY + r * sin(a))
     }
 
@@ -171,7 +207,7 @@ internal fun barNeckGeometryPx(
         return Offset(circleCenterX + r * cos(a), circleCenterY + r * sin(a))
     }
 
-    val phi1 = asin((neck / (pillRadius + bulgeH)).coerceIn(-1f, 1f))
+    val phi1 = asin((neck / (pry + bulgeH)).coerceIn(-1f, 1f))
     val circleNearR = ellipseRadiusAt(circleRadiusX, circleRadiusY, ang + pi)
     val phi2 = asin((neck / (circleNearR + bulgeH).coerceAtLeast(0.5f)).coerceIn(-1f, 1f))
 
@@ -189,10 +225,10 @@ internal fun barNeckGeometryPx(
     val chordL = cl - pl
     val lenU = sqrt(chordU.x * chordU.x + chordU.y * chordU.y).coerceAtLeast(0.001f)
     val lenL = sqrt(chordL.x * chordL.x + chordL.y * chordL.y).coerceAtLeast(0.001f)
-    val tu = tangentAt(a1u, chordU)
-    val tcu = tangentAt(a2u, Offset(-chordU.x, -chordU.y))
-    val tl = tangentAt(a1l, chordL)
-    val tcl = tangentAt(a2l, Offset(-chordL.x, -chordL.y))
+    val tu = tangentOf(a1u, prx, pry, chordU)
+    val tcu = tangentOf(a2u, circleRadiusX, circleRadiusY, Offset(-chordU.x, -chordU.y))
+    val tl = tangentOf(a1l, prx, pry, chordL)
+    val tcl = tangentOf(a2l, circleRadiusX, circleRadiusY, Offset(-chordL.x, -chordL.y))
 
     return BarNeckGeometry(
         hasNeck = true,
@@ -251,6 +287,7 @@ uniform float bulgeAngle;
 uniform float bulgePhiPill;
 uniform float bulgePhiCircle;
 uniform float bulgeGaussEdge;
+uniform float bulgeSigma;
 
 float sdRoundRect(float2 p, float2 c, float2 h, float r) {
     float2 q = abs(p - c) - (h - r);
@@ -267,7 +304,7 @@ float bumpAt(float angle, float center, float phi) {
         return 0.0;
     }
     float dx = t - 0.5;
-    float rawG = exp(-(dx * dx) / (2.0 * 0.2 * 0.2));
+    float rawG = exp(-(dx * dx) / (2.0 * bulgeSigma * bulgeSigma));
     return clamp((rawG - bulgeGaussEdge) / (1.0 - bulgeGaussEdge), 0.0, 1.0);
 }
 
@@ -409,30 +446,6 @@ half4 main(float2 coord) {
 }
 """
 
-/** 重叠态：每单位「自然交点距离 hh」额外增加的颈半宽，决定重叠后腰变粗的快慢 */
-private const val NeckOverlapGrow = 0.35f
-
-/** 相交判定的提前量（dp），让重叠段在真正相切之前接管，消除两段曲线的换挡点 */
-private const val FusionOverlapLeadDp = 4f
-
-/** 融合强度曲线的指数：越小，贴住阈值的头一段桥越粗 */
-private const val FusionRampPower = 0.22f
-
-/** 山丘凸起：从多远开始鼓包（dp） */
-internal const val FusionBulgeRangeDp = 10f
-
-/** 山丘凸起：最大隆起高度（dp） */
-private const val FusionBulgeMaxDp = 2.6f
-
-/** 山丘凸起：隆起半宽 / 高度，换算成圆弧张角 `phi = halfW / r` */
-private const val FusionBulgeWidthRatio = 10f
-
-/** 山丘凸起：张角下限（rad），再窄就成了小尖包 */
-private const val FusionBulgeMinAngle = 0.35f
-
-/** 山丘凸起的钟形胖瘦（高斯 sigma，相对张角 0..1） */
-private const val FusionBulgeSigma = 0.2f
-
 /** [BarShape] 的参数：全是 draw 期才读的 lambda，拖动 / 按压都不进组合期 */
 internal class BarShapeParams(
     val panelOffset: () -> Float,
@@ -445,8 +458,10 @@ internal class BarShapeParams(
     val extraPx: Float,
     /** 胶囊与圆钮的静止间距，px */
     val gapPx: Float,
-    /** 融球颈的最大半高，px */
+    /** 融球颈的最大半高，px = 参考尺寸 × [LiquidFusion.neckStrength] */
     val maxNeckHalfPx: Float,
+    /** 融球手感；必须与 [barNeckGeometryPx] 收到的是同一个实例 */
+    val fusion: LiquidFusion,
     /** 画布向外的余量，px；形状内部按它把原点补回来 */
     val bleedX: Float,
     val bleedY: Float,
@@ -527,14 +542,7 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         val dist = sqrt(vx * vx + vy * vy)
         val ang = atan2(vy, vx)
 
-        /** 椭圆在角度 [a] 方向上的极半径（不是参数方程的 t）。rx == ry 时退化成正圆。 */
-        fun ellipseRadiusAt(rx: Float, ry: Float, a: Float): Float {
-            val c = cos(a)
-            val s = sin(a)
-            val d = (ry * c) * (ry * c) + (rx * s) * (rx * s)
-            return if (d <= 1e-6f) 0f else rx * ry / sqrt(d)
-        }
-
+        val fusion = p.fusion
         val circleAvgR = (circleRx + circleRy) / 2f
         // 沿连线方向量间隙：纵向拉伸后（ry > rx）用平均半径会把间隙算小，山丘和桥提前出现
         val circleDirR = ellipseRadiusAt(circleRx, circleRy, ang)
@@ -542,18 +550,18 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         // 相交判定整体外移到吸附范围之外，gap 从 10dp 一路贴近到重叠都由同一个量驱动，
         // hh 在 gap = lead 处恰为 0，桥与山丘同时从零宽起步。
         // 阈值 = 2 × 山丘最大高度，让「两座山丘碰上」与「桥出现」落在同一时刻
-        val neckThresholdPx = with(density) { (FusionBulgeMaxDp * 2f).dp.toPx() }
+        val neckThresholdPx = with(density) { (fusion.bulgeMaxDp * 2f).dp.toPx() }
         val k = if (surfaceGap >= neckThresholdPx) {
             0f
         } else {
-            ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(FusionRampPower)
+            ((neckThresholdPx - surfaceGap) / neckThresholdPx).coerceIn(0f, 1f).pow(fusion.rampPower)
         }
         if (dist < 0.5f) return Outline.Generic(merged)
         // 连线方向 / 法向单位向量，吸附凸起与融合桥共用
         val pi = PI.toFloat()
 
         // 山丘强度只由间隙决定，融合之后也不撤：两座山丘先贴到一起，桥再把那道缝填实
-        val bulgeRangePx = with(density) { FusionBulgeRangeDp.dp.toPx() }
+        val bulgeRangePx = with(density) { fusion.bulgeRangeDp.dp.toPx() }
         val bulgeT = if (surfaceGap >= bulgeRangePx) {
             0f
         } else {
@@ -563,12 +571,12 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
         // 高度分布取归一化高斯：两端恰好 0（与本体完全重合）、导数为 0（无棱）。
         // 张角与高度外提成同一组参数，桥的锚点才能按角度查到山丘的实际半径 ——
         // 一律按最高点算的话，锚点处山丘已衰减，锚点悬空就是上下各一根尖刺。
-        val bulgeH = with(density) { FusionBulgeMaxDp.dp.toPx() } * (bulgeT * bulgeT)
-        val gaussEdge = exp(-0.25f / (2f * FusionBulgeSigma * FusionBulgeSigma))
-        val phiPill = ((bulgeH * FusionBulgeWidthRatio) / pillRadius)
-            .coerceIn(FusionBulgeMinAngle, 1.2f)
-        val phiCircle = ((bulgeH * FusionBulgeWidthRatio) / circleAvgR)
-            .coerceIn(FusionBulgeMinAngle, 1.2f)
+        val bulgeH = with(density) { fusion.bulgeMaxDp.dp.toPx() } * (bulgeT * bulgeT)
+        val gaussEdge = exp(-0.25f / (2f * fusion.bulgeSigma * fusion.bulgeSigma))
+        val phiPill = ((bulgeH * fusion.bulgeWidthRatio) / pillRadius)
+            .coerceIn(fusion.bulgeMinAngle, fusion.bulgeMaxAngle)
+        val phiCircle = ((bulgeH * fusion.bulgeWidthRatio) / circleAvgR)
+            .coerceIn(fusion.bulgeMinAngle, fusion.bulgeMaxAngle)
         val bulgeCenterCircle = ang + pi
 
         /** 某个角度上的山丘高度系数（0..1）；落在张角之外为 0 */
@@ -576,7 +584,7 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
             val t = (angle - (center - phi)) / (2f * phi)
             if (t <= 0f || t >= 1f) return 0f
             val dx = t - 0.5f
-            val rawG = exp(-(dx * dx) / (2f * FusionBulgeSigma * FusionBulgeSigma))
+            val rawG = exp(-(dx * dx) / (2f * fusion.bulgeSigma * fusion.bulgeSigma))
             return ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
         }
 
@@ -638,6 +646,7 @@ internal class BarShape(private val p: BarShapeParams) : Shape {
             circleRadiusX = circleRx,
             circleRadiusY = circleRy,
             maxNeckHalfPx = p.maxNeckHalfPx,
+            fusion = fusion,
             density = density,
         )
         if (neckGeom == null || !neckGeom.hasNeck) {

@@ -158,7 +158,7 @@ fun RowScope.LiquidBottomTab(
  * 按下胶囊 / 拖动 1:1 跟手；松手吸附最近 tab 并提交选中。
  *
  * 传 [trailing] 时右侧圆钮并入同一块材质：底栏总宽 = 胶囊 + 间距 + 圆钮 + 拖动余量，
- * 材质由一条 shape（胶囊 ∪ 圆 ∪ 颈）描述。
+ * 材质由一条 shape（胶囊 ∪ 圆 ∪ 颈）描述。胶囊与圆钮之间的融球手感由 [fusion] 一整套参数控制。
  */
 @Composable
 fun LiquidBottomTabs(
@@ -170,6 +170,7 @@ fun LiquidBottomTabs(
     containerHeight: Dp = 56.dp,
     selectorHeight: Dp = 48.dp,
     trailing: LiquidBottomTrailing? = null,
+    fusion: LiquidFusion = LiquidFusion.Default,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isAppDarkTheme()
@@ -182,6 +183,8 @@ fun LiquidBottomTabs(
     val density = LocalDensity.current
     val animationScope = rememberCoroutineScope()
     val heightPx = with(density) { containerHeight.toPx() }
+    // 融球颈的最大半高：参考尺寸取容器高度。形状与折射都读这一个值
+    val maxNeckHalfPx = heightPx * fusion.neckStrength
     // 圆钮占掉的额外宽度（间距 + 直径 + 拖动余量）；没有圆钮时为 0
     val extraPx = trailing?.let {
         with(density) { (it.gap + containerHeight + it.dragRoom).toPx() }
@@ -344,7 +347,8 @@ fun LiquidBottomTabs(
                     circleCenterY = circleCy,
                     circleRadiusX = circleRx,
                     circleRadiusY = circleRy,
-                    maxNeckHalfPx = heightPx * NeckStrength,
+                    maxNeckHalfPx = maxNeckHalfPx,
+                    fusion = fusion,
                     density = density,
                 )
                 val pillRadiusPx = minOf(pillHalfW, pillHalfH)
@@ -360,6 +364,7 @@ fun LiquidBottomTabs(
                 sh.setFloatUniform("bulgePhiPill", neck?.phiPill ?: 0f)
                 sh.setFloatUniform("bulgePhiCircle", neck?.phiCircle ?: 0f)
                 sh.setFloatUniform("bulgeGaussEdge", neck?.gaussEdge ?: 0f)
+                sh.setFloatUniform("bulgeSigma", fusion.bulgeSigma)
                 if (neck != null && neck.hasNeck) {
                     sh.setFloatUniform("pu", neck.pu.x * scale, neck.pu.y * scale)
                     sh.setFloatUniform("c1u", neck.c1u.x * scale, neck.c1u.y * scale)
@@ -380,7 +385,7 @@ fun LiquidBottomTabs(
         val panelEffects: BackdropEffectScope.() -> Unit =
             remember(
                 chromeLens, glassBlur, glassEffectsOn,
-                pillPx, gapPx, heightPx, bleedX, bleedY, density, feedRefraction,
+                pillPx, gapPx, heightPx, bleedX, bleedY, fusion, density, feedRefraction,
             ) {
                 {
                     if (glassEffectsOn) {
@@ -413,7 +418,8 @@ fun LiquidBottomTabs(
             trailingScale = trailingScaleOf,
             extraPx = extraPx,
             gapPx = gapPx,
-            maxNeckHalfPx = heightPx * NeckStrength,
+            maxNeckHalfPx = maxNeckHalfPx,
+            fusion = fusion,
             bleedX = bleedX,
             bleedY = bleedY,
         )
@@ -421,7 +427,7 @@ fun LiquidBottomTabs(
         val barShapeFactory: () -> Shape = { BarShape(shapeParams) }
         // edgeLight 按引用缓存 outline，所以给它稳定实例 + 版本号。
         // key 只用不变的标量：shapeParams 每次重组都是新对象，拿它当 key 会让描边每帧重录。
-        val barEdgeShape: Shape = remember(extraPx, gapPx, heightPx, bleedX, bleedY) {
+        val barEdgeShape: Shape = remember(extraPx, gapPx, heightPx, bleedX, bleedY, fusion) {
             BarShape(shapeParams)
         }
         val barRevision: () -> Long = remember(trailingHighlight) {

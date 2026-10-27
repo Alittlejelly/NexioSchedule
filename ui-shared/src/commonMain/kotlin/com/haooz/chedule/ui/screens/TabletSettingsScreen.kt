@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextAlign
 import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.WebDavActionButtons
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -408,7 +409,7 @@ fun TabletSettingsScreen(
             top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults.CollapsedHeight +
             12.dp
 
-    // 手机端底部按钮画在各 Activity；pad 内嵌 Screen 时需要在右栏叠层补回
+    // 手机端底部按钮画在路由 overlay；pad 内嵌 Screen 时右栏在录制层之外补同一份
     var showWidgetGuideDialog by remember { mutableStateOf(false) }
     var webDavBackingUp by remember { mutableStateOf(false) }
     var webDavRestoring by remember { mutableStateOf(false) }
@@ -842,30 +843,15 @@ fun TabletSettingsScreen(
                                 }
                             }
 
-                            TabletSettingsDest.WebDav -> {
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 36.dp)
-                                        .navigationBarsPadding()
-                                        .padding(bottom = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    LiquidGlassTextButton(
-                                        text = if (webDavBackingUp) SettingsStr.backingUp() else SettingsStr.backupToCloud(),
-                                        onClick = { onWebDavBackup() },
-                                        backdrop = rightPaneBackdrop,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    LiquidGlassTextButton(
-                                        text = if (webDavRestoring) SettingsStr.restoring() else SettingsStr.restoreFromCloud(),
-                                        onClick = { onWebDavRestore() },
-                                        backdrop = rightPaneBackdrop,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
+                            // 右栏底部主操作：在录制层之外（本 Box 的上层），采样 rightPaneBackdrop
+                            TabletSettingsDest.WebDav -> WebDavActionButtons(
+                                backdrop = rightPaneBackdrop,
+                                backingUp = webDavBackingUp,
+                                restoring = webDavRestoring,
+                                onBackup = { onWebDavBackup() },
+                                onRestore = { onWebDavRestore() },
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
 
                             else -> {}
                         }

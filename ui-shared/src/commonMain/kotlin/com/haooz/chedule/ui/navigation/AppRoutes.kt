@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -102,6 +100,7 @@ import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.ShortcutMenu
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.components.WebDavActionButtons
 import com.haooz.chedule.ui.effects.motion.OobeCubicOutEasing
 import com.haooz.chedule.ui.effects.motion.OobeQuartOutEasing
 import com.haooz.chedule.ui.screens.CourseEditScreen
@@ -654,9 +653,12 @@ fun CourseReminderRoute(
 
 /**
  * WebDAV 云备份设置路由：顶栏「测试连接」（[DocumentPageScaffold] 的 endAction）+
- * 底部「备份到云端 / 从云端恢复」。
+ * 底部「备份到云端 / 从云端恢复」（[WebDavActionButtons]，三端同一份实现）。
  *
- * 按钮实现由 Screen 反抛给宿主（`onTestConnectionReady` / `onBackupRestoreReady`），本路由只持有并渲染。
+ * ⚠ 底部按钮必须画在 `overlay` 里，不能挪进 [WebDavSettingsScreen]：本页内容整体在录制层内，
+ * 按钮自己又采样同一层 backdrop，放进去就是自采自，直接崩。
+ *
+ * 按钮的点击与忙碌态由 Screen 反抛（`onBackupRestoreReady` / `onBusyStateChange`），本路由只持有并渲染。
  * @param onHolidayDataChanged 云端恢复后的平台副作用（重排提醒 / 勿扰 / 小组件），Android 宿主注入。
  */
 @Composable
@@ -664,8 +666,6 @@ fun WebDavSettingsRoute(
     router: AppRouter,
     onHolidayDataChanged: () -> Unit = {},
 ) {
-    val isTablet = isTabletWidth()
-    val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var connected by remember { mutableStateOf(false) }
     var onTestConnection by remember { mutableStateOf({}) }
     var backingUp by remember { mutableStateOf(false) }
@@ -684,31 +684,14 @@ fun WebDavSettingsRoute(
         title = ChromeStr.webdavBackup(),
         onBack = { router.popBack() },
         overlay = { backdrop ->
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = tabletHorizontalPadding + 8.dp,
-                        end = tabletHorizontalPadding + 8.dp
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                LiquidGlassTextButton(
-                    text = if (backingUp) ChromeStr.backingUp() else ChromeStr.backupToCloud(),
-                    onClick = { onBackup() },
-                    backdrop = backdrop,
-                    modifier = Modifier.weight(1f)
-                )
-                LiquidGlassTextButton(
-                    text = if (restoring) ChromeStr.restoring() else ChromeStr.restoreFromCloud(),
-                    onClick = { onRestore() },
-                    backdrop = backdrop,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            WebDavActionButtons(
+                backdrop = backdrop,
+                backingUp = backingUp,
+                restoring = restoring,
+                onBackup = onBackup,
+                onRestore = onRestore,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         },
         endAction = { backdropAlpha, shadowAlpha ->
             LiquidTopBarButton(
@@ -722,7 +705,7 @@ fun WebDavSettingsRoute(
                 iconTint = if (connected) Color(0xFF4CAF50) else Color.Unspecified,
             )
         },
-    ) { scrollBehavior, backdrop ->
+    ) { scrollBehavior, _ ->
         WebDavSettingsScreen(
             scrollBehavior = scrollBehavior,
             onConnectedChange = { connected = it },
