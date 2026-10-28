@@ -10,6 +10,15 @@
     android:clipChildren="true"
     android:clipToPadding="true">
 
+    <!-- 壁纸层：垫在所有内容之下，有壁纸时才显示（见 WidgetWallpaperRender） -->
+    <ImageView
+        android:id="@+id/widget_wallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+
     <LinearLayout
         android:id="@+id/widget_today_container"
         android:layout_width="match_parent"

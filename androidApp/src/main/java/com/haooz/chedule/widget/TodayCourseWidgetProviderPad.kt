@@ -16,6 +16,7 @@ import com.haooz.chedule.R
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.data.WidgetWallpaperStore
 import com.haooz.chedule.i18n.AndroidWidgetStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.reminder.CourseReminderHelper
@@ -61,7 +62,8 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
         appWidgetId: Int
     ) {
         val repository = CourseRepository()
-        val dark = WidgetTextSizes.isDark(context)
+        val appearance = WidgetWallpaperStore.loadAppearance(WidgetWallpaperStore.KEY_SMALL)
+        val dark = WidgetWallpaperRender.resolveDark(context, WidgetWallpaperStore.KEY_SMALL)
 
         val currentWeek = repository.getLiveTeachingWeek()
         val todayCourses = CourseReminderHelper.getTodayCourses(context)
@@ -170,6 +172,7 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
 
         val signature = buildString {
             append(dark).append('|').append(repository.getWidgetPaddingMode())
+            append('|').append(WidgetWallpaperRender.signaturePart(WidgetWallpaperStore.KEY_SMALL))
             append('|').append(titleText).append('|').append(weekText)
             if (displayCourse != null) {
                 append('|').append(displayCourse.id).append('|').append(displayCourse.name)
@@ -185,7 +188,19 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
         if (WidgetUpdateCache.shouldSkip("today_pad_$appWidgetId", signature)) return
 
         val views = RemoteViews(context.packageName, R.layout.widget_today_course_standard)
-        WidgetTextSizes.applyTodayCourse(views)
+        WidgetWallpaperRender.apply(
+            views = views,
+            context = context,
+            key = WidgetWallpaperStore.KEY_SMALL,
+            appWidgetId = appWidgetId,
+            imageId = R.id.widget_wallpaper,
+            containerId = R.id.widget_today_container,
+            normalBackgroundRes = R.drawable.widget_today_course_background,
+        )
+        WidgetTextSizes.applyTodayCourse(views, appearance.textScale)
+        if (WidgetWallpaperRender.hasWallpaper(WidgetWallpaperStore.KEY_SMALL)) {
+            WidgetTextSizes.applyTextColors(views, context, dark, courseReminder = false)
+        }
         views.setTextViewText(R.id.widget_title, titleText)
         views.setTextViewText(R.id.widget_week, weekText)
 
@@ -209,8 +224,10 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
             for (i in dotIds.indices) {
                 if (i < dotCourses.size) {
                     views.setViewVisibility(dotIds[i], View.VISIBLE)
-                    views.setImageViewBitmap(dotIds[i], createCircleBitmap(context, dotCourses[i].colorRes.toInt(),
-                        if (dark) WidgetTextSizes.TODAY_BG_DARK else WidgetTextSizes.TODAY_BG_LIGHT))
+                    views.setImageViewBitmap(
+                        dotIds[i],
+                        createCircleBitmap(context, dotCourses[i].colorRes.toInt())
+                    )
                 } else {
                     views.setViewVisibility(dotIds[i], View.GONE)
                 }
@@ -242,10 +259,10 @@ class TodayCourseWidgetProviderPad : AppWidgetProvider() {
         appWidgetIds.forEach { WidgetUpdateCache.invalidateWidget("today_pad_$it") }
     }
 
-    private fun createCircleBitmap(context: Context, color: Int, background: Int): Bitmap {
-        val size = (7 * WidgetTextSizes.deviceDensity(context)).toInt()
-        // 用不透明的卡片底色填充，避免透明像素被桌面渲染成灰色方块
-        val bitmap = createBitmap(size, size).apply { eraseColor(background) }
+    /** 色球位图：整张图就是一个圆，四角留透明（填底色会在半透明卡片上露出方角）。 */
+    private fun createCircleBitmap(context: Context, color: Int): Bitmap {
+        val size = (7 * WidgetTextSizes.deviceDensity(context)).toInt().coerceAtLeast(1)
+        val bitmap = createBitmap(size, size)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color

@@ -19,6 +19,18 @@ interface WallpaperBackend {
     /** 编码 [ImageBitmap] 为字节（quality 0~100）；失败返回 null。落盘由调用方负责。 */
     suspend fun encode(image: ImageBitmap, quality: Int): ByteArray?
 
+    /**
+     * 解码**给定字节**（纯解码，不碰磁盘）
+     * 默认实现只为少写平台代码；语义正确的平台应覆盖。
+     */
+    suspend fun decodeBytes(bytes: ByteArray): ImageBitmap? = decode(bytes)
+
+    /**
+     * 只编码、不落盘。
+     * 用它存小部件壁纸会把用户的课表壁纸覆盖掉，外观页「跟随壁纸」的深浅色也跟着一起错。
+     */
+    suspend fun encodeBytes(image: ImageBitmap, quality: Int): ByteArray? = encode(image, quality)
+
     /** 缩放到指定像素尺寸（宽高比由调用方算好后传入）。 */
     suspend fun scale(image: ImageBitmap, width: Int, height: Int): ImageBitmap
 

@@ -1798,7 +1798,7 @@ private fun SheetCard(
 }
 
 @Composable
-private fun SliderItem(
+internal fun SliderItem(
     label: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,

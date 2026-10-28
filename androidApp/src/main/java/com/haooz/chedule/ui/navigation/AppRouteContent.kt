@@ -8,6 +8,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -36,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -73,6 +77,7 @@ import com.haooz.chedule.ui.web.rememberAndroidWebHost
 import com.haooz.chedule.ui.screens.TimeConfigEditScreen
 import com.haooz.chedule.ui.screens.invalidateWeatherCache
 import com.haooz.chedule.ui.screens.AndroidSettingsPane
+import com.haooz.chedule.ui.activities.decodeWallpaperSampled
 import com.haooz.chedule.ui.utils.ApiCompat
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
@@ -89,8 +94,10 @@ import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
@@ -199,11 +206,55 @@ fun AppRouteContent(
         // Android 只注入平台能力。
         AppRoute.WidgetIntro -> {
             val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            // 组件壁纸：相册选图 → 按「小部件实际像素尺寸」降采样解码 → 回填浮层
+            var pendingPick by remember { mutableStateOf<((ImageBitmap?) -> Unit)?>(null) }
+            var pickTargetW by remember { mutableIntStateOf(0) }
+            var pickTargetH by remember { mutableIntStateOf(0) }
+            var pickDecoding by remember { mutableStateOf(false) }
+            val widgetWallpaperPicker = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.PickVisualMedia()
+            ) { uri ->
+                if (uri == null) {
+                    showToast(AndroidMiscStr.noImageSelected())
+                    return@rememberLauncherForActivityResult
+                }
+                if (pickDecoding) {
+                    showToast(AndroidMiscStr.processingWallpaperWait())
+                    return@rememberLauncherForActivityResult
+                }
+                pickDecoding = true
+                scope.launch {
+                    val bitmap = withContext(Dispatchers.IO) {
+                        decodeWallpaperSampled(
+                            context = context,
+                            uri = uri,
+                            screenWPx = pickTargetW.toFloat(),
+                            screenHPx = pickTargetH.toFloat(),
+                        )
+                    }
+                    pickDecoding = false
+                    if (bitmap == null) {
+                        showToast(AndroidMiscStr.wallpaperDecodeFailed(), longDuration = true)
+                        pendingPick?.invoke(null)
+                    } else {
+                        pendingPick?.invoke(bitmap.asImageBitmap())
+                    }
+                }
+            }
             WidgetIntroRoute(
                 router = router,
                 onRequestWidgetRefresh = {
                     com.haooz.chedule.widget.WidgetUpdateCache.clear()
                     com.haooz.chedule.widget.WidgetUpdateCache.updateInstalledWidgets(context)
+                },
+                onPickWidgetWallpaper = { widthPx, heightPx, onPicked ->
+                    pickTargetW = widthPx
+                    pickTargetH = heightPx
+                    pendingPick = onPicked
+                    widgetWallpaperPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
                 },
             )
         }

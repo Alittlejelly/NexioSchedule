@@ -36,6 +36,7 @@ object SchedStr {
     val effects = L("效果", "Effects")
     val customize = L("自定义", "Customize")
     val followApp = L("跟随应用", "Follow app")
+    val followSystem = L("跟随系统", "Follow system")
     val defaultTheme = L("默认主题", "Default theme")
     val wallpaperBrightness = L("壁纸亮度", "Wallpaper brightness")
     val wallpaperBlur = L("壁纸模糊", "Wallpaper blur")

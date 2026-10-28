@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.TypedValue
 import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 import com.haooz.chedule.R
 import java.util.Locale
 
@@ -29,19 +30,6 @@ object WidgetTextSizes {
         val brands = setOf("oppo", "realme", "oneplus")
         Build.BRAND.lowercase(Locale.ROOT) in brands || Build.MANUFACTURER.lowercase(Locale.ROOT) in brands
     }
-
-    // ---- 主题相关：小组件位图背景需随深浅色选择不透明底色，避免透明像素被桌面渲染成灰色/白色框 ----
-    /** 课程卡片（非进行中）底色：浅色=白 / 深色=#262626（对应 widget_card_background 两套） */
-    const val CARD_INACTIVE_BG_LIGHT: Int = 0xFFFFFFFF.toInt()
-    const val CARD_INACTIVE_BG_DARK: Int = 0xFF262626.toInt()
-
-    /** 进行中课程卡片(#1A2196F3)叠加在卡片底上的不透明等效色，用于色条位图背景 */
-    const val CARD_ACTIVE_OPAQUE_BG_LIGHT: Int = 0xFFE1EDF7.toInt()
-    const val CARD_ACTIVE_OPAQUE_BG_DARK: Int = 0xFF25313B.toInt()
-
-    /** 今日课程卡片底色：浅色=白 / 深色=#1A1A1A（对应 widget_today_course_background 两套） */
-    const val TODAY_BG_LIGHT: Int = 0xFFFFFFFF.toInt()
-    const val TODAY_BG_DARK: Int = 0xFF1A1A1A.toInt()
 
     /**
      * 判断小组件当前是否处于深色模式：优先读取应用设置（theme_mode），
@@ -152,5 +140,56 @@ object WidgetTextSizes {
      */
     fun applyTodayCourse(views: RemoteViews, scale: Float = 1f) {
         TODAY_COURSE_TEXTS.forEach { (id, dp) -> setTextSize(views, id, dp * scale) }
+    }
+
+    /**
+     * 按**指定**深浅色重刷文字颜色（不跟系统）。
+     *
+     * 布局里的 textColor 是 `@color/...`，由 values-night 限定符决定，跟的是宿主系统的深色开关。
+     * 小部件壁纸把深浅色按照片锁死之后，必须把这些颜色显式下发，否则会出现
+     * 「深色照片 + 浅色系统」→ 深色字压在照片上读不出来。
+     *
+     * @param courseReminder true = 4×2 今日 / 今明那两套布局；false = 2×2
+     */
+    fun applyTextColors(
+        views: RemoteViews,
+        context: Context,
+        dark: Boolean,
+        courseReminder: Boolean,
+    ) {
+        val ids = if (courseReminder) COURSE_REMINDER_TEXTS else TODAY_COURSE_TEXTS
+        val forced = forcedNightContext(context, dark)
+        ids.forEach { (id, _) ->
+            val entry = context.resources.getResourceEntryName(id)
+            views.setTextColor(id, ContextCompat.getColor(forced, colorResFor(entry)))
+        }
+    }
+
+    /** 同一份资源在强制深浅配置下取色；一次更新只建一个 Context。 */
+    private fun forcedNightContext(context: Context, dark: Boolean): Context {
+        val config = Configuration(context.resources.configuration)
+        config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+            (if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+        return context.createConfigurationContext(config)
+    }
+
+    /** 文本 id → 布局里用的那个颜色资源（按命名归类，新加卡位自动覆盖）。 */
+    private fun colorResFor(entry: String): Int = when {
+        entry == "widget_week" ||
+            entry.startsWith("widget_title") ||
+            entry.startsWith("widget_header") -> R.color.widget_title_color
+
+        entry.startsWith("widget_now") -> R.color.widget_now_color
+        entry.startsWith("widget_empty") -> R.color.widget_empty_color
+
+        entry.startsWith("widget_time_start") ||
+            entry.startsWith("widget_course_time") -> R.color.widget_time_start_color
+
+        entry.startsWith("widget_time_end") ||
+            entry.startsWith("widget_info") ||
+            entry == "widget_course_location" ||
+            entry == "widget_remaining_text" -> R.color.widget_time_end_color
+
+        else -> R.color.widget_name_color
     }
 }

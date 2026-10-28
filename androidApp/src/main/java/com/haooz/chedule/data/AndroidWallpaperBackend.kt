@@ -37,6 +37,37 @@ class AndroidWallpaperBackend : WallpaperBackend {
         return readWallpaperBytes()
     }
 
+    /**
+     * 纯解码给定字节。
+     * ⚠ 不能落到 [decode]：那是「读 App 壁纸文件」，会把小部件壁纸读成课表壁纸。
+     */
+    override suspend fun decodeBytes(bytes: ByteArray): ImageBitmap? = try {
+        android.graphics.BitmapFactory
+            .decodeByteArray(bytes, 0, bytes.size)
+            ?.asImageBitmap()
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * 纯编码，不落盘、不碰 LruCache。
+     * ⚠ 不能落到 [encode]：那会调 `ScheduleAppearance.saveWallpaper`，把用户的课表壁纸
+     * （以及外观页「跟随壁纸」的深浅色）覆盖成小部件壁纸。
+     */
+    override suspend fun encodeBytes(image: ImageBitmap, quality: Int): ByteArray? = try {
+        val out = java.io.ByteArrayOutputStream()
+        @Suppress("DEPRECATION")
+        val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+        val ok = image.asAndroidBitmap().compress(format, quality.coerceIn(1, 100), out)
+        if (ok) out.toByteArray() else null
+    } catch (_: Exception) {
+        null
+    }
+
     override suspend fun scale(
         image: ImageBitmap,
         width: Int,

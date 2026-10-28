@@ -394,7 +394,7 @@ private fun computeWallpaperIsLight(bitmap: android.graphics.Bitmap?): Boolean? 
  * 屏宽，竖屏 cover 显示时放大发虚。与保存侧 [com.haooz.chedule.data.WallpaperStore]
  * 的 cover 策略同口径。
  */
-private fun decodeWallpaperSampled(
+internal fun decodeWallpaperSampled(
     context: Context,
     uri: android.net.Uri,
     screenWPx: Float,

@@ -1,10 +1,22 @@
 /** 小组件使用引导页面 - Screen */
 package com.haooz.chedule.ui.activities
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,50 +34,83 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.text.style.TextAlign
-import com.haooz.chedule.ui.components.text.material.Text as Text
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toIntSize
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.ThemeMode
+import com.haooz.chedule.data.WIDGET_CARD_ALPHA_WITH_WALLPAPER
+import com.haooz.chedule.data.WallpaperStore
+import com.haooz.chedule.data.WidgetAppearance
+import com.haooz.chedule.data.WidgetWallpaperCrop
+import com.haooz.chedule.data.WidgetWallpaperStore
+import com.haooz.chedule.data.calculateWidgetCropRect
 import com.haooz.chedule.i18n.AboutStr
 import com.haooz.chedule.i18n.CommonStr
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
-import top.yukonga.miuix.kmp.layout.collapsibleTopInset
+import com.haooz.chedule.ui.components.text.material.Text
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.isIosPlatform
-import top.yukonga.miuix.kmp.utils.overScrollVertical
+import com.haooz.chedule.uishared.resources.Res
+import com.haooz.chedule.uishared.resources.ic_widget_clock
+import com.haooz.chedule.uishared.resources.ic_widget_location
+import com.kyant.capsule.ContinuousCapsule
+import com.kyant.capsule.ContinuousRoundedRectangle
+import org.jetbrains.compose.resources.painterResource
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import androidx.compose.ui.graphics.Color as ComposeColor
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
+import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.layout.isTabletWidth
-import org.jetbrains.compose.resources.painterResource
-import com.haooz.chedule.uishared.resources.Res
-import com.haooz.chedule.uishared.resources.ic_widget_clock
-import com.haooz.chedule.uishared.resources.ic_widget_location
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color as ComposeColor
 
 /** 4×2 组件预览统一宽高比，锁定后不随设备屏宽变化 */
 private const val WidgetPreviewRatio4x2 = 2.15f
@@ -89,15 +134,70 @@ private val WidgetPreviewBlurBleed = 8.dp
  *   与 `SchoolSelectionScreen(onAdapterSelected)` / `CourseTimeSettingsScreen(onEditRoutine)`
  *   同一套路：**平台专有能力留在宿主，页面本体保持平台中立**。
  */
+@Suppress("RememberReturnType")
 @Composable
 fun WidgetIntroScreen(
     scrollBehavior: SharedScrollBehavior? = null,
     liquidGlassBackdrop: com.kyant.backdrop.Backdrop? = null,
     onRequestWidgetRefresh: () -> Unit = {},
+    /** 点「自定义」：把当前页小部件的屏幕矩形交给宿主，浮层从原位起步 */
+    onCustomizeRequest: (WidgetCustomizeRequest) -> Unit = {},
+    /**
+     * 浮层正在编辑的页：那一页的原预览要让位（alpha 0）。
+     * 浮层自己画了同一张小部件，两份同时在场就是「双重」。
+     * 用 alpha 而不是不挂载，矩形（onGloballyPositioned）才不会失效。
+     */
+    hiddenPage: Int? = null,
+    /**
+     * 壁纸变更计数：宿主在「应用」后自增，逼这一页重读壁纸。
+     * 不直接读 [WidgetWallpaperStore.revision] 是因为这条链路必须确定地触发重组 ——
+     * 参数变了 Compose 一定会重跑，靠全局 state 的失效时机则会拖到下次进页面。
+     */
+    wallpaperRevision: Int = 0,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
+    // 今明课程是 Android 桌面专属组件，iOS 端不展示该预览页
+    val pageCount = if (isIosPlatform) 2 else 3
+    // 每页小部件本体的屏幕矩形，供浮层从原位起步。
+    // 刻意不用 snapshot state：滚动时矩形每帧都变，进 state 会让入口按钮逐帧重组，
+    // 而按钮只在点击那一刻需要最新值。
+    val widgetBounds = remember { mutableMapOf<Int, Rect>() }
+
+    // 各页壁纸：浮层里「应用」后靠 wallpaperRevision 触发重读
+    val widgetWallpapers = remember { mutableStateMapOf<Int, WidgetWallpaper?>() }
+    val widgetThemeModes = remember { mutableStateMapOf<Int, ThemeMode>() }
+    val widgetAppearances = remember { mutableStateMapOf<Int, WidgetAppearance>() }
+    // 组合期同步刷一遍：应用后 save 已经把新位图放进缓存，这一帧就能拿到。
+    // 交给下面的 LaunchedEffect 会晚一帧 —— 表现是「退出浮层时先闪一下旧壁纸」。
+    remember(wallpaperRevision, pageCount) {
+        for (page in 0 until pageCount) {
+            val key = widgetWallpaperKey(page)
+            widgetWallpapers[page] = WidgetWallpaperStore.cached(key)?.let { cached ->
+                WidgetWallpaper(bitmap = cached, crop = WidgetWallpaperStore.loadCrop(key))
+            }
+            widgetThemeModes[page] = WidgetWallpaperStore.loadThemeMode(key)
+            widgetAppearances[page] = WidgetWallpaperStore.loadAppearance(key)
+        }
+    }
+    LaunchedEffect(wallpaperRevision, pageCount) {
+        // 冷启动才需要读盘：缓存命中的那几页上面已经填好了
+        for (page in 0 until pageCount) {
+            val key = widgetWallpaperKey(page)
+            if (WidgetWallpaperStore.cached(key) != null) continue
+            if (!WidgetWallpaperStore.exists(key)) {
+                widgetWallpapers[page] = null
+                continue
+            }
+            val bitmap = WidgetWallpaperStore.load(key, forceReload = true)
+            widgetWallpapers[page] = bitmap?.let { bmp ->
+                WidgetWallpaper(bitmap = bmp, crop = WidgetWallpaperStore.loadCrop(key))
+            }
+            widgetThemeModes[page] = WidgetWallpaperStore.loadThemeMode(key)
+        }
+    }
+    val appIsDark = isAppDarkTheme()
 
     Scaffold(
         topBar = {}
@@ -120,8 +220,6 @@ fun WidgetIntroScreen(
             ) {
                 Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding() + CollapsibleTopAppBarDefaults.CollapsedHeight + (if (isTablet) 12.dp else 0.dp)))
 
-                // 今明课程是 Android 桌面专属组件，iOS 端不展示该预览页
-                val pageCount = if (isIosPlatform) 2 else 3
                 val pagerState = rememberPagerState(pageCount = { pageCount })
 
                 HorizontalPager(
@@ -159,39 +257,46 @@ fun WidgetIntroScreen(
                                 // 外层槽内边距已等量减回，静止布局不变
                                 .padding(WidgetPreviewBlurBleed)
                         ) {
-                            when (page) {
-                                0 -> WidgetPreviewToday()
-                                1 -> if (isIosPlatform) WidgetPreviewSmall2x2() else WidgetPreviewTodayTomorrow()
-                                2 -> WidgetPreviewSmall2x2()
-                            }
+                            val pageWallpaper = widgetWallpapers[page]
+                            val pageMode = widgetThemeModes[page] ?: ThemeMode.FOLLOW_WALLPAPER
+                            WidgetPreviewContent(
+                                page = page,
+                                modifier = Modifier
+                                    .onGloballyPositioned { coords ->
+                                        // 只认「小部件本体」的矩形（2×2 是居中的正方形，
+                                        // 不是外面那条 2.15 的槽位），浮层才接得上
+                                        widgetBounds[page] = coords.boundsInRoot()
+                                    }
+                                    .graphicsLayer { alpha = if (page == hiddenPage) 0f else 1f },
+                                wallpaper = pageWallpaper,
+                                appearance = widgetAppearances[page] ?: WidgetAppearance(),
+                                isDark = remember(pageWallpaper, pageMode, appIsDark) {
+                                    resolveWidgetDark(pageWallpaper?.bitmap, pageMode, appIsDark)
+                                },
+                            )
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // 页面指示器
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    repeat(pageCount) { index ->
-                        val isSelected = pagerState.currentPage == index
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected)
-                                        MiuixTheme.colorScheme.primary
-                                    else
-                                        MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.12f)
-                                )
-                        )
+                // 页面指示器（会跟手跑的胶囊，点一下也能跳页）
+                WidgetPagerIndicator(pageCount = pageCount, pagerState = pagerState)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 自定义入口：跟着「当前这一页」的小部件走，所以矩形也取当前页的
+                WidgetCustomizeEntry(
+                    onClick = {
+                        val page = pagerState.currentPage
+                        val bounds = widgetBounds[page]
+                        if (bounds != null) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                            onCustomizeRequest(WidgetCustomizeRequest(page = page, bounds = bounds))
+                        }
                     }
-                }
+                )
 
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = tabletHorizontalPadding + 18.dp),
@@ -236,9 +341,339 @@ fun WidgetIntroScreen(
     }
 }
 
+/**
+ * 翻页指示器：三颗里有一颗会「跑」。
+ *
+ * 位置直接取 `currentPage + currentPageOffsetFraction`，手指拖到哪它就跟到哪；
+ * 松手后由 pager 自己的吸附动画把它带整 —— 视觉上的「吸住」就是这两段接起来的，
+ * 不需要另外写 spring。宽度、颜色按与它重合的程度逐帧插值，所以是「拉长过去」而不是跳格。
+ *
+ * ⚠ 全程在 **draw 阶段** 读 pager 状态：拖动时只脏这一条 Canvas，不重组整页
+ * （这页的节点数不便宜，见 topics/pager-perf.md 的口径）。
+ */
 @Composable
-private fun WidgetPreviewToday() {
-    val isDark = isAppDarkTheme()
+private fun WidgetPagerIndicator(
+    pageCount: Int,
+    pagerState: PagerState,
+    modifier: Modifier = Modifier,
+) {
+    val hapticFeedback = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val activeColor = MiuixTheme.colorScheme.primary
+    val inactiveColor = MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.12f)
+    var lastSettled by remember { mutableIntStateOf(pagerState.settledPage) }
+    LaunchedEffect(pagerState.settledPage) {
+        if (pagerState.settledPage != lastSettled) {
+            lastSettled = pagerState.settledPage
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(pageCount) {
+                detectTapGestures { offset ->
+                    val dotPx = IndicatorDot.toPx()
+                    val gapPx = IndicatorGap.toPx()
+                    val stretchPx = IndicatorStretch.toPx()
+                    val position = pagerPosition(pagerState, pageCount)
+                    var left = (size.width - indicatorWidth(pageCount, position, dotPx, gapPx, stretchPx)) / 2f
+                    for (index in 0 until pageCount) {
+                        val width = indicatorSlotWidth(index, position, dotPx, stretchPx)
+                        if (offset.x >= left && offset.x <= left + width) {
+                            if (index != pagerState.currentPage) {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                scope.launch { pagerState.animateScrollToPage(index) }
+                            }
+                            break
+                        }
+                        left += width + gapPx
+                    }
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val dotPx = IndicatorDot.toPx()
+            val gapPx = IndicatorGap.toPx()
+            val stretchPx = IndicatorStretch.toPx()
+            val position = pagerPosition(pagerState, pageCount)
+            var left = (size.width - indicatorWidth(pageCount, position, dotPx, gapPx, stretchPx)) / 2f
+            val centerY = size.height / 2f
+            for (index in 0 until pageCount) {
+                val weight = indicatorSlotWeight(index, position)
+                val width = dotPx + stretchPx * weight
+                drawRoundRect(
+                    // 只跟「离它多近」有关：路过时颜色一路染过去，停下时正好整颗点亮
+                    color = lerp(inactiveColor, activeColor, weight),
+                    topLeft = Offset(left, centerY - dotPx / 2f),
+                    size = Size(width, dotPx),
+                    cornerRadius = CornerRadius(dotPx / 2f),
+                )
+                left += width + gapPx
+            }
+        }
+    }
+}
+
+/** 未选中时的圆点直径 */
+private val IndicatorDot = 6.dp
+
+/** 相邻两颗的间隙 */
+private val IndicatorGap = 6.dp
+
+/** 选中时额外抻出的长度（加上 [IndicatorDot] 就是胶囊长度） */
+private val IndicatorStretch = 12.dp
+
+/** 跟手位置：整页为整数，拖动过程中是小数 */
+private fun pagerPosition(pagerState: PagerState, pageCount: Int): Float =
+    (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+        .coerceIn(0f, (pageCount - 1).coerceAtLeast(0).toFloat())
+
+/** 第 index 颗与当前位置的「重合度」：0 = 完全没挨着，1 = 正好停在它上面 */
+private fun indicatorSlotWeight(index: Int, position: Float): Float =
+    (1f - abs(position - index)).coerceIn(0f, 1f)
+
+private fun indicatorSlotWidth(
+    index: Int,
+    position: Float,
+    dotPx: Float,
+    stretchPx: Float,
+): Float = dotPx + stretchPx * indicatorSlotWeight(index, position)
+
+/** 所有圆点 + 间隙的总宽（用来把整排居中） */
+private fun indicatorWidth(
+    pageCount: Int,
+    position: Float,
+    dotPx: Float,
+    gapPx: Float,
+    stretchPx: Float,
+): Float {
+    if (pageCount <= 0) return 0f
+    var total = gapPx * (pageCount - 1)
+    for (index in 0 until pageCount) {
+        total += indicatorSlotWidth(index, position, dotPx, stretchPx)
+    }
+    return total
+}
+
+@Composable
+private fun WidgetCustomizeEntry(onClick: () -> Unit) {
+    val contentColor = MiuixTheme.colorScheme.onSurface
+    Row(
+        modifier = Modifier
+            .height(36.dp)
+            .clip(ContinuousCapsule())
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = MiuixIcons.GridView,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = contentColor
+        )
+        Text(
+            text = SchedStr.customize(),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = contentColor
+        )
+    }
+}
+
+/** 三种预览页的统一入口：分页器与自定义浮层共用同一份内容，浮层里的小部件才和页面里一模一样 */
+@Composable
+internal fun WidgetPreviewContent(
+    page: Int,
+    modifier: Modifier = Modifier,
+    /** 传入的尺寸已经是小部件本体时置 true（2×2 不再套 4×2 槽位） */
+    fillBounds: Boolean = false,
+    wallpaper: WidgetWallpaper? = null,
+    appearance: WidgetAppearance = WidgetAppearance(),
+    isDark: Boolean = isAppDarkTheme(),
+) {
+    // 字体缩放靠改 fontScale：一处生效，不用逐个 sp 去乘
+    val density = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, density.fontScale * appearance.textScale)
+    ) {
+        when (page) {
+            0 -> WidgetPreviewToday(modifier, wallpaper, appearance, isDark)
+            1 -> if (isIosPlatform) {
+                WidgetPreviewSmall2x2(modifier, fillBounds, wallpaper, appearance, isDark)
+            } else {
+                WidgetPreviewTodayTomorrow(modifier, wallpaper, appearance, isDark)
+            }
+
+            else -> WidgetPreviewSmall2x2(modifier, fillBounds, wallpaper, appearance, isDark)
+        }
+    }
+}
+
+/** 小部件背景图 + 它当前的取景 */
+internal data class WidgetWallpaper(
+    val bitmap: ImageBitmap,
+    val crop: WidgetWallpaperCrop,
+)
+
+/**
+ * 解析小部件该用深色还是浅色。
+ *
+ * 「跟随壁纸」时按**照片本身的明暗**锁死，不跟系统 —— 组件贴在桌面上，
+ * 周围是壁纸而不是 App 界面，跟着系统走会在深色系统 + 浅色照片时出现白字压在亮部上。
+ * 没壁纸可跟随时退回应用主题。
+ */
+internal fun resolveWidgetDark(
+    wallpaper: ImageBitmap?,
+    mode: ThemeMode,
+    appDark: Boolean,
+): Boolean = when (mode) {
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+    ThemeMode.FOLLOW_WALLPAPER -> WallpaperStore.measureLightness(wallpaper)?.let { !it } ?: appDark
+    ThemeMode.FOLLOW_APP -> appDark
+}
+
+
+
+/** 卡片磨砂要用到的现场：采样层 + 外观参数 */
+private class WidgetGlassSpec(
+    val hasWallpaper: Boolean,
+)
+
+private val LocalWidgetGlass = compositionLocalOf<WidgetGlassSpec?> { null }
+
+/**
+ * 小部件根节点：壁纸单独录进采样层，卡片从层外采「自己背后那块」。
+ *
+ * ⚠ 采样节点必须在被录的子树**外面**（与课表页玻璃按钮同一套路）：
+ * 录进去的话卡片会采到自己，模糊出来是一团糊。
+ */
+@Composable
+private fun WidgetGlassHost(
+    wallpaper: WidgetWallpaper?,
+    modifier: Modifier = Modifier,
+    background: @Composable () -> Unit,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    CompositionLocalProvider(
+        LocalWidgetGlass provides WidgetGlassSpec(
+            hasWallpaper = wallpaper != null,
+        ),
+    ) {
+        Box(
+            modifier = modifier.onGloballyPositioned { rootCoordinates = it }
+        ) {
+            Box(modifier = Modifier.matchParentSize()) { background() }
+            content()
+        }
+    }
+}
+
+/**
+ * 课程卡片的背景。
+ *
+ * 卡片只负责画自己的底色 + 叠层；「卡片背后那块壁纸」的磨砂由 [WidgetPreviewBackground]
+ * 统一处理 —— 这里只把自己的圆角矩形登记过去。
+ *
+ * @param tint 额外叠加层（「正在上课」的淡蓝），**不参与**不透明度调节
+ */
+@Composable
+private fun WidgetCardGlass(
+    cardColor: ComposeColor,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    tint: ComposeColor? = null,
+) {
+    val spec = LocalWidgetGlass.current
+    // 有壁纸就固定半透明，没壁纸纯色（真机侧也只能是固定值，这里保持一致）
+    val alpha = if (spec?.hasWallpaper == true) WIDGET_CARD_ALPHA_WITH_WALLPAPER else 1f
+    val shape = remember(cornerRadius) { ContinuousRoundedRectangle(cornerRadius) }
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .drawBehind {
+                drawRect(cardColor.copy(alpha = alpha))
+                if (tint != null) drawRect(tint)
+            }
+    )
+}
+
+/**
+ * 小部件背景：有壁纸就画壁纸，没壁纸就是原来那块纯色。
+ *
+ * 壁纸上一律不叠遮罩 —— 加一层主题底色就会变成「照片上蒙了块玻璃」，
+ * 可读性交给 [resolveWidgetDark] 决定深浅来解决。
+ *
+ */
+@Composable
+private fun WidgetPreviewBackground(
+    bgColor: ComposeColor,
+    wallpaper: WidgetWallpaper?,
+    wallpaperBlur: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        if (wallpaper == null) {
+            Box(modifier = Modifier.fillMaxSize().background(bgColor))
+        } else {
+            WidgetWallpaperLayer(bgColor, wallpaper, wallpaperBlur)
+        }
+    }
+}
+
+/**
+ * 一层壁纸。
+ *
+ * 模糊时**先垫一层主题底色再模糊**：模糊会采样边界外的像素，边界外是透明的话，
+ * 边缘就会淡掉、露出后面的白（表现是「壁纸外的白色被糊进壁纸」）。
+ */
+@Composable
+private fun WidgetWallpaperLayer(
+    bgColor: ComposeColor,
+    wallpaper: WidgetWallpaper,
+    blurRadius: Float,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (blurRadius > 0.01f) Modifier.blur(blurRadius.dp) else Modifier)
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(bgColor))
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // 与参考实现同一套：按容器尺寸现算裁剪区，不拉伸
+            val rect = calculateWidgetCropRect(
+                bitmapW = wallpaper.bitmap.width,
+                bitmapH = wallpaper.bitmap.height,
+                containerW = size.width,
+                containerH = size.height,
+                crop = wallpaper.crop,
+            )
+            if (rect.width > 0f && rect.height > 0f) {
+                drawImage(
+                    image = wallpaper.bitmap,
+                    srcOffset = IntOffset.Zero,
+                    srcSize = IntSize(wallpaper.bitmap.width, wallpaper.bitmap.height),
+                    dstOffset = IntOffset(rect.left.roundToInt(), rect.top.roundToInt()),
+                    dstSize = IntSize(rect.width.roundToInt(), rect.height.roundToInt()),
+                    filterQuality = FilterQuality.Medium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WidgetPreviewToday(
+    modifier: Modifier = Modifier,
+    wallpaper: WidgetWallpaper? = null,
+    appearance: WidgetAppearance = WidgetAppearance(),
+    isDark: Boolean = isAppDarkTheme(),
+) {
     val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor(0xFFF7F7F7)
     val cardBg = if (isDark) ComposeColor(0xFF262626) else ComposeColor.White
     val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
@@ -248,37 +683,58 @@ private fun WidgetPreviewToday() {
     val timeStartColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
     val timeEndColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
     val nowColor = if (isDark) ComposeColor(0xFF42A5F5) else ComposeColor(0xFF2196F3)
+    // 「正在上课」= 卡片底色 + 10% 蓝叠加层。叠加层单独画，所以调卡片不透明度时它不会跟着变淡
+    val activeTint = ComposeColor(0x1A2196F3)
 
     Card(
         cornerRadius = 22.dp,
-        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+        modifier = modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
         insideMargin = PaddingValues(0.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(bgColor)
-                .padding(horizontal = 11.dp, vertical = 9.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
-                Text(CommonStr.weekN(10), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+        WidgetGlassHost(
+            wallpaper = wallpaper,
+            modifier = Modifier.fillMaxSize(),
+            background = {
+                WidgetPreviewBackground(
+                    bgColor = bgColor,
+                    wallpaper = wallpaper,
+                    // 卡片磨砂并进背景模糊：卡片背后就是这张壁纸，一起糊即可，
+                    // 逐卡片取背后在预览里做不稳（采样层在 pager 里会拿到错帧）
+                    wallpaperBlur = appearance.wallpaperBlur,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 11.dp, vertical = 9.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
+                    Text(CommonStr.weekN(10), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif)
+                }
 
-            CourseCardPreview("08:00", "09:35", AboutStr.previewCourseMath(), AboutStr.previewInfoMath(), ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
-            Spacer(modifier = Modifier.height(8.dp))
-            CourseCardPreview("14:00", "15:35", AboutStr.previewCourseEnglish(), AboutStr.previewInfoEnglish(), ComposeColor(0xFF2196F3), AboutStr.previewEndingSoon(), ComposeColor(0x1A2196F3), nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
-            Spacer(modifier = Modifier.height(2.dp))
+                CourseCardPreview("08:00", "09:35", AboutStr.previewCourseMath(), AboutStr.previewInfoMath(), ComposeColor(0xFF4CAF50), null, cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f))
+                Spacer(modifier = Modifier.height(8.dp))
+                CourseCardPreview("14:00", "15:35", AboutStr.previewCourseEnglish(), AboutStr.previewInfoEnglish(), ComposeColor(0xFF2196F3), AboutStr.previewEndingSoon(), cardBg, nameColor, infoColor, timeStartColor, timeEndColor, nowColor, Modifier.fillMaxWidth().weight(1f), tint = activeTint)
+                Spacer(modifier = Modifier.height(2.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun WidgetPreviewSmall2x2() {
-    val isDark = isAppDarkTheme()
+private fun WidgetPreviewSmall2x2(
+    modifier: Modifier = Modifier,
+    fillBounds: Boolean = false,
+    wallpaper: WidgetWallpaper? = null,
+    appearance: WidgetAppearance = WidgetAppearance(),
+    isDark: Boolean = isAppDarkTheme(),
+) {
     val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor.White
     val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
     val titleColor = if (isDark) ComposeColor(0x99FFFFFF) else ComposeColor(0x99000000)
@@ -286,17 +742,22 @@ private fun WidgetPreviewSmall2x2() {
     val infoColor = if (isDark) ComposeColor(0x88FFFFFF) else ComposeColor(0x88000000)
     val remainingColor = if (isDark) ComposeColor(0x55FFFFFF) else ComposeColor(0x55000000)
 
-    // 外层与 4×2 预览同高，2×2 正方形 fillMaxHeight 居中，保证三页 pager 高度一致
-    Box(
-        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .aspectRatio(1f)
+    val square: @Composable (Modifier) -> Unit = { squareModifier ->
+        WidgetGlassHost(
+            wallpaper = wallpaper,
+            modifier = squareModifier
                 .border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
-                .background(bgColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp))
+                .clip(com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+            background = {
+                WidgetPreviewBackground(
+                    bgColor = bgColor,
+                    wallpaper = wallpaper,
+                    // 卡片磨砂并进背景模糊：卡片背后就是这张壁纸，一起糊即可，
+                    // 逐卡片取背后在预览里做不稳（采样层在 pager 里会拿到错帧）
+                    wallpaperBlur = appearance.wallpaperBlur,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         ) {
             Column(
                 modifier = Modifier
@@ -397,11 +858,28 @@ private fun WidgetPreviewSmall2x2() {
             }
         }
     }
+
+    if (fillBounds) {
+        // 浮层拿到的矩形就是小部件本体，直接铺满，不再套 4×2 的槽位
+        square(modifier.fillMaxSize())
+    } else {
+        // 外层与 4×2 预览同高，2×2 正方形 fillMaxHeight 居中，保证三页 pager 高度一致
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2),
+            contentAlignment = Alignment.Center
+        ) {
+            square(modifier.fillMaxHeight().aspectRatio(1f))
+        }
+    }
 }
 
 @Composable
-private fun WidgetPreviewTodayTomorrow() {
-    val isDark = isAppDarkTheme()
+private fun WidgetPreviewTodayTomorrow(
+    modifier: Modifier = Modifier,
+    wallpaper: WidgetWallpaper? = null,
+    appearance: WidgetAppearance = WidgetAppearance(),
+    isDark: Boolean = isAppDarkTheme(),
+) {
     val bgColor = if (isDark) ComposeColor(0xFF1A1A1A) else ComposeColor(0xFFF7F7F7)
     val cardBg = if (isDark) ComposeColor(0xFF262626) else ComposeColor.White
     val borderColor = if (isDark) ComposeColor(0xFF2A2A2A) else ComposeColor(0x0D000000)
@@ -412,38 +890,52 @@ private fun WidgetPreviewTodayTomorrow() {
 
     Card(
         cornerRadius = 22.dp,
-        modifier = Modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
+        modifier = modifier.fillMaxWidth().aspectRatio(WidgetPreviewRatio4x2).border(1.dp, borderColor, com.kyant.capsule.ContinuousRoundedRectangle(22.dp)),
         insideMargin = PaddingValues(0.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(bgColor)
-                .padding(start = 9.dp, end = 9.dp, top = 9.dp, bottom = 9.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 与真实组件一致：两个各占一半的表头槽位，明天槽位左移 4dp 起点
-                Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f))
-                Text(AboutStr.previewHeaderTomorrow(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 4.dp))
+        WidgetGlassHost(
+            wallpaper = wallpaper,
+            modifier = Modifier.fillMaxSize(),
+            background = {
+                WidgetPreviewBackground(
+                    bgColor = bgColor,
+                    wallpaper = wallpaper,
+                    // 卡片磨砂并进背景模糊：卡片背后就是这张壁纸，一起糊即可，
+                    // 逐卡片取背后在预览里做不稳（采样层在 pager 里会拿到错帧）
+                    wallpaperBlur = appearance.wallpaperBlur,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
-
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight().padding(end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 9.dp, end = 9.dp, top = 9.dp, bottom = 9.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TodayTomorrowCardPreview(AboutStr.previewCourseMath(), "08:00-09:35", AboutStr.previewInfoMathTeacher(), ComposeColor(0xFF4CAF50), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
-                    TodayTomorrowCardPreview(AboutStr.previewCourseEnglish(), "14:00-15:35", AboutStr.previewInfoEnglishTeacher(), ComposeColor(0xFF2196F3), ComposeColor(0x1A2196F3), nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    // 与真实组件一致：两个各占一半的表头槽位，明天槽位左移 4dp 起点
+                    Text(AboutStr.previewHeaderToday(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(AboutStr.previewHeaderTomorrow(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = titleColor, fontFamily = FontFamily.SansSerif, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 4.dp))
                 }
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    TodayTomorrowCardPreview(AboutStr.previewCourseLinearAlgebra(), "08:00-09:35", AboutStr.previewInfoLinearTeacher(), ComposeColor(0xFFFF9800), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
-                    TodayTomorrowCardPreview(AboutStr.previewCoursePhysics(), "10:00-11:35", AboutStr.previewInfoPhysicsTeacher(), ComposeColor(0xFF9C27B0), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight().padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        TodayTomorrowCardPreview(AboutStr.previewCourseMath(), "08:00-09:35", AboutStr.previewInfoMathTeacher(), ComposeColor(0xFF4CAF50), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                        TodayTomorrowCardPreview(AboutStr.previewCourseEnglish(), "14:00-15:35", AboutStr.previewInfoEnglishTeacher(), ComposeColor(0xFF2196F3), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f), tint = ComposeColor(0x1A2196F3))
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        TodayTomorrowCardPreview(AboutStr.previewCourseLinearAlgebra(), "08:00-09:35", AboutStr.previewInfoLinearTeacher(), ComposeColor(0xFFFF9800), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                        TodayTomorrowCardPreview(AboutStr.previewCoursePhysics(), "10:00-11:35", AboutStr.previewInfoPhysicsTeacher(), ComposeColor(0xFF9C27B0), cardBg, nameColor, timeColor, infoColor, Modifier.fillMaxWidth().weight(1f))
+                    }
                 }
             }
         }
@@ -455,20 +947,33 @@ private fun TodayTomorrowCardPreview(
     name: String, time: String, info: String,
     barColor: ComposeColor, cardBg: ComposeColor,
     nameColor: ComposeColor, timeColor: ComposeColor, infoColor: ComposeColor,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 额外叠加层（正在上课的淡蓝），不受卡片不透明度影响 */
+    tint: ComposeColor? = null,
 ) {
     Card(
         cornerRadius = 14.dp,
         modifier = modifier,
+        // 底色交给 WidgetCardGlass：卡片自己再铺一层，圆角差一点点就会在四个角露白
+        colors = CardDefaults.defaultColors(
+            color = ComposeColor.Transparent,
+            contentColor = ComposeColor.Transparent
+        ),
         insideMargin = PaddingValues(0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(cardBg)
-                .padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            WidgetCardGlass(
+                cardColor = cardBg,
+                cornerRadius = 14.dp,
+                tint = tint,
+                modifier = Modifier.fillMaxSize()
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 8.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -481,6 +986,7 @@ private fun TodayTomorrowCardPreview(
                 Text(time, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeColor, fontFamily = FontFamily.SansSerif, maxLines = 1)
                 Text(info, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = infoColor, fontFamily = FontFamily.SansSerif, maxLines = 1)
             }
+            }
         }
     }
 }
@@ -491,20 +997,32 @@ private fun CourseCardPreview(
     barColor: ComposeColor, remaining: String?,
     cardBg: ComposeColor, nameColor: ComposeColor, infoColor: ComposeColor,
     timeStartColor: ComposeColor, timeEndColor: ComposeColor, nowColor: ComposeColor,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 额外叠加层（正在上课的淡蓝），不受卡片不透明度影响 */
+    tint: ComposeColor? = null,
 ) {
     Card(
         cornerRadius = 12.dp,
         modifier = modifier,
+        colors = CardDefaults.defaultColors(
+            color = ComposeColor.Transparent,
+            contentColor = ComposeColor.Transparent
+        ),
         insideMargin = PaddingValues(0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(cardBg)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            WidgetCardGlass(
+                cardColor = cardBg,
+                cornerRadius = 12.dp,
+                tint = tint,
+                modifier = Modifier.fillMaxSize()
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             Column(modifier = Modifier.width(35.dp), horizontalAlignment = Alignment.Start) {
                 Text(startTime, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeStartColor, fontFamily = FontFamily.SansSerif)
                 Text(endTime, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = timeEndColor, fontFamily = FontFamily.SansSerif)
@@ -519,6 +1037,7 @@ private fun CourseCardPreview(
             if (remaining != null) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(remaining, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = nowColor, textAlign = TextAlign.End)
+            }
             }
         }
     }

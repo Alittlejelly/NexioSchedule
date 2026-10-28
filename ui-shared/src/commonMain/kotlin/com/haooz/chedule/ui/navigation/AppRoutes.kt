@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -94,6 +95,8 @@ import com.haooz.chedule.ui.activities.TimeConfigCardBounds
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.activities.WebImportScreen
+import com.haooz.chedule.ui.activities.WidgetCustomizeOverlay
+import com.haooz.chedule.ui.activities.WidgetCustomizeRequest
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -536,71 +539,117 @@ fun HolidaySettingsRoute(
 fun WidgetIntroRoute(
     router: AppRouter,
     onRequestWidgetRefresh: () -> Unit = {},
+    /**
+     * 拉起系统选图器给组件换壁纸。Android 注入真实能力（相册）；
+     * 桌面/iOS 没有对应组件能力，默认空实现 —— 按钮点了没反应，但页面照常渲染。
+     */
+    onPickWidgetWallpaper: (widthPx: Int, heightPx: Int, onPicked: (ImageBitmap?) -> Unit) -> Unit =
+        { _, _, _ -> },
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val isTablet = isTabletWidth()
     val tabletHorizontalPadding = if (isTablet) 20.dp else 16.dp
     var showGuideDialog by remember { mutableStateOf(false) }
+    // 自定义浮层铺满整屏（含状态栏），所以挂在脚手架外侧，而不是页面内容里
+    var customizeRequest by remember { mutableStateOf<WidgetCustomizeRequest?>(null) }
+    // 浮层已把小部件送回原位（但还没摘）：页面那份预览此时可以放出来了
+    var customizeSettled by remember { mutableStateOf(false) }
+    // 「应用」后自增，逼页面重读壁纸（换图但 key 不变时只靠内部缓存是刷不出来的）
+    var wallpaperRevision by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
 
-    DocumentPageScaffold(
-        title = ChromeStr.widgetsTitle(),
-        onBack = { router.popBack() },
-        overlay = { backdrop ->
-            LiquidGlassTextButton(
-                text = ChromeStr.addToHomeScreen(),
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                    showGuideDialog = true
-                },
-                backdrop = backdrop,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = tabletHorizontalPadding + 16.dp,
-                        end = tabletHorizontalPadding + 16.dp
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
-            )
-            OverlayDialog(
-                title = ChromeStr.addWidgetTitle(),
-                show = showGuideDialog,
-                liquidGlassBackdrop = backdrop,
-                onDismissRequest = { showGuideDialog = false }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+    Box(modifier = Modifier.fillMaxSize()) {
+        DocumentPageScaffold(
+            title = ChromeStr.widgetsTitle(),
+            onBack = { router.popBack() },
+            overlay = { backdrop ->
+                LiquidGlassTextButton(
+                    text = ChromeStr.addToHomeScreen(),
+                    onClick = {
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                        showGuideDialog = true
+                    },
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(
+                            start = tabletHorizontalPadding + 16.dp,
+                            end = tabletHorizontalPadding + 16.dp
+                        )
+                        .navigationBarsPadding()
+                        .padding(bottom = 20.dp),
+                )
+                OverlayDialog(
+                    title = ChromeStr.addWidgetTitle(),
+                    show = showGuideDialog,
+                    liquidGlassBackdrop = backdrop,
+                    onDismissRequest = { showGuideDialog = false }
                 ) {
-                    Text(
-                        text = if (isIosPlatform) {
-                            ChromeStr.widgetGuideIos()
-                        } else {
-                            ChromeStr.widgetGuideAndroid()
-                        },
-                        fontSize = 14.sp,
-                        lineHeight = 24.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantActions
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    TextButton(
-                        text = CommonStr.done(),
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            showGuideDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isIosPlatform) {
+                                ChromeStr.widgetGuideIos()
+                            } else {
+                                ChromeStr.widgetGuideAndroid()
+                            },
+                            fontSize = 14.sp,
+                            lineHeight = 24.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantActions
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        TextButton(
+                            text = CommonStr.done(),
+                            onClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                                showGuideDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
-            }
-        },
-    ) { scrollBehavior, backdrop ->
-        WidgetIntroScreen(
-            scrollBehavior = scrollBehavior,
-            liquidGlassBackdrop = backdrop,
-            onRequestWidgetRefresh = onRequestWidgetRefresh,
-        )
+            },
+        ) { scrollBehavior, backdrop ->
+            WidgetIntroScreen(
+                scrollBehavior = scrollBehavior,
+                liquidGlassBackdrop = backdrop,
+                onRequestWidgetRefresh = onRequestWidgetRefresh,
+                onCustomizeRequest = { customizeRequest = it },
+                // 浮层在画这张小部件，页面里那份必须让位；
+                // 但「已回位、还没摘」的那一刻要放出来 —— 否则摘浮层那帧是空的
+                hiddenPage = if (customizeSettled) null else customizeRequest?.page,
+                wallpaperRevision = wallpaperRevision,
+            )
+        }
+
+        customizeRequest?.let { request ->
+            WidgetCustomizeOverlay(
+                request = request,
+                onDismiss = {
+                    customizeRequest = null
+                    customizeSettled = false
+                },
+                onApply = {
+                    customizeRequest = null
+                    customizeSettled = false
+                    // 桌面组件刷新会把所有已装组件的位图现场重画（解码 + 模糊 + 编码），
+                    // 是同步重活。留在这一帧里做，等于把「摘浮层」那帧的绘制顶掉。
+                    scope.launch {
+                        withFrameNanos { }
+                        onRequestWidgetRefresh()
+                    }
+                },
+                // 页面先亮起来（和浮层那份完全重合），顺便读到刚落盘的外观
+                onSettled = {
+                    wallpaperRevision++
+                    customizeSettled = true
+                },
+                onPickWallpaper = onPickWidgetWallpaper,
+            )
+        }
     }
 }
 
