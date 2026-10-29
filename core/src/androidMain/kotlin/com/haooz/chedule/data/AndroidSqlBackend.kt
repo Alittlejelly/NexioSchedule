@@ -1,10 +1,10 @@
 package com.haooz.chedule.data
 
-import android.content.ContentValues
 import android.content.Context
-import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.db.ScheduleQueries
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -13,145 +13,112 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * [SqlBackend] 的 Android 实现：一个 `nexio_kv.db`，两张表。
+ * [SqlBackend] 的 Android 实现 —— **整个应用只有一个数据库文件**（`nexio.db`），
+ * 键值表 `pref` 与实体表（`schedule` / `course` / …）同库同事务。
  *
- * ```
- * kv(ns, k, type, s, i, f, b)   -- 主键 (ns, k)，ns 就是原来的「偏好文件名」
- * meta(k, v)                    -- 迁移标记，不放业务数据
- * ```
+ * 为什么不用两个库（键值一个、实体一个）：删课表要同时删它的课程、改「当前课表」指针、
+ * 清绑定——两库做不到一次提交，中间被杀就是半个状态。同库才能一个 `transaction` 全包。
  *
- * ## 落盘格式
- *
- * 每个值只占一列：字符串/字符串集合进 `s`（集合存 JSON 数组），整型/长整型进 `i`，
- * 浮点进 `f`，布尔进 `b`。`type` 列是唯一真相 —— 不靠「这一列非空」去猜类型，
- * 因为 SQLite 的 INTEGER 读出来永远是 Long，靠猜就会重演 FileKeyValueStore 注释里
- * 记的那个坑（Int 被写成 Long → Android `getInt` 抛 ClassCastException → 设置静默丢失）。
+ * schema 由 SQLDelight 管（`commonMain/sqldelight/.../Schedule.sq`），不在这里写 `CREATE TABLE`：
+ * 两处都建表 = 总有一天两边不一致，而那是**升级时才炸**的那种不一致。
  *
  * ## 一致性
  *
- * - WAL 模式（`setWriteAheadLoggingEnabled`）：写入是顺序追加，进程被杀不会留下半截事务；
- *   WAL 下 SQLite 默认 `synchronous=NORMAL`，小事务不必真 fsync。
- * - 所有写操作都走 [transaction]，`beginTransaction` / `setTransactionSuccessful` /
- *   `endTransaction` 三步齐全 —— 漏掉 `setTransactionSuccessful` 会静默回滚，是最常见的写法错误。
+ * - 开库后立刻 `PRAGMA foreign_keys = ON`。SQLite 默认**关**外键，漏了这一句，所有
+ *   `REFERENCES ... ON DELETE CASCADE` 都只是注释。
+ * - WAL：写入顺序追加，进程被杀不会留半截事务；WAL 下默认 `synchronous=NORMAL`。
+ * - 所有写操作走 [transaction]，`begin/setTransactionSuccessful/end` 由 SQLDelight 包好。
  */
 class AndroidSqlBackend(context: Context) : SqlBackend {
 
-    private val helper = object : SQLiteOpenHelper(context.applicationContext, DB_NAME, null, DB_VERSION) {
-        override fun onCreate(db: SQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS kv (
-                    ns   TEXT NOT NULL,
-                    k    TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    s    TEXT,
-                    i    INTEGER,
-                    f    REAL,
-                    b    INTEGER,
-                    PRIMARY KEY (ns, k)
-                )
-                """.trimIndent(),
-            )
-            db.execSQL(
-                "CREATE TABLE IF NOT EXISTS meta (k TEXT NOT NULL PRIMARY KEY, v TEXT NOT NULL)",
-            )
-        }
+    private val driver: SqlDriver = AndroidSqliteDriver(
+        schema = NexioDatabase.Schema,
+        context = context.applicationContext,
+        name = DB_NAME,
+    )
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
-    }
+    private val db = NexioDatabase(driver)
+
+    /** 本文件（Schedule.sq）里声明的全部查询。 */
+    private val q: ScheduleQueries get() = db.scheduleQueries
 
     init {
-        // 必须在第一次 getWritableDatabase 之前设置，之后再调用只影响新开连接
-        helper.setWriteAheadLoggingEnabled(true)
+        // 必须在任何事务之前：这个开关是**连接级**的，漏了就是所有外键静默失效
+        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
     }
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    override fun <T> transaction(block: SqlBackend.SqlTx.() -> T): T {
-        val db = helper.writableDatabase
-        db.beginTransaction()
-        try {
-            val result = TxImpl(db).block()
-            db.setTransactionSuccessful()
-            return result
-        } finally {
-            db.endTransaction()
-        }
-    }
+    override fun <T> transaction(block: SqlBackend.SqlTx.() -> T): T =
+        db.transactionWithResult { TxImpl().block() }
 
-    override fun loadNamespace(namespace: String): List<KvRow> {
-        val db = helper.writableDatabase
-        return db.rawQuery(SELECT_NS, arrayOf(namespace)).use { c -> c.readRows() }
-    }
+    override fun loadNamespace(namespace: String): List<KvRow> =
+        q.selectPrefNamespace(namespace).executeAsList().map { it.toKvRow() }
 
-    override fun readMeta(key: String): String? {
-        val db = helper.writableDatabase
-        return db.rawQuery("SELECT v FROM meta WHERE k = ?", arrayOf(key)).use { c ->
-            if (c.moveToFirst()) c.getString(0) else null
-        }
-    }
+    override fun readMeta(key: String): String? =
+        q.readMeta(key).executeAsOneOrNull()
 
-    private inner class TxImpl(private val db: SQLiteDatabase) : SqlBackend.SqlTx {
+    private inner class TxImpl : SqlBackend.SqlTx {
 
         override fun upsert(namespace: String, row: KvRow) {
-            val values = ContentValues(7).apply {
-                put("ns", namespace)
-                put("k", row.key)
-                put("type", row.type)
-                when (row.type) {
-                    SqliteKeyValueStore.TYPE_STRING -> put("s", row.value as String)
-                    SqliteKeyValueStore.TYPE_INT -> put("i", row.value as Int)
-                    SqliteKeyValueStore.TYPE_LONG -> put("i", row.value as Long)
-                    SqliteKeyValueStore.TYPE_FLOAT -> put("f", row.value as Float)
-                    SqliteKeyValueStore.TYPE_BOOL -> put("b", if (row.value as Boolean) 1 else 0)
-                    SqliteKeyValueStore.TYPE_STRING_SET -> put("s", encodeSet(row.value))
-                    else -> error("未知的键值类型标签：${row.type}")
-                }
+            var s: String? = null
+            var i: Long? = null
+            var f: Double? = null
+            var b: Long? = null
+            when (row.type) {
+                SqliteKeyValueStore.TYPE_STRING -> s = row.value as String
+                // Int 也走 i 列（SQLite 只有 INTEGER），读回时按 type 标签还原成 Int
+                SqliteKeyValueStore.TYPE_INT -> i = (row.value as Int).toLong()
+                SqliteKeyValueStore.TYPE_LONG -> i = row.value as Long
+                // REAL 只有 Double：Float→Double→Float 是精确的，不会丢精度
+                SqliteKeyValueStore.TYPE_FLOAT -> f = (row.value as Float).toDouble()
+                SqliteKeyValueStore.TYPE_BOOL -> b = if (row.value as Boolean) 1L else 0L
+                SqliteKeyValueStore.TYPE_STRING_SET -> s = encodeSet(row.value)
+                else -> error("未知的键值类型标签：${row.type}")
             }
-            db.insertWithOnConflict("kv", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            q.upsertPref(
+                ns = namespace,
+                k = row.key,
+                type = row.type,
+                s = s,
+                i = i,
+                f = f,
+                b = b,
+            )
         }
 
         override fun delete(namespace: String, key: String) {
-            db.delete("kv", "ns = ? AND k = ?", arrayOf(namespace, key))
+            q.deletePref(namespace, key)
         }
 
         override fun clearNamespace(namespace: String) {
-            db.delete("kv", "ns = ?", arrayOf(namespace))
+            q.clearPrefNamespace(namespace)
         }
 
         override fun load(namespace: String): List<KvRow> =
-            db.rawQuery(SELECT_NS, arrayOf(namespace)).use { c -> c.readRows() }
+            q.selectPrefNamespace(namespace).executeAsList().map { it.toKvRow() }
 
         override fun putMeta(key: String, value: String) {
-            val values = ContentValues(2).apply {
-                put("k", key)
-                put("v", value)
-            }
-            db.insertWithOnConflict("meta", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            q.writeMeta(key, value)
         }
     }
 
-    private fun Cursor.readRows(): List<KvRow> {
-        val out = ArrayList<KvRow>(count)
-        while (moveToNext()) {
-            val key = getString(0)
-            val type = getString(1)
-            val value: Any = when (type) {
-                SqliteKeyValueStore.TYPE_STRING -> getString(2) ?: ""
-                // 按 type 列还原：i 列读出来是 Long，但标签说它是 Int，就必须还成 Int
-                SqliteKeyValueStore.TYPE_INT -> getInt(3)
-                SqliteKeyValueStore.TYPE_LONG -> getLong(3)
-                SqliteKeyValueStore.TYPE_FLOAT -> getFloat(4)
-                SqliteKeyValueStore.TYPE_BOOL -> getInt(5) != 0
-                SqliteKeyValueStore.TYPE_STRING_SET -> decodeSet(getString(2))
-                else -> {
-                    NexioLog.w(TAG, "未知的类型标签 '$type'（key=$key），按字符串抢救")
-                    getString(2) ?: ""
-                }
+    /** 行 → [KvRow]。类型以 `type` 列为准，不靠「哪一列非空」猜。 */
+    private fun com.haooz.chedule.data.db.SelectPrefNamespace.toKvRow(): KvRow {
+        val value: Any = when (type) {
+            SqliteKeyValueStore.TYPE_STRING -> s ?: ""
+            SqliteKeyValueStore.TYPE_INT -> (i ?: 0L).toInt()
+            SqliteKeyValueStore.TYPE_LONG -> i ?: 0L
+            SqliteKeyValueStore.TYPE_FLOAT -> (f ?: 0.0).toFloat()
+            SqliteKeyValueStore.TYPE_BOOL -> (b ?: 0L) != 0L
+            SqliteKeyValueStore.TYPE_STRING_SET -> decodeSet(s)
+            else -> {
+                NexioLog.w(TAG, "未知的类型标签 '$type'（key=$k），按字符串抢救")
+                s ?: ""
             }
-            out += KvRow(key, if (type in KNOWN_TYPES) type else SqliteKeyValueStore.TYPE_STRING, value)
         }
-        return out
+        val safeType = if (type in KNOWN_TYPES) type else SqliteKeyValueStore.TYPE_STRING
+        return KvRow(k, safeType, value)
     }
 
     private fun encodeSet(value: Any): String {
@@ -169,9 +136,7 @@ class AndroidSqlBackend(context: Context) : SqlBackend {
 
     private companion object {
         const val TAG = "AndroidSqlBackend"
-        const val DB_NAME = "nexio_kv.db"
-        const val DB_VERSION = 1
-        const val SELECT_NS = "SELECT k, type, s, i, f, b FROM kv WHERE ns = ?"
+        const val DB_NAME = "nexio.db"
         val KNOWN_TYPES = setOf(
             SqliteKeyValueStore.TYPE_STRING,
             SqliteKeyValueStore.TYPE_INT,

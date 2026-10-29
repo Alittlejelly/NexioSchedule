@@ -1,0 +1,197 @@
+-- 课程表实体 schema（v1）
+--
+-- 设计原则：**按「改动粒度」拆表，不搞教条式第三范式。**
+--   · 会频繁单点改的（课程、课程周次、课程周备注）→ 行级，改一门课只写一行；
+--   · 整份编辑的小聚合（作息配置、作息方案的时间体）→ 一行一份 JSON（≤ 2KB），
+--     改一个节次时间重写这一点点，而不是整张课表；
+--   · 需要被外键引用的（课表、文件夹）→ 列出来，约束才生效。
+--
+-- 这样写放大从「改一门课 = 序列化整份课表 JSON（数百 KB）」降到「一行 UPDATE（几十字节）」，
+-- 同时不为此付出十几张表的复杂度。
+
+CREATE TABLE meta (
+    k TEXT NOT NULL PRIMARY KEY,
+    v TEXT NOT NULL
+);
+
+-- ── 键值层 ────────────────────────────────────────────────────────────────
+-- 与实体表同库：一个事务能同时改设置和课程，这是两库方案做不到的。
+-- type 取 s/i/l/f/b/ss，与 FileKeyValueStore 的落盘标签同源。
+CREATE TABLE pref (
+    ns   TEXT NOT NULL,
+    k    TEXT NOT NULL,
+    type TEXT NOT NULL,
+    s    TEXT,
+    i    INTEGER,
+    f    REAL,
+    b    INTEGER,
+    PRIMARY KEY (ns, k)
+);
+
+-- ── 文件夹 ────────────────────────────────────────────────────────────────
+CREATE TABLE folder (
+    id         TEXT NOT NULL PRIMARY KEY,
+    name       TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- ── 作息配置 ──────────────────────────────────────────────────────────────
+-- payload 是 TimeConfig 去掉 id/name 后的整份 JSON（骨架 + sectionTimes + specialBlocks + routines）。
+-- 它是「整份编辑、整份保存」的聚合根，拆成列只会把一次编辑变成十几次写。
+-- 真正需要约束的是「课表绑哪一个」，那由 schedule.time_config_id 外键保证。
+CREATE TABLE time_config (
+    id      INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name    TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+
+-- ── 课表 ──────────────────────────────────────────────────────────────────
+-- ⚠ 这张表是整次改造的核心收益：
+--   time_config_id NOT NULL + FOREIGN KEY，把「按课表名绑作息」换成按 id 绑。
+--   改名不再需要搬绑定键，删课表由 ON DELETE 处理，孤儿配置不再需要 prune 去猜。
+CREATE TABLE schedule (
+    id             TEXT NOT NULL PRIMARY KEY,
+    name           TEXT NOT NULL UNIQUE,
+    folder_id      TEXT REFERENCES folder(id) ON DELETE SET NULL,
+    time_config_id INTEGER NOT NULL REFERENCES time_config(id) ON DELETE RESTRICT,
+    sort_order     INTEGER NOT NULL DEFAULT 0,
+    current_week   INTEGER NOT NULL DEFAULT 1,
+    total_weeks    INTEGER NOT NULL DEFAULT 20,
+    class_start    TEXT
+);
+
+CREATE INDEX schedule_by_folder ON schedule(folder_id, sort_order);
+
+-- ── 课程 ──────────────────────────────────────────────────────────────────
+CREATE TABLE course (
+    id               TEXT NOT NULL PRIMARY KEY,
+    schedule_id      TEXT NOT NULL REFERENCES schedule(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    classroom        TEXT NOT NULL DEFAULT '',
+    teacher          TEXT NOT NULL DEFAULT '',
+    day_of_week      INTEGER NOT NULL,
+    start_section    INTEGER NOT NULL,
+    end_section      INTEGER NOT NULL,
+    start_week       INTEGER NOT NULL,
+    end_week         INTEGER NOT NULL,
+    week_type        INTEGER NOT NULL DEFAULT 0,
+    color_res        INTEGER NOT NULL DEFAULT 0,
+    note             TEXT NOT NULL DEFAULT '',
+    last_modified    INTEGER NOT NULL DEFAULT 0,
+    is_custom_time   INTEGER NOT NULL DEFAULT 0,
+    custom_start_time TEXT,
+    custom_end_time   TEXT
+);
+
+-- 首屏按「课表 + 星期 + 节次」取，索引顺序跟着查询走
+CREATE INDEX course_by_schedule ON course(schedule_id, day_of_week, start_section);
+
+-- selectedWeeks：一条课在多周出现就多行。改一周只写一行，不用重写整条课。
+CREATE TABLE course_week (
+    course_id TEXT NOT NULL REFERENCES course(id) ON DELETE CASCADE,
+    week      INTEGER NOT NULL,
+    PRIMARY KEY (course_id, week)
+);
+
+-- weekNotes：按周覆盖 note。同样一周一行。
+CREATE TABLE course_week_note (
+    course_id TEXT NOT NULL REFERENCES course(id) ON DELETE CASCADE,
+    week      INTEGER NOT NULL,
+    note      TEXT NOT NULL,
+    PRIMARY KEY (course_id, week)
+);
+
+-- ══ 查询 ═══════════════════════════════════════════════════════════════════
+
+-- 启动快照：三条查询各扫一遍，在 Kotlin 里组装，不做 N+1
+selectAllSchedules:
+SELECT * FROM schedule ORDER BY sort_order, name;
+
+selectAllCourses:
+SELECT * FROM course ORDER BY schedule_id, day_of_week, start_section;
+
+selectAllCourseWeeks:
+SELECT course_id, week FROM course_week ORDER BY course_id, week;
+
+selectAllCourseWeekNotes:
+SELECT course_id, week, note FROM course_week_note ORDER BY course_id, week;
+
+selectCoursesOf:
+SELECT * FROM course WHERE schedule_id = ? ORDER BY day_of_week, start_section;
+
+selectFolderList:
+SELECT * FROM folder ORDER BY sort_order, name;
+
+selectTimeConfigIds:
+SELECT id FROM time_config ORDER BY id;
+
+selectTimeConfig:
+SELECT * FROM time_config WHERE id = ?;
+
+-- ── 写：全部是行级，且都在调用方的事务里 ──────────────────────────────────
+
+upsertSchedule:
+INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSchedule:
+DELETE FROM schedule WHERE id = ?;
+
+upsertCourse:
+INSERT OR REPLACE INTO course(id, schedule_id, name, classroom, teacher, day_of_week, start_section,
+    end_section, start_week, end_week, week_type, color_res, note, last_modified, is_custom_time,
+    custom_start_time, custom_end_time)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteCourse:
+DELETE FROM course WHERE id = ?;
+
+deleteCoursesOfSchedule:
+DELETE FROM course WHERE schedule_id = ?;
+
+insertWeek:
+INSERT OR IGNORE INTO course_week(course_id, week) VALUES (?, ?);
+
+deleteWeeksOf:
+DELETE FROM course_week WHERE course_id = ?;
+
+insertWeekNote:
+INSERT OR REPLACE INTO course_week_note(course_id, week, note) VALUES (?, ?, ?);
+
+deleteWeekNotesOf:
+DELETE FROM course_week_note WHERE course_id = ?;
+
+upsertFolder:
+INSERT OR REPLACE INTO folder(id, name, sort_order) VALUES (?, ?, ?);
+
+deleteFolder:
+DELETE FROM folder WHERE id = ?;
+
+insertTimeConfig:
+INSERT INTO time_config(name, payload) VALUES (?, ?);
+
+updateTimeConfig:
+UPDATE time_config SET name = ?, payload = ? WHERE id = ?;
+
+deleteTimeConfig:
+DELETE FROM time_config WHERE id = ?;
+
+readMeta:
+SELECT v FROM meta WHERE k = ?;
+
+writeMeta:
+INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?);
+
+-- ── 键值层查询 ────────────────────────────────────────────────────────────
+-- 与实体表同库同事务：删课表 + 清它的课程 + 改「当前课表」指针可以一次提交。
+selectPrefNamespace:
+SELECT k, type, s, i, f, b FROM pref WHERE ns = ?;
+
+upsertPref:
+INSERT OR REPLACE INTO pref(ns, k, type, s, i, f, b) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deletePref:
+DELETE FROM pref WHERE ns = ? AND k = ?;
+
+clearPrefNamespace:
+DELETE FROM pref WHERE ns = ?;

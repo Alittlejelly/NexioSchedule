@@ -6,6 +6,18 @@ import org.gradle.api.tasks.testing.Test
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kmp.library)
+    // 实体表（课程/课表/作息）的代码生成：SQL 是真相，查询在编译期校验，迁移是显式 .sqm 文件。
+    alias(libs.plugins.sqldelight)
+}
+
+sqldelight {
+    databases {
+        create("NexioDatabase") {
+            packageName.set("com.haooz.chedule.data.db")
+            // 迁移文件缺失时**编译失败**，而不是运行时丢数据。存量用户的数据只有一份。
+            verifyMigrations.set(true)
+        }
+    }
 }
 
 kotlin {
@@ -50,11 +62,26 @@ kotlin {
             api(libs.kotlinx.coroutines.core)
             // JSON：替代 org.json。api —— JsonSupport 的扩展函数挂在 kotlinx.serialization.json.JsonObject 上，类型会出现在下游调用点。
             api(libs.kotlinx.serialization.json)
+            // 实体表运行时（生成的 NexioDatabase 依赖它）
+            implementation(libs.sqldelight.runtime)
         }
 
         androidMain.dependencies {
             // Android 侧网络仍走 OkHttp（与迁移前同一套引擎、同一套超时语义）；刻意不引入 Ktor，会连带把 kotlinx-coroutines 从 1.9.0 顶到 1.10+。
             implementation(libs.okhttp)
+            implementation(libs.sqldelight.android.driver)
+        }
+
+        jvmMain.dependencies {
+            // 桌面端用 JDBC 驱动，同一个 .sq schema、同一套查询
+            implementation(libs.sqldelight.sqlite.driver)
+        }
+
+        // iOS 目标默认关闭（-Pnexio.ios=true 才建），所以驱动依赖也必须在同一个开关里加
+        if (enableIos) {
+            iosMain.dependencies {
+                implementation(libs.sqldelight.native.driver)
+            }
         }
 
         // round-trip 回归测试跑在 commonTest：KeyValueStore 的读写语义必须在所有平台一致，用 InMemory 实现即可验证，不需要 Android 设备。
