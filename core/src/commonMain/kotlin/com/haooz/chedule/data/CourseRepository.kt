@@ -41,10 +41,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /**
      * 当天生效的作息（`TimeConfig.effective()` 的结果）。`effective()` 要把作息方案逐条转成
      * 对象、排序、再整份 copy 一次；`CourseTimeResolver` 每门课起止时间各取一遍三个时段，
-     * 于是「一门课 6 次深拷贝」。按 (配置 id, 日期) 缓存后只剩查表。
+     * 于是「一门课 6 次深拷贝」。按配置 id 缓存当天的结果后只剩查表。
      */
     @Volatile
-    private var effectiveConfigCache: Map<EffectiveConfigKey, TimeConfig> = emptyMap()
+    private var effectiveConfigCache: Map<Long, EffectiveConfig> = emptyMap()
 
     /** 「课表 → 解析后的教学周重组规则」。键里带原始 JSON，存储变了自动重解析，不用手动失效。 */
     @Volatile
@@ -1348,13 +1348,17 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 某配置在**今天**生效的那份作息。`effective()` 每次都把作息方案转对象、排序、整份 copy，
      * `CourseTimeResolver` 解一门课的起止时间会取 6 次时段表，逐次重算等于每门课 6 次深拷贝。
      * 缓存在这里，跨天或配置被改写时整批作废（见 [invalidateTimeCaches] / [saveTimeConfig]）。
+     * 条目里带日期：跨天自动重算，条目数恒等于配置数，不会随运行天数增长。
      */
     private fun effectiveConfig(configId: Long): TimeConfig {
         val today = todayLocalDate()
-        val key = EffectiveConfigKey(configId, today)
-        effectiveConfigCache[key]?.let { return it }
+        effectiveConfigCache[configId]?.let { cached ->
+            if (cached.date == today) return cached.config
+        }
         val config = getTimeConfig(configId).effective(today)
-        synchronizedOn(cacheLock) { effectiveConfigCache = effectiveConfigCache + (key to config) }
+        synchronizedOn(cacheLock) {
+            effectiveConfigCache = effectiveConfigCache + (configId to EffectiveConfig(today, config))
+        }
         return config
     }
 
@@ -3085,10 +3089,10 @@ private data class CachedReorganizations(
     val rules: List<TeachingWeekReorganizationRule>,
 )
 
-/** [CourseRepository] 生效作息的缓存键：配置 id + 日期（作息按日期选方案）。 */
-private data class EffectiveConfigKey(
-    val configId: Long,
+/** [CourseRepository] 生效作息的缓存条目：日期 + 当天生效的作息。跨天自然失效，条目数恒等于配置数。 */
+private data class EffectiveConfig(
     val date: LocalDate,
+    val config: TimeConfig,
 )
 
 /** 已编码的作息配置。`config` 按引用比对，配置被替换成新实例时自然重编码。 */

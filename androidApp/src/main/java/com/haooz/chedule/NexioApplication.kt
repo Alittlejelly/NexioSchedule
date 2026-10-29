@@ -132,6 +132,25 @@ class NexioApplication : Application() {
                     runCatching { repository.getCoursesForSchedule(schedule) }
                 }
             }.onFailure { NexioLog.w(TAG, "课程预热失败（首屏会再读一次）", it) }
+
+            // 课表设置：首帧要用的周次 / 开学日 / 重组规则才会第一次碰行表（settingsOf + 同步标记），
+            // 在这里读掉，主线程首次组合就只剩查缓存。
+            runCatching {
+                val repository = com.haooz.chedule.data.CourseRepository()
+                repository.getTeachingWeekReorganizations()
+                repository.getTotalWeeks()
+                repository.getCurrentWeek()
+                repository.getClassStartTime()
+                repository.getCurrentSectionTimes()
+            }.onFailure { NexioLog.w(TAG, "课表设置预热失败（首屏会再读一次）", it) }
+
+            // 节假日：首帧的 holidayEntriesByYear 是「整份偏好快照 + 逐年反序列化」，
+            // 两级剔除配置也是每次解析都读一遍；预热后首帧直接命中快照缓存。
+            runCatching {
+                com.haooz.chedule.data.HolidayManager.loadAllByYear()
+                com.haooz.chedule.data.HolidayManager.loadEndCourseExclusion()
+                com.haooz.chedule.data.HolidayManager.loadBeforeCourseExclusion()
+            }.onFailure { NexioLog.w(TAG, "节假日预热失败（首屏会再读一次）", it) }
         }
     }
 
