@@ -139,15 +139,28 @@ class SqliteKeyValueStore(
 
         synchronized(lock) {
             val previous = data
-            data = working
+            // 只把「受影响的键」合进最新快照，不整张替换：块在锁外执行，这期间别的线程可能
+            // 写入了别的键，整张替换会把它们从内存抹掉（磁盘上还在）—— 只有重启才恢复，
+            // 表现为「设置改了但界面一直读旧值」。
+            val merged = if (cleared) {
+                LinkedHashMap(working)
+            } else {
+                LinkedHashMap(previous).apply {
+                    for (key in affected) {
+                        val row = working[key]
+                        if (row != null) put(key, row) else remove(key)
+                    }
+                }
+            }
+            data = merged
             try {
                 backend.transaction {
                     if (cleared) {
                         clearNamespace(namespace)
-                        working.values.forEach { upsert(namespace, it) }
+                        merged.values.forEach { upsert(namespace, it) }
                     } else {
                         for (key in affected) {
-                            val r = working[key]
+                            val r = merged[key]
                             if (r != null) upsert(namespace, r) else delete(namespace, key)
                         }
                     }

@@ -97,7 +97,8 @@ interface CourseRowStore {
 /**
  * [CourseRowStore] 的注册点，启动时装一次。
  *
- * 取不到（桌面端 / 测试 / 初始化前）返回 null，调用方退回 JSON。**不抛异常**。
+ * 只有「这个平台根本没有行表」（桌面 / iOS / 测试）才返回 null；注册过但拿不到就抛，
+ * 不做静默降级。
  */
 object CourseStorage {
 
@@ -117,10 +118,7 @@ object CourseStorage {
         get() {
             resolved?.let { return it }
             val p = provider ?: return null
-            // 失败返回 null 且不缓存，下次还能重试
-            val created = runCatching { p() }.getOrNull() ?: return null
-            resolved = created
-            return created
+            return p().also { resolved = it }
         }
 }
 

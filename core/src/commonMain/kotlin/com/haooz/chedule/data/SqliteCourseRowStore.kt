@@ -14,8 +14,12 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     private val q get() = database.scheduleQueries
 
+    /**
+     * ⚠ 不许吞异常：读标记失败若被当成「未导入」，调用方会从（已被删掉的）blob 重新导入，
+     * 而 blob 不存在时就是「导入一张空表」—— 直接把这张课表清空。读不了就让它抛。
+     */
     override fun isImported(scheduleId: String): Boolean =
-        runCatching { q.readMeta(importKey(scheduleId)).executeAsOneOrNull() }.getOrNull() != null
+        q.readMeta(importKey(scheduleId)).executeAsOneOrNull() != null
 
     override fun load(scheduleId: String): List<Course> {
         val courses = q.selectCoursesOf(scheduleId).executeAsList()
@@ -218,7 +222,9 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     private fun writeCourse(scheduleId: String, course: Course) {
         q.upsertCourse(
             id = course.id,
-            schedule_id = course.scheduleId.ifBlank { scheduleId },
+            // 归属只认调用方给的课表：course 自带的 scheduleId 可能是别的课表（复制 / 迁移残留），
+            // 跟着它写会把行挂到别的课表名下，这边读不到、那边多一门，还会 REPLACE 掉对面同 id 的行
+            schedule_id = scheduleId,
             name = course.name,
             classroom = course.classroom,
             teacher = course.teacher,

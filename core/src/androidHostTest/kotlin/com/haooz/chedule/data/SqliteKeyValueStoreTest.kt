@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -166,6 +169,37 @@ class SqliteKeyValueStoreTest {
         store.unregisterListener(token)
         store.edit { putString("theme_mode", "light") }
         assertEquals(listOf("theme_mode", "week"), seen, "注销后不应再收到回调")
+    }
+
+    // ── 并发 ─────────────────────────────────────────────────────────────────
+
+    /**
+     * `edit{}` 的块在锁外执行。块里慢一点时，另一个线程会完成一次完整写入 ——
+     * 提交时若按「整张副本」覆盖内存，那一笔就从内存里消失（磁盘还在），只有重启才回来。
+     */
+    @Test
+    fun `并发写不同 key 时后提交的一方不能抹掉先提交的一方`() {
+        val backend = FakeBackend()
+        val store = SqliteKeyValueStore(backend, "ns")
+        val inBlock = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        val slow = thread {
+            store.edit {
+                putString("a", "1")
+                inBlock.countDown()
+                release.await()
+            }
+        }
+        assertTrue(inBlock.await(5, TimeUnit.SECONDS), "前置条件：慢块必须已经进入 edit")
+
+        store.edit { putString("b", "2") }
+        release.countDown()
+        slow.join(5000)
+
+        assertEquals("2", store.getString("b", ""), "并发写入的 b 被整张快照覆盖掉了")
+        assertEquals("1", store.getString("a", ""))
+        assertEquals(setOf("a", "b"), backend.rowsOf("ns").keys)
     }
 
     /** 后端的内存假实现。事务用整体快照还原，用来钉住「提交失败必须回滚」这条语义。 */
