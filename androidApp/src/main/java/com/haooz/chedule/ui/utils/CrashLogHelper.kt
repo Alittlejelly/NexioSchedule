@@ -17,7 +17,6 @@ import android.os.Build
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KeyValueStore
 import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.asKeyValueStore
 import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
@@ -49,11 +48,8 @@ object CrashLogHelper {
     private const val KEY_RECORDING_STARTED = "recording_started"
     private const val KEY_READY_FILE = "ready_file"
 
-    /** 录制状态的存储入口。崩溃路径使用，初始化失败时退回 SharedPreferences。 */
-    private fun prefs(context: Context): KeyValueStore =
-        runCatching { AppStorage.store(PREFS) }.getOrElse {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).asKeyValueStore()
-        }
+    /** 录制状态的存储入口。崩溃路径也走同一个库 —— 没有第二套存储。 */
+    private fun prefs(): KeyValueStore = AppStorage.store(PREFS)
 
     /** 功能轨迹 / 录制时间窗 */
     const val TRACE_WINDOW_MS = 30L * 60L * 1000L
@@ -241,7 +237,7 @@ object CrashLogHelper {
         // 只保留最新一份录制：新文件已写成功，此前的 recording_*.txt 全部清掉。
         // 否则这些含设备信息与操作轨迹的文件会一直累积在 filesDir 里且永不回收。
         runCatching { trimRecordingFiles(dir, file) }
-        prefs(app).edit {
+        prefs().edit {
             putBoolean(KEY_RECORDING_ACTIVE, true)
             putString(KEY_RECORDING_FILE, file.absolutePath)
             putLong(KEY_RECORDING_STARTED, recordingStartedAt)
@@ -266,15 +262,15 @@ object CrashLogHelper {
         appContext = app
         if (!isRecording) {
             // 允许对「异常中断」路径补结束
-            if (!prefs(app).getBoolean(KEY_RECORDING_ACTIVE, false)) return false
+            if (!prefs().getBoolean(KEY_RECORDING_ACTIVE, false)) return false
         }
-        val path = prefs(app).getStringOrNull(KEY_RECORDING_FILE) ?: readyRecordingPath
+        val path = prefs().getStringOrNull(KEY_RECORDING_FILE) ?: readyRecordingPath
         flushTracesNow(path, final = true, endReason = reason)
         isRecording = false
         hasReadyRecording = true
         readyReason = reason
         readyRecordingPath = path
-        prefs(app).edit {
+        prefs().edit {
             putBoolean(KEY_RECORDING_ACTIVE, false)
             // 原来是 putString(path = null) 等于删键，别写成空串（那会变成「有个空路径」）
             if (path != null) putString(KEY_READY_FILE, path) else remove(KEY_READY_FILE)
@@ -306,7 +302,7 @@ object CrashLogHelper {
         ensureRecovered(context)
         ensureRecordingNotExpired()
         val path = readyRecordingPath
-            ?: prefs(context).getStringOrNull(KEY_READY_FILE)
+            ?: prefs().getStringOrNull(KEY_READY_FILE)
         if (path.isNullOrBlank() || !File(path).exists()) {
             // 没有录制文件时回退为完整导出，仍可分享崩溃/轨迹
             return exportAndShare(context)
@@ -484,7 +480,7 @@ object CrashLogHelper {
     }
 
     private fun recoverInterruptedRecording(context: Context) {
-        val store = prefs(context)
+        val store = prefs()
         val active = store.getBoolean(KEY_RECORDING_ACTIVE, false)
         val path = store.getStringOrNull(KEY_RECORDING_FILE)
         val ready = store.getStringOrNull(KEY_READY_FILE)
@@ -514,7 +510,7 @@ object CrashLogHelper {
 
     private fun scheduleFlush() {
         val ctx = appContext ?: return
-        val path = prefs(ctx).getStringOrNull(KEY_RECORDING_FILE) ?: return
+        val path = prefs().getStringOrNull(KEY_RECORDING_FILE) ?: return
         flushExecutor.execute {
             runCatching { flushTracesNow(path, final = false, endReason = null) }
         }
@@ -665,7 +661,7 @@ object CrashLogHelper {
         readyReason = "crash"
         readyRecordingPath = crashFile.absolutePath
         runCatching {
-            prefs(context).edit {
+            prefs().edit {
                 putString("ready_reason", readyReason)
                 putString(KEY_READY_FILE, crashFile.absolutePath)
             }

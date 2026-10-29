@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * - schema 归 SQLDelight，此文件不建表；
  * - 开库后必须 `PRAGMA foreign_keys = ON`（SQLite 默认关闭，漏了外键都不生效）；
- * - journal 用平台默认（WAL + NORMAL）；
+ * - journal 用平台默认（WAL + `synchronous=NORMAL`，实测）；
  * - 写操作一律走 [transaction]。
  */
 class AndroidSqlBackend(context: Context) : SqlBackend {
@@ -43,6 +43,10 @@ class AndroidSqlBackend(context: Context) : SqlBackend {
     init {
         // 必须在任何事务之前：这个开关是**连接级**的，漏了就是所有外键静默失效
         driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
+        // journal 模式不在这里设：WAL + synchronous=NORMAL 是 androidx.sqlite 建库时的默认
+        // （真机 `pragma journal_mode` 实测 wal）。`PRAGMA journal_mode=WAL` 会返回一行结果，
+        // `driver.execute` 只认 executeUpdateDelete，会抛「Queries can be performed using query only」——
+        // 每次启动刷一条带栈的警告，且什么也没改。要改 journal 得走 query API。
     }
 
     private val json = Json { ignoreUnknownKeys = true }

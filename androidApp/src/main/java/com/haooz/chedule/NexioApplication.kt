@@ -4,7 +4,6 @@ import android.app.Application
 import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.SqliteStorage
-import com.haooz.chedule.data.asKeyValueStore
 import com.haooz.chedule.platform.AndroidScheduleEffects
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import kotlinx.coroutines.CoroutineScope
@@ -13,30 +12,22 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * 存储与平台能力接线。全应用只通过 [AppStorage] 读写；SharedPreferences 只作导入源与回退。
- * [warmUpStorage] 在 IO 线程预热热路径命名空间。
+ * 存储与平台能力接线。运行时只有 `nexio.db` 一份数据：SharedPreferences 只在
+ * [com.haooz.chedule.data.LegacyStorageMigration] 里作为迁移源出现一次，迁完即删。
  */
 class NexioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
         // 必须最先初始化。工厂按名转发命名空间，不在此汇总键名。
+        // 没有第二套存储：库不可用时直接抛，不静默降级。
         com.haooz.chedule.data.AppStorage.init { name ->
-            runCatching {
-                SqliteStorage.store(context = this, namespace = name)
-            }.getOrElse { e ->
-                NexioLog.w(TAG, "SQLite 键值存储不可用，$name 回退 SharedPreferences", e)
-                // 记一笔：这一轮写进 SP 的数据，下次开库要覆盖式重导，否则永久读不到
-                SqliteStorage.recordFallback(this, name)
-                getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
-            }
+            SqliteStorage.store(context = this, namespace = name)
         }
-        // 课程行表接线。取不到就返回 null，业务退回 JSON。
-        com.haooz.chedule.data.CourseStorage.install {
-            runCatching { SqliteStorage.courseRows(this) }
-                .onFailure { NexioLog.w(TAG, "课程行表不可用，继续用 JSON blob", it) }
-                .getOrNull()
-        }
+        // 课程行表接线。取不到就抛，不再退回 JSON。
+        com.haooz.chedule.data.CourseStorage.install { SqliteStorage.courseRows(this) }
+        // 旧数据全部搬进 nexio.db，然后删光旧存储。同步做完：这里返回时 shared_prefs 已不存在。
+        com.haooz.chedule.data.LegacyStorageMigration.run(this)
         // 小部件/通知在首帧前取词依赖它。
         com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
         // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
@@ -126,13 +117,35 @@ class NexioApplication : Application() {
         }
     }
 
-    /** 预热热路径命名空间，同时完成它们的一次性导入。IO 线程。 */
+    /**
+     * 存储启动预热（迁移已在 [onCreate] 同步做完）：把热路径命名空间放进 [AppStorage] 缓存，
+     * 免得 Receiver / 小部件第一次取用时在各自线程上走加锁与 meta 查询。全部在 IO 线程。
+     */
     private fun warmUpStorage() {
-        // 按启动路径命中顺序排列。后几项会在 Receiver/Service 里被首次访问，
-        // 放这里做掉导入，接收器里就只剩内存读。
-        val names = arrayOf(
+        CoroutineScope(Dispatchers.IO).launch {
+            HOT_NAMESPACES.forEach { name -> runCatching { AppStorage.store(name) } }
+
+            // 课程读取预热（行表已在迁移里建好，这里只是把首屏要用的数据读进缓存）
+            runCatching {
+                val repository = com.haooz.chedule.data.CourseRepository()
+                repository.getScheduleNames().forEach { schedule ->
+                    runCatching { repository.getCoursesForSchedule(schedule) }
+                }
+            }.onFailure { NexioLog.w(TAG, "课程预热失败（首屏会再读一次）", it) }
+        }
+    }
+
+    private companion object {
+        const val TAG = "NexioApplication"
+
+        /**
+         * 启动路径会命中的命名空间。后几项由 Receiver / Service 首次访问，
+         * 在迁移里已经完成导入，这里只是把实例提前放进 [AppStorage] 缓存。
+         * 新增偏好文件时**不必**加到这里（迁移是全量扫描），只影响「第一次读要不要加个锁」。
+         */
+        val HOT_NAMESPACES = arrayOf(
             "appearance_settings",     // 壁纸变换 + 卡片参数
-            "course_schedule_prefs",   // 课程 / 设置（体积最大）
+            "course_schedule_prefs",   // 课程 / 设置（结构最复杂）
             "app_preferences",         // 隐藏后台等主界面开关
             "course_reminder_prefs",   // 提醒开关（startReminderService 会读）
             "app_theme_prefs",         // 主题模式（首帧计算深浅色需要）
@@ -142,27 +155,8 @@ class NexioApplication : Application() {
             "reminder_sent_history",   // 提醒去重
             "reminder_alarm_registry", // 闹钟 requestCode 登记
             "day_change_state",
-            "crash_log_prefs"          // 崩溃日志录制状态
+            "crash_log_prefs",         // 崩溃日志录制状态
         )
-        CoroutineScope(Dispatchers.IO).launch {
-            names.forEach { name ->
-                runCatching {
-                    // 首次调用会顺带完成该命名空间的导入与自校验
-                    AppStorage.store(name).all()
-                }
-            }
-            // 课程首次导入行表（整表插入 + 回读对拍）。留到首屏就是升级后首次打开卡一下。
-            runCatching {
-                val repository = com.haooz.chedule.data.CourseRepository()
-                repository.getScheduleNames().forEach { schedule ->
-                    runCatching { repository.getCoursesForSchedule(schedule) }
-                    // 周次 / 总周数 / 开课日的一次性同步也在 IO 线程做掉，别让它落在首帧
-                    runCatching { repository.getCurrentWeek(schedule) }
-                    runCatching { repository.getTotalWeeks(schedule) }
-                    runCatching { repository.getClassStartTime(schedule) }
-                }
-            }.onFailure { NexioLog.w(TAG, "课程预导入行表失败（首屏会再试一次）", it) }
-        }
     }
 
     /** 清理分享卡片与旧版更新 APK，避免 cache/files 无界膨胀 */
@@ -183,9 +177,5 @@ class NexioApplication : Application() {
                 com.haooz.chedule.ui.utils.UpdateChecker.cleanupTransientApks(this@NexioApplication)
             }
         }
-    }
-
-    private companion object {
-        const val TAG = "NexioApplication"
     }
 }
