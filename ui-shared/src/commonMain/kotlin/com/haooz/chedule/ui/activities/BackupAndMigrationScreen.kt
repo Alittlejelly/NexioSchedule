@@ -30,6 +30,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.ScheduleImportConfirmDialog
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.DayScheduleResolver
@@ -548,70 +549,35 @@ fun BackupAndMigrationScreen(
         }
     }
 
-    if (showImportConfirmDialog && pendingImportData != null) {
-        OverlayDialog(
-            title = BackupStr.importSchedule(),
-            summary = BackupStr.importScheduleConfirmSummaryN(pendingImportScheduleName),
-            show = true,
-            liquidGlassBackdrop = liquidGlassBackdrop,
-            onDismissRequest = {
-                showImportConfirmDialog = false
-                pendingImportData = null
-                pendingImportScheduleName = ""
-            }
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                NativeMiuixTextField(
-                    value = pendingImportScheduleName,
-                    onValueChange = { pendingImportScheduleName = it },
-                    label = BackupStr.scheduleNameLabel(),
-                    modifier = Modifier.fillMaxWidth(),
-                    requestFocus = showImportConfirmDialog
+    // 撞名时弹窗自己改成「覆盖」口径：口令同步同一张表必然撞名，不能只给一句「已存在」
+    ScheduleImportConfirmDialog(
+        show = showImportConfirmDialog && pendingImportData != null,
+        scheduleName = pendingImportScheduleName,
+        onScheduleNameChange = { pendingImportScheduleName = it },
+        existingNames = scheduleNames,
+        liquidGlassBackdrop = liquidGlassBackdrop,
+        onDismiss = {
+            showImportConfirmDialog = false
+            pendingImportData = null
+            // 名字不清：show 变 false 后还有退出动画，清掉会让输入框文字当场消失
+        },
+        onConfirm = { scheduleName, overwrite ->
+            val data = pendingImportData
+            if (data != null) {
+                val (_, message) = applyScheduleData(
+                    viewModel = courseViewModel,
+                    scheduleViewModel = scheduleViewModel,
+                    settingsViewModel = settingsViewModel,
+                    scheduleName = scheduleName,
+                    data = data,
+                    overwriteExisting = overwrite,
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    TextButton(
-                        text = CommonStr.cancel(),
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            showImportConfirmDialog = false
-                            pendingImportData = null
-                            pendingImportScheduleName = ""
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(
-                        text = BackupStr.confirmImport(),
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            if (pendingImportScheduleName.isNotBlank() && pendingImportData != null) {
-                                val (_, message) = applyScheduleData(
-                                    viewModel = courseViewModel,
-                                    scheduleViewModel = scheduleViewModel,
-                                    settingsViewModel = settingsViewModel,
-                                    scheduleName = pendingImportScheduleName,
-                                    data = pendingImportData!!,
-                                )
-                                showToast(message, longDuration = true)
-                            }
-                            showImportConfirmDialog = false
-                            pendingImportData = null
-                            pendingImportScheduleName = ""
-                        },
-                        colors = ButtonDefaults.textButtonColorsPrimary(),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                showToast(message, longDuration = true)
             }
+            showImportConfirmDialog = false
+            pendingImportData = null
         }
-    }
+    )
 
     // 始终挂载、靠 show 驱动：避免 if 卸载导致关闭无退出动画
     OverlayDialog(
@@ -817,71 +783,42 @@ fun BackupAndMigrationScreen(
     // WakeUp / 星链：确认课表名后导入（始终挂载，退出动画期间保留文案）
     val thirdPartyConfirmSourceName = pendingThirdPartyPayload?.source?.displayName.orEmpty()
     val thirdPartyConfirmCourseCount = pendingThirdPartyPayload?.courseCount ?: 0
-    OverlayDialog(
-        title = BackupStr.importSchedule(),
-        summary = if (thirdPartyConfirmSourceName.isEmpty()) {
-            BackupStr.importCreatesNewSchedule()
-        } else {
-            BackupStr.thirdPartyConfirmSummaryN(thirdPartyConfirmSourceName, thirdPartyConfirmCourseCount)
-        },
+    // WakeUp / 星链：确认课表名后导入。与「文件 / 口令导入」共用同一个确认弹窗，
+    // 撞名时同样能选覆盖 —— 以前这里也是撞名即失败。
+    ScheduleImportConfirmDialog(
         show = showThirdPartyConfirmDialog,
+        scheduleName = pendingImportScheduleName,
+        onScheduleNameChange = { pendingImportScheduleName = it },
+        existingNames = scheduleNames,
         liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = {
+        newScheduleSummary = {
+            if (thirdPartyConfirmSourceName.isEmpty()) {
+                BackupStr.importCreatesNewSchedule()
+            } else {
+                BackupStr.thirdPartyConfirmSummaryN(thirdPartyConfirmSourceName, thirdPartyConfirmCourseCount)
+            }
+        },
+        onDismiss = {
             if (!isImportingThirdParty) {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
                 showThirdPartyConfirmDialog = false
             }
-        }
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            NativeMiuixTextField(
-                value = pendingImportScheduleName,
-                onValueChange = { pendingImportScheduleName = it },
-                label = BackupStr.scheduleNameLabel(),
-                modifier = Modifier.fillMaxWidth(),
-                requestFocus = showThirdPartyConfirmDialog
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = CommonStr.cancel(),
-                    onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        // 只改 show，避免退出动画期间文案被清空
-                        showThirdPartyConfirmDialog = false
-                    },
-                    modifier = Modifier.weight(1f)
+        },
+        onConfirm = { name, overwrite ->
+            pendingThirdPartyPayload?.let { payload ->
+                val (_, message) = applyThirdPartySharePayload(
+                    courseViewModel = courseViewModel,
+                    scheduleViewModel = scheduleViewModel,
+                    settingsViewModel = settingsViewModel,
+                    scheduleName = name,
+                    payload = payload,
+                    overwriteExisting = overwrite,
                 )
-                TextButton(
-                    text = BackupStr.confirmImport(),
-                    onClick = {
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                        val payload = pendingThirdPartyPayload
-                        val name = pendingImportScheduleName.trim()
-                        if (payload != null && name.isNotBlank()) {
-                            val (_, message) = applyThirdPartySharePayload(
-                                courseViewModel = courseViewModel,
-                                scheduleViewModel = scheduleViewModel,
-                                settingsViewModel = settingsViewModel,
-                                scheduleName = name,
-                                payload = payload,
-                            )
-                            showToast(message, longDuration = true)
-                        }
-                        showThirdPartyConfirmDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    modifier = Modifier.weight(1f)
-                )
+                showToast(message, longDuration = true)
             }
+            showThirdPartyConfirmDialog = false
         }
-    }
+    )
 }
 
 private fun buildExportJson(scheduleName: String): String? {
@@ -934,7 +871,6 @@ internal fun icsEffectiveDatesForCourse(
         }
         val weekday = followPosition?.weekday
             ?: swap?.followWeekday?.takeIf { it in 1..7 }
-            // ⚠ `dayOfWeek.value` 是 JVM 专有：JVM 上 DayOfWeek 是 java.time 的枚举（有 value），
             // Native 上 kotlinx-datetime 自带枚举只有 isoDayNumber 扩展。
             // 两者语义相同（1=周一…7=周日），但只有 isoDayNumber 跨平台。
             ?: followDate?.dayOfWeek?.isoDayNumber

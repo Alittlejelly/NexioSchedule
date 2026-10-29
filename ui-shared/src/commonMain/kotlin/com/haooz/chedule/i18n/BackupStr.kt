@@ -110,6 +110,12 @@ object BackupStr {
     )
     val importCreatesNewSchedule = L("确定导入将创建一个新的课表", "Confirming will create a new schedule")
     val confirmImport = L("确定导入", "Import")
+    /** 导入弹窗内撞名时的说明：说清「谁被覆盖」，覆盖是不可逆的 */
+    val importOverwriteSummaryN = L(
+        "已存在同名课表「%s」\n确定导入将覆盖它的课程与作息",
+        "A schedule named \"%s\" already exists\nImporting will overwrite its courses and class times",
+    )
+    val overwriteImport = L("覆盖导入", "Overwrite")
     val fetchSchedule = L("获取课表", "Fetch Schedule")
     val scheduleNameLabel = L("课表名称", "Schedule Name")
     val importedScheduleName = L("导入的课表", "Imported schedule")

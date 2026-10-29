@@ -182,6 +182,9 @@ Reply strictly in this format and do not add any other text."""
     val reorgWeeksConflict = L("教学周重组规则与课表总周数冲突", "Teaching-week reorganization rules conflict with the schedule's total weeks")
     val importSuccess = L("成功导入课表「%s」\n共 %d 门课程", "Imported schedule \"%s\"\n%d courses in total")
     val importSuccessCompact = L("成功导入课表「%s」\n共%d门课程", "Imported schedule \"%s\"\n%d courses in total")
+    /** 用户确认覆盖同名课表后的成功提示：必须点明「覆盖」，否则与新建的提示分不清谁被改了 */
+    val importOverwritten = L("已覆盖课表「%s」\n共 %d 门课程", "Overwrote schedule \"%s\"\n%d courses in total")
+    val importOverwrittenCompact = L("已覆盖课表「%s」\n共%d门课程", "Overwrote schedule \"%s\"\n%d courses in total")
     val importFailedReason = L("导入失败：%s", "Import failed: %s")
     val noCoursesParsed = L("未解析到课程数据", "No course data parsed")
 

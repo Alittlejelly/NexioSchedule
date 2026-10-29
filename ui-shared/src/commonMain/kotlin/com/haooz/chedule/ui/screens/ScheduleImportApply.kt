@@ -34,10 +34,17 @@ fun applyScheduleData(
     scheduleViewModel: ScheduleViewModel,
     settingsViewModel: SettingsViewModel,
     scheduleName: String,
-    data: Map<String, Any>
+    data: Map<String, Any>,
+    /**
+     * 撞名时是否允许覆盖。false（默认）保留了「只新建、绝不改旧表」的老语义；
+     * 用户在确认弹窗里明确点了「覆盖导入」才传 true —— 口令同步同一张表必然会撞名，
+     * 以前这里直接失败，课程一条都进不来。
+     */
+    overwriteExisting: Boolean = false,
 ): Pair<Boolean, String> {
     try {
-        if (scheduleName in scheduleViewModel.scheduleNames.value) {
+        val nameTaken = scheduleName in scheduleViewModel.scheduleNames.value
+        if (nameTaken && !overwriteExisting) {
             return Pair(false, ImportStr.scheduleExists(scheduleName))
         }
 
@@ -264,7 +271,9 @@ fun applyScheduleData(
         require(courses.size == coursesData.size) {
             ImportStr.coursesIncomplete()
         }
-        scheduleViewModel.addSchedule(scheduleName)
+        // addSchedule 撞名是 no-op（不会新建），覆盖时直接整表替换课程即可；
+        // saveCourses 是「写完整个课表的课程列表」，不会把旧课程留下来
+        if (!nameTaken) scheduleViewModel.addSchedule(scheduleName)
         scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
 
         // 先刷摘要再继续，否则切换页课程数会短暂错
@@ -315,10 +324,18 @@ fun applyScheduleData(
             )
             val newConfigId = scheduleViewModel.addTimeConfig(newConfig)
             scheduleViewModel.setScheduleTimeConfigId(scheduleName, newConfigId)
-        } else {
+        } else if (!nameTaken) {
+            // 分享包里没有作息数据：照抄当前课表那套，但**必须复制成独立配置**。
+            // 直接 setScheduleTimeConfigId 绑同一个 id = 两张课表共用一个 TimeConfig，
+            // 之后在任一张表里改作息，另一张跟着变（「只同步了作息」的投诉就是这么来的）。
+            // 覆盖场景（nameTaken）保留目标课表原有作息，不拿「当前课表那套」换掉它。
             val currentScheduleTimeConfigId = scheduleViewModel.getCurrentScheduleTimeConfigId()
             if (currentScheduleTimeConfigId != 0L) {
-                scheduleViewModel.setScheduleTimeConfigId(scheduleName, currentScheduleTimeConfigId)
+                val sourceConfig = scheduleViewModel.getTimeConfig(currentScheduleTimeConfigId)
+                val copiedConfigId = scheduleViewModel.addTimeConfig(
+                    sourceConfig.copy(id = 0L, name = scheduleName)
+                )
+                scheduleViewModel.setScheduleTimeConfigId(scheduleName, copiedConfigId)
             }
         }
 
@@ -404,25 +421,34 @@ fun applyScheduleData(
         settingsViewModel.refreshSettings()
         scheduleViewModel.refreshScheduleList()
 
-        return Pair(true, ImportStr.importSuccessCompact(scheduleName, courses.size))
+        return Pair(
+            true,
+            if (nameTaken) {
+                ImportStr.importOverwrittenCompact(scheduleName, courses.size)
+            } else {
+                ImportStr.importSuccessCompact(scheduleName, courses.size)
+            },
+        )
     } catch (e: Exception) {
         return Pair(false, ImportStr.importFailedReason(e.message))
     }
 }
 
-/** 将 WakeUp / 星链解析结果写入新建课表（课程 + 可选时间段/学期配置） */
+/** 将 WakeUp / 星链解析结果写入课表（课程 + 可选时间段/学期配置）；撞名语义同 [applyScheduleData] */
 fun applyThirdPartySharePayload(
     courseViewModel: CourseViewModel,
     scheduleViewModel: ScheduleViewModel,
     settingsViewModel: SettingsViewModel,
     scheduleName: String,
     payload: ThirdPartySharePayload,
+    /** 撞名时是否允许覆盖（用户在确认弹窗点了「覆盖导入」）；默认仍是「只新建」 */
+    overwriteExisting: Boolean = false,
 ): Pair<Boolean, String> {
     return try {
-        if (scheduleName in scheduleViewModel.scheduleNames.value) {
+        val nameTaken = scheduleName in scheduleViewModel.scheduleNames.value
+        if (nameTaken && !overwriteExisting) {
             return false to ImportStr.scheduleExists(scheduleName)
         }
-        scheduleViewModel.addSchedule(scheduleName)
 
         val colorMap = mutableMapOf<String, Long>()
         var colorIndex = 0
@@ -432,9 +458,11 @@ fun applyThirdPartySharePayload(
             }
             item.toCourse(scheduleName, color)
         }
+        // 先判空再建表：原来先 addSchedule 再判空，解析不到课程时会留下一张空课表
         if (courses.isEmpty()) {
             return false to ImportStr.noCoursesParsed()
         }
+        if (!nameTaken) scheduleViewModel.addSchedule(scheduleName)
         scheduleViewModel.saveCoursesToSchedule(scheduleName, courses)
 
         if (payload.timeSlots.isNotEmpty()) {
@@ -468,11 +496,17 @@ fun applyThirdPartySharePayload(
                 afternoonTimes,
                 eveningTimes,
             )
-        } else {
-            // 无时间段时复用当前课表的时间配置
+        } else if (!nameTaken) {
+            // 无时间段时照抄当前课表的作息，但**复制成独立配置**：直接绑同一个 id 会让
+            // 两张课表共用一个 TimeConfig，改一张的作息另一张跟着变。
+            // 覆盖场景（nameTaken）反而要保留目标课表原有作息，别拿「当前课表那套」换掉它。
             val currentConfigId = scheduleViewModel.getCurrentScheduleTimeConfigId()
             if (currentConfigId != 0L) {
-                scheduleViewModel.setScheduleTimeConfigId(scheduleName, currentConfigId)
+                val sourceConfig = scheduleViewModel.getTimeConfig(currentConfigId)
+                val copiedConfigId = scheduleViewModel.addTimeConfig(
+                    sourceConfig.copy(id = 0L, name = scheduleName)
+                )
+                scheduleViewModel.setScheduleTimeConfigId(scheduleName, copiedConfigId)
             }
         }
 
@@ -487,7 +521,11 @@ fun applyThirdPartySharePayload(
         courseViewModel.reloadCourses()
         settingsViewModel.refreshSettings()
         scheduleViewModel.refreshScheduleList()
-        true to ImportStr.importSuccess(scheduleName, courses.size)
+        true to if (nameTaken) {
+            ImportStr.importOverwritten(scheduleName, courses.size)
+        } else {
+            ImportStr.importSuccess(scheduleName, courses.size)
+        }
     } catch (e: Exception) {
         false to ImportStr.importFailedReason(e.message)
     }

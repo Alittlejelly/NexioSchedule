@@ -1,33 +1,21 @@
 package com.haooz.chedule.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.parseFullScheduleJson
 import com.haooz.chedule.data.parseIcsFile
 import com.haooz.chedule.data.showToast
 import com.haooz.chedule.i18n.BackupStr
-import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.screens.applyScheduleData
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.NativeMiuixTextField
-import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 
 // ⚠ 本文件 2026-10-11 自 :androidApp 迁入 :ui-shared（第二十七批）。
 // 迁移动机：整页只碰 Android 三样 —— Intent.ACTION_VIEW/SEND 常量、contentResolver.openInputStream、
@@ -68,6 +56,7 @@ fun ShareImportDialog(
     var showShareImportDialog by remember { mutableStateOf(false) }
     var shareImportData by remember { mutableStateOf<Map<String, Any>?>(null) }
     var shareImportScheduleName by remember { mutableStateOf("") }
+    val existingScheduleNames by scheduleViewModel.scheduleNames.collectAsState()
 
     LaunchedEffect(shareIntent?.version) {
         val payload = shareIntent ?: return@LaunchedEffect
@@ -102,63 +91,32 @@ fun ShareImportDialog(
         }
     }
 
-    OverlayDialog(
-        title = BackupStr.importSchedule(),
-        summary = BackupStr.importScheduleConfirmSummaryN(shareImportScheduleName),
+    // 撞名时弹窗自己改成「覆盖」口径（见 ScheduleImportConfirmDialog 的注释）
+    ScheduleImportConfirmDialog(
         show = showShareImportDialog,
+        scheduleName = shareImportScheduleName,
+        onScheduleNameChange = { shareImportScheduleName = it },
+        existingNames = existingScheduleNames,
         liquidGlassBackdrop = liquidGlassBackdrop,
-        onDismissRequest = {
+        onDismiss = {
             showShareImportDialog = false
             shareImportData = null
-            shareImportScheduleName = ""
-        }
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            NativeMiuixTextField(
-                value = shareImportScheduleName,
-                onValueChange = { shareImportScheduleName = it },
-                label = BackupStr.scheduleNameLabel(),
-                modifier = Modifier.fillMaxWidth(),
-                requestFocus = showShareImportDialog
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                TextButton(
-                    text = CommonStr.cancel(),
-                    onClick = {
-                        showShareImportDialog = false
-                        shareImportData = null
-                        shareImportScheduleName = ""
-                    },
-                    modifier = Modifier.weight(1f)
+        },
+        onConfirm = { scheduleName, overwrite ->
+            val data = shareImportData
+            if (data != null) {
+                val (_, importMessage) = applyScheduleData(
+                    viewModel = courseViewModel,
+                    scheduleViewModel = scheduleViewModel,
+                    settingsViewModel = settingsViewModel,
+                    scheduleName = scheduleName,
+                    data = data,
+                    overwriteExisting = overwrite,
                 )
-                TextButton(
-                    text = BackupStr.confirmImport(),
-                    onClick = {
-                        if (shareImportScheduleName.isNotBlank() && shareImportData != null) {
-                            // applyScheduleData 已迁 :ui-shared；context 形参从未被函数体使用，去掉
-                            val (_, importMessage) = applyScheduleData(
-                                viewModel = courseViewModel,
-                                scheduleViewModel = scheduleViewModel,
-                                settingsViewModel = settingsViewModel,
-                                scheduleName = shareImportScheduleName,
-                                data = shareImportData!!,
-                            )
-                            showToast(importMessage, longDuration = true)
-                        }
-                        showShareImportDialog = false
-                        shareImportData = null
-                        shareImportScheduleName = ""
-                    },
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    modifier = Modifier.weight(1f)
-                )
+                showToast(importMessage, longDuration = true)
             }
+            showShareImportDialog = false
+            shareImportData = null
         }
-    }
+    )
 }
