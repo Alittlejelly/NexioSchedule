@@ -2,6 +2,8 @@ package com.haooz.chedule
 
 import android.app.Application
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.SqliteStorage
 import com.haooz.chedule.data.asKeyValueStore
 import com.haooz.chedule.platform.AndroidScheduleEffects
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
@@ -11,19 +13,33 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Application 阶段提前预热高频 SharedPreferences 文件。
+ * Application 阶段初始化存储与预热。
  *
- * 首次 getSharedPreferences() 后台异步加载 XML，但后续 getXXX() 会阻塞调用线程
- * 直到加载完成；冷启动主线程同步读取大量配置键（课程 JSON 可达数百 KB），
- * XML 未加载完即被卡住。提前"碰"一次让主线程首次读取变纯内存操作。
+ * 存储：走 SQLite（[SqliteStorage]），每个偏好名映射成表里的一个命名空间，启动时一次性从
+ * 同名 SharedPreferences 导入并自校验。**任何异常都回退 SharedPreferences** —— 存储层坏掉
+ * 不该让用户开不了应用。
+ *
+ * 预热：命名空间第一次被访问要读一遍全量行，冷启动主线程同步读几个大命名空间（课程 JSON
+ * 可达数百 KB）会被卡住。提前在 IO 线程把热路径的命名空间读进内存，主线程首次读取即纯内存操作。
  */
 class NexioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 必须最先初始化：之后 AppStorage.store(...) 才可用；工厂按名转发各自文件，不在本处汇总以免抄错键名。
+        // 必须最先初始化：之后 AppStorage.store(...) 才可用；工厂按名转发各自命名空间，不在本处汇总以免抄错键名。
         com.haooz.chedule.data.AppStorage.init { name ->
-            getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
+            runCatching {
+                // mirror：过渡期把写入同步回 SharedPreferences，供尚未改走 AppStorage 的直读点
+                // （提醒/灵动岛/勿扰那几个 Helper）使用。这些点全部迁移完成后传 null 即可彻底断开 SP。
+                SqliteStorage.store(
+                    context = this,
+                    namespace = name,
+                    mirror = getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore(),
+                )
+            }.getOrElse { e ->
+                NexioLog.w(TAG, "SQLite 键值存储不可用，$name 回退 SharedPreferences", e)
+                getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
+            }
         }
         // 语言镜像尽早就位：小部件/通知在首帧前取词（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值。
         com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
@@ -78,7 +94,7 @@ class NexioApplication : Application() {
             },
             isRecording = { com.haooz.chedule.ui.utils.CrashLogHelper.isRecording },
         )
-        warmUpSharedPreferences()
+        warmUpStorage()
         cleanupTransientFiles()
         initWearableSync()
         enableWebViewRemoteDebugging()
@@ -114,9 +130,9 @@ class NexioApplication : Application() {
         }
     }
 
-    /** 异步触发高频 SharedPreferences 文件加载（不读具体值）；加载在内部线程完成，后台等待不阻塞主线程。 */
-    private fun warmUpSharedPreferences() {
-        // 按启动路径上的命中顺序排列：最大的课程数据文件优先
+    /** 异步预热高频命名空间（不读具体值，只让它把行载入内存）；IO 线程执行，不阻塞主线程。 */
+    private fun warmUpStorage() {
+        // 按启动路径上的命中顺序排列：最大的课程数据优先
         val names = arrayOf(
             "appearance_settings",     // 壁纸变换 + 卡片参数
             "course_schedule_prefs",   // 课程 / 设置（体积最大）
@@ -127,7 +143,8 @@ class NexioApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             names.forEach { name ->
                 runCatching {
-                    // 访问一次即触发加载（底层同一 SharedPreferences 文件），与原写法等价。
+                    // 走 AppStorage 才有意义：直连 SharedPreferences 就绕过了新存储，白预热一次。
+                    // 首次调用会顺带完成该命名空间的一次性导入（含自校验）。
                     AppStorage.store(name).all()
                 }
             }
@@ -152,5 +169,9 @@ class NexioApplication : Application() {
                 com.haooz.chedule.ui.utils.UpdateChecker.cleanupTransientApks(this@NexioApplication)
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "NexioApplication"
     }
 }
