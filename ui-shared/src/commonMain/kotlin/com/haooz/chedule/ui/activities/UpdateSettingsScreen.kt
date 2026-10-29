@@ -259,7 +259,9 @@ fun UpdateSettingsScreen(
                                         .padding(bottom = 12.dp)
                                 ) {
                                     Text(
-                                        text = AboutStr.latestVersionN(latestRelease!!.tagName),
+                                        // ⚠ 不能用 `latestRelease!!`：CardExpand 收起动画期间内容仍在组合
+                                        //（AnimatedVisibility 退出期保留子节点），切通道把它置空的那一帧就 NPE
+                                        text = AboutStr.latestVersionN(latestRelease?.tagName.orEmpty()),
                                         fontSize = 14.sp,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantActions
                                     )
