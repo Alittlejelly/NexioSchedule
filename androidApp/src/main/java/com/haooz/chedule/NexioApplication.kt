@@ -41,6 +41,13 @@ class NexioApplication : Application() {
                 getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
             }
         }
+        // 课程行表：课程读写在 :core 的 CourseRepository 里，驱动只有平台侧有，这里接线。
+        // 取不到（库打不开等）就返回 null，业务自动退回 JSON blob —— 不能让存储换代挡住启动。
+        com.haooz.chedule.data.CourseStorage.install {
+            runCatching { SqliteStorage.courseRows(this) }
+                .onFailure { NexioLog.w(TAG, "课程行表不可用，继续用 JSON blob", it) }
+                .getOrNull()
+        }
         // 语言镜像尽早就位：小部件/通知在首帧前取词（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值。
         com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
         // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
@@ -148,6 +155,14 @@ class NexioApplication : Application() {
                     AppStorage.store(name).all()
                 }
             }
+            // 课程从 JSON blob 迁进行表是一次性写（整表插入 + 回读对拍），必须在这里做掉：
+            // 留到首屏主线程上做，就是升级后第一次打开卡一下，而且卡在用户最在意的那一帧。
+            runCatching {
+                val repository = com.haooz.chedule.data.CourseRepository()
+                repository.getScheduleNames().forEach { schedule ->
+                    runCatching { repository.getCoursesForSchedule(schedule) }
+                }
+            }.onFailure { NexioLog.w(TAG, "课程预导入行表失败（首屏会再试一次）", it) }
         }
     }
 

@@ -29,7 +29,11 @@ object SqliteStorage {
     private val lock = Any()
 
     @Volatile
-    private var backend: SqlBackend? = null
+    private var backend: AndroidSqlBackend? = null
+
+    /** 课程行表门面：和键值表共用同一个 [AndroidSqlBackend]（同一个库、同一个连接）。 */
+    @Volatile
+    private var courseStore: CourseRowStore? = null
 
     /** 导入失败过的命名空间：不反复尝试（每次启动都重试等于每次都白花几十毫秒，且日志刷屏）。 */
     private val failedNamespaces = LinkedHashSet<String>()
@@ -46,6 +50,16 @@ object SqliteStorage {
             importFromSharedPreferencesIfNeeded(context, b, namespace)
             SqliteKeyValueStore(b, namespace, mirror)
         }
+
+    /**
+     * 课程行表门面。异常外抛，由 [CourseStorage] 兜住并退回 JSON —— 数据库打不开时
+     * 应用仍然要能用（只是没享受到行级写入）。
+     */
+    fun courseRows(context: Context): CourseRowStore = synchronized(lock) {
+        courseStore?.let { return it }
+        val b = backend ?: AndroidSqlBackend(context.applicationContext).also { backend = it }
+        SqliteCourseRowStore(b.database).also { courseStore = it }
+    }
 
     /** 迁移是否已完成（诊断页 / 统计用）。 */
     fun isImported(namespace: String): Boolean =

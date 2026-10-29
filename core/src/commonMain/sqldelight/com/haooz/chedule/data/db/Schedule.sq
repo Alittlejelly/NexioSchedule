@@ -119,6 +119,20 @@ SELECT course_id, week, note FROM course_week_note ORDER BY course_id, week;
 selectCoursesOf:
 SELECT * FROM course WHERE schedule_id = ? ORDER BY day_of_week, start_section;
 
+-- 周次 / 周备注一次取整张课表，不在 Kotlin 里按课循环查（40 门课 → 80 次查询的 N+1）
+-- ORDER BY 不能省：周次顺序会进 Course.selectedWeeks，没有排序就依赖行的物理顺序，
+-- 换个 SQLite 版本或 vacuum 一次就可能变。
+selectWeeksOfSchedule:
+SELECT cw.course_id, cw.week FROM course_week cw
+JOIN course c ON c.id = cw.course_id
+WHERE c.schedule_id = ?
+ORDER BY cw.course_id, cw.week;
+
+selectWeekNotesOfSchedule:
+SELECT n.course_id, n.week, n.note FROM course_week_note n
+JOIN course c ON c.id = n.course_id
+WHERE c.schedule_id = ?;
+
 selectFolderList:
 SELECT * FROM folder ORDER BY sort_order, name;
 
@@ -130,12 +144,39 @@ SELECT * FROM time_config WHERE id = ?;
 
 -- ── 写：全部是行级，且都在调用方的事务里 ──────────────────────────────────
 
-upsertSchedule:
-INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+-- ⚠ 这里是 INSERT OR IGNORE，不是 INSERT OR REPLACE。
+--   REPLACE 的语义是「删掉冲突的旧行再插新的」，在 foreign_keys=ON 下会**级联删掉该课表的全部课程**
+--   —— 每次存课表锚点就把课表清空，是完全静默的数据丢失。锚点只在不存在时插入。
+ensureScheduleRow:
+INSERT OR IGNORE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
+VALUES (?, ?, NULL, ?, ?, ?, ?, ?);
 
 deleteSchedule:
 DELETE FROM schedule WHERE id = ?;
+
+-- 改名：课表名就是主键，改名等于换 id。行数据必须**搬**过去，不能删了等重新导入 ——
+-- 迁移之后 JSON blob 就不再更新了，重新导入等于把用户读回迁移前的旧课表。
+-- OR REPLACE：改成一个已存在的名字时（旧代码允许重名，没有拦截）不能抛异常，
+-- 语义与旧实现一致 —— 新名字原有的课被覆盖掉。REPLACE 会级联删掉目标课表原有的课程，
+-- 紧接着 moveCoursesToSchedule 把源课表的课程搬进去，最终结果正确。
+copyScheduleRow:
+INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
+SELECT ?, ?, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start
+FROM schedule WHERE id = ?;
+
+moveCoursesToSchedule:
+UPDATE course SET schedule_id = ? WHERE schedule_id = ?;
+
+-- 整库恢复备份时用：备份里的课表可能整套换掉，逐张比对新旧名字不现实。
+-- 清空后由下一次读取从恢复出来的 JSON 重新导入（导入自带自校验）。
+deleteAllCourses:
+DELETE FROM course;
+
+deleteAllSchedules:
+DELETE FROM schedule;
+
+deleteCourseImportFlags:
+DELETE FROM meta WHERE k LIKE 'courses_imported:%';
 
 upsertCourse:
 INSERT OR REPLACE INTO course(id, schedule_id, name, classroom, teacher, day_of_week, start_section,
@@ -170,6 +211,10 @@ DELETE FROM folder WHERE id = ?;
 insertTimeConfig:
 INSERT INTO time_config(name, payload) VALUES (?, ?);
 
+-- 锚点只保证「这个 id 存在」，不覆盖已有 payload（作息仍以 prefs 为准，见文件头说明）
+ensureTimeConfigRow:
+INSERT OR IGNORE INTO time_config(id, name, payload) VALUES (?, ?, ?);
+
 updateTimeConfig:
 UPDATE time_config SET name = ?, payload = ? WHERE id = ?;
 
@@ -181,6 +226,10 @@ SELECT v FROM meta WHERE k = ?;
 
 writeMeta:
 INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?);
+
+-- 清导入标记：行表写失败时用它把课表退回「以 JSON 为准」，下次读取会重新导入
+deleteMeta:
+DELETE FROM meta WHERE k = ?;
 
 -- ── 键值层查询 ────────────────────────────────────────────────────────────
 -- 与实体表同库同事务：删课表 + 清它的课程 + 改「当前课表」指针可以一次提交。

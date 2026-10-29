@@ -94,6 +94,9 @@ kotlin {
         // 仅 JVM 测试用：拉真实 Gson 对拍 ScheduleCodec，确保换序列化实现后输出与 Gson 一致。不进任何产物。
         jvmTest.dependencies {
             implementation(libs.gson)
+            // 课程行表要跑真 SQL 才有意义：外键、级联、INSERT OR REPLACE 的顺序问题，
+            // 假后端一个都验不出来。内存库起步价几十毫秒。
+            implementation(libs.sqldelight.sqlite.driver)
         }
     }
 }

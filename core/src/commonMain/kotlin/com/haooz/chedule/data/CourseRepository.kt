@@ -278,17 +278,100 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun getCoursesForSchedule(scheduleId: String): List<Course> {
         courseCache[scheduleId]?.let { return it }
-        val key = "$SCHEDULE_KEY_PREFIX${scheduleId}_$KEY_COURSES"
-        val json = prefs.getStringOrNull(key) ?: return emptyList()
-        // 坏 JSON 按真名读会得到空壳课，不当成有效课表，保留原数据供备份恢复
-        if (!coursesJsonLooksValid(json)) return emptyList()
-        return try {
-            val courses = sanitizeCourses(decodeCourses(json))
-            courseCache[scheduleId] = courses
-            courses
-        } catch (_: Exception) {
-            emptyList()
+        val courses = loadCourses(scheduleId)
+        courseCache[scheduleId] = courses
+        return courses
+    }
+
+    /**
+     * 读一个课表的课程。**行表是真相，JSON blob 只是迁移来源与兜底。**
+     *
+     * 三条路径，优先级从高到低：
+     * 1. 已导入行表 → 直接读行（不再解析 JSON，也不再受坏 JSON 影响）；
+     * 2. 没导入 → 从 blob 导入一次（导入与标记同一事务，自校验不过整体回滚）；
+     * 3. 没有行表（桌面端 / 测试 / 库打不开）或导入失败 → 读 blob，行为与迁移前完全一致。
+     */
+    private fun loadCourses(scheduleId: String): List<Course> {
+        val rows = CourseStorage.rows ?: return readCoursesFromBlob(scheduleId) ?: emptyList()
+
+        if (rows.isImported(scheduleId)) {
+            return try {
+                rows.load(scheduleId)
+            } catch (e: Exception) {
+                // 行表读挂了不能返回空：那会让下一次 saveCourses 把空课表写回去（老 bug 的翻版）
+                NexioLog.e(TAG, "读取课程行表失败，本次回退 JSON：schedule=$scheduleId", e)
+                readCoursesFromBlob(scheduleId) ?: emptyList()
+            }
         }
+
+        val imported = try {
+            importCoursesFromBlob(scheduleId, rows)
+        } catch (e: Exception) {
+            NexioLog.w(TAG, "课程导入行表失败，继续用 JSON：schedule=$scheduleId", e)
+            null
+        }
+        return imported ?: readCoursesFromBlob(scheduleId) ?: emptyList()
+    }
+
+    /** 旧路径：解析 `schedule_{id}_courses`。坏 JSON 返回 null（调用方当空课表，但绝不写回）。 */
+    private fun readCoursesFromBlob(scheduleId: String): List<Course>? {
+        val json = prefs.getStringOrNull("${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES") ?: return null
+        // 坏 JSON 按真名读会得到空壳课，不当成有效课表，保留原数据供备份恢复
+        if (!coursesJsonLooksValid(json)) return null
+        return try {
+            sanitizeCourses(decodeCourses(json)).normalizeScheduleId(scheduleId)
+        } catch (e: Exception) {
+            NexioLog.e(TAG, "课程 JSON 解析失败：schedule=$scheduleId", e)
+            null
+        }
+    }
+
+    /**
+     * 一次性迁移：JSON → 行表。
+     *
+     * 三种「不导入」的情况都是**故意不写标记**的：没数据的课表下面单独处理；坏 JSON 保持原样；
+     * 拿不到作息锚点（没有可绑定的配置）。标记不写 = 下次读取还会再试，而不会把坏数据盖章成"已迁移"。
+     */
+    private fun importCoursesFromBlob(scheduleId: String, rows: CourseRowStore): List<Course>? {
+        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES"
+        val json = prefs.getStringOrNull(key)
+        if (json == null) {
+            // 新建 / 新学期课表本来就没有课程键：直接标记成空表，否则每次读都要白跑一次导入
+            val anchor = courseRowAnchor(scheduleId) ?: return null
+            rows.importAll(anchor, emptyList())
+            return emptyList()
+        }
+        if (!coursesJsonLooksValid(json)) return null
+        val courses = sanitizeCourses(decodeCourses(json)).normalizeScheduleId(scheduleId)
+        val anchor = courseRowAnchor(scheduleId) ?: return null
+        rows.importAll(anchor, courses)
+        return courses
+    }
+
+    /**
+     * 行表需要的外键锚点：`schedule.time_config_id` 是 NOT NULL 外键，所以必须有一份真实存在的作息配置。
+     *
+     * 取不到配置（全新安装且一个配置都没有）时返回 null，调用方退回 JSON —— 不凭空造配置，
+     * 否则「课表用哪套作息」这个语义会被存储层偷偷改掉。
+     */
+    private fun courseRowAnchor(scheduleId: String): CourseRowAnchor? {
+        // 只读，不补绑：读课程不该顺手改用户的作息绑定。
+        // 未绑定就用它此刻**实际会用到**的那套（与 getScheduleTimeConfigId 同一套回退），
+        // 锚点如实记录「这张课表现在吃的是哪份配置」；等作息绑定改 id 那一步再让它成为唯一真相。
+        val timeConfigId = boundTimeConfigIdOrNull(scheduleId) ?: resolveLegacyCurrentTimeConfigId()
+        if (timeConfigId == 0L && getTimeConfigIds().isEmpty()) return null
+        val config = getTimeConfig(timeConfigId)
+        val prefix = getScheduleKeyPrefix(scheduleId)
+        return CourseRowAnchor(
+            scheduleId = scheduleId,
+            timeConfigId = timeConfigId,
+            timeConfigName = config.name,
+            timeConfigPayload = encodeTimeConfig(config),
+            sortOrder = getScheduleNames().indexOf(scheduleId).coerceAtLeast(0),
+            currentWeek = safeGetInt("${prefix}$KEY_CURRENT_WEEK", 1),
+            totalWeeks = safeGetInt("${prefix}$KEY_TOTAL_WEEKS", 20),
+            classStart = prefs.getStringOrNull("${prefix}$KEY_CLASS_START_TIME"),
+        )
     }
 
     fun getScheduleSummary(scheduleId: String): String {
@@ -362,31 +445,57 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }
     }
 
-    fun getAllCourses(): List<Course> {
-        val scheduleId = getCurrentScheduleId()
-        courseCache[scheduleId]?.let { return it }
-        val key = "${getScheduleKeyPrefix()}$KEY_COURSES"
-        val json = prefs.getStringOrNull(key) ?: return emptyList()
-        if (!coursesJsonLooksValid(json)) return emptyList()
-        return try {
-            val courses = sanitizeCourses(decodeCourses(json))
-            courseCache[scheduleId] = courses
-            // 不预热 occupiedWeeksCache：仅编辑选周时用到，按需算即可，冷路径对首屏是白烧
-            courses
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
+    fun getAllCourses(): List<Course> = getCoursesForSchedule(getCurrentScheduleId())
 
+    /**
+     * 保存整个课表的课程列表（调用点不变，内部改成行级差量写）。
+     *
+     * 为什么不把 API 拆成 add/update/delete 三件套：现有调用点全部是「读全量 → 改内存 → 存全量」，
+     * 改签名等于把几十个调用点一起动，风险远大于收益。这里在**存储层**做差分，
+     * 效果一样（改一门课只写一行），调用方一行不用改。
+     */
     fun saveCourses(courses: List<Course>, notify: Boolean = true) {
         val scheduleId = getCurrentScheduleId()
-        val key = "${getScheduleKeyPrefix()}$KEY_COURSES"
-        val json = encodeCourses(courses)
-        prefs.edit { putString(key, json) }
-        courseCache[scheduleId] = courses
+        val normalized = courses.normalizeScheduleId(scheduleId)
+        val rows = CourseStorage.rows
+
+        if (rows != null && rows.isImported(scheduleId)) {
+            // 缓存可能没热（例如刚切课表就保存）：必须拿到真实的上一版，否则删掉的课不会被删
+            val previous = courseCache[scheduleId] ?: loadCourses(scheduleId)
+            val anchor = courseRowAnchor(scheduleId)
+            val written = anchor != null && try {
+                rows.writeDiff(anchor, previous, normalized)
+                true
+            } catch (e: Exception) {
+                NexioLog.e(TAG, "课程行写入失败：schedule=$scheduleId", e)
+                false
+            }
+            if (!written) {
+                // 兜底顺序不能反：先写 blob，再清标记。反过来的话，中间被杀就是
+                // 「标记说以 JSON 为准，而 JSON 还是上一版」—— 这次改的课直接丢。
+                prefs.edit {
+                    putString("${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES", encodeCourses(normalized))
+                }
+                runCatching { rows.markStale(scheduleId) }.onFailure {
+                    NexioLog.e(TAG, "清除课程导入标记失败：schedule=$scheduleId", it)
+                }
+            }
+        } else {
+            // 行表不可用 / 尚未导入：保持旧行为，写 JSON（下次读取会再尝试导入）
+            prefs.edit {
+                putString("${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES", encodeCourses(normalized))
+            }
+        }
+
+        courseCache[scheduleId] = normalized
         occupiedWeeksCache.clear()
         if (notify) dispatchCourseChanged("bulk", "")
     }
+
+    /** 课程落在哪张课表的表里，就以哪张课表为准 —— 旧 blob 里可能残留别的课表 id。 */
+    private fun List<Course>.normalizeScheduleId(scheduleId: String): List<Course> =
+        if (all { it.scheduleId == scheduleId }) this
+        else map { if (it.scheduleId == scheduleId) it else it.copy(scheduleId = scheduleId) }
 
     fun addCourse(course: Course): List<Course> {
         val courses = getAllCourses().toMutableList()
@@ -1478,6 +1587,11 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 putString("${SCHEDULE_KEY_PREFIX}默认课表_$KEY_COURSES", "[]")
             }
         }
+        // 行表要一起删：课程靠 schedule 行的外键级联，漏了这一步，同名课表重建后课程会「自动复活」
+        CourseStorage.rows?.let { rows ->
+            runCatching { rows.deleteSchedule(name) }
+                .onFailure { NexioLog.w(TAG, "删除课程行表失败：schedule=$name", it) }
+        }
         // 直接改写了 prefs，必须失效否则同名重建会读到旧数据
         invalidateAllCaches()
         if (getCurrentScheduleId() == name) {
@@ -1550,6 +1664,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
                     putLong("$SCHEDULE_TIME_CONFIG_PREFIX$newName", boundId)
                     remove(oldBoundKey)
                 }
+            }
+            // 行表按课表名做主键，改名必须把行数据搬过去（搬标记、搬课程），
+            // 不能「删掉等新名字重新导入」—— blob 在迁移后已冻结，重建会读回旧课表
+            CourseStorage.rows?.let { rows ->
+                runCatching { rows.renameSchedule(oldName, newName) }
+                    .onFailure { NexioLog.w(TAG, "迁移课程行表失败：$oldName → $newName", it) }
             }
             invalidateAllCaches()
         }
@@ -2441,6 +2561,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
             }
         }
         HolidayManager.restoreBackupData(holidayBackup)
+        // 备份会把整套课表换掉：行表必须整体作废，否则恢复完读到的还是恢复前那张课表
+        // （行表有导入标记 = 它就是真相，不会回头看刚写好的 JSON）。下一次读取会重新导入。
+        CourseStorage.rows?.let { rows ->
+            runCatching { rows.invalidateAll() }
+                .onFailure { NexioLog.e(TAG, "恢复备份后作废课程行表失败，可能读到恢复前的课表", it) }
+        }
         invalidateAllCaches()
         if (!preserveFolderMembership) migrateSchedulesIntoDefaultFolder()
         dispatchCourseChanged("restore", "")
@@ -2556,6 +2682,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val key = "${prefix}$KEY_COURSES"
         val json = encodeCourses(courses)
         prefs.edit { putString(key, json) }
+        // 单课表导入只覆盖这一张：把它在行表里的导入标记清掉，下次读取会拿刚写入的 JSON 重建。
+        // 不清的话行表仍是「已导入」= 真相，用户看到的还是导入前的课表。
+        CourseStorage.rows?.let { rows ->
+            runCatching { rows.markStale(scheduleName) }
+                .onFailure { NexioLog.w(TAG, "清除导入标记失败：schedule=$scheduleName", it) }
+        }
         invalidateAllCaches()
 
         // 不能靠 getScheduleTimeConfigId==0 判断未绑定（会 fallback 到第一个配置），

@@ -37,7 +37,14 @@ class AndroidSqlBackend(context: Context) : SqlBackend {
         name = DB_NAME,
     )
 
-    private val db = NexioDatabase(driver)
+    /**
+     * 同一个 [SqlDriver] 上的数据库实例。`internal` 给 [SqliteCourseRowStore] 用 ——
+     * **必须是同一个实例**：键值表和课程表在同一份连接/事务里，两个实例会让「删课表 + 清课程」
+     * 退回成两次提交。
+     */
+    internal val database = NexioDatabase(driver)
+
+    private val db: NexioDatabase get() = database
 
     /** 本文件（Schedule.sq）里声明的全部查询。 */
     private val q: ScheduleQueries get() = db.scheduleQueries
