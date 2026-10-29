@@ -36,6 +36,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import com.haooz.chedule.ui.activities.main.PagerJumpNeighbor
 import com.haooz.chedule.ui.activities.main.jumpToPageSmoothly
+import com.haooz.chedule.ui.components.CourseDetailSheet
 import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
@@ -65,13 +66,13 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -227,7 +228,7 @@ fun BlurCard(
 
 
 @Composable
-private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pageDate: LocalDate = todayLocalDate(), showClassroom: Boolean = true, showTeacher: Boolean = true) {
+private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pageDate: LocalDate = todayLocalDate(), showClassroom: Boolean = true, showTeacher: Boolean = true, week: Int = 0) {
     fun getSectionTimeRange(startSection: Int, endSection: Int): String {
         val startTime = sectionTimes[startSection]?.split("-")?.firstOrNull() ?: ""
         val endTime = sectionTimes[endSection]?.split("-")?.lastOrNull() ?: ""
@@ -338,6 +339,18 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
                 style = MiuixTheme.textStyles.body2.copy(fontSize = 14.sp),
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary
                 )
+            // 备注只在今日页显示：单周备注优先，没有就回退到「所有周」那条
+            val note = if (week > 0) course.noteForWeek(week) else course.note
+            if (note.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = note,
+                    style = MiuixTheme.textStyles.body2.copy(fontSize = 13.sp),
+                    color = MiuixTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
@@ -364,6 +377,12 @@ private fun CourseItemContent(course: Course, sectionTimes: Map<Int, String>, pa
 fun TodayScreen(
     viewModel: CourseViewModel,
     settingsViewModel: SettingsViewModel,
+    /**
+     * 只在课程详情弹窗里用：点弹窗卡片进全屏详情时，要把那张源卡片藏掉，
+     * 否则放大层和原卡片会叠在一起动（morph 看起来发糊）。
+     *
+     * 今日页的课程列表**不读**这个值 —— 它不再直接进详情，藏起来只会在返回时闪一帧空白。
+     */
     hiddenCourseIds: Set<String> = emptySet(),
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit = { _, _, _, _, _, _, _, _ -> },
     pagerState: PagerState,
@@ -421,6 +440,10 @@ fun TodayScreen(
     val scope = rememberCoroutineScope()
     var pendingDatePage by remember { mutableIntStateOf(-1) }
     var showDatePicker by remember { mutableStateOf(false) }
+    // 点课程先出详情弹窗（与课程表页一致），弹窗里点卡片才进全屏详情
+    var detailSheetCourses by remember { mutableStateOf<List<Course>>(emptyList()) }
+    var detailSheetWeek by remember { mutableIntStateOf(0) }
+    var showDetailSheet by remember { mutableStateOf(false) }
     var datePickerYear by remember { mutableIntStateOf(todayLocalDate().year) }
     var datePickerMonth by remember { mutableIntStateOf(todayLocalDate().monthNumber - 1) }
     var datePickerDay by remember { mutableIntStateOf(todayLocalDate().dayOfMonth) }
@@ -517,6 +540,13 @@ fun TodayScreen(
     val tabletHorizontalPadding = if (isTablet) 24.dp else 16.dp
 
     val todayRefraction = cardRefraction
+    // 点课程只开弹窗：卡片位置/图层这些 morph 参数在这里用不上，全屏详情由弹窗里的卡片再触发
+    val openDetailSheet: (List<Course>, Float, Float, Float, Float, TransitionLayerSnapshot?, String, Int) -> Unit =
+        { coursesAtSlot, _, _, _, _, _, _, targetWeek ->
+            detailSheetCourses = coursesAtSlot
+            detailSheetWeek = targetWeek
+            showDetailSheet = true
+        }
     CompositionLocalProvider(LocalCardRefraction provides todayRefraction) {
     Scaffold(
         topBar = {},
@@ -829,7 +859,7 @@ fun TodayScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
                         }
                     }
                 } else {
@@ -905,13 +935,37 @@ fun TodayScreen(
                                 )
                             }
                         }
-                        addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, hiddenCourseIds, sectionTimes, onCourseClick, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                        addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
                     }
                 }
             }
             }
         }
     }
+
+        // 课程详情弹窗：与课程表页共用同一个组件，备注入口就在卡片底部。
+        // 今日页不传 onEdit —— 编辑走全屏详情，这里没有编辑弹窗。
+        CourseDetailSheet(
+            show = showDetailSheet,
+            allCourses = courses,
+            selectedCourses = detailSheetCourses,
+            viewingWeek = detailSheetWeek,
+            isTablet = isTablet,
+            // 弹窗里的源卡片照常藏掉：morph 起点就是它，不藏会和放大层叠在一起动
+            hiddenCourseIds = hiddenCourseIds,
+            onDismiss = { showDetailSheet = false },
+            onCourseClick = onCourseClick,
+            onNoteSave = { course, week, text ->
+                val updated = if (week == null) {
+                    course.copy(note = text)
+                } else {
+                    val weekNotes = course.weekNotes.toMutableMap()
+                    if (text.isEmpty()) weekNotes.remove(week) else weekNotes[week] = text
+                    course.copy(weekNotes = weekNotes)
+                }
+                viewModel.updateCourse(updated)
+            },
+        )
 
         OverlayDialog(
             title = TodayStr.jumpToDate(),
@@ -1414,7 +1468,6 @@ private fun LazyListScope.addCourseSections(
     pageDate: LocalDate,
     pageWeek: Int,
     courses: List<Course>,
-    hiddenCourseIds: Set<String>,
     sectionTimes: Map<Int, String>,
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit,
     wallpaperBackdrop: Backdrop? = null,
@@ -1437,7 +1490,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         morningCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1458,7 +1511,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         afternoonCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1479,7 +1532,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         eveningCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, hiddenCourseIds, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1519,7 +1572,6 @@ private fun LazyListScope.addCourseSections(
 private fun CourseItemWithClick(
     course: Course,
     allCourses: List<Course>,
-    hiddenCourseIds: Set<String>,
     sectionTimes: Map<Int, String>,
     pageDate: LocalDate,
     pageWeek: Int,
@@ -1528,68 +1580,27 @@ private fun CourseItemWithClick(
     showClassroom: Boolean = true,
     showTeacher: Boolean = true
 ) {
-    // 只存布局坐标，root 位置点击时现算。原来用 mutableStateOf<Rect> 接 onGloballyPositioned：
-    // 滚动时每次 placement 都写入不等的新 Rect → 每帧一次行重组（列表滚动的隐形大头）
-    val itemCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val isHidden = course.id in hiddenCourseIds
-    val cardLayer = rememberGraphicsLayer()
-    val scope = rememberCoroutineScope()
-    // 只有真要打开详情时才把这一行录进图层：record 是每帧一次离屏重绘，一行一层；
-    // 有壁纸路径下上层改用 section 裁剪，这份录制 100% 白费。
-    val captureToken = remember { mutableIntStateOf(0) }
-    val recordedToken = remember { intArrayOf(0) }
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            // A retained section records the row's drawing, never a mutable hidden-alpha layer.
-            .drawWithContent { if (!isHidden) drawContent() }
+            // ⚠ 无壁纸时必须用 surfaceContainer，不能用 background：外层 BlurCard 此时退化成
+            //   miuix `Card()`，卡片色正是 surfaceContainer（Card.kt defaultColors）。内置方案下
+            //   两者恰好相等（#FFFFFF / #242424），莫奈下才分家：background 取 tone 98/6、
+            //   surfaceContainer 取 tone 94/12，差 4 个明度阶，写错会偏色。
+            .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
+            .clickable {
+                // 按槽位捞（同星期 + 节次重叠），与课程表页口径一致：
+                // 按课名捞会把同名但排在别的天/别的节次那条也带进来，弹窗里看着就是同一门课重复
+                val coursesAtSlot = allCourses.filter {
+                    it.dayOfWeek == course.dayOfWeek &&
+                        it.startSection <= course.endSection &&
+                        it.endSection >= course.startSection
+                }.distinctBy { it.id }.sortedBy { it.startSection }
+                // 位置/图层参数是给「点卡片直接 morph 进详情」用的；今日页现在先弹详情弹窗，
+                // 起点由弹窗里的卡片提供，这里传空即可（也不必再录制离屏图层）。
+                onCourseClick(coursesAtSlot, 0f, 0f, 0f, 0f, null, course.id, pageWeek)
+            }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .drawWithContent {
-                    // 录好的那几帧走图层，其余时候直画（行内状态字会变，不能一直放旧快照）
-                    if (!isHidden && captureToken.intValue != 0) {
-                        cardLayer.record { this@drawWithContent.drawContent() }
-                        recordedToken[0] = captureToken.intValue
-                        drawLayer(cardLayer)
-                    } else {
-                        drawContent()
-                    }
-                }
-                // ⚠ 无壁纸时必须用 surfaceContainer，不能用 background：外层 BlurCard 此时退化成
-                //   miuix `Card()`，卡片色正是 surfaceContainer（Card.kt defaultColors）。内置方案下
-                //   两者恰好相等（#FFFFFF / #242424），莫奈下才分家：background 取 tone 98/6、
-                //   surfaceContainer 取 tone 94/12，差 4 个明度阶，写错会偏色。
-                .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
-                .onGloballyPositioned { itemCoords[0] = it }
-                .clickable {
-                    val coordinates = itemCoords[0]
-                    if (coordinates != null && coordinates.isAttached && captureToken.intValue == 0) {
-                        val position = coordinates.localToRoot(Offset.Zero)
-                        val size = coordinates.size
-                        val sameNameCourses = allCourses.filter { it.name == course.name }
-                        captureToken.intValue += 1
-                        val token = captureToken.intValue
-                        scope.launch {
-                            // 等这一行真录进图层（draw 期回写 recordedToken）再抛快照
-                            while (recordedToken[0] < token) withFrameNanos { }
-                            onCourseClick(
-                                sameNameCourses,
-                                position.x,
-                                position.y,
-                                size.width.toFloat(),
-                                size.height.toFloat(),
-                                TransitionLayerSnapshot(cardLayer),
-                                course.id,
-                                pageWeek,
-                            )
-                            captureToken.intValue = 0
-                        }
-                    }
-                }
-        ) {
-            CourseItemContent(course, sectionTimes, pageDate, showClassroom, showTeacher)
-        }
+        CourseItemContent(course, sectionTimes, pageDate, showClassroom, showTeacher, pageWeek)
     }
 }

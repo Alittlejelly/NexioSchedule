@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.truncateNote
+import com.haooz.chedule.i18n.NoteStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.components.WeekRangeSelectGrid
 import com.haooz.chedule.ui.utils.isAppDarkTheme
@@ -118,6 +120,10 @@ fun AddEditCourseBottomSheet(
     }
     val teacherState = remember(openKey) {
         mutableStateOf(editCourse?.teacher ?: defaultTeacher)
+    }
+    // 备注：这张表单里只能写「所有周」那条，单周备注归详情弹窗管（不在这里给范围选择）
+    val noteState = remember(openKey) {
+        mutableStateOf(editCourse?.note ?: "")
     }
 
     var dayOfWeek by remember(openKey) { mutableIntStateOf(editCourse?.dayOfWeek ?: 0) }
@@ -248,6 +254,17 @@ fun AddEditCourseBottomSheet(
             val isContiguous = selectedWeeks.size == (maxWeek - minWeek + 1)
             val weeksToSave = if (isContiguous) emptyList() else sortedWeeks
 
+            // 备注框写的是「所有周」那条。只要文本变了就视为「重设全部周备注」——
+            // 详情弹窗里按周写过的单周备注一并清掉，否则改完这里某些周还是旧文案，
+            // 看起来就是「保存没生效」。没改文本则原样保留单周备注。
+            val newNote = noteState.value.trim().truncateNote()
+            val noteChanged = newNote != (editCourse?.note ?: "")
+            val weekNotesToSave = if (noteChanged) {
+                emptyMap()
+            } else {
+                editCourse?.weekNotes ?: emptyMap()
+            }
+
             val course = Course(
                 id = editCourse?.id ?: randomUuidV4(),
                 name = editCourse?.name ?: courses.firstOrNull()?.name ?: "",
@@ -267,7 +284,9 @@ fun AddEditCourseBottomSheet(
                 customEndTime = if (isCustomTime) customEndTime else null,
                 // System.currentTimeMillis() 是 JVM 专有（Kotlin/Native 没有），
                 // 改用 kotlinx-datetime —— 返回值同为 epoch millis，与 :core 的 Course.lastModified 口径一致
-                lastModified = Clock.System.now().toEpochMilliseconds()
+                lastModified = Clock.System.now().toEpochMilliseconds(),
+                note = newNote,
+                weekNotes = weekNotesToSave,
             )
             // 先收键盘再回调：onConfirm 会立刻触发关闭/跳转，晚一步键盘就托在动画上
             dismissKeyboard()
@@ -345,7 +364,16 @@ fun AddEditCourseBottomSheet(
                     state = teacherState,
                     hint = CommonStr.notRequired(),
                     topPadding = 14.dp,
+                    bottomPadding = 14.dp,
+                )
+                SheetTextFieldRow(
+                    label = NoteStr.noteLabel(),
+                    state = noteState,
+                    // 与地点/教师同一套「非必填」提示；占位示例留给详情弹窗那块便签，一行里两种口气太乱
+                    hint = CommonStr.notRequired(),
+                    topPadding = 14.dp,
                     bottomPadding = 17.dp,
+                    limitNoteLength = true,
                 )
             }
             }
@@ -823,29 +851,50 @@ private fun SheetTextFieldRow(
     hint: String,
     topPadding: Dp,
     bottomPadding: Dp,
+    /** true 时按 [Course.NOTE_MAX_LENGTH] 截断输入（备注用），地点/教师不截 */
+    limitNoteLength: Boolean = false,
+    /** 输入框下方的常驻说明（右对齐小字）。hint 只在空值时可见，规则说明得靠它 */
+    caption: String? = null,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = topPadding, bottom = bottomPadding),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(start = 16.dp, end = 16.dp, top = topPadding, bottom = bottomPadding)
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Medium,
-            color = MiuixTheme.colorScheme.onSurface
-        )
-        NativeTextField(
-            value = state.value,
-            onValueChange = { state.value = it },
-            modifier = Modifier.fillMaxWidth(0.65f),
-            hint = hint,
-            singleLine = true,
-            textAlign = TextAlign.End,
-            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onSurface
+            )
+            NativeTextField(
+                value = state.value,
+                onValueChange = { input ->
+                    state.value = if (limitNoteLength) input.truncateNote() else input
+                },
+                modifier = Modifier.fillMaxWidth(0.65f),
+                hint = hint,
+                singleLine = true,
+                textAlign = TextAlign.End,
+                textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            )
+        }
+        if (caption != null) {
+            Text(
+                text = caption,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                textAlign = TextAlign.End,
+            )
+        }
     }
 }
 

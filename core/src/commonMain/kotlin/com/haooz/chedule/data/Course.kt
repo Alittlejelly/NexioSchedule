@@ -23,9 +23,18 @@ data class Course(
     // 开启后用 customStartTime/EndTime，否则回退节次时间表
     val isCustomTime: Boolean = false,
     val customStartTime: String? = null, // "HH:mm"
-    val customEndTime: String? = null    // "HH:mm"
+    val customEndTime: String? = null,   // "HH:mm"
+    // 课程备注（今日页展示、详情弹窗里添加）。note 对这条课的所有周生效，
+    // weekNotes 按周覆盖 note：key = 周次。空串 / 空 Map 表示没有备注。
+    // 两者都受 NOTE_MAX_LENGTH 约束，超长在入口（输入框 / 导入解析 / 读盘清洗）就截断，
+    // 不要只在某一侧截 —— 否则「本机完整、分享后变短」没人看得出来。
+    val note: String = "",
+    val weekNotes: Map<Int, String> = emptyMap()
 ) {
     companion object {
+        /** 单条备注字符上限。客户端输入框、导入解析、服务端 `SHARE_MAX_NOTE_LEN` 三处必须一致。 */
+        const val NOTE_MAX_LENGTH = 50
+
         const val WEEK_TYPE_ALL = 0
         const val WEEK_TYPE_ODD = 1
         const val WEEK_TYPE_EVEN = 2
@@ -130,6 +139,13 @@ data class Course(
         }
     }
 
+    /**
+     * 该周实际生效的备注：单周备注优先，没有就回退到「所有周」的备注。
+     *
+     * 只查不写 —— 换周次展示时不该顺手改数据。
+     */
+    fun noteForWeek(week: Int): String =
+        weekNotes[week]?.takeIf { it.isNotBlank() } ?: note
     /** 自定义开关开启且起止时间均非空才生效 */
     fun hasValidCustomTime(): Boolean {
         return isCustomTime &&
@@ -364,3 +380,17 @@ data class Course(
  * 2 是最小宽度而非截断：`-5` → `"-5"`、`100` → `"100"`；本项目取值 0..23 / 0..59，恒两位。
  */
 private fun Int.pad2(): String = if (this in 0..9) "0$this" else toString()
+
+/**
+ * 备注截断到 [Course.NOTE_MAX_LENGTH]，**不把代理对切一半**。
+ *
+ * 输入框、导入解析、读盘清洗三处都走这里：Kotlin 的 String 是 UTF-16，直接 `take(50)`
+ * 在末尾是 emoji 时会留下半个代理对（渲染成豆腐块，再落盘就是坏字符）。
+ */
+fun String.truncateNote(): String {
+    val max = Course.NOTE_MAX_LENGTH
+    if (length <= max) return this
+    // 第 max 个字符若正好是某个代理对的前半个，就少取一个
+    val cut = if (this[max - 1] in '\uD800'..'\uDBFF') max - 1 else max
+    return substring(0, cut)
+}

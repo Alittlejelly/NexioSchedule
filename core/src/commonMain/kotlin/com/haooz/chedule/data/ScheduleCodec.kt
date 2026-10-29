@@ -65,25 +65,30 @@ private fun Map<*, *>.bool(key: String, fallback: Boolean = false): Boolean =
 // ════════════════════════════════════════════════════════════════════════
 
 /** `Course` → JSON Map（字段顺序 = 声明顺序，不是契约；null 字段由 [toJsonElementWithoutNulls] 跳过）。 */
-fun Course.toJsonMap(): Map<String, Any?> = mapOf(
-    "id" to id,
-    "name" to name,
-    "classroom" to classroom,
-    "teacher" to teacher,
-    "dayOfWeek" to dayOfWeek,
-    "startSection" to startSection,
-    "endSection" to endSection,
-    "startWeek" to startWeek,
-    "endWeek" to endWeek,
-    "weekType" to weekType,
-    "colorRes" to colorRes,
-    "selectedWeeks" to selectedWeeks,
-    "scheduleId" to scheduleId,
-    "lastModified" to lastModified,
-    "isCustomTime" to isCustomTime,
-    "customStartTime" to customStartTime,
-    "customEndTime" to customEndTime,
-)
+fun Course.toJsonMap(): Map<String, Any?> = buildMap {
+    put("id", id)
+    put("name", name)
+    put("classroom", classroom)
+    put("teacher", teacher)
+    put("dayOfWeek", dayOfWeek)
+    put("startSection", startSection)
+    put("endSection", endSection)
+    put("startWeek", startWeek)
+    put("endWeek", endWeek)
+    put("weekType", weekType)
+    put("colorRes", colorRes)
+    put("selectedWeeks", selectedWeeks)
+    put("scheduleId", scheduleId)
+    put("lastModified", lastModified)
+    put("isCustomTime", isCustomTime)
+    put("customStartTime", customStartTime)
+    put("customEndTime", customEndTime)
+    // 备注是后加的字段：没有备注就不写，存量课程的 JSON 保持逐字不变
+    if (note.isNotEmpty()) put("note", note)
+    if (weekNotes.isNotEmpty()) {
+        put("weekNotes", weekNotes.mapKeys { it.key.toString() })
+    }
+}
 
 /**
  * JSON Map → `Course`。
@@ -110,7 +115,30 @@ fun courseFromJsonMap(map: Map<*, *>): Course = Course(
     isCustomTime = map.bool("isCustomTime"),
     customStartTime = map.str("customStartTime"),
     customEndTime = map.str("customEndTime"),
+    note = (map.str("note") ?: "").trim().truncateNote(),
+    weekNotes = map.weekNotes("weekNotes"),
 )
+
+/**
+ * `weekNotes` 的 JSON 形状是 `{"3":"…"}`（键是字符串），读回时统一转成 `Map<Int, String>`。
+ *
+ * 周次 ≤ 0 或文本为空的条目直接丢掉：空备注不该占一个键，否则「有没有备注」的判断会失真。
+ * 文本超 [Course.NOTE_MAX_LENGTH] 的按上限截断 —— 与输入框、导入解析同一口径。
+ */
+internal fun Map<*, *>.weekNotes(key: String): Map<Int, String> {
+    val raw = raw(key) as? Map<*, *> ?: return emptyMap()
+    return buildMap {
+        for ((weekKey, value) in raw) {
+            val week = when (weekKey) {
+                is String -> weekKey.trim().toIntOrNull()
+                is Number -> weekKey.toInt()
+                else -> null
+            } ?: continue
+            val text = (value as? String)?.trim()?.truncateNote() ?: continue
+            if (week > 0 && text.isNotEmpty()) put(week, text)
+        }
+    }
+}
 
 /** `List<Course>` → JSON 数组串。等价 `gson.toJson(courses)`。 */
 fun encodeCourses(courses: List<Course>): String =

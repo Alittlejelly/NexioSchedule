@@ -867,6 +867,8 @@ internal fun CourseScheduleAppMainContent(
                                                         TodayScreen(
                                                             viewModel = viewModel,
                                                             settingsViewModel = settingsViewModel,
+                                                            // 今日页的课程列表不再直接进详情，这个只传给详情弹窗：
+                                                            // 点弹窗卡片进全屏时要藏掉源卡片，morph 才干净。
                                                             hiddenCourseIds = hiddenCourseIds,
                                                             holidayDataTick = resumeCount,
                                                             onCourseClick = { courses, left, top, width, height, cardLayer, courseIdToHide, targetWeek ->

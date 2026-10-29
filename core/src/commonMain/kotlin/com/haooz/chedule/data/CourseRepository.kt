@@ -92,7 +92,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /** 绕过本类 setter 直接改写 prefs 后必须调用，否则读到陈旧缓存 */
-    private fun invalidateAllCaches() {
+    // internal：测试要「清缓存 → 重新解码」来模拟重启（见 NotePersistenceTest）
+    internal fun invalidateAllCaches() {
         courseCache.clear()
         occupiedWeeksCache.clear()
         timeConfigCache.clear()
@@ -349,7 +350,14 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 lastModified = course.lastModified,
                 isCustomTime = course.isCustomTime,
                 customStartTime = course.customStartTime,
-                customEndTime = course.customEndTime
+                customEndTime = course.customEndTime,
+                // ⚠ 这里用显式构造（UnsafeAllocator 会给出 null 字段），新增字段必须一起补 ——
+                //   漏了就等于每次读盘都把该字段抹掉，表现为「重启后备注/新字段全丢」。
+                note = (course.note ?: "").trim().truncateNote(),
+                // 备注长度/空值在这里再收一次口：盘上的数据可能来自旧版本或手工改过的备份
+                weekNotes = (course.weekNotes ?: emptyMap())
+                    .mapValues { it.value.trim().truncateNote() }
+                    .filterValues { it.isNotEmpty() },
             )
         }
     }
@@ -2481,7 +2489,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 endWeek = endWeek,
                 weekType = weekType,
                 colorRes = color,
-                selectedWeeks = selectedWeeks
+                selectedWeeks = selectedWeeks,
+                // 备注是后加字段：旧备份没有就按「无备注」处理；长度上限与入口保持一致
+                note = ((courseMap["note"] as? String) ?: "").trim().truncateNote(),
+                weekNotes = courseMap.weekNotes("weekNotes"),
             )
         }
 

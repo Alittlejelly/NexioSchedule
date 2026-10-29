@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.BackupFileController
 import com.haooz.chedule.data.BackupFileInfo
 import com.haooz.chedule.data.BackupPayload
-import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.NoopBackupFileController
 import com.haooz.chedule.data.TeachingWeekReorganization
@@ -58,6 +57,7 @@ import com.haooz.chedule.data.toJsonMap
 import com.haooz.chedule.i18n.BackupStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
+import com.haooz.chedule.ui.utils.courseToShareMap
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
@@ -99,27 +99,9 @@ private fun generateBackupFileName(mode: String, scheduleName: String?): String 
     }
 }
 
-/**
- * 单课表备份的课程字段序列化。
- * ⚠ 与分享/导出的 courseToShareMap 是同一份字段清单，两边改字段必须同步。
- */
-private fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
-    "name" to course.name,
-    "classroom" to course.classroom,
-    "teacher" to course.teacher,
-    "dayOfWeek" to course.dayOfWeek,
-    "startSection" to course.startSection,
-    "endSection" to course.endSection,
-    "isCustomTime" to course.isCustomTime,
-    "customStartTime" to course.customStartTime,
-    "customEndTime" to course.customEndTime,
-    "colorRes" to course.colorRes,
-) + mapOf(
-    "startWeek" to course.startWeek,
-    "endWeek" to course.endWeek,
-    "weekType" to course.weekType,
-    "selectedWeeks" to course.selectedWeeks.sorted(),
-)
+// 单课表备份的课程字段序列化 = 分享/导出那份 `courseToShareMap`（见下方 import）。
+// ⚠ 不要在这里另写一份字段清单：之前有一份私有副本，加 `note`/`weekNotes` 时只改了分享那份，
+//   结果「本地备份丢备注、分享不丢」。
 
 private fun countFullBackupSchedules(data: Map<String, Any>): Int =
     data.keys.count { it.startsWith("schedule_") && it.endsWith("_courses") }

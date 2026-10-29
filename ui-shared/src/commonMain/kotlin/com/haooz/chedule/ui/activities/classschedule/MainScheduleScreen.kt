@@ -104,8 +104,7 @@ import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.activities.main.PagerJumpNeighbor
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
-import com.haooz.chedule.ui.components.cardRevealLayer
-import com.haooz.chedule.ui.components.rememberCardRevealState
+import com.haooz.chedule.ui.components.CourseDetailSheet
 import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
 import com.haooz.chedule.ui.components.text.material.Text
 import com.haooz.chedule.ui.utils.LocalHostNavigation
@@ -147,8 +146,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.isTabletWidth
-import top.yukonga.miuix.kmp.overlay.BlurBottomSheet
-import top.yukonga.miuix.kmp.overlay.BlurBottomSheetTablet
 import top.yukonga.miuix.kmp.overlay.LocalSheetContentBackdrop
 import top.yukonga.miuix.kmp.overlay.LocalSheetTopBarMaterial
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -159,9 +156,6 @@ import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 // 普通 holder 而非 state：避免 onGloballyPositioned 每次写入触发卡片重组
-private class CardBoundsHolder {
-    var rect: Rect? = null
-}
 
 data class ScheduleGridGeometry(
     val dayBounds: Map<Int, FloatArray>,
@@ -1670,186 +1664,40 @@ fun MainScheduleScreen(
                     shadowAlpha = material.shadowAlpha,
                 )
             }
-            val detailContent: @Composable () -> Unit = {
-                val scope = rememberCoroutineScope()
-                val coursesToShow = remember(selectedCourses, selectedCourse, viewingWeek) {
-                    selectedCourses.ifEmpty { listOfNotNull(selectedCourse) }
-                        .sortedWith(
-                            compareByDescending<Course> { it.isActiveInWeek(viewingWeek) }
-                                .thenBy {
-                                    val distance = if (it.isActiveInWeek(viewingWeek)) 0
-                                    else if (viewingWeek < it.startWeek) it.startWeek - viewingWeek
-                                    else viewingWeek - it.endWeek
-                                    distance
-                                }
-                        )
-                }
-                // 始终参与布局，用 graphicsLayer 做透明/位移，避免移除节点导致弹窗高度闪烁；
-                // 逐张错开由 CardRevealSpec 的 index 负责
-                Column(
-                    modifier = Modifier
-                        // overScroll 在 verticalScroll 外侧
-                        .overScrollVertical()
-                        .scrollEndHaptic(
-                            hapticFeedbackType = HapticFeedbackType.TextHandleMove
-                        )
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Spacer(modifier = Modifier.height(if (isTablet) 56.dp else 58.dp))
-                    coursesToShow.forEachIndexed { index, course ->
-                        key(course.id) {
-                            val summaryText = buildString {
-                                append(course.weekTextLocalized())
-                                append(" ｜ ")
-                                append(course.timeDisplayTextLocalized())
-                                if (course.classroom.isNotEmpty()) {
-                                    append("\n")
-                                    append(course.classroom)
-                                }
-                                if (course.teacher.isNotEmpty()) {
-                                    if (course.classroom.isNotEmpty()) append(" ｜ ")
-                                    append(course.teacher)
-                                }
-                            }
-                            val isCurrentWeekCourse = course.isActiveInWeek(viewingWeek)
-                            val isHidden = course.id in hiddenCourseIds
-                            val cardLayer = rememberGraphicsLayer()
-                            // 普通 holder 零重组；key 用 course.id 防列表重排错位
-                            val cardBoundsHolder = remember(course.id) { CardBoundsHolder() }
-                            // 动画结束后去掉离屏层
-                            val cardReveal = rememberCardRevealState(index = index)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (isHidden || cardReveal.isAnimating) {
-                                            Modifier.cardRevealLayer(
-                                                reveal = cardReveal,
-                                                // 隐藏的课程只留占位：透明度乘 0，图层照样要挂
-                                                alphaMultiplier = if (isHidden) 0f else 1f,
-                                            )
-                                        } else Modifier
-                                    )
-                            ) {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp)
-                                        .onGloballyPositioned { coordinates ->
-                                            val position =
-                                                coordinates.localToRoot(Offset.Zero)
-                                            val size = coordinates.size
-                                            cardBoundsHolder.rect = Rect(
-                                                left = position.x,
-                                                top = position.y,
-                                                right = position.x + size.width,
-                                                bottom = position.y + size.height
-                                            )
-                                        }
-                                        .drawWithContent {
-                                            // The outer visibility/reveal transform is deliberately not recorded.
-                                            if (!isHidden) {
-                                                cardLayer.record { this@drawWithContent.drawContent() }
-                                            }
-                                            drawLayer(cardLayer)
-                                        },
-                                    insideMargin = PaddingValues(0.dp),
-                                    pressFeedbackType = PressFeedbackType.None,
-                                    showIndication = true,
-                                    colors = CardDefaults.defaultColors(
-                                        color = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.surfaceContainerHigh else if (isAppDarkTheme()) Color(
-                                            0xFF303030
-                                        ) else Color(0xFFFFFFFF),
-                                        contentColor = MiuixTheme.colorScheme.onSurface
-                                    ),
-                                    onClick = {
-                                        val coursesForDetail =
-                                            courses.filter { it.name == course.name }
-                                        // 本周有课用当前查看周，否则回退到最近上课周
-                                        val targetWeek =
-                                            if (course.isActiveInWeek(viewingWeek)) viewingWeek
-                                            else if (viewingWeek < course.startWeek) course.startWeek
-                                            else course.endWeek
-                                        val bounds = cardBoundsHolder.rect
-                                        if (bounds != null) {
-                                            onCourseClick(
-                                                coursesForDetail,
-                                                bounds.left,
-                                                bounds.top,
-                                                bounds.width,
-                                                bounds.height,
-                                                TransitionLayerSnapshot(cardLayer),
-                                                course.id,
-                                                targetWeek
-                                            )
-                                        }
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = if (isCurrentWeekCourse) course.name else SchedStr.nonCurrentWeekName(course.name),
-                                                style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
-                                                fontWeight = FontWeight.Medium,
-                                                color = MiuixTheme.colorScheme.onSurface
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = summaryText,
-                                                style = MiuixTheme.textStyles.body2.copy(fontSize = 14.sp),
-                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                            )
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(ContinuousRoundedRectangle(20.dp))
-                                                .background(
-                                                    MiuixTheme.colorScheme.primary.copy(
-                                                        alpha = 0.1f
-                                                    )
-                                                )
-                                                .clickable {
-                                                    showCourseDetail = false
-                                                    onPopupStateChange(false)
-                                                    // 等关闭动画后再开编辑弹窗
-                                                    scope.launch {
-                                                        delay(100.milliseconds)
-                                                        viewModel.showEditDialog(course)
-                                                    }
-                                                }
-                                                .padding(horizontal = 20.dp, vertical = 8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = CommonStr.edit(),
-                                                style = MiuixTheme.textStyles.body1.copy(fontSize = 16.sp),
-                                                fontWeight = FontWeight.Medium,
-                                                color = MiuixTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                }
-                            } // Column (isHidden)
-                        } // key(course.id)
-                    }
-                    Spacer(modifier = Modifier.height(if (isTablet) 0.dp else 260.dp))
-                }
-            }
             // show 状态下沉到子作用域：顶层读会在点卡片那帧重组整页，压在弹窗动画头两帧
+            val detailEditScope = rememberCoroutineScope()
             CourseDetailSheet(
-                showState = externalShowCourseDetail,
+                show = externalShowCourseDetail.value,
+                allCourses = courses,
+                selectedCourses = selectedCourses.ifEmpty { listOfNotNull(selectedCourse) },
+                viewingWeek = viewingWeek,
                 isTablet = isTablet,
+                hiddenCourseIds = hiddenCourseIds,
                 onDismiss = {
                     showCourseDetail = false
                     onPopupStateChange(false)
                 },
+                onCourseClick = onCourseClick,
+                onNoteSave = { course, week, text ->
+                    val updated = if (week == null) {
+                        course.copy(note = text)
+                    } else {
+                        val weekNotes = course.weekNotes.toMutableMap()
+                        if (text.isEmpty()) weekNotes.remove(week) else weekNotes[week] = text
+                        course.copy(weekNotes = weekNotes)
+                    }
+                    viewModel.updateCourse(updated)
+                },
+                onEdit = { course ->
+                    showCourseDetail = false
+                    onPopupStateChange(false)
+                    // 等关闭动画后再开编辑弹窗
+                    detailEditScope.launch {
+                        delay(100.milliseconds)
+                        viewModel.showEditDialog(course)
+                    }
+                },
                 endAction = detailEndAction,
-                content = detailContent,
             )
 
             val editingBlock = specialBlocks.firstOrNull { it.id == specialItemEditingBlockId }
@@ -1930,37 +1778,6 @@ fun MainScheduleScreen(
             )
         }
     } // CompositionLocalProvider
-}
-
-@Composable
-private fun CourseDetailSheet(
-    showState: MutableState<Boolean>,
-    isTablet: Boolean,
-    onDismiss: () -> Unit,
-    endAction: @Composable () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    var show by showState
-    if (isTablet) {
-        BlurBottomSheetTablet(
-            show = show,
-            title = SchedStr.courseDetails(),
-            dimBackground = true,
-            isBottomAligned = true,
-            onDismissRequest = onDismiss,
-            endAction = endAction,
-            content = content,
-        )
-    } else {
-        BlurBottomSheet(
-            show = show,
-            title = SchedStr.courseDetails(),
-            dimBackground = true,
-            onDismissRequest = onDismiss,
-            endAction = endAction,
-            content = content,
-        )
-    }
 }
 
 private data class DropMaskBox(

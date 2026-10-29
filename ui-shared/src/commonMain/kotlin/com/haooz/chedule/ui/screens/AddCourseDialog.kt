@@ -94,8 +94,10 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import com.haooz.chedule.data.showToast
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.data.truncateNote
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.CourseEditStr
+import com.haooz.chedule.i18n.NoteStr
 
 /** 揭示分组数（基本信息/星期/节次/周次/颜色/删除） */
 private const val REVEAL_GROUP_COUNT = 6
@@ -114,6 +116,8 @@ private class AddCourseFormState(
     var name by mutableStateOf(course?.name ?: "")
     var classroom by mutableStateOf(course?.classroom ?: "")
     var teacher by mutableStateOf(course?.teacher ?: "")
+    // 备注：这张表单没有周次上下文，只能写「所有周」那条；按周覆盖走详情弹窗
+    var note by mutableStateOf(course?.note ?: "")
     var dayOfWeek by mutableIntStateOf(course?.dayOfWeek ?: selectedDay)
     var startSection by mutableIntStateOf(course?.startSection ?: defaultStartSection)
     var endSection by mutableIntStateOf(course?.endSection ?: defaultEndSection)
@@ -288,6 +292,11 @@ fun AddCourseDialog(
             val isContiguous = sortedWeeks.size == (maxWeek - minWeek + 1)
             val weeksToSave = if (isContiguous) emptyList() else sortedWeeks
 
+            // 备注框写的是「所有周」那条。文本一改就等于重设全部周备注，
+            // 详情弹窗里按周写的单周备注一并清掉；没改则原样保留。
+            val newNote = form.note.trim().truncateNote()
+            val noteChanged = newNote != (course?.note ?: "")
+
             val newCourse = Course(
                 id = course?.id ?: randomUuidV4(),
                 name = form.name.trim(),
@@ -303,7 +312,9 @@ fun AddCourseDialog(
                 selectedWeeks = weeksToSave,
                 isCustomTime = form.isCustomTime,
                 customStartTime = if (form.isCustomTime) form.customStartTime else null,
-                customEndTime = if (form.isCustomTime) form.customEndTime else null
+                customEndTime = if (form.isCustomTime) form.customEndTime else null,
+                note = newNote,
+                weekNotes = if (noteChanged) emptyMap() else course?.weekNotes ?: emptyMap()
             )
 
             // 先收键盘再回调：onConfirm 之后弹窗就开始关闭动画，晚一步键盘会托在动画上
@@ -902,7 +913,7 @@ private fun BasicInfoCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 17.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -924,6 +935,37 @@ private fun BasicInfoCard(
                         fontWeight = FontWeight.Medium
                     )
                 )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 17.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = NoteStr.noteLabel(),
+                        modifier = Modifier.weight(1f),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface
+                    )
+                    NativeTextField(
+                        value = form.note,
+                        onValueChange = { form.note = it.truncateNote() },
+                        modifier = Modifier.fillMaxWidth(0.65f),
+                        // 与地点/教师一致：备注也是非必填
+                        hint = CommonStr.notRequired(),
+                        singleLine = true,
+                        textAlign = TextAlign.End,
+                        textStyle = TextStyle(
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
             }
         }
     }

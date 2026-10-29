@@ -76,7 +76,24 @@ class GsonParitySyntheticTest {
     @Test
     fun `新编码器的课程 JSON 与 Gson 语义一致`() {
         val courses = sampleCourses()
-        assertEquals(semantic(gson.toJson(courses)), semantic(encodeCourses(courses)))
+        // 备注是后加字段：空值不落盘，存量课程 JSON 才能逐字不变。
+        // Gson 走反射会把空 note / 空 weekNotes 一起写出来 —— 这条差异是有意的，比较前剔掉。
+        assertEquals(
+            dropEmptyNoteFields(semantic(gson.toJson(courses))),
+            semantic(encodeCourses(courses)),
+        )
+    }
+
+    /** 递归删掉空备注字段：`note` 为 ""、`weekNotes` 为空对象。 */
+    private fun dropEmptyNoteFields(value: Any?): Any? = when (value) {
+        is Map<*, *> -> value.entries
+            .filterNot { (key, item) ->
+                (key == "note" && item == "") ||
+                    (key == "weekNotes" && (item as? Map<*, *>)?.isEmpty() == true)
+            }
+            .associate { it.key.toString() to dropEmptyNoteFields(it.value) }
+        is List<*> -> value.map { dropEmptyNoteFields(it) }
+        else -> value
     }
 
     @Test

@@ -12,6 +12,8 @@ import com.haooz.chedule.data.weeksBetween
 import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
 import com.haooz.chedule.ui.utils.ThirdPartyShareSource
+import com.haooz.chedule.ui.utils.parseShareCourseNote
+import com.haooz.chedule.ui.utils.parseShareCourseWeekNotes
 import com.haooz.chedule.ui.utils.parseShareCourseWeekModel
 import com.haooz.chedule.ui.utils.parseShareCourses
 import com.haooz.chedule.ui.utils.parseShareSelectedWeeks
@@ -250,7 +252,10 @@ fun applyScheduleData(
                         endWeek = explicitWeekModel?.endWeek ?: selectedWeeks.max(),
                         weekType = explicitWeekModel?.weekType ?: Course.WEEK_TYPE_ALL,
                         selectedWeeks = selectedWeeks,
-                        colorRes = colorRes
+                        colorRes = colorRes,
+                        // 备注是后加字段：旧分享包没有这两个键，解析成「无备注」
+                        note = parseShareCourseNote(courseMap),
+                        weekNotes = parseShareCourseWeekNotes(courseMap),
                     )
                 )
             }

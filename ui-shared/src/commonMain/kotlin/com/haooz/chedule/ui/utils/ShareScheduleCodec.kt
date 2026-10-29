@@ -5,6 +5,7 @@ import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.TeachingWeekReorganization
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
 import com.haooz.chedule.data.TimeRoutine
+import com.haooz.chedule.data.truncateNote
 import com.haooz.chedule.i18n.MiscStr
 
 // 分享/导出课表的**数据契约**：组装（写出）与解析（读入）两半。
@@ -65,18 +66,24 @@ fun buildShareScheduleMap(
 }
 
 /** 单课表/分享共用的课程字段序列化；导出与单课表备份必须走同一份字段清单 */
-fun courseToShareMap(course: Course): Map<String, Any?> = mapOf(
-    "name" to course.name,
-    "classroom" to course.classroom,
-    "teacher" to course.teacher,
-    "dayOfWeek" to course.dayOfWeek,
-    "startSection" to course.startSection,
-    "endSection" to course.endSection,
-    "isCustomTime" to course.isCustomTime,
-    "customStartTime" to course.customStartTime,
-    "customEndTime" to course.customEndTime,
-    "colorRes" to course.colorRes,
-) + shareCourseWeekFields(course)
+fun courseToShareMap(course: Course): Map<String, Any?> = buildMap {
+    put("name", course.name)
+    put("classroom", course.classroom)
+    put("teacher", course.teacher)
+    put("dayOfWeek", course.dayOfWeek)
+    put("startSection", course.startSection)
+    put("endSection", course.endSection)
+    put("isCustomTime", course.isCustomTime)
+    put("customStartTime", course.customStartTime)
+    put("customEndTime", course.customEndTime)
+    put("colorRes", course.colorRes)
+    putAll(shareCourseWeekFields(course))
+    // 备注是后加的字段：没有备注就不写，旧版本导入方看到的载荷与以前逐字一致
+    if (course.note.isNotEmpty()) put("note", course.note)
+    if (course.weekNotes.isNotEmpty()) {
+        put("weekNotes", course.weekNotes.mapKeys { it.key.toString() })
+    }
+}
 
 fun buildShareSchedulePayload(
     scheduleName: String,
@@ -113,6 +120,35 @@ fun shareCourseWeekFields(course: Course): Map<String, Any> = mapOf(
     "weekType" to course.weekType,
     "selectedWeeks" to course.selectedWeeks.sorted(),
 )
+
+// ── 课程备注（导出 / 导入成对）──
+//
+// 长度上限只有一个来源：`Course.NOTE_MAX_LENGTH`（截断走 `String.truncateNote()`）。
+// 服务端 `SHARE_MAX_NOTE_LEN` 必须与它相同，改一边就要改另一边。
+
+/** 分享包里的 `note`：缺字段 → 空串；类型不对也按空串处理，坏数据不该拦住导入。 */
+fun parseShareCourseNote(data: Map<String, Any?>): String =
+    (data["note"] as? String)?.trim()?.truncateNote() ?: ""
+
+/** 分享包里的 `weekNotes`：键是周次，越界与非正数条目跳过。 */
+fun parseShareCourseWeekNotes(
+    data: Map<String, Any?>,
+    maxWeeks: Int? = null,
+): Map<Int, String> {
+    val raw = data["weekNotes"] as? Map<*, *> ?: return emptyMap()
+    return buildMap {
+        for ((rawKey, rawValue) in raw) {
+            val week = when (rawKey) {
+                is String -> rawKey.trim().toIntOrNull()
+                is Number -> rawKey.toInt()
+                else -> null
+            } ?: continue
+            if (week <= 0 || (maxWeeks != null && week > maxWeeks)) continue
+            val text = (rawValue as? String)?.trim()?.truncateNote() ?: continue
+            if (text.isNotEmpty()) put(week, text)
+        }
+    }
+}
 
 // ── 2. 解析侧：分享 JSON Map → 校验过的课表结构 ──────────────────
 

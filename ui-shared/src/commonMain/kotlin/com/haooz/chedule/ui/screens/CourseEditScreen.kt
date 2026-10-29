@@ -68,12 +68,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.CourseEditStr
+import com.haooz.chedule.i18n.NoteStr
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -821,6 +823,16 @@ fun CourseEditScreen(
                                         isCustomTime = updatedCourse.isCustomTime,
                                         customStartTime = updatedCourse.customStartTime,
                                         customEndTime = updatedCourse.customEndTime,
+                                        // ⚠ 逐字段 copy：新加的可编辑字段都要在这里补一行，
+                                        //   漏了就是「表单里能填、点确定后没保存」
+                                        note = updatedCourse.note,
+                                        // 备注文本变了 = 重设「全部周」备注，这条记录自己的
+                                        // 单周覆盖跟着清掉；没改就原样保留
+                                        weekNotes = if (updatedCourse.note != old.note) {
+                                            emptyMap()
+                                        } else {
+                                            old.weekNotes
+                                        },
                                         lastModified = Clock.System.now().toEpochMilliseconds()
                                     )
                                 )
@@ -859,6 +871,8 @@ private fun CourseGroupCard(
     )
     val weekText = course.weekTextLocalized().ifEmpty { CommonStr.notSet() }
     val sectionText = course.timeDisplayTextLocalized().ifEmpty { CommonStr.notSet() }
+    // 这里只认「所有周」那条备注：编辑表单里改的也是它
+    val noteText = course.note
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // 分组标题用「周几 + 时间」而非周次：列表按时段排序，
@@ -902,7 +916,13 @@ private fun CourseGroupCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 17.dp),
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 14.dp,
+                            // 下面接备注行时不留 17dp，否则卡片底部会多出一条缝
+                            bottom = if (noteText.isNotBlank()) 14.dp else 17.dp,
+                        ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -920,6 +940,35 @@ private fun CourseGroupCard(
                         color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         textAlign = TextAlign.End
                     )
+                }
+
+                // 备注跟在教师后面，只显示「所有周」那条（单周备注归详情弹窗，
+                // 这里混着列出来反而看不出哪条属于哪一周）
+                if (noteText.isNotBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 17.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = NoteStr.noteLabel(),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = noteText,
+                            modifier = Modifier.fillMaxWidth(0.8f),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.primary,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Spacer(
