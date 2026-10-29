@@ -31,11 +31,16 @@ class CourseRepository private constructor() : PeriodTimeSource {
     // getPeriodTimes 等高频路径的配置缓存
     @Volatile
     private var timeConfigCache: Map<Long, TimeConfig> = emptyMap()
+    @Volatile
     private var timeConfigIdsCache: List<Long>? = null
     // 几乎所有 key 拼接都经过它，全类最热路径
+    @Volatile
     private var currentScheduleIdCache: String? = null
+    @Volatile
     private var scheduleNamesCache: List<String>? = null
+    @Volatile
     private var scheduleFoldersCache: List<ScheduleFolder>? = null
+    @Volatile
     private var globalSectionTimesCache: Map<Int, String>? = null
 
     /**
@@ -2574,13 +2579,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 备份里的课程以行表为准。
+     * 备份里的课程以行表为准：行表成为真相后 `schedule_{名字}_courses` 不再更新，
+     * 照抄它会让「备份 → 恢复」抹掉导入之后的全部增删改。
      *
-     * 行表是真相之后 `schedule_{名字}_courses` 就不再更新，直接导出里面那份导入时的旧课表
-     * 会让「备份 → 恢复」把之后的所有增删改抹掉 —— 恢复会作废行表，只认备份里的 JSON。
-     *
-     * 只在行表**确实答得出**时才覆盖：读失败或尚未导入时保留 prefs 里那份，
-     * 否则一次读异常就会拿空表盖掉可能是唯一可抢救数据的原始 JSON。
+     * 只在行表确实答得出时覆盖；读失败或未导入时保留 prefs 里那份原始 JSON。
      */
     private fun syncCoursesIntoBackup(result: MutableMap<String, Any>) {
         val rows = CourseStorage.rows ?: return
@@ -2588,7 +2590,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             val authoritative = runCatching {
                 if (rows.isImported(name)) rows.load(name) else null
             }.getOrNull() ?: return@forEach
-            result["$SCHEDULE_KEY_PREFIX${name}_$KEY_COURSES"] = encodeCourses(authoritative)
+            result[getScheduleKeyPrefix(name) + KEY_COURSES] = encodeCourses(authoritative)
         }
     }
 

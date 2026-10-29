@@ -4,10 +4,9 @@ package com.haooz.chedule.data
  * 跨平台键值存储。Android 侧由 `SqliteStorage` 提供（`pref` 表），桌面侧是 JSON 文件，
  * iOS 侧是 UserDefaults。
  *
- * 与 SharedPreferences 的语义差异：
- * 1. 写入分两段，Android 的 `edit {}` 在这里是 [KeyValueEditor]，一个文件内统一用一种。
- * 2. 类型不匹配时**返回默认值而非抛异常**，这样调用点的 `runCatching` 可以逐步简化
- *    （现有的先保留，不要顺手删）。
+ * 语义约定：
+ * 1. 写入走 [edit]，回调里是 [KeyValueEditor]，一次 edit 是一个事务。
+ * 2. 类型不匹配时**返回默认值而非抛异常**。
  * 3. [all] 返回拷贝，改动它不影响存储。
  */
 

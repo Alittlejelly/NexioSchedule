@@ -120,8 +120,9 @@ object SqliteStorage {
 
         try {
             backend.transaction {
-                // 覆盖式重导：回退期间被删掉的键不能留在库里。SP 为空时不覆盖 ——
-                // 「回退期间没写过东西」与「回退期间清空了一切」分不出来，删数据比留设置贵。
+                // 覆盖式重导：回退期间删掉的键不能留在库里。
+                // SP 为空时不覆盖 —— 「回退期间只读过」与「回退期间清空了一切」分不出来，
+                // 宁可让回退期执行过 clear 的命名空间留残留，也不要清掉可能还在用的库数据。
                 if (reimport && rows.isNotEmpty()) clearNamespace(namespace)
                 rows.forEach { upsert(namespace, it) }
 
