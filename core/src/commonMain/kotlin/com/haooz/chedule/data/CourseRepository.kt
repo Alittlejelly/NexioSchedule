@@ -56,6 +56,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var scheduleSettingsCache: Map<String, ScheduleRowSettings> = emptyMap()
 
+    /** 作息是否已从表灌进 [timeConfigCache]（进程内一次）。 */
+    @Volatile
+    private var timeConfigsHydrated = false
+
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
         // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
@@ -133,6 +137,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         globalSectionTimesCache = null
         bindingCache = emptyMap()
         scheduleSettingsCache = emptyMap()
+        timeConfigsHydrated = false
     }
 
     /** 节数/节次时间变化会同时影响全局节次映射与分钟级占用判断 */
@@ -2049,25 +2054,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     // --- 多时间配置支持 ---
 
-    /** 获取所有时间配置 ID 列表（按创建顺序） */
+    /** 获取所有时间配置 ID 列表（按创建顺序）。表是真相，读不到才用镜像。 */
     fun getTimeConfigIds(): List<Long> {
         timeConfigIdsCache?.let { return it }
-        val idsStr = prefs.getStringOrNull(KEY_TIME_CONFIG_IDS)
-        val parsed = if (idsStr == null) {
-            null
-        } else {
-            // 兼容两种格式：逗号分隔 "1,2,3" 和 JSON 数组 "[1,2,3]"
-            val cleaned = idsStr.trim()
-            if (cleaned.startsWith("[")) {
-                try {
-                    decodeLongList(cleaned)
-                } catch (_: Exception) {
-                    emptyList()
-                }
-            } else {
-                cleaned.split(",").mapNotNull { it.toLongOrNull() }
-            }
-        }
+        hydrateTimeConfigs()
+        timeConfigIdsCache?.let { return it }
+        val parsed = parseTimeConfigIdsFromPrefs()
         // 列表缺失/被还原成空，但配置本身还在 → 扫现存键重建，别让读取方掉到 id=0 的默认配置
         val ids = when {
             parsed == null -> rebuildTimeConfigIdsFromKeys() ?: listOf(0L)
@@ -2076,6 +2068,59 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }
         timeConfigIdsCache = ids
         return ids
+    }
+
+    /** `time_config_ids` 镜像的解析。兼容逗号分隔与 JSON 数组两种历史写法。 */
+    private fun parseTimeConfigIdsFromPrefs(): List<Long>? {
+        val idsStr = prefs.getStringOrNull(KEY_TIME_CONFIG_IDS) ?: return null
+        val cleaned = idsStr.trim()
+        return if (cleaned.startsWith("[")) {
+            runCatching { decodeLongList(cleaned) }.getOrDefault(emptyList())
+        } else {
+            cleaned.split(",").mapNotNull { it.toLongOrNull() }
+        }
+    }
+
+    /**
+     * 表 → 内存缓存，进程内一次。首次先把 prefs 同步进表：行里的 payload 是建行时的快照，
+     * 之后用户在旧版本里改过的作息不会自动出现在表里。
+     */
+    private fun hydrateTimeConfigs() {
+        if (timeConfigsHydrated) return
+        val rows = CourseStorage.rows ?: return
+        if (!runCatching { rows.areTimeConfigsSynced() }.getOrDefault(false)) {
+            syncTimeConfigsIntoRows(rows)
+            runCatching { rows.markTimeConfigsSynced() }
+        }
+        val all = runCatching { rows.timeConfigs() }.getOrNull()
+        if (all != null && all.isNotEmpty()) {
+            val parsed = all.mapNotNull { row ->
+                runCatching { parseTimeConfigSnapshotOrNull(row.payload) }.getOrNull()
+                    ?.let { TimeConfig.sanitize(row.id, it) }
+                    ?.let { it.id to it }
+            }.toMap()
+            synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + parsed }
+            timeConfigIdsCache = all.map { it.id }
+        }
+        timeConfigsHydrated = true
+    }
+
+    /** prefs → 表，一次性。prefs 里一个可解析配置都没有时不动表。 */
+    private fun syncTimeConfigsIntoRows(rows: CourseRowStore) {
+        val ids = parseTimeConfigIdsFromPrefs()?.takeIf { it.isNotEmpty() } ?: return
+        val kept = mutableSetOf<Long>()
+        ids.forEach { id ->
+            val json = prefs.getStringOrNull("$TIME_CONFIG_PREFIX$id") ?: return@forEach
+            val config = runCatching { parseTimeConfigSnapshotOrNull(json) }.getOrNull()
+                ?.let { TimeConfig.sanitize(id, it) } ?: return@forEach
+            runCatching {
+                rows.upsertTimeConfig(StoredTimeConfig(id, config.name, encodeTimeConfig(config)))
+            }.onSuccess { kept += id }
+        }
+        if (kept.isEmpty()) return
+        // 表里 prefs 已没有的（被 prune 删过的孤儿）要删掉，否则会复活
+        runCatching { rows.timeConfigs().map { it.id }.filter { it !in kept } }.getOrNull()
+            ?.forEach { orphan -> runCatching { rows.deleteTimeConfigRow(orphan) } }
     }
 
     /**
@@ -2122,6 +2167,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun getTimeConfig(id: Long): TimeConfig {
         timeConfigCache[id]?.let { return it }
+        // 表里有就直接命中缓存；表里没有（如 id=0）才走镜像与自愈
+        hydrateTimeConfigs()
+        timeConfigCache[id]?.let { return it }
         val key = "$TIME_CONFIG_PREFIX$id"
         val json = prefs.getStringOrNull(key)
         // 兜底配置必须经 sanitize 播种（内部 ensureRoutine 补默认作息）：裸默认配置 routines
@@ -2159,9 +2207,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /** 节数与节次时间都来自这里，保存时同步失效占用/全局节次缓存 */
     fun saveTimeConfig(config: TimeConfig) {
-        val key = "${TIME_CONFIG_PREFIX}${config.id}"
         val json = encodeTimeConfig(config)
-        prefs.edit { putString(key, json) }
+        prefs.edit { putString("${TIME_CONFIG_PREFIX}${config.id}", json) }
+        CourseStorage.rows?.let { rows ->
+            runCatching { rows.upsertTimeConfig(StoredTimeConfig(config.id, config.name, json)) }
+                .onFailure { NexioLog.w(TAG, "作息写表失败：id=${config.id}", it) }
+        }
         synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + (config.id to config) }
         invalidateTimeCaches()
     }
@@ -2225,6 +2276,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         if (!ids.remove(id)) return
         saveTimeConfigIds(ids)
         prefs.edit { remove("${TIME_CONFIG_PREFIX}$id") }
+        CourseStorage.rows?.let { rows -> runCatching { rows.deleteTimeConfigRow(id) } }
         synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - id }
         if (ids.isNotEmpty() && getCurrentTimeConfigId() == id) {
             setCurrentTimeConfigId(ids.first())
@@ -2261,6 +2313,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val kept = ids.filter { it in bound }
         saveTimeConfigIds(kept)
         prefs.edit { orphans.forEach { remove("$TIME_CONFIG_PREFIX$it") } }
+        CourseStorage.rows?.let { rows ->
+            orphans.forEach { orphan -> runCatching { rows.deleteTimeConfigRow(orphan) } }
+        }
         synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - orphans.toSet() }
         NexioLog.w(TAG, "pruneOrphanTimeConfigs: 保留=$kept 删除=$orphans")
     }

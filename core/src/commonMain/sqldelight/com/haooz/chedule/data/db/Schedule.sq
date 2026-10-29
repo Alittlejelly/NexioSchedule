@@ -129,6 +129,9 @@ SELECT * FROM folder ORDER BY sort_order, name;
 selectTimeConfigIds:
 SELECT id FROM time_config ORDER BY id;
 
+selectAllTimeConfigs:
+SELECT id, name, payload FROM time_config ORDER BY id;
+
 selectTimeConfig:
 SELECT * FROM time_config WHERE id = ?;
 
@@ -191,6 +194,9 @@ DELETE FROM meta WHERE k LIKE 'courses_imported:%';
 deleteScheduleSettingsSyncFlags:
 DELETE FROM meta WHERE k LIKE 'settings_synced:%';
 
+deleteTimeConfigsSyncFlag:
+DELETE FROM meta WHERE k = 'time_configs_synced';
+
 upsertCourse:
 INSERT OR REPLACE INTO course(id, schedule_id, name, classroom, teacher, day_of_week, start_section,
     end_section, start_week, end_week, week_type, color_res, note, last_modified, is_custom_time,
@@ -228,8 +234,13 @@ INSERT INTO time_config(name, payload) VALUES (?, ?);
 ensureTimeConfigRow:
 INSERT OR IGNORE INTO time_config(id, name, payload) VALUES (?, ?, ?);
 
-updateTimeConfig:
-UPDATE time_config SET name = ?, payload = ? WHERE id = ?;
+-- 写整行分两步：父表被 schedule 引用（ON DELETE RESTRICT），INSERT OR REPLACE 会先删行再插，
+-- 有绑定时直接失败。所以先 UPDATE，不存在再 INSERT OR IGNORE。
+updateTimeConfigRow:
+UPDATE time_config SET name = :name, payload = :payload WHERE id = :id;
+
+insertTimeConfigRow:
+INSERT OR IGNORE INTO time_config(id, name, payload) VALUES (:id, :name, :payload);
 
 deleteTimeConfig:
 DELETE FROM time_config WHERE id = ?;

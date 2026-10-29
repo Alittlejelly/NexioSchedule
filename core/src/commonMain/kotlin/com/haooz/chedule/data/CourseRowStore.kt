@@ -75,6 +75,21 @@ interface CourseRowStore {
 
     fun markSettingsSynced(scheduleId: String)
 
+    // ── 作息配置 ──────────────────────────────────────────────────────────────
+    // payload 是完整 TimeConfig JSON，一行一份；prefs 的 time_config_{id} 是写穿镜像。
+
+    fun timeConfigs(): List<StoredTimeConfig>
+
+    /** 写一整行：先 UPDATE，不存在再 INSERT OR IGNORE（父表不能用 REPLACE，见 .sq 注释）。 */
+    fun upsertTimeConfig(row: StoredTimeConfig)
+
+    fun deleteTimeConfigRow(id: Long)
+
+    /** 作息是否已从 prefs 同步进表。一次性标记，整库恢复后要清。 */
+    fun areTimeConfigsSynced(): Boolean
+
+    fun markTimeConfigsSynced()
+
     /** 全部作废（整库恢复备份后）。下次读取从恢复出的 JSON 重新导入。 */
     fun invalidateAll()
 }
@@ -114,6 +129,9 @@ internal data class CourseRowDiff(
     val deleted: List<String>,
     val updated: List<Course>,
 )
+
+/** `time_config` 表的一行。payload 是完整 TimeConfig JSON（含 id 与 name）。 */
+data class StoredTimeConfig(val id: Long, val name: String, val payload: String)
 
 /** `schedule` 行上的三个设置值。 */
 data class ScheduleRowSettings(

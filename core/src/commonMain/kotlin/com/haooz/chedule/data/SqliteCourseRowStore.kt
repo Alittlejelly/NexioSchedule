@@ -143,6 +143,29 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         )
     }
 
+    override fun timeConfigs(): List<StoredTimeConfig> =
+        q.selectAllTimeConfigs().executeAsList().map {
+            StoredTimeConfig(id = it.id, name = it.name, payload = it.payload)
+        }
+
+    override fun upsertTimeConfig(row: StoredTimeConfig) {
+        database.transactionWithResult {
+            q.updateTimeConfigRow(name = row.name, payload = row.payload, id = row.id)
+            q.insertTimeConfigRow(id = row.id, name = row.name, payload = row.payload)
+        }
+    }
+
+    override fun deleteTimeConfigRow(id: Long) {
+        q.deleteTimeConfig(id)
+    }
+
+    override fun areTimeConfigsSynced(): Boolean =
+        runCatching { q.readMeta(META_TIME_CONFIGS_SYNCED).executeAsOneOrNull() }.getOrNull() != null
+
+    override fun markTimeConfigsSynced() {
+        q.writeMeta(META_TIME_CONFIGS_SYNCED, "1")
+    }
+
     override fun isSettingsSynced(scheduleId: String): Boolean =
         runCatching { q.readMeta(settingsSyncKey(scheduleId)).executeAsOneOrNull() }.getOrNull() != null
 
@@ -156,6 +179,8 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             q.deleteAllSchedules()
             q.deleteCourseImportFlags()
             q.deleteScheduleSettingsSyncFlags()
+            // 作息表也作废：恢复备份会覆盖 prefs 里的 time_config_*，下次要从那边重新同步
+            q.deleteTimeConfigsSyncFlag()
         }
     }
 
@@ -249,5 +274,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         const val META_IMPORTED_PREFIX = "courses_imported:"
         /** 设置值是否已从 prefs 同步进行。行被整体作废后必须一起清，否则不会再同步。 */
         const val META_SETTINGS_SYNC_PREFIX = "settings_synced:"
+        /** 作息配置是否已从 prefs 同步进表。 */
+        const val META_TIME_CONFIGS_SYNCED = "time_configs_synced"
     }
 }
