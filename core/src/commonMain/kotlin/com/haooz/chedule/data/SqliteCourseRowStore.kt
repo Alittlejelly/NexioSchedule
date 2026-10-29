@@ -108,6 +108,20 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         }
     }
 
+    override fun bindingOf(scheduleId: String): Long? =
+        runCatching { q.selectScheduleBinding(scheduleId).executeAsOneOrNull() }.getOrNull()
+
+    override fun setBinding(anchor: CourseRowAnchor) {
+        database.transactionWithResult {
+            // 外键目标必须先就位，否则 update 一句都写不进去
+            ensureAnchors(anchor)
+            q.updateScheduleBinding(anchor.timeConfigId, anchor.scheduleId)
+        }
+    }
+
+    override fun bindings(): Map<String, Long> =
+        q.selectAllScheduleBindings().executeAsList().associate { it.id to it.time_config_id }
+
     override fun invalidateAll() {
         database.transactionWithResult {
             q.deleteAllCourses()

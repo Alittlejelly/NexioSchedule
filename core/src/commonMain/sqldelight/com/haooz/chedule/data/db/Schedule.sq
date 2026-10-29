@@ -167,6 +167,20 @@ FROM schedule WHERE id = ?;
 moveCoursesToSchedule:
 UPDATE course SET schedule_id = ? WHERE schedule_id = ?;
 
+-- ── 作息绑定：`schedule.time_config_id` 是唯一真相 ────────────────────────
+-- 旧实现把绑定存在 `schedule_time_config_{课表名}` 这个键里，于是「课表身份」被编码进了键名：
+-- 改名要单独搬一次键、删表要单独删一次键、判「孤儿配置」要拿键名去和课表名做集合差。
+-- 落到行上之后这三件事全部消失：改名由 copyScheduleRow 连行搬走，删表由 CASCADE 带走，
+-- 孤儿直接用 selectAllScheduleBindings 求差集，不需要「所有课表都已显式绑定」这个前置条件。
+selectScheduleBinding:
+SELECT time_config_id FROM schedule WHERE id = ?;
+
+selectAllScheduleBindings:
+SELECT id, time_config_id FROM schedule;
+
+updateScheduleBinding:
+UPDATE schedule SET time_config_id = ? WHERE id = ?;
+
 -- 整库恢复备份时用：备份里的课表可能整套换掉，逐张比对新旧名字不现实。
 -- 清空后由下一次读取从恢复出来的 JSON 重新导入（导入自带自校验）。
 deleteAllCourses:

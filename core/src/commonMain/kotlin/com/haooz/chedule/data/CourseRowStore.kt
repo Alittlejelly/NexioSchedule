@@ -64,6 +64,26 @@ interface CourseRowStore {
     /** 删整张课表的数据（含锚点行，课程由外键级联删除）。 */
     fun deleteSchedule(scheduleId: String)
 
+    // ── 作息绑定 ──────────────────────────────────────────────────────────────
+    // 绑定的真相在 `schedule.time_config_id`（NOT NULL 外键），不再是 `schedule_time_config_{名字}`
+    // 这个键。把「课表身份」从键名里拿掉之后，「改名要搬键」「删表要删键」「孤儿要靠键名猜」
+    // 这三类问题一起消失 —— 绑定跟着行走，行没了绑定就没了。
+
+    /** 这张课表绑的作息配置 id。没有对应的行（未写过 / 库不可用）返回 null。 */
+    fun bindingOf(scheduleId: String): Long?
+
+    /**
+     * 写绑定。会顺带补齐 `time_config` / `schedule` 两行（都是外键目标），幂等。
+     *
+     * 走 [CourseRowAnchor] 而不是裸 id：`schedule.time_config_id` 是 NOT NULL 外键，
+     * 目标行不存在时 SQLite 直接拒绝写入 —— 这正是我们要的（宁可写失败，也不留悬空绑定），
+     * 而锚点里已经带了构造那两行所需的全部信息。
+     */
+    fun setBinding(anchor: CourseRowAnchor)
+
+    /** 全部课表的绑定。孤儿配置清理用它求差集，不再需要「所有课表都已绑定」这个前置条件。 */
+    fun bindings(): Map<String, Long>
+
     /**
      * 全部作废（整库恢复备份后用）。
      *
