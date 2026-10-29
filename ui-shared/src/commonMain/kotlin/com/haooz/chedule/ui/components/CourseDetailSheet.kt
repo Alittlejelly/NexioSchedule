@@ -3,6 +3,7 @@ package com.haooz.chedule.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,11 +15,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -66,7 +65,6 @@ import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.NoteStr
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.components.text.material.Text as Text
-import com.haooz.chedule.ui.theme.rememberCourseColors
 import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
@@ -273,7 +271,6 @@ private fun CourseDetailCard(
     onNoteSave: (course: Course, week: Int?, text: String) -> Unit,
     onEdit: ((Course) -> Unit)?,
 ) {
-    val courseColors = rememberCourseColors(course, isAppDarkTheme())
     val isCurrentWeek = course.isActiveInWeek(viewingWeek)
     // 时间染色、地点/教师走次要色：一条信息行里区分「几点上课」和「在哪、谁上」
     val primaryColor = MiuixTheme.colorScheme.primary
@@ -375,35 +372,29 @@ private fun CourseDetailCard(
                         .padding(start = 14.dp, end = 14.dp, top = 14.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    // 课程色点：多条记录混排时先靠颜色认出是哪门课
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 7.dp)
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(courseColors.tint)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (isCurrentWeek) {
-                                    course.name
-                                } else {
-                                    SchedStr.nonCurrentWeekName(course.name)
-                                },
-                                modifier = Modifier.weight(1f),
-                                style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
-                                fontWeight = FontWeight.Medium,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            WeekBadge(
-                                text = course.weekTextLocalized(),
-                                highlighted = isCurrentWeek,
-                            )
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                            // 周次最多占半行（够长就折行，不会被省略号截掉），
+                            // 标题吃满剩下那段 —— 所以周次实际用得少时，多出来的宽度全归标题，
+                            // 而周次本身始终贴在最右边。
+                            val badgeMaxWidth = maxWidth * 0.5f
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = course.name,
+                                    modifier = Modifier.weight(1f),
+                                    style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
+                                    fontWeight = FontWeight.Medium,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                WeekBadge(
+                                    text = course.weekTextLocalized(),
+                                    highlighted = isCurrentWeek,
+                                    modifier = Modifier.widthIn(max = badgeMaxWidth),
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.height(5.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -442,15 +433,18 @@ private fun CourseDetailCard(
     }
 }
 
-/** 周次徽章：本周那条用主题色底，非本周保持中性灰。 */
+/** 周次徽章：本周那条用主题色底，非本周保持中性灰。宽度由调用方按权重约束，文字换行不截断。 */
 @Composable
-private fun WeekBadge(text: String, highlighted: Boolean) {
+private fun WeekBadge(
+    text: String,
+    highlighted: Boolean,
+    modifier: Modifier = Modifier,
+) {
     if (text.isBlank()) return
     val accent = MiuixTheme.colorScheme.primary
     val idle = MiuixTheme.colorScheme.onSurfaceVariantActions
     Box(
-        modifier = Modifier
-            .widthIn(max = 132.dp)
+        modifier = modifier
             .clip(ContinuousRoundedRectangle(7.dp))
             .background(
                 if (highlighted) accent.copy(alpha = 0.12f) else idle.copy(alpha = 0.08f)
@@ -462,7 +456,7 @@ private fun WeekBadge(text: String, highlighted: Boolean) {
             fontSize = 12.sp,
             fontWeight = if (highlighted) FontWeight.Medium else FontWeight.Normal,
             color = if (highlighted) accent else idle,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
