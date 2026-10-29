@@ -2100,7 +2100,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
                     ?.let { it.id to it }
             }.toMap()
             synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + parsed }
-            timeConfigIdsCache = all.map { it.id }
+            // 0 是「一个配置都没有」的兜底 id，不进 id 列表（进了会被当成一个真配置）
+            all.map { it.id }.filter { it > 0 }.takeIf { it.isNotEmpty() }?.let { timeConfigIdsCache = it }
         }
         timeConfigsHydrated = true
     }
@@ -2691,7 +2692,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             result[KEY_CURRENT_SCHEDULE_ID] = getCurrentScheduleId()
         }
         ensureEmptyScheduleCourseEntries(result, getScheduleNames())
-        syncCoursesIntoBackup(result)
+        syncRowsIntoBackup(result)
         result.putAll(HolidayManager.exportBackupData())
         // 文件夹用清洗后的结果导出：历史坏数据里的幽灵课表名不应进备份
         result[KEY_SCHEDULE_FOLDERS] = encodeScheduleFolders(getScheduleFolders())
@@ -2699,18 +2700,58 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 备份里的课程以行表为准：行表成为真相后 `schedule_{名字}_courses` 不再更新，
-     * 照抄它会让「备份 → 恢复」抹掉导入之后的全部增删改。
+     * 备份以表为准。表成为真相之后，镜像只是「最近一次成功写入」的快照：
+     * 任何只写表没写镜像的路径（建锚点、写镜像失败被吞掉）都会让备份落后，
+     * 而恢复只认备份。
      *
-     * 只在行表确实答得出时覆盖；读失败或未导入时保留 prefs 里那份原始 JSON。
+     * 每段都只在表答得出时覆盖；表不可用 / 未导入时保留镜像里那份。
      */
-    private fun syncCoursesIntoBackup(result: MutableMap<String, Any>) {
+    private fun syncRowsIntoBackup(result: MutableMap<String, Any>) {
         val rows = CourseStorage.rows ?: return
-        getScheduleNames().forEach { name ->
-            val authoritative = runCatching {
+        val names = getScheduleNames()
+
+        // 只保留当前课表集合的键：已删课表的残留键会被恢复校验判成
+        // 「course data belongs to an unknown schedule」，整份备份都被拒。
+        if (names.isNotEmpty()) {
+            val kept = setOf(KEY_SCHEDULE_NAMES, KEY_SCHEDULE_FOLDERS, "schedule_folder_map")
+            result.keys
+                .filter { key ->
+                    key.startsWith("schedule_") && key !in kept &&
+                        !key.startsWith("schedule_time_config_") &&
+                        names.none { key.startsWith("schedule_${it}_") }
+                }
+                .forEach { result.remove(it) }
+        }
+
+        names.forEach { name ->
+            val courses = runCatching {
                 if (rows.isImported(name)) rows.load(name) else null
             }.getOrNull() ?: return@forEach
-            result[getScheduleKeyPrefix(name) + KEY_COURSES] = encodeCourses(authoritative)
+            result[getScheduleKeyPrefix(name) + KEY_COURSES] = encodeCourses(courses)
+        }
+
+        // 作息：ids 与 payload 一起物化，顺手清掉表里已没有的残留键
+        val configs = runCatching { rows.timeConfigs() }.getOrNull()
+        val liveIds = configs.orEmpty().map { it.id }.filter { it > 0 }
+        if (liveIds.isNotEmpty()) {
+            result[KEY_TIME_CONFIG_IDS] = liveIds.joinToString(",")
+            val live = configs.orEmpty().mapNotNull { row ->
+                val parsed = runCatching { parseTimeConfigSnapshotOrNull(row.payload) }.getOrNull()
+                    ?: return@mapNotNull null
+                "$TIME_CONFIG_PREFIX${row.id}" to encodeTimeConfig(TimeConfig.sanitize(row.id, parsed))
+            }.toMap()
+            result.keys
+                .filter { it.startsWith(TIME_CONFIG_PREFIX) && it != KEY_TIME_CONFIG_IDS }
+                .forEach { result.remove(it) }
+            result.putAll(live)
+        }
+
+        // 三个设置字段：走读取口，未同步的行会先完成 prefs → 行 的同步
+        names.forEach { name ->
+            val prefix = getScheduleKeyPrefix(name)
+            result["${prefix}$KEY_CURRENT_WEEK"] = getCurrentWeek(name)
+            result["${prefix}$KEY_TOTAL_WEEKS"] = getTotalWeeks(name)
+            result["${prefix}$KEY_CLASS_START_TIME"] = getClassStartTime(name)
         }
     }
 
