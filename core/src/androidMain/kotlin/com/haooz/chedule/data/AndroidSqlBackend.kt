@@ -13,21 +13,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * [SqlBackend] 的 Android 实现 —— **整个应用只有一个数据库文件**（`nexio.db`），
- * 键值表 `pref` 与实体表（`schedule` / `course` / …）同库同事务。
+ * [SqlBackend] 的 Android 实现。整个应用一个库文件 `nexio.db`：`pref` 键值表与实体表
+ * 同库同连接，一次事务可同时改课表、课程、作息绑定。
  *
- * 为什么不用两个库（键值一个、实体一个）：删课表要同时删它的课程、改「当前课表」指针、
- * 清绑定——两库做不到一次提交，中间被杀就是半个状态。同库才能一个 `transaction` 全包。
+ * schema 归 SQLDelight（`commonMain/sqldelight/.../Schedule.sq`），此文件不建表。
  *
- * schema 由 SQLDelight 管（`commonMain/sqldelight/.../Schedule.sq`），不在这里写 `CREATE TABLE`：
- * 两处都建表 = 总有一天两边不一致，而那是**升级时才炸**的那种不一致。
- *
- * ## 一致性
- *
- * - 开库后立刻 `PRAGMA foreign_keys = ON`。SQLite 默认**关**外键，漏了这一句，所有
- *   `REFERENCES ... ON DELETE CASCADE` 都只是注释。
- * - WAL：写入顺序追加，进程被杀不会留半截事务；WAL 下默认 `synchronous=NORMAL`。
- * - 所有写操作走 [transaction]，`begin/setTransactionSuccessful/end` 由 SQLDelight 包好。
+ * - 开库后必须 `PRAGMA foreign_keys = ON`：SQLite 默认关闭，漏了所有外键约束都不生效。
+ * - journal 用平台默认（Android 非内存库默认 WAL，同步级别 NORMAL）。
+ * - 写操作一律走 [transaction]。
  */
 class AndroidSqlBackend(context: Context) : SqlBackend {
 

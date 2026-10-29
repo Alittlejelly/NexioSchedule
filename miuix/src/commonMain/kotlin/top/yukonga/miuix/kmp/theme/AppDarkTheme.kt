@@ -15,25 +15,16 @@ import kotlin.concurrent.Volatile
 val LocalForcedDarkTheme = staticCompositionLocalOf<Boolean?> { null }
 
 /**
- * App 偏好里的「是否深色」，由**宿主**在根部 provide。
+ * 宿主下发的「是否深色」。默认 `null` 表示未提供（跟随系统），不能默认 `false`。
  *
- * ⚠ 默认 `null` 而非 `false`：默认 false 会让没 provide 的宿主一律亮色，比跟随系统更糟。
- *
- * 注意：弹窗会把它覆盖成 `null`（阻止强制深色渗进弹窗），所以**不能**只靠它读
- * 「用户选的是深色还是浅色」——那是 [AppSettingDarkBridge] 的事。
+ * 弹窗会把它覆盖成 `null`，所以读用户偏好要走 [AppSettingDarkBridge]。
  */
 val LocalAppSettingDark = staticCompositionLocalOf<Boolean?> { null }
 
 /**
- * 宿主注入的「应用设置深浅色」数据源。
+ * 宿主注入的深浅色数据源。本模块不依赖 `:core`，读不到存储。
  *
- * ## 为什么需要注入而不是自己读
- *
- * 本模块不依赖 `:core`（拿不到存储）。原先 Android 侧是直连 `SharedPreferences` 读 `theme_mode`，
- * 存储换成 SQLite 之后那条路读的是迁移前的旧文件 —— 表现为「设置里切了深浅色，弹窗不跟着变」。
- *
- * 兜底顺序：注入的 [read] → [LocalAppSettingDark]（宿主主题根部下发）→ 系统深浅色。
- * 弹窗内部 Local 被覆盖成 null，靠第一档拿到正确值。
+ * [rememberAppSettingDark] 的取值顺序：注入的 [read] → [LocalAppSettingDark] → 系统深浅色。
  */
 object AppSettingDarkBridge {
 
@@ -41,16 +32,13 @@ object AppSettingDarkBridge {
     @Volatile
     var read: (() -> String)? = null
 
-    /** 订阅偏好变化，返回取消订阅。未注入为 null（不监听，仍可读当前值）。 */
+    /** 订阅变化，返回取消订阅。未注入时不监听。 */
     @Volatile
     var subscribe: ((onChange: () -> Unit) -> (() -> Unit))? = null
 }
 
 /**
- * App 偏好里记录的「是否深色」（跟随系统 / 强制浅 / 强制深）。
- *
- * 真实数据在宿主的存储里，由 [AppSettingDarkBridge] 注入；宿主没注入时退回
- * [LocalAppSettingDark]，再退回系统深浅色（与旧 Skia 侧行为一致，非退化）。
+ * App 偏好里的「是否深色」（跟随系统 / 浅 / 深）。数据经 [AppSettingDarkBridge] 注入。
  */
 @Composable
 fun rememberAppSettingDark(): Boolean {
@@ -71,6 +59,6 @@ fun rememberAppSettingDark(): Boolean {
  * 宿主是否**真的**在用系统壁纸取色（Monet）—— 偏好已开启且当前平台支持
  * （Android 要求 SDK >= 31，其它平台恒为 false）。
  *
- * 默认 `false` 而非 null：不取色即走内置亮暗主题，未接入本 Local 的宿主行为与从前一致。
+ * 默认 `false`：不取色即走内置亮暗主题。
  */
 val LocalMonetColorEnabled = staticCompositionLocalOf { false }

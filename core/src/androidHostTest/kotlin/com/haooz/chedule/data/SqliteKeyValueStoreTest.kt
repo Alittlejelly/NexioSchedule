@@ -7,10 +7,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * [SqliteKeyValueStore] 的语义回归。
- *
- * 全部用 [FakeBackend] 跑在宿主机上 —— 这几条语义（原子性、回滚、按类型窄化）一旦破，
- * 表现都是**静默丢数据**，真机手测是测不出来的。
+ * [SqliteKeyValueStore] 的语义回归：原子性、回滚、按类型窄化。
+ * 这些破掉都是静默丢数据，真机手测测不出来。
  */
 class SqliteKeyValueStoreTest {
 

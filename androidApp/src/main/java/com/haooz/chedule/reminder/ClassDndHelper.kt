@@ -64,7 +64,7 @@ object ClassDndHelper {
     const val MODE_SILENT = 1
     const val MODE_PRIORITY = 2
 
-    /** 走统一存储入口（Android 上即 SQLite）；直连 SharedPreferences 会读不到新写入的开关。 */
+    /** 提醒设置的存储入口。 */
     private fun prefs(context: Context): KeyValueStore = AppStorage.store(PREFS_NAME)
 
     private fun notificationManager(context: Context) =

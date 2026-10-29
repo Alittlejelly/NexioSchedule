@@ -3,27 +3,21 @@ package com.haooz.chedule.data
 import android.content.Context
 
 /**
- * SQLite 键值存储的入口：建库、**一次性从 SharedPreferences 导入并自校验**、按命名空间发 [KeyValueStore]。
+ * 键值存储入口：建库、按命名空间发 [KeyValueStore]、首次访问时从同名 SharedPreferences 导入一次。
  *
- * ## 迁移铁律
+ * 导入规则：
+ * - 不删不改 SharedPreferences 原文件，它留作回滚版本的冷快照；
+ * - 导入、回读比对、写导入标记在同一个事务里，任一步失败整体回滚且不写标记；
+ * - 失败即退回 SharedPreferences（由 [NexioApplication] 的工厂兜住），不重试。
  *
- * 1. **不删、不改 SharedPreferences 原文件**。导入只是把数据抄一份进表，SP 文件留在原地当冷快照 ——
- *    万一要回滚版本，旧包还能读出用户出事前的数据。等新存储跑满两个版本再清理。
- * 2. **写完立刻回读比对，比对不过整体回滚**。校验和导入在**同一个事务**里：要么「数据 + 迁移标记」
- *    一起成立，要么什么都没发生。绝不能出现「导了一半、标记已写」—— 那等于永久丢了后半截数据。
- * 3. **失败就退回 SharedPreferences**，不是重试到成功。[NexioApplication] 在工厂里 `runCatching`
- *    兜住，任何异常都让这个命名空间继续走 SP，用户完全无感（只是没享受到新存储）。
- *
- * ## 首次启动的成本
- *
- * 一个命名空间第一次被访问时会同步做导入 + 自校验。`course_schedule_prefs`（数百 KB JSON）
- * 是最大的一笔，量级在几十毫秒；只在**升级后的第一次启动**发生，之后 `store()` 只读一行 meta。
+ * 导入只在命名空间第一次 `store()` 时发生，之后只读一行 meta。
+ * 冷启动路径上的命名空间由 [NexioApplication] 在 IO 线程预热。
  */
 object SqliteStorage {
 
     private const val TAG = "SqliteStorage"
 
-    /** 迁移标记的前缀。带命名空间，缺一个就少导一个，不会互相顶掉。 */
+    /** 导入标记的前缀。带命名空间，缺一个就少导一个，互不影响。 */
     private const val META_IMPORTED_PREFIX = "sp_imported:"
 
     private val lock = Any()
@@ -31,26 +25,17 @@ object SqliteStorage {
     @Volatile
     private var backend: AndroidSqlBackend? = null
 
-    /** 课程行表门面：和键值表共用同一个 [AndroidSqlBackend]（同一个库、同一个连接）。 */
+    /** 课程行表门面，与键值表共用同一个 [AndroidSqlBackend]。 */
     @Volatile
     private var courseStore: CourseRowStore? = null
 
-    /** 导入失败过的命名空间：不反复尝试（每次启动都重试等于每次都白花几十毫秒，且日志刷屏）。 */
+    /** 导入失败过的命名空间：不再重试。 */
     private val failedNamespaces = LinkedHashSet<String>()
 
-    /**
-     * 每个命名空间**唯一**的 store 实例。
-     *
-     * 必须缓存：`SqliteKeyValueStore` 是「内存快照 + 行级写」，两个实例就是两份互相看不见的快照 ——
-     * 一边写完另一边还读旧值，后写者把前者覆盖掉。`AppStorage` 在 commonMain 拿不到跨平台锁，
-     * 唯一性只能在这里保证（`AppStorage.store` 的注释写了这条契约）。
-     */
+    /** 每个命名空间唯一的实例。两个实例 = 两份互相看不见的快照。 */
     private val stores = HashMap<String, SqliteKeyValueStore>()
 
-    /**
-     * 取某个命名空间的存储。异常一律外抛，由调用方决定回退策略 —— 这里不替调用方"决定"用哪套存储，
-     * 否则回退路径会藏在内部，排查时看不见。
-     */
+    /** 取某个命名空间的存储。异常外抛，由调用方决定回退。 */
     fun store(context: Context, namespace: String): KeyValueStore =
         synchronized(lock) {
             val b = backend ?: AndroidSqlBackend(context.applicationContext).also { backend = it }
@@ -58,25 +43,18 @@ object SqliteStorage {
             stores.getOrPut(namespace) { SqliteKeyValueStore(b, namespace) }
         }
 
-    /**
-     * 课程行表门面。异常外抛，由 [CourseStorage] 兜住并退回 JSON —— 数据库打不开时
-     * 应用仍然要能用（只是没享受到行级写入）。
-     */
+    /** 课程行表门面。异常外抛，由 [CourseStorage] 兜住并退回 JSON。 */
     fun courseRows(context: Context): CourseRowStore = synchronized(lock) {
         courseStore?.let { return it }
         val b = backend ?: AndroidSqlBackend(context.applicationContext).also { backend = it }
         SqliteCourseRowStore(b.database).also { courseStore = it }
     }
 
-    /** 迁移是否已完成（诊断页 / 统计用）。 */
+    /** 该命名空间是否已导入（诊断页 / 统计用）。 */
     fun isImported(namespace: String): Boolean =
         runCatching { backend?.readMeta(META_IMPORTED_PREFIX + namespace) != null }.getOrDefault(false)
 
-    /**
-     * 从同名 SharedPreferences 文件导入。
-     *
-     * 空文件也要写标记：否则每次启动都会去读一次 SP，白花 IO 且掩盖"这个命名空间确实没有数据"。
-     */
+    /** 从同名 SharedPreferences 文件导入。空文件也写标记，表示「这个命名空间确实没有数据」。 */
     private fun importFromSharedPreferencesIfNeeded(
         context: Context,
         backend: SqlBackend,
@@ -89,7 +67,7 @@ object SqliteStorage {
         val snapshot = try {
             prefs.all
         } catch (e: Exception) {
-            // SP 文件本身坏了：不导入，也不标记，让它继续走 SP（行为与迁移前一致）
+            // SP 文件损坏：不导入也不标记，继续走 SP
             failedNamespaces += namespace
             error("读取 $namespace 的 SharedPreferences 失败：$e")
         }
@@ -97,7 +75,7 @@ object SqliteStorage {
         val rows = snapshot.mapNotNull { (key, value) -> value?.let { toRow(key, it) } }
         val unconvertible = snapshot.size - rows.size
         if (unconvertible > 0) {
-            // 部分值转不了不算失败：转了的照样导入。但必须留痕，否则就是"静默丢设置"
+            // 部分值转不了不算失败，但要留痕
             NexioLog.w(TAG, "$namespace 有 $unconvertible 个键类型无法识别，已跳过（其余正常导入）")
         }
         if (snapshot.isNotEmpty() && rows.isEmpty()) {
@@ -109,7 +87,7 @@ object SqliteStorage {
             backend.transaction {
                 rows.forEach { upsert(namespace, it) }
 
-                // ── 自校验：把刚写的读回来，逐键比对类型和值 ──
+                // 自校验：读回刚写的，逐键比对类型和值
                 val written = load(namespace).associateBy { it.key }
                 for (row in rows) {
                     val back = written[row.key]
@@ -132,7 +110,7 @@ object SqliteStorage {
         NexioLog.w(TAG, "已从 SharedPreferences 导入 $namespace：${rows.size} 个键")
     }
 
-    /** SharedPreferences 的运行时类型 → 带标签的行。认不出来返回 null（由调用方计数告警）。 */
+    /** SharedPreferences 运行时类型 → 带标签的行。认不出返回 null。 */
     private fun toRow(key: String, value: Any): KvRow? = when (value) {
         is String -> KvRow(key, SqliteKeyValueStore.TYPE_STRING, value)
         is Int -> KvRow(key, SqliteKeyValueStore.TYPE_INT, value)

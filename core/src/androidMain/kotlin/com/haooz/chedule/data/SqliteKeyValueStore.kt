@@ -3,19 +3,14 @@ package com.haooz.chedule.data
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * 键值表的一行。
- *
- * [type] 取 `s` / `i` / `l` / `f` / `b` / `ss`，与 [FileKeyValueStore] 的落盘标签**同源**。
- * 两个实现共用一套标签，跨端备份/迁移才不需要第二套映射表（多一套就多一处会写错的地方）。
+ * 键值表的一行。[type] 取 `s`/`i`/`l`/`f`/`b`/`ss`，与 [FileKeyValueStore] 的落盘标签一致。
  */
 class KvRow(val key: String, val type: String, val value: Any)
 
 /**
- * 键值表的存储后端。抽出来只为一件事：让 [SqliteKeyValueStore] 的语义能在宿主机上跑回归测试，
- * 不必起真机或 Robolectric（[SharedPreferencesStore] 的监听 bug 就是这么漏出去的，
- * 详见 `androidHostTest/SharedPreferencesStoreListenerTest`）。
+ * 键值表的存储后端。接口只为宿主机单测能跑真事务，不需要真机或 Robolectric。
  *
- * ⚠ [SqlTx] 的所有方法只允许在 [transaction] 的块内调用 —— 块外拿到的事务对象不代表任何一致性。
+ * ⚠ [SqlTx] 的方法只在 [transaction] 块内有效，块外拿到的事务不代表任何一致性。
  */
 interface SqlBackend {
 
@@ -24,7 +19,7 @@ interface SqlBackend {
     /** 启动时一次性把整个命名空间读进内存。键值总量是几百行量级，不需要分页。 */
     fun loadNamespace(namespace: String): List<KvRow>
 
-    /** 迁移标记等元数据。[SqlBackend] 之外的东西一律不放这张表。 */
+    /** 导入标记等元数据。业务数据一律不进这张表。 */
     fun readMeta(key: String): String?
 
     interface SqlTx {
@@ -32,7 +27,7 @@ interface SqlBackend {
         fun delete(namespace: String, key: String)
         fun clearNamespace(namespace: String)
 
-        /** 事务内回读，迁移自校验用（写完立刻查一遍，比对不上就整体回滚）。 */
+        /** 事务内回读，供导入自校验：写完立刻查一遍，对不上就整体回滚。 */
         fun load(namespace: String): List<KvRow>
 
         fun putMeta(key: String, value: String)
@@ -40,25 +35,13 @@ interface SqlBackend {
 }
 
 /**
- * [KeyValueStore] 的 SQLite 实现：内存快照 + 行级写入 + 事务提交。
+ * [KeyValueStore] 的 SQLite 实现：内存快照 + 行级写入 + 单事务提交。
  *
- * ## 为什么是这套结构
+ * 读是纯内存（构造时整份载入）；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
+ * 类型以 `type` 列为准，读时按需窄化（Long→Int、Float→Int）。
  *
- * SharedPreferences 的三个硬伤，这里逐个消掉：
- * 1. **整文件重写**：`apply()` 每次都把整个 XML 落盘（课程 JSON 数百 KB 也一样）。这里只写
- *    受影响的行，`edit{}` 内的多次 put 合并成**一次事务**。
- * 2. **跨文件无原子性**：两个偏好文件之间做不到「要么都成功」。这里所有命名空间在同一张表，
- *    一个事务能同时改多个命名空间。
- * 3. **类型靠猜**：`getInt` 读到 `String` 抛 `ClassCastException`，被调用点的 `runCatching`
- *    吞成默认值 = 静默重置。这里类型写在 `type` 列里，读时按需窄化（Long→Int、Float→Int），
- *    真读不出来才返回默认值。
- *
- * ## 语义
- *
- * 与 [FileKeyValueStore] 严格对齐：`edit{}` 块内按调用序**直接生效**（`put(a); clear()` 后 a 不存在），
- * 提交失败时内存回滚到调用前（否则内存与磁盘会分叉，下一次写入就把错的东西固化下去）。
- *
- * 线程安全：`synchronized` 可用 —— `checkKmpPurity` 只扫 commonMain/skikoMain，扫不到 androidMain。
+ * 每个命名空间只允许一个实例（[SqliteStorage.store] 缓存）：两份快照会互相看不见。
+ * `edit{}` 在副本上生效，提交失败时内存同步回滚。
  */
 class SqliteKeyValueStore(
     private val backend: SqlBackend,
@@ -70,7 +53,7 @@ class SqliteKeyValueStore(
     /** 全量内存快照。读写一律持 [lock]。 */
     private var data: LinkedHashMap<String, KvRow> = LinkedHashMap()
 
-    /** 变更监听。自己持强引用 —— 不需要 SharedPreferences 那套弱引用兜底（见 [SharedPreferencesStore] 的教训）。 */
+    /** 变更监听。强引用；由注册方持 token 注销。 */
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
 
     init {
@@ -90,7 +73,7 @@ class SqliteKeyValueStore(
             TYPE_INT -> r.value as? Int
             TYPE_LONG -> (r.value as? Long)?.toInt()
             TYPE_FLOAT -> (r.value as? Float)?.toInt()
-            // 历史脏数据：类型被写成了字符串，能解析就用，解析不出再退回默认值
+            // 类型被写成字符串时按内容解析，解析不出用默认值
             TYPE_STRING -> (r.value as? String)?.toIntOrNull()
             else -> null
         } ?: defaultValue
@@ -152,7 +135,7 @@ class SqliteKeyValueStore(
         val affected = LinkedHashSet<String>()
         var cleared = false
 
-        // 先在副本上跑：块内抛异常时原状态一点不动，不需要「回滚」这种容易写错的逻辑
+        // 先在副本上跑：块内抛异常时原状态不动
         val working = synchronized(lock) { LinkedHashMap(data) }
         EditorFacade(working, affected) { cleared = true }.block()
 
@@ -172,7 +155,7 @@ class SqliteKeyValueStore(
                     }
                 }
             } catch (t: Throwable) {
-                // 内存必须跟着回滚：否则「磁盘没写成功、内存已经变了」，下一次写入把错的状态固化
+                // 内存同步回滚，避免与磁盘分叉
                 data = previous
                 throw t
             }
@@ -224,7 +207,7 @@ class SqliteKeyValueStore(
     }
 
     override fun unregisterListener(token: Any?) {
-        // 函数类型有类型擦除，不能 `is (String) -> Unit` 判型 —— 按引用移除
+        // 函数类型擦除，只能按引用移除
         @Suppress("UNCHECKED_CAST")
         (token as? (String) -> Unit)?.let { listeners.remove(it) }
     }
@@ -242,7 +225,7 @@ class SqliteKeyValueStore(
         }
     }
 
-    /** 在副本 [working] 上按调用序直接生效，同时记录受影响键。 */
+    /** 在副本 [working] 上按调用序生效，并记录受影响键。 */
     private inner class EditorFacade(
         private val working: LinkedHashMap<String, KvRow>,
         private val affected: MutableSet<String>,
@@ -269,7 +252,7 @@ class SqliteKeyValueStore(
         }
 
         override fun clear() {
-            // 通知要覆盖被清掉的每一个键，否则监听方不会刷新
+            // 清掉的每个键都要通知
             affected += working.keys.toList()
             working.clear()
             onClear()
@@ -279,7 +262,7 @@ class SqliteKeyValueStore(
     companion object {
         const val TAG = "SqliteKeyValueStore"
 
-        // 与 FileKeyValueStore 的落盘标签一字不差，改动会同时废掉两端的备份兼容
+        // 与 FileKeyValueStore 的标签一字不差；改动会废掉两端备份兼容
         const val TYPE_STRING = "s"
         const val TYPE_INT = "i"
         const val TYPE_LONG = "l"

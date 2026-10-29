@@ -180,7 +180,7 @@ class CourseRowStoreTest {
 
         store.renameSchedule(SCHEDULE, "新学期")
 
-        // 与旧实现同语义：新名字原有的课被源课表覆盖
+        // 新名字原有的课被源课表覆盖
         assertEquals(listOf("c1"), store.load("新学期").map { it.id })
         assertTrue(store.load(SCHEDULE).isEmpty())
     }

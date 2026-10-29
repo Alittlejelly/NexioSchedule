@@ -9,11 +9,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * 「JSON blob → 课程行表」这条迁移链路的端到端回归。
+ * JSON blob → 课程行表 导入链路的端到端回归。
  *
- * 单独拿 [CourseRepository] 来测（而不是只测 [SqliteCourseRowStore]），因为真正会丢数据的地方
- * 在**切换逻辑**上：什么时候判定「行表是真相」、写完行表还要不要写 blob、读失败该退回哪里。
- * 这些判断错一条，用户看到的就是「改了课重启又变回去」。
+ * 测 [CourseRepository] 而不是 [SqliteCourseRowStore]：会丢数据的是切换逻辑 ——
+ * 何时判定行表为真相、写行表后还要不要写 blob、读失败退回哪里。
  */
 class CourseRowMigrationTest {
 
@@ -22,7 +21,7 @@ class CourseRowMigrationTest {
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        // 先保证没有行表：这一段要模拟「老用户只有 JSON」的旧状态
+        // 无行表状态（只有 JSON）
         CourseStorage.install { null }
         val repository = CourseRepository.getInstance()
         repository.saveScheduleNames(listOf(SCHEDULE))

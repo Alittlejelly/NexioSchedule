@@ -10,18 +10,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 「课表绑哪套作息」从 `schedule_time_config_{课表名}` 这个键搬到 `schedule.time_config_id` 列之后的回归。
+ * 作息绑定的回归：真相在 `schedule.time_config_id`，prefs 里的键是写穿镜像
+ * （服务备份导出、降级回旧版本、无行表的平台）。两边都断言。
  *
- * 这一步的收益全在**绑定跟着行走进走出**：
- * - 改名不再需要单独搬绑定键（copyScheduleRow 连列带走）；
- * - 删表由 `ON DELETE CASCADE` 顺手清掉绑定，同名重建不会撞上残留；
- * - 判孤儿配置直接求差集，不再需要「所有课表都已显式绑定」这个前置条件。
- *
- * prefs 里的键**降级成写穿镜像**，只服务三件事：备份格式（exportAllPreferences 全量遍历 prefs）、
- * 降级回旧版本、没有行表的平台。所以每个用例同时断言两处，任何一边漏写都会被这里抓住。
- *
- * ⚠ `CourseRepository` 是单例，prefs 在 JVM 内首次构造时钉死当时的 store，测试类之间共用同一份；
- * 所以所有数据都自己在用例里造，不假设 store 是空的。
+ * ⚠ `CourseRepository` 是单例，prefs 在首次构造时钉死当时的 store，测试类之间共用同一份；
+ * 每个用例自己造数据，不假设 store 为空。
  */
 class TimeConfigBindingTest {
 

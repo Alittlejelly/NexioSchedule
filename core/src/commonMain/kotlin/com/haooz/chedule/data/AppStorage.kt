@@ -3,40 +3,39 @@ package com.haooz.chedule.data
 import kotlin.concurrent.Volatile
 
 /**
- * 全局存储入口：启动时 [init] 一次，业务用 [store] 按偏好文件名取读写通道。
- * ⚠ 每个偏好名对应独立文件，绝不合并（合并会改掉存量数据落盘位置）；未初始化读取抛异常而非静默返回空数据，便于定位「设置全丢」。
+ * 全局存储入口：启动时 [init] 一次，业务用 [store] 按偏好名取读写通道。
+ *
+ * 每个偏好名是一个独立命名空间（Android 侧是同一张表的 `namespace` 分区）。
+ * 未初始化时读取抛异常，不静默返回空数据。
  */
 object AppStorage {
-    // ⚠ 必须用 kotlin.concurrent.Volatile：裸 @Volatile 依赖 JVM 专有默认导入，在 Kotlin/Native 与 JS 上会 Unresolved reference。
+    // 必须用 kotlin.concurrent.Volatile：裸 @Volatile 在 Kotlin/Native 与 JS 上无法解析
     @Volatile
     private var factory: ((String) -> KeyValueStore)? = null
 
-    /** 实例缓存。copy-on-write 不可变 Map：每个名字一生只写入一次，重建开销可忽略，换来无锁读取。 */
+    /** 实例缓存。copy-on-write：每个名字只写一次，读无锁。 */
     @Volatile
     private var cache: Map<String, KeyValueStore> = emptyMap()
 
-    /** 是否已初始化。用于初始化前可能被调用的容错分支。 */
+    /** 是否已初始化。 */
     val isReady: Boolean get() = factory != null
 
-    /**
-     * @param factory 由平台侧提供：Android 传
-     *   `{ name -> context.getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore() }`
-     */
+    /** @param factory 由平台侧提供，见 `NexioApplication`。 */
     fun init(factory: (String) -> KeyValueStore) {
         this.factory = factory
         cache = emptyMap()
     }
 
-    /**     * 两个实例 = 两份互相看不见的快照，一边写另一边读旧值、后写者覆盖前者 ——
-     * 表现为「设置改了偶发不生效」这种最难查的形态。本对象在 commonMain，
-     * 没有跨平台的锁可用，所以唯一性的保证下沉到平台工厂（见 `SqliteStorage.store`）。
+    /**
+     * 取某个偏好文件的读写入口。工厂对同一个名字必须返回同一个实例
+     * （Android 侧由 [SqliteStorage.store] 缓存保证）；存储实现持内存快照，两个实例互相看不见对方写入。
      */
     fun store(name: String): KeyValueStore {
         cache[name]?.let { return it }
         val f = factory ?: error(
             "AppStorage 未初始化：请在 Application.onCreate() 中调用 AppStorage.init { name -> … }"
         )
-        // 并发下可能调用两次工厂，但工厂返回同一实例，后写入者胜出，结果等价。
+        // 并发下工厂可能被调两次，返回同一实例，后写入者胜出
         val created = f(name)
         cache = cache + (name to created)
         return created

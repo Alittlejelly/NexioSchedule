@@ -49,11 +49,7 @@ object CrashLogHelper {
     private const val KEY_RECORDING_STARTED = "recording_started"
     private const val KEY_READY_FILE = "ready_file"
 
-    /**
-     * 录制状态专用存储口。走统一存储（Android 上即 SQLite），但**保留一条 SharedPreferences 退路**：
-     * 本文件参与崩溃处理，写它的时机恰恰是「别处已经出事」，不能再让存储层自己抛异常
-     * （例如崩溃发生在 Application.onCreate 的 AppStorage.init 之前）。整个文件只有这一处直连 SP。
-     */
+    /** 录制状态的存储入口。崩溃路径使用，初始化失败时退回 SharedPreferences。 */
     private fun prefs(context: Context): KeyValueStore =
         runCatching { AppStorage.store(PREFS) }.getOrElse {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).asKeyValueStore()

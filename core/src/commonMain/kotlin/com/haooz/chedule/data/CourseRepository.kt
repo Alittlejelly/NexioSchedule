@@ -27,18 +27,16 @@ class CourseRepository private constructor() : PeriodTimeSource {
     private var globalSectionTimesCache: Map<Int, String>? = null
 
     /**
-     * 「课表 → 绑定的作息配置 id」缓存。0 表示已确认未绑定（binding 永远不为 0，可以直接当哨兵）。
+     * 「课表 → 绑定的作息配置 id」缓存，0 表示未绑定。
      *
-     * 为什么必须有：绑定的权威在 `schedule.time_config_id`，但 [getScheduleTimeConfigId] 会被
-     * [getPeriodTimes] / [getSectionsForSchedule] 在 draw 期反复调用。没有这层缓存，
-     * 每一帧都要打一次 SQLite —— 换来的是「更正确的存储」和「更差的首屏帧率」。
+     * [getScheduleTimeConfigId] 在 draw 期被 [getPeriodTimes] / [getSectionsForSchedule] 反复调用，
+     * 不缓存就是每帧一次 SQLite 查询。
      */
     private val bindingCache = mutableMapOf<String, Long>()
 
     init {
-        // 启动迁移，两者都幂等、只跑一次：课表收进默认文件夹；清理闲置 time_config
-        //（判据不可靠时整体跳过，见函数注释）。不做「缺绑定就补绑」的迁移——
-        // 那会让 prune 的「未绑定即跳过」保护失效，把只在旧指针里的配置误判成孤儿删掉。
+        // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
+        // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
         migrateSchedulesIntoDefaultFolder()
         pruneOrphanTimeConfigsIfNeeded()
     }
@@ -294,12 +292,11 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 读一个课表的课程。**行表是真相，JSON blob 只是迁移来源与兜底。**
+     * 读一个课表的课程。行表是真相，JSON blob 只作导入来源与兜底。
      *
-     * 三条路径，优先级从高到低：
-     * 1. 已导入行表 → 直接读行（不再解析 JSON，也不再受坏 JSON 影响）；
-     * 2. 没导入 → 从 blob 导入一次（导入与标记同一事务，自校验不过整体回滚）；
-     * 3. 没有行表（桌面端 / 测试 / 库打不开）或导入失败 → 读 blob，行为与迁移前完全一致。
+     * 1. 已导入 → 读行；
+     * 2. 未导入 → 从 blob 导入一次（导入与标记同一事务，自校验不过整体回滚）；
+     * 3. 没有行表（桌面 / 测试 / 库打不开）或导入失败 → 读 blob。
      */
     private fun loadCourses(scheduleId: String): List<Course> {
         val rows = CourseStorage.rows ?: return readCoursesFromBlob(scheduleId) ?: emptyList()
@@ -308,7 +305,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             return try {
                 rows.load(scheduleId)
             } catch (e: Exception) {
-                // 行表读挂了不能返回空：那会让下一次 saveCourses 把空课表写回去（老 bug 的翻版）
+                // 不能返回空：下一次 saveCourses 会把空课表写回去
                 NexioLog.e(TAG, "读取课程行表失败，本次回退 JSON：schedule=$scheduleId", e)
                 readCoursesFromBlob(scheduleId) ?: emptyList()
             }
@@ -337,16 +334,15 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 一次性迁移：JSON → 行表。
+     * 从 JSON 导入行表。
      *
-     * 三种「不导入」的情况都是**故意不写标记**的：没数据的课表下面单独处理；坏 JSON 保持原样；
-     * 拿不到作息锚点（没有可绑定的配置）。标记不写 = 下次读取还会再试，而不会把坏数据盖章成"已迁移"。
+     * 坏 JSON 与拿不到作息锚点时**不写导入标记**：下次读取还会重试，不会把坏数据记成已导入。
      */
     private fun importCoursesFromBlob(scheduleId: String, rows: CourseRowStore): List<Course>? {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES"
         val json = prefs.getStringOrNull(key)
         if (json == null) {
-            // 新建 / 新学期课表本来就没有课程键：直接标记成空表，否则每次读都要白跑一次导入
+            // 没有课程键的课表（新建 / 新学期）直接记成空表
             val anchor = courseRowAnchor(scheduleId) ?: return null
             rows.importAll(anchor, emptyList())
             return emptyList()
@@ -359,17 +355,15 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 行表需要的外键锚点：`schedule.time_config_id` 是 NOT NULL 外键，所以必须有一份真实存在的作息配置。
+     * 行表的外键锚点。`schedule.time_config_id` 是 NOT NULL 外键，必须有一份真实存在的作息配置。
      *
-     * 取不到配置（全新安装且一个配置都没有）时返回 null，调用方退回 JSON —— 不凭空造配置，
-     * 否则「课表用哪套作息」这个语义会被存储层偷偷改掉。
+     * 一个配置都没有时返回 null，调用方退回 JSON；不凭空造配置。
      */
     private fun courseRowAnchor(scheduleId: String): CourseRowAnchor? =
-        // 只读，不补绑：读课程不该顺手改用户的作息绑定。未绑定就用它此刻**实际会用到**的那套
-        //（与 getScheduleTimeConfigId 同一套回退），锚点如实记录「这张课表现在吃的是哪份配置」。
+        // 只读不补绑。未绑定时用它实际会用到的那套（与 getScheduleTimeConfigId 同一回退）
         rowAnchorFor(scheduleId, boundTimeConfigIdOrNull(scheduleId) ?: resolveLegacyCurrentTimeConfigId())
 
-    /** 按「指定绑定」构造锚点。[setScheduleTimeConfigId] 用它在写绑定的同时把外键目标补齐。 */
+    /** 按指定绑定构造锚点。 */
     private fun rowAnchorFor(scheduleId: String, timeConfigId: Long): CourseRowAnchor? {
         if (timeConfigId == 0L && getTimeConfigIds().isEmpty()) return null
         val config = getTimeConfig(timeConfigId)
@@ -416,9 +410,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     )
     /** 任一稳定字段名出现即可；坏 JSON 判为无课，避免被当成空课表静默覆盖 */
     private fun coursesJsonLooksValid(json: String): Boolean {
-        // 空数组是**合法数据**（新建课表 / 把课表清空），没有任何字段可丢。
-        // 判成坏 JSON 的后果不是「保守」，而是：空课表永远不导入行表 → 永远没有锚点行 →
-        // `schedule.time_config_id` 也就永远写不进去，绑定只能停在 prefs 镜像里。
+        // 空数组是合法数据（新建 / 清空课表）。判成坏 JSON 会让空课表永不导入行表，
+        // 也就永远没有锚点行，绑定写不进 schedule。
         val trimmed = json.trim()
         if (trimmed.isEmpty()) return false
         if (trimmed == "[]") return true
@@ -466,11 +459,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     fun getAllCourses(): List<Course> = getCoursesForSchedule(getCurrentScheduleId())
 
     /**
-     * 保存整个课表的课程列表（调用点不变，内部改成行级差量写）。
-     *
-     * 为什么不把 API 拆成 add/update/delete 三件套：现有调用点全部是「读全量 → 改内存 → 存全量」，
-     * 改签名等于把几十个调用点一起动，风险远大于收益。这里在**存储层**做差分，
-     * 效果一样（改一门课只写一行），调用方一行不用改。
+     * 保存整个课表的课程列表。调用点都是「读全量 → 改内存 → 存全量」，签名保持不变；
+     * 差分在存储层做，改一门课只写一行。
      */
     fun saveCourses(courses: List<Course>, notify: Boolean = true) {
         val scheduleId = getCurrentScheduleId()
@@ -478,7 +468,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val rows = CourseStorage.rows
 
         if (rows != null && rows.isImported(scheduleId)) {
-            // 缓存可能没热（例如刚切课表就保存）：必须拿到真实的上一版，否则删掉的课不会被删
+            // 缓存可能未热（刚切表就保存）：必须拿到真实上一版，否则删掉的课不会被删
             val previous = courseCache[scheduleId] ?: loadCourses(scheduleId)
             val anchor = courseRowAnchor(scheduleId)
             val written = anchor != null && try {
@@ -489,8 +479,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 false
             }
             if (!written) {
-                // 兜底顺序不能反：先写 blob，再清标记。反过来的话，中间被杀就是
-                // 「标记说以 JSON 为准，而 JSON 还是上一版」—— 这次改的课直接丢。
+                // 顺序不能反：先写 blob 再清标记。反了中途被杀，这次改的课会丢
                 prefs.edit {
                     putString("${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES", encodeCourses(normalized))
                 }
@@ -499,7 +488,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 }
             }
         } else {
-            // 行表不可用 / 尚未导入：保持旧行为，写 JSON（下次读取会再尝试导入）
+            // 行表不可用或未导入：写 JSON，下次读取再尝试导入
             prefs.edit {
                 putString("${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES", encodeCourses(normalized))
             }
@@ -510,7 +499,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         if (notify) dispatchCourseChanged("bulk", "")
     }
 
-    /** 课程落在哪张课表的表里，就以哪张课表为准 —— 旧 blob 里可能残留别的课表 id。 */
+    /** 统一 scheduleId：blob 里可能残留别的课表 id。 */
     private fun List<Course>.normalizeScheduleId(scheduleId: String): List<Course> =
         if (all { it.scheduleId == scheduleId }) this
         else map { if (it.scheduleId == scheduleId) it else it.copy(scheduleId = scheduleId) }
@@ -1491,8 +1480,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /** 为课表新建默认 4/4/4 专属时间配置并绑定，避免多课表共享 */
     fun createDefaultTimeConfigForSchedule(name: String) {
-        // 不能用 getScheduleTimeConfigId 判断已绑定：它对未绑定会回退到第一个配置 id。
-        // 也不能只看 prefs 键：绑定真相在行表，旧版残留的镜像键可能指向已删配置。
+        // 不能用 getScheduleTimeConfigId 判断：它对未绑定会回退到第一个配置 id。
+        // 也不能只看 prefs 键：真相在行表，镜像键可能指向已删配置。
         if (boundTimeConfigIdOrNull(name) != null) return
         val newId = addTimeConfig(
             TimeConfig(
@@ -1675,8 +1664,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
                     }
                 }
             }
-            // 镜像键不匹配上面前缀，循环迁不到，单独搬；权威绑定已经在 schedule 行上，
-            // 由下面的 rows.renameSchedule（copyScheduleRow 会带上 time_config_id）一起搬走
+            // 镜像键不匹配上面前缀，单独搬；权威绑定由 renameSchedule 连行带走
             val oldBoundKey = "$SCHEDULE_TIME_CONFIG_PREFIX$oldName"
             if (prefs.contains(oldBoundKey)) {
                 val boundId = prefs.getLong(oldBoundKey, 0L)
@@ -1685,8 +1673,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
                     remove(oldBoundKey)
                 }
             }
-            // 行表按课表名做主键，改名必须把行数据搬过去（搬标记、搬课程），
-            // 不能「删掉等新名字重新导入」—— blob 在迁移后已冻结，重建会读回旧课表
+            // 行表以课表名为主键，改名必须搬行（含标记与课程）；blob 已冻结，重建只会读回旧课表
             CourseStorage.rows?.let { rows ->
                 runCatching { rows.renameSchedule(oldName, newName) }
                     .onFailure { NexioLog.w(TAG, "迁移课程行表失败：$oldName → $newName", it) }
@@ -1819,19 +1806,18 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 「这张课表真正绑定了哪个配置」——没绑定就是 null。
+     * 这张课表绑定的配置。未绑定返回 null。
      *
-     * 两处存储，**行表优先**：
-     * 1. `schedule.time_config_id`：权威。绑定跟着课表行走，改名由 copyScheduleRow 连行搬、删表由
-     *    CASCADE 带走，不需要任何「把键搬来搬去」的补偿逻辑；
-     * 2. `schedule_time_config_{名字}`：**写穿镜像**，只为三件事存在 —— 备份格式兼容
-     *    （`exportAllPreferences` 按 prefs 全量导出）、降级回旧版本可读、没有行表的平台（桌面 / 测试）。
+     * 两处存储，行表优先：
+     * 1. `schedule.time_config_id`：权威，随行走 —— 改名搬行、删表级联；
+     * 2. `schedule_time_config_{名字}`：写穿镜像，供备份导出（`exportAllPreferences` 遍历 prefs）、
+     *    降级回旧版本、以及没有行表的平台（桌面 / 测试）。
      *
-     * 不能用 [getScheduleTimeConfigId] 判断是否绑定：它对未绑定会回退到旧全局指针 / 第一个配置，
-     * 永远不为 0；也不能只判存在：值是 0 或指向已删配置时，等价于没绑。
+     * 不能用 [getScheduleTimeConfigId] 判断：它对未绑定会回退，永远不为 0。
+     * 值 0 或指向已删配置，等价于未绑定。
      */
     private fun boundTimeConfigIdOrNull(scheduleId: String): Long? {
-        // 缓存 + 每次按 id 集合校验：删配置后缓存里的旧值会被判成「未绑定」，不必逐个调用点手动失效
+        // 按 id 集合校验：删配置后旧缓存自动判成未绑定，无需手动失效
         val resolved = bindingCache[scheduleId] ?: resolveBoundTimeConfigId(scheduleId).also {
             bindingCache[scheduleId] = it
         }
@@ -1855,13 +1841,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 当前被任何课表占用的配置 id：**行表 ∪ prefs 镜像**。
+     * 当前被任何课表占用的配置 id：行表 ∪ prefs 镜像。
      *
-     * 必须取并集而不是只看一边 —— 恢复备份后行表被整体作废，那一刻绑定只存在于刚写回的 prefs 里；
-     * 反过来行表刚迁完、镜像还没补写的窗口里也只有行表是对的。少看一边就会把在用的配置判成孤儿。
+     * 取并集：恢复备份后行表被整体作废，那一刻绑定只在 prefs 里；镜像还没补写时又只有行表是对的。
      *
-     * @return null 表示**判据不可靠**（行表在但读失败）。调用方必须当成「不知道」处理：
-     *   清理跳过、补绑宁可复制新配置，也不要基于残缺判据做不可逆的事。
+     * @return null 表示判据不可靠（行表在但读失败）。调用方按「不知道」处理：
+     *   清理跳过，补绑宁可复制新配置。
      */
     private fun boundTimeConfigIdsInUse(): Set<Long>? {
         val result = mutableSetOf<Long>()
@@ -1879,28 +1864,23 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 写入前取「这张课表自己的」配置 id，未绑定就当场绑上。
+     * 写入前取这张课表自己的配置 id，未绑定就当场绑上。
      *
-     * 为什么必须有这一步：**读取**回退是兜底（不能让页面空白），但**写入**绝不能回退 ——
-     * 否则未绑定的课表改节次 / 改时间 / 删作息时，改的是它回退到的那套配置，
-     * 也就是另一张课表的作息（「只改了 A 的作息，B 跟着变」/「同步只同步了作息」）。
+     * 读取可以回退，写入不能：未绑定的课表改节次 / 改时间会改到它回退到的那套，即另一张课表的作息。
      *
-     * 回退到的那套若没有别的课表绑定（多半是删表留下的孤儿），直接过户给它，不凭空多一份；
-     * 已被别的课表绑着就复制一份独立配置，绝不共享。
+     * 回退那套没有别的课表绑定时直接过户，已被别人绑着就复制一份独立配置。
      */
     private fun ensureScheduleTimeConfigId(scheduleId: String): Long {
         boundTimeConfigIdOrNull(scheduleId)?.let { return it }
         val fallbackId = resolveLegacyCurrentTimeConfigId()
-        // 判据读不到（行表在但查询失败）时按「已被别人占用」处理：宁可多复制一份独立配置，
-        // 也不要把别人的作息过户过来 —— 后者是「改 A 的作息 B 跟着变」的直接成因
+        // 判据读不到时按「已被占用」处理：复制独立配置，不过户别人的作息
         val boundElsewhere = boundTimeConfigIdsInUse()?.let { fallbackId in it } ?: true
         val id = if (boundElsewhere) {
             addTimeConfig(getTimeConfig(fallbackId).copy(id = 0L, name = scheduleId))
         } else {
             fallbackId
         }
-        // id=0 是「一个配置都没有」的兜底值，不能写进绑定：
-        // 写成 0 会让 prune 与 boundTimeConfigIdOrNull 都把它当成「有绑定」
+        // 0 是「一个配置都没有」的兜底值，写进绑定会被当成有绑定
         if (id == 0L) return 0L
         NexioLog.w(
             TAG,
@@ -1911,16 +1891,15 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 改绑作息。**行表是权威，prefs 键是写穿镜像。**
+     * 改绑作息。行表是权威，prefs 键是写穿镜像。
      *
-     * 镜像绝不能省：`exportAllPreferences` 是一次 prefs 全量遍历，它构成备份格式本身；
-     * 少了这个键，备份恢复后所有课表会一起退回旧全局指针，等于全体共用一套作息。
-     * 代价只是同一事务文件里多一行 upsert（键值表也在 `nexio.db` 里），不是第二套存储引擎。
+     * 镜像不能省：`exportAllPreferences` 遍历 prefs 构成备份格式，少了这个键，
+     * 恢复后所有课表会退回旧全局指针、共用一套作息。
      */
     fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) {
-        // 0 = 「一个配置都没有」的兜底值，不写进绑定（镜像里保留旧行为，读取侧一律当未绑定）
+        // 0 是「一个配置都没有」的兜底值，不写进绑定
         if (timeConfigId != 0L) {
-            // 没有行表（桌面端 / 测试 / 库打不开）时只有镜像可用，行为与改造前一致
+            // 没有行表（桌面 / 测试 / 库打不开）时只有镜像可用
             CourseStorage.rows?.let { rows ->
                 val anchor = rowAnchorFor(scheduleId, timeConfigId)
                 if (anchor == null) {
@@ -1942,8 +1921,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun switchToSchedule(scheduleId: String) {
         setCurrentScheduleId(scheduleId)
-        // 补绑必须走 ensure：以前用 getScheduleTimeConfigId 判断「是否已绑定」，
-        // 而它未绑定时会回退成非 0，于是补绑分支永远不可达，未绑定的课表一直共用别人的作息
+        // 补绑必须走 ensure：[getScheduleTimeConfigId] 对未绑定会回退成非 0，不能用它判是否已绑
         val timeConfigId = ensureScheduleTimeConfigId(scheduleId)
         if (timeConfigId != 0L) {
             val config = getTimeConfig(timeConfigId)
@@ -2041,7 +2019,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     fun getCurrentTimeConfigId(): Long {
         val scheduleId = getCurrentScheduleId()
         boundTimeConfigIdOrNull(scheduleId)?.let { return it }
-        // 升级自旧版（仅有全局指针）：回退旧指针并补绑，避免节数被重置为默认
+        // 未绑定：回退旧全局指针并补绑，避免节数被重置为默认
         val resolved = resolveLegacyCurrentTimeConfigId()
         setScheduleTimeConfigId(scheduleId, resolved)
         return resolved
@@ -2172,19 +2150,17 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 清理没有课表绑定的孤儿时间配置。删除不可逆，只在能证明没人用时才动手。
+     * 清理没有课表绑定的孤儿时间配置。删除不可逆，判据不足时不动手。
      *
-     * 判据统一到 [collectBoundTimeConfigIds]（行表绑定 ∪ prefs 镜像 ∪ 旧全局指针及其解析值）。
-     * 以前这里还有一条「只要有一张课表没显式绑定就整体跳过」的前置条件 —— 那是在补偿
-     * 「绑定存在键名里、只能靠键名去猜」；现在绑定是行上的列，未绑定的课表会回退到旧指针，
-     * 而旧指针本身就在判据里，所以这条前置条件可以去掉，只为观测留一行日志。
+     * 判据是 [collectBoundTimeConfigIds]：行表绑定 ∪ prefs 镜像 ∪ 旧全局指针及其解析值。
+     * 未绑定的课表会回退到旧指针，而指针值本身就在判据里，所以不影响正确性。
      */
     fun pruneOrphanTimeConfigsIfNeeded() {
         val ids = getTimeConfigIds()
         if (ids.size <= 1) return
         val unbound = getScheduleNames().filter { boundTimeConfigIdOrNull(it) == null }
         if (unbound.isNotEmpty()) {
-            // 不再跳过：它们会回退到旧全局指针，而指针值在下面的判据里
+            // 未绑定的课表回退到旧全局指针，指针值在下面的判据里
             NexioLog.w(TAG, "课表 $unbound 未绑定时间配置，按旧指针计入在用水位（ids=$ids）")
         }
         val bound = collectBoundTimeConfigIds() ?: run {
@@ -2205,8 +2181,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 判定「正在被使用」的唯一口径：全部课表绑定（行表 ∪ prefs 镜像，含已不存在的课表残留）
-     * + 旧全局指针本身及其解析值（未绑定的课表会回退到它）。
+     * 「正在被使用」的判据：全部课表绑定（行表 ∪ prefs 镜像，含已删课表的残留）
+     * + 旧全局指针及其解析值（未绑定的课表会回退到它）。
      */
     private fun collectBoundTimeConfigIds(): Set<Long>? {
         val bound = boundTimeConfigIdsInUse()?.toMutableSet() ?: return null
@@ -2649,8 +2625,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             }
         }
         HolidayManager.restoreBackupData(holidayBackup)
-        // 备份会把整套课表换掉：行表必须整体作废，否则恢复完读到的还是恢复前那张课表
-        // （行表有导入标记 = 它就是真相，不会回头看刚写好的 JSON）。下一次读取会重新导入。
+        // 备份会换掉整套课表，行表必须整体作废：带导入标记的行表是真相，不会回头看刚写入的 JSON
         CourseStorage.rows?.let { rows ->
             runCatching { rows.invalidateAll() }
                 .onFailure { NexioLog.e(TAG, "恢复备份后作废课程行表失败，可能读到恢复前的课表", it) }
@@ -2770,8 +2745,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val key = "${prefix}$KEY_COURSES"
         val json = encodeCourses(courses)
         prefs.edit { putString(key, json) }
-        // 单课表导入只覆盖这一张：把它在行表里的导入标记清掉，下次读取会拿刚写入的 JSON 重建。
-        // 不清的话行表仍是「已导入」= 真相，用户看到的还是导入前的课表。
+        // 只覆盖这一张：清掉它的导入标记，下次读取会用刚写入的 JSON 重建
         CourseStorage.rows?.let { rows ->
             runCatching { rows.markStale(scheduleName) }
                 .onFailure { NexioLog.w(TAG, "清除导入标记失败：schedule=$scheduleName", it) }

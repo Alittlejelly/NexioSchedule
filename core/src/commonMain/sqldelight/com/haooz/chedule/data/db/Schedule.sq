@@ -1,13 +1,7 @@
--- 课程表实体 schema（v1）
+-- 课程表 schema（v1）
 --
--- 设计原则：**按「改动粒度」拆表，不搞教条式第三范式。**
---   · 会频繁单点改的（课程、课程周次、课程周备注）→ 行级，改一门课只写一行；
---   · 整份编辑的小聚合（作息配置、作息方案的时间体）→ 一行一份 JSON（≤ 2KB），
---     改一个节次时间重写这一点点，而不是整张课表；
---   · 需要被外键引用的（课表、文件夹）→ 列出来，约束才生效。
---
--- 这样写放大从「改一门课 = 序列化整份课表 JSON（数百 KB）」降到「一行 UPDATE（几十字节）」，
--- 同时不为此付出十几张表的复杂度。
+-- 按「改动粒度」拆表：会单点改的（课程、周次、周备注）行级；整份编辑的小聚合
+-- （作息配置）一行一份 JSON；需要被外键引用的（课表、文件夹）列出来。
 
 CREATE TABLE meta (
     k TEXT NOT NULL PRIMARY KEY,
@@ -15,8 +9,7 @@ CREATE TABLE meta (
 );
 
 -- ── 键值层 ────────────────────────────────────────────────────────────────
--- 与实体表同库：一个事务能同时改设置和课程，这是两库方案做不到的。
--- type 取 s/i/l/f/b/ss，与 FileKeyValueStore 的落盘标签同源。
+-- 与实体表同库，同一事务可同时改设置与课程。type 取 s/i/l/f/b/ss，与 FileKeyValueStore 一致。
 CREATE TABLE pref (
     ns   TEXT NOT NULL,
     k    TEXT NOT NULL,
@@ -36,9 +29,8 @@ CREATE TABLE folder (
 );
 
 -- ── 作息配置 ──────────────────────────────────────────────────────────────
--- payload 是 TimeConfig 去掉 id/name 后的整份 JSON（骨架 + sectionTimes + specialBlocks + routines）。
--- 它是「整份编辑、整份保存」的聚合根，拆成列只会把一次编辑变成十几次写。
--- 真正需要约束的是「课表绑哪一个」，那由 schedule.time_config_id 外键保证。
+-- payload 是 TimeConfig 去掉 id/name 的整份 JSON（骨架 + sectionTimes + specialBlocks + routines）。
+-- 整份编辑整份保存的聚合根，不拆列。「课表绑哪一个」由 schedule.time_config_id 外键保证。
 CREATE TABLE time_config (
     id      INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     name    TEXT NOT NULL,
@@ -46,9 +38,8 @@ CREATE TABLE time_config (
 );
 
 -- ── 课表 ──────────────────────────────────────────────────────────────────
--- ⚠ 这张表是整次改造的核心收益：
---   time_config_id NOT NULL + FOREIGN KEY，把「按课表名绑作息」换成按 id 绑。
---   改名不再需要搬绑定键，删课表由 ON DELETE 处理，孤儿配置不再需要 prune 去猜。
+-- time_config_id NOT NULL + 外键：绑定跟着行走，改名搬行、删表级联、孤儿直接求差集。
+-- 课表名是主键（id == name），改名等于换 id。
 CREATE TABLE schedule (
     id             TEXT NOT NULL PRIMARY KEY,
     name           TEXT NOT NULL UNIQUE,
@@ -119,9 +110,8 @@ SELECT course_id, week, note FROM course_week_note ORDER BY course_id, week;
 selectCoursesOf:
 SELECT * FROM course WHERE schedule_id = ? ORDER BY day_of_week, start_section;
 
--- 周次 / 周备注一次取整张课表，不在 Kotlin 里按课循环查（40 门课 → 80 次查询的 N+1）
--- ORDER BY 不能省：周次顺序会进 Course.selectedWeeks，没有排序就依赖行的物理顺序，
--- 换个 SQLite 版本或 vacuum 一次就可能变。
+-- 周次 / 周备注各一条查询取整张课表，不按课循环查（避免 N+1）。
+-- ORDER BY 不能省：周次顺序会进 Course.selectedWeeks，依赖物理顺序在 vacuum 后会变。
 selectWeeksOfSchedule:
 SELECT cw.course_id, cw.week FROM course_week cw
 JOIN course c ON c.id = cw.course_id
@@ -144,9 +134,8 @@ SELECT * FROM time_config WHERE id = ?;
 
 -- ── 写：全部是行级，且都在调用方的事务里 ──────────────────────────────────
 
--- ⚠ 这里是 INSERT OR IGNORE，不是 INSERT OR REPLACE。
---   REPLACE 的语义是「删掉冲突的旧行再插新的」，在 foreign_keys=ON 下会**级联删掉该课表的全部课程**
---   —— 每次存课表锚点就把课表清空，是完全静默的数据丢失。锚点只在不存在时插入。
+-- ⚠ 必须 OR IGNORE，不能 OR REPLACE：REPLACE 会先删冲突行，foreign_keys=ON 时
+-- 级联删掉该课表的全部课程 —— 存一次锚点就把课表清空。
 ensureScheduleRow:
 INSERT OR IGNORE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
 VALUES (?, ?, NULL, ?, ?, ?, ?, ?);
@@ -154,11 +143,9 @@ VALUES (?, ?, NULL, ?, ?, ?, ?, ?);
 deleteSchedule:
 DELETE FROM schedule WHERE id = ?;
 
--- 改名：课表名就是主键，改名等于换 id。行数据必须**搬**过去，不能删了等重新导入 ——
--- 迁移之后 JSON blob 就不再更新了，重新导入等于把用户读回迁移前的旧课表。
--- OR REPLACE：改成一个已存在的名字时（旧代码允许重名，没有拦截）不能抛异常，
--- 语义与旧实现一致 —— 新名字原有的课被覆盖掉。REPLACE 会级联删掉目标课表原有的课程，
--- 紧接着 moveCoursesToSchedule 把源课表的课程搬进去，最终结果正确。
+-- 改名：课表名即主键，改名等于换 id，行数据必须搬过去（JSON blob 已不再更新）。
+-- OR REPLACE：改成已存在的名字时覆盖它，REPLACE 会级联删掉目标课表原有的课程，
+-- 随后 moveCoursesToSchedule 把源课表的课程搬进来。
 copyScheduleRow:
 INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
 SELECT ?, ?, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start
@@ -168,10 +155,8 @@ moveCoursesToSchedule:
 UPDATE course SET schedule_id = ? WHERE schedule_id = ?;
 
 -- ── 作息绑定：`schedule.time_config_id` 是唯一真相 ────────────────────────
--- 旧实现把绑定存在 `schedule_time_config_{课表名}` 这个键里，于是「课表身份」被编码进了键名：
--- 改名要单独搬一次键、删表要单独删一次键、判「孤儿配置」要拿键名去和课表名做集合差。
--- 落到行上之后这三件事全部消失：改名由 copyScheduleRow 连行搬走，删表由 CASCADE 带走，
--- 孤儿直接用 selectAllScheduleBindings 求差集，不需要「所有课表都已显式绑定」这个前置条件。
+-- 绑定是行上的一列，不另存键：改名随行搬、删表随行删、孤儿配置对
+-- selectAllScheduleBindings 求差集即可。
 selectScheduleBinding:
 SELECT time_config_id FROM schedule WHERE id = ?;
 
@@ -181,8 +166,7 @@ SELECT id, time_config_id FROM schedule;
 updateScheduleBinding:
 UPDATE schedule SET time_config_id = ? WHERE id = ?;
 
--- 整库恢复备份时用：备份里的课表可能整套换掉，逐张比对新旧名字不现实。
--- 清空后由下一次读取从恢复出来的 JSON 重新导入（导入自带自校验）。
+-- 整库恢复备份时用。清空后由下一次读取从恢复出的 JSON 重新导入。
 deleteAllCourses:
 DELETE FROM course;
 
@@ -225,7 +209,7 @@ DELETE FROM folder WHERE id = ?;
 insertTimeConfig:
 INSERT INTO time_config(name, payload) VALUES (?, ?);
 
--- 锚点只保证「这个 id 存在」，不覆盖已有 payload（作息仍以 prefs 为准，见文件头说明）
+-- 只保证 id 存在，不覆盖已有 payload（作息读写仍以 prefs 为准）
 ensureTimeConfigRow:
 INSERT OR IGNORE INTO time_config(id, name, payload) VALUES (?, ?, ?);
 
@@ -241,12 +225,12 @@ SELECT v FROM meta WHERE k = ?;
 writeMeta:
 INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?);
 
--- 清导入标记：行表写失败时用它把课表退回「以 JSON 为准」，下次读取会重新导入
+-- 清导入标记：课表退回以 JSON 为准，下次读取重新导入
 deleteMeta:
 DELETE FROM meta WHERE k = ?;
 
 -- ── 键值层查询 ────────────────────────────────────────────────────────────
--- 与实体表同库同事务：删课表 + 清它的课程 + 改「当前课表」指针可以一次提交。
+-- 与实体表同库同事务：删课表 + 清课程 + 改当前课表指针可一次提交。
 selectPrefNamespace:
 SELECT k, type, s, i, f, b FROM pref WHERE ns = ?;
 

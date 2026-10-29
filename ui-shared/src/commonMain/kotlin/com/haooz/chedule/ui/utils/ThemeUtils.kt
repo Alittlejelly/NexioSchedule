@@ -67,21 +67,16 @@ fun isAppDarkTheme(): Boolean {
 }
 
 /**
- * App 偏好里记录的「是否深色」（`theme_mode`：system / light / dark）。
+ * App 偏好里的「是否深色」（`theme_mode`：system / light / dark）。
  *
- * 实现主体在 :miuix（弹窗要用到，而弹窗会把 `LocalAppSettingDark` 覆盖成 null），
- * 数据源由本文件的 [installAppSettingDarkBridge] 注入 —— :miuix 不依赖 :core，
- * 不能自己读存储；它原先直连 SharedPreferences，存储换成 SQLite 后会永远读到迁移前的旧快照
- * （表现为「切了深浅色，弹窗不跟」）。
+ * 实现在 :miuix（弹窗也要用），数据源由 [installAppSettingDarkBridge] 注入。
  */
 @Composable
 fun rememberAppSettingDark(): Boolean = miuixRememberAppSettingDark()
 
 /**
- * 把「读 `theme_mode`」的实现注入 :miuix 的 [AppSettingDarkBridge]。
- *
- * 必须在任何 miuix 组件（含弹窗）组合之前调用 —— [CourseScheduleTheme] 在组合根部的
- * `remember` 里调它，父先于子，顺序有保证。重复调用无副作用。
+ * 向 :miuix 注入读 `theme_mode` 的实现。由 [CourseScheduleTheme] 在组合根部调用，
+ * 必须在任何 miuix 组件之前。重复调用无副作用。
  */
 internal fun installAppSettingDarkBridge() {
     if (AppSettingDarkBridge.read != null) return
@@ -90,11 +85,11 @@ internal fun installAppSettingDarkBridge() {
     }
     val subscribe: (onChange: () -> Unit) -> (() -> Unit) = { onChange ->
         val store = AppStorage.store("app_theme_prefs")
-        // iOS 的回调不带 key（传哨兵），不能按 key 精确过滤，否则通知被丢掉、主题不刷新
+        // iOS 的通知不带 key（传哨兵），必须接受它
         val token = store.registerListener { key ->
             if (key == KEY_CHANGED_ANYWHERE || key == "theme_mode") onChange()
         }
-        // 取消订阅；监听器必须摘掉，否则每次主题重建都会泄漏一个
+        // 取消订阅，否则每次主题重建泄漏一个监听
         val unsubscribe: () -> Unit = { store.unregisterListener(token) }
         unsubscribe
     }

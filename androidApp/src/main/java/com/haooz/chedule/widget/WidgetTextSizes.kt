@@ -37,7 +37,6 @@ object WidgetTextSizes {
      * "system" 时跟随系统 uiMode，"dark"/"light" 分别取对应值。
      */
     fun isDark(context: Context): Boolean {
-        // 走统一存储：小部件在主进程里由广播驱动，直连 SharedPreferences 会读到迁移前的旧快照
         return when (AppStorage.store("app_theme_prefs").getString("theme_mode", "system")) {
             "dark" -> true
             "light" -> false

@@ -93,7 +93,7 @@ fun CourseScheduleTheme(
     systemDarkTheme: Boolean? = null,
     content: @Composable () -> Unit
 ) {
-    // 把「读 theme_mode」注入 :miuix（它在弹窗里不能靠 Local 拿值）。父先于子组合，顺序有保证。
+    // 注入 :miuix 的深浅色数据源，须早于其组件组合
     remember { installAppSettingDarkBridge() }
     val prefs = remember { AppStorage.store("app_theme_prefs") }
     val themeMode = remember { mutableStateOf(prefs.getString("theme_mode", "system")) }
@@ -184,7 +184,7 @@ fun CourseScheduleTheme(
                 // iOS resolves automatic mode using the externally supplied system appearance.
                 LocalAppSettingDark provides appDark,
                 // :miuix 需要的 App 能力注入点（避免 :miuix → :app 反向依赖）；
-                // 效果与迁移前一致，调用点无需逐个改。
+                // 调用点无需逐个改。
                 LocalChromeLensEnabled provides AppMaterialSettings.chromeLensEnabled(),
                 LocalMaterialNoneEnabled provides AppMaterialSettings.isNoneTier(),
                 LocalUseFakeProgressiveBlur provides AppMaterialSettings.progressiveBlurUseFake(),

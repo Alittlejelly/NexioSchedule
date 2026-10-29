@@ -5,15 +5,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 /**
- * [AppStorage] 的实例唯一性契约。
+ * [AppStorage] 的实例唯一性契约：同名只创建一个实例。
  *
- * 这条契约在换掉 SharedPreferences 之后**从「无所谓」变成了硬要求**：
- * SharedPreferences 时代并发创建两个实例结果等价（都指向同一个文件、同一份内存缓存），
- * 现在的实现是「内存快照 + 行级写」，两个实例就是两份互相看不见的快照 ——
- * 一边写完另一边读旧值、后写者覆盖前者，表现为「设置改了偶发不生效」。
- *
- * 唯一性由平台工厂保证（`SqliteStorage.store` 按命名空间缓存），
- * 本文件守住 AppStorage 这一层不会自我破坏（比如有人把缓存改成不写回）。
+ * 存储实现持内存快照，两个实例会互相看不见对方写入。唯一性由平台工厂保证
+ * （`SqliteStorage.store` 按命名空间缓存），这里守住 AppStorage 这一层。
  */
 class AppStorageInstanceTest {
 

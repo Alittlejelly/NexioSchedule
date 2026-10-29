@@ -4,26 +4,13 @@ import com.haooz.chedule.data.db.Course as CourseRow
 import com.haooz.chedule.data.db.NexioDatabase
 
 /**
- * [CourseRowStore] 的实现：直接吃 SQLDelight 生成的查询。
+ * [CourseRowStore] 的实现。只用 [NexioDatabase] 与 `transactionWithResult`，无平台 API，
+ * 因此放在 commonMain：三端一份逻辑，宿主机也能用 JVM 驱动跑真 SQL。
  *
- * 放在 commonMain 而不是 androidMain 是刻意的：它只用 [NexioDatabase]（生成在 commonMain）
- * 和 `transactionWithResult`，没有任何平台 API。放这里 = 三端同一份读写逻辑，
- * 也让宿主机单测能用 JVM 驱动跑真 SQL（Android 实现里那些外键 / 级联行为，只在真库上才验得出来）。
+ * 一次 [writeDiff] 一个事务，锚点、删除、更新都在里面，中途失败整体回滚。
  *
- * ## 为什么写的是「差量」而不是「整表覆盖」
- *
- * 旧实现是 `saveCourses(list)` → 序列化整张课表 → 写一个几百 KB 的字符串。改一节课的备注
- * 也要重写全部课程。这里按 id 比对出真正变化的课，只 UPDATE 那几行 —— 写放大从**数百 KB**
- * 降到**几十字节**，这是整次改造最主要的那笔收益。
- *
- * ## 事务边界
- *
- * 一次 [writeDiff] 一个事务：锚点、删除、更新全在里面。中途失败整体回滚，不会留下
- * 「课删了但周次还在」这种半套状态。
- *
- * ⚠ 顺序有讲究：`upsertCourse` 是 `INSERT OR REPLACE`，而 `foreign_keys=ON` 下 REPLACE 会
- * **先删旧行**，级联把该课的 course_week / course_week_note 一起删掉。所以必须
- * 「先 upsert 课程，再写周次」—— 反过来写等于刚插进去就被级联删掉。
+ * ⚠ `upsertCourse` 是 `INSERT OR REPLACE`，`foreign_keys=ON` 时 REPLACE 先删旧行、
+ * 级联删掉该课的 course_week / course_week_note。所以必须先 upsert 课程再写周次。
  */
 class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore {
 
@@ -35,7 +22,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     override fun load(scheduleId: String): List<Course> {
         val courses = q.selectCoursesOf(scheduleId).executeAsList()
         if (courses.isEmpty()) return emptyList()
-        // 周次 / 周备注各一条查询取整张课表，再在内存里分组 —— 不用按课循环查（40 门课会变 80 次往返）
+        // 周次 / 周备注各一条查询取整表再分组，不按课循环查
         val weeks = q.selectWeeksOfSchedule(scheduleId).executeAsList()
             .groupBy({ it.course_id }, { it.week.toInt() })
         val notes = q.selectWeekNotesOfSchedule(scheduleId).executeAsList()
@@ -51,13 +38,11 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     override fun importAll(anchor: CourseRowAnchor, courses: List<Course>) {
         database.transactionWithResult {
             ensureAnchors(anchor)
-            // 整表重来：先清空再灌，避免上次失败留下的半截行混进来
+            // 先清空再灌，避免上次失败留下的半截行
             q.deleteCoursesOfSchedule(anchor.scheduleId)
             courses.forEach { writeCourse(anchor.scheduleId, it) }
 
-            // ── 自校验：写进去的必须能原样读回来 ──
-            // 对拍不过就抛异常 → 事务整体回滚 + 不写导入标记 → 读取继续走 JSON。
-            // 宁可这次迁移白做，也不能把「读出来少了字段」当成导入成功。
+            // 自校验：对拍不过就抛异常，事务回滚且不写导入标记，读取继续走 JSON
             val readBack = readInTx(anchor.scheduleId)
             if (!sameCourseContent(courses, readBack)) {
                 val lost = courses.size - readBack.size
@@ -68,12 +53,12 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             }
             q.writeMeta(importKey(anchor.scheduleId), courses.size.toString())
         }
-        NexioLog.w(TAG, "课程已迁入行表：schedule=${anchor.scheduleId}，${courses.size} 门")
+        NexioLog.w(TAG, "课程已导入行表：schedule=${anchor.scheduleId}，${courses.size} 门")
     }
 
     override fun writeDiff(anchor: CourseRowAnchor, previous: List<Course>, next: List<Course>) {
         val diff = diffCourses(previous, next)
-        // 没有变化就不开事务：翻周次之类的操作会频繁触发 save，空写一次都不该付
+        // 无变化不开事务
         if (diff.deleted.isEmpty() && diff.updated.isEmpty()) return
 
         database.transactionWithResult {
@@ -95,14 +80,14 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             q.moveCoursesToSchedule(newId, oldId)
             q.deleteSchedule(oldId)
             q.deleteMeta(importKey(oldId))
-            // 标记跟着搬：不搬的话新名字会被判成「未导入」，转而从冻结的旧 JSON 重建
+            // 标记一起搬，否则新名字被判成未导入，会从冻结的 JSON 重建
             if (flag != null) q.writeMeta(importKey(newId), flag)
         }
     }
 
     override fun deleteSchedule(scheduleId: String) {
         database.transactionWithResult {
-            // course 由 ON DELETE CASCADE 跟着走；顺序无所谓，但标记要一起清
+            // course 由 CASCADE 跟着删；标记一起清
             q.deleteSchedule(scheduleId)
             q.deleteMeta(importKey(scheduleId))
         }
@@ -113,7 +98,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     override fun setBinding(anchor: CourseRowAnchor) {
         database.transactionWithResult {
-            // 外键目标必须先就位，否则 update 一句都写不进去
+            // 外键目标先就位
             ensureAnchors(anchor)
             q.updateScheduleBinding(anchor.timeConfigId, anchor.scheduleId)
         }
@@ -132,7 +117,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     // ── 内部 ──────────────────────────────────────────────────────────────────
 
-    /** 事务内回读（不走 [load]，避免重复建 map 且必须读同一事务快照）。 */
+    /** 事务内回读，读同一事务快照。 */
     private fun readInTx(scheduleId: String): List<Course> {
         val courses = q.selectCoursesOf(scheduleId).executeAsList()
         val weeks = q.selectWeeksOfSchedule(scheduleId).executeAsList()
@@ -144,7 +129,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         }
     }
 
-    /** 外键前置：time_config 行、schedule 行。两者都是 INSERT OR IGNORE，重复调用无副作用。 */
+    /** 补齐外键目标行。两者都是 INSERT OR IGNORE，可重复调用。 */
     private fun ensureAnchors(anchor: CourseRowAnchor) {
         q.ensureTimeConfigRow(
             id = anchor.timeConfigId,
@@ -162,7 +147,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         )
     }
 
-    /** 写一门课 + 它的周次 / 周备注。**必须先在外部 upsert 课程本体**，见类注释的级联说明。 */
+    /** 写一门课 + 它的周次 / 周备注。顺序见类注释。 */
     private fun writeCourse(scheduleId: String, course: Course) {
         q.upsertCourse(
             id = course.id,
@@ -183,7 +168,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             custom_start_time = course.customStartTime,
             custom_end_time = course.customEndTime,
         )
-        // upsertCourse 的 REPLACE 已经把子表级联删掉，这里重新写一遍即可（故意不先 delete）
+        // REPLACE 已级联删掉子表，这里重新写
         course.selectedWeeks.distinct().forEach { q.insertWeek(course.id, it.toLong()) }
         course.weekNotes.forEach { (week, note) -> q.insertWeekNote(course.id, week.toLong(), note) }
     }
@@ -214,7 +199,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     private companion object {
         const val TAG = "SqliteCourseRowStore"
-        /** 与 SqliteStorage 的 `sp_imported:` 区分开：一个是「偏好文件导过没」，一个是「课程行导过没」。 */
+        /** 与 SqliteStorage 的 `sp_imported:` 前缀区分：一个是偏好文件、一个是课程行。 */
         const val META_IMPORTED_PREFIX = "courses_imported:"
     }
 }

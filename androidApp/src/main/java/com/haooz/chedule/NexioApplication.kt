@@ -13,24 +13,18 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Application 阶段初始化存储与预热。
+ * 存储与平台能力接线。
  *
- * 存储：走 SQLite（[SqliteStorage]），每个偏好名映射成表里的一个命名空间，启动时一次性从
- * 同名 SharedPreferences 导入并自校验。**任何异常都回退 SharedPreferences** —— 存储层坏掉
- * 不该让用户开不了应用。
+ * 全应用只通过 [AppStorage] 读写，SQLite 是唯一存储；SharedPreferences 只在两处出现：
+ * 首次访问时的导入源，以及 SQLite 初始化失败时的回退。
  *
- * 现在全应用（含提醒 / 灵动岛 / 勿扰 / 小部件 / 主题）只通过 [AppStorage] 读写，
- * 不再需要把写入同步回 SharedPreferences。SharedPreferences 只剩两个身份：
- * **一次性迁移的数据源**，以及**数据库打不开时的回退**。
- *
- * 预热：命名空间第一次被访问要读一遍全量行，冷启动主线程同步读几个大命名空间（课程 JSON
- * 可达数百 KB）会被卡住。提前在 IO 线程把热路径的命名空间读进内存，主线程首次读取即纯内存操作。
+ * [warmUpStorage] 把热路径命名空间在 IO 线程读进内存，使主线程首次读取为纯内存操作。
  */
 class NexioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 必须最先初始化：之后 AppStorage.store(...) 才可用；工厂按名转发各自命名空间，不在本处汇总以免抄错键名。
+        // 必须最先初始化。工厂按名转发命名空间，不在此汇总键名。
         com.haooz.chedule.data.AppStorage.init { name ->
             runCatching {
                 SqliteStorage.store(context = this, namespace = name)
@@ -39,14 +33,13 @@ class NexioApplication : Application() {
                 getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
             }
         }
-        // 课程行表：课程读写在 :core 的 CourseRepository 里，驱动只有平台侧有，这里接线。
-        // 取不到（库打不开等）就返回 null，业务自动退回 JSON blob —— 不能让存储换代挡住启动。
+        // 课程行表接线。取不到就返回 null，业务退回 JSON。
         com.haooz.chedule.data.CourseStorage.install {
             runCatching { SqliteStorage.courseRows(this) }
                 .onFailure { NexioLog.w(TAG, "课程行表不可用，继续用 JSON blob", it) }
                 .getOrNull()
         }
-        // 语言镜像尽早就位：小部件/通知在首帧前取词（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值。
+        // 小部件/通知在首帧前取词依赖它。
         com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
         // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
         com.haooz.chedule.data.initToast { message, long ->
@@ -135,11 +128,10 @@ class NexioApplication : Application() {
         }
     }
 
-    /** 异步预热高频命名空间（不读具体值，只让它把行载入内存）；IO 线程执行，不阻塞主线程。 */
+    /** 预热热路径命名空间，同时完成它们的一次性导入。IO 线程。 */
     private fun warmUpStorage() {
-        // 按启动路径上的命中顺序排列：最大的课程数据优先。
-        // 后四个是提醒/小部件/勿扰链路的命名空间：它们可能在任何组件（Receiver/Service）里首次被访问，
-        // 那一次会同步做「从 SP 导入 + 自校验」。放在这里做掉，接收器里就只剩纯内存读。
+        // 按启动路径命中顺序排列。后几项会在 Receiver/Service 里被首次访问，
+        // 放这里做掉导入，接收器里就只剩内存读。
         val names = arrayOf(
             "appearance_settings",     // 壁纸变换 + 卡片参数
             "course_schedule_prefs",   // 课程 / 设置（体积最大）
@@ -157,13 +149,11 @@ class NexioApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             names.forEach { name ->
                 runCatching {
-                    // 走 AppStorage 才有意义：直连 SharedPreferences 就绕过了新存储，白预热一次。
-                    // 首次调用会顺带完成该命名空间的一次性导入（含自校验）。
+                    // 首次调用会顺带完成该命名空间的导入与自校验
                     AppStorage.store(name).all()
                 }
             }
-            // 课程从 JSON blob 迁进行表是一次性写（整表插入 + 回读对拍），必须在这里做掉：
-            // 留到首屏主线程上做，就是升级后第一次打开卡一下，而且卡在用户最在意的那一帧。
+            // 课程首次导入行表（整表插入 + 回读对拍）。留到首屏就是升级后首次打开卡一下。
             runCatching {
                 val repository = com.haooz.chedule.data.CourseRepository()
                 repository.getScheduleNames().forEach { schedule ->

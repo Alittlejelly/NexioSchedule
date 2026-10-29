@@ -95,7 +95,7 @@ object IslandNotificationHelper {
 
         private fun prefName(testMode: Boolean) = if (testMode) PREF_TEST else PREF
 
-        /** 走统一存储入口（Android 上即 SQLite）；直连 SharedPreferences 会让这里永远读旧快照。 */
+        /** 岛状态命名空间，真实与测试分开。 */
         private fun store(context: Context, testMode: Boolean): KeyValueStore =
             AppStorage.store(prefName(testMode))
 
