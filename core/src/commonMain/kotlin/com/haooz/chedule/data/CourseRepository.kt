@@ -50,6 +50,13 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var timeConfigsHydrated = false
 
+    /**
+     * 本进程内「从 blob 导入行表」失败过的课表。坏库上不设它，每次读都会重试一遍导入
+     * （抛一次异常 + 解析一次 JSON），首屏滚动时就是每帧一次。
+     */
+    @Volatile
+    private var blobImportFailed: Set<String> = emptySet()
+
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
         // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
@@ -128,6 +135,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         bindingCache = emptyMap()
         scheduleSettingsCache = emptyMap()
         timeConfigsHydrated = false
+        blobImportFailed = emptySet()
     }
 
     /** 节数/节次时间变化会同时影响全局节次映射与分钟级占用判断 */
@@ -311,10 +319,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 读一个课表的课程。行表是真相，JSON blob 只作导入来源与兜底。
+     * 读一个课表的课程。行表是真相，JSON blob 只作「待导入源」。
      *
      * 1. 已导入 → 读行；
-     * 2. 未导入 → 从 blob 导入一次（导入与标记同一事务，自校验不过整体回滚）；
+     * 2. 未导入 → 从 blob 导入一次（导入与标记同一事务，自校验不过整体回滚），成功后**删掉 blob**；
      * 3. 没有行表（桌面 / 测试 / 库打不开）或导入失败 → 读 blob。
      */
     private fun loadCourses(scheduleId: String): List<Course> {
@@ -324,16 +332,19 @@ class CourseRepository private constructor() : PeriodTimeSource {
             return try {
                 rows.load(scheduleId)
             } catch (e: Exception) {
-                // 不能返回空：下一次 saveCourses 会把空课表写回去
-                NexioLog.e(TAG, "读取课程行表失败，本次回退 JSON：schedule=$scheduleId", e)
-                readCoursesFromBlob(scheduleId) ?: emptyList()
+                // 不返回旧 blob 冒充当前课表：冻结快照与行表可能差很多，拿去当 diff 基准会删掉真实行
+                NexioLog.e(TAG, "读取课程行表失败，本次按空表处理：schedule=$scheduleId", e)
+                emptyList()
             }
         }
+        // 本进程已经试过并失败：不再每次读都撞一次库（坏库上会变成每帧一次异常 + 一次 JSON 解析）
+        if (scheduleId in blobImportFailed) return readCoursesFromBlob(scheduleId) ?: emptyList()
 
         val imported = try {
             importCoursesFromBlob(scheduleId, rows)
         } catch (e: Exception) {
             NexioLog.w(TAG, "课程导入行表失败，继续用 JSON：schedule=$scheduleId", e)
+            synchronizedOn(cacheLock) { blobImportFailed = blobImportFailed + scheduleId }
             null
         }
         return imported ?: readCoursesFromBlob(scheduleId) ?: emptyList()
@@ -356,6 +367,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 从 JSON 导入行表。
      *
      * 坏 JSON 与拿不到作息锚点时**不写导入标记**：下次读取还会重试，不会把坏数据记成已导入。
+     * 导入成功后**立刻删掉 blob**：行表已是唯一真相，留着的旧 JSON 只会变成一份会过期的第二真相
+     * （备份、diff 基准、读失败兜底都会读到它）。
      */
     private fun importCoursesFromBlob(scheduleId: String, rows: CourseRowStore): List<Course>? {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_COURSES"
@@ -370,6 +383,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val courses = sanitizeCourses(decodeCourses(json)).normalizeScheduleId(scheduleId)
         val anchor = courseRowAnchor(scheduleId) ?: return null
         rows.importAll(anchor, courses)
+        // 顺序：先落行表（含自校验与标记）再删源。反过来的话，中途被杀会两头都没有
+        prefs.remove(key)
         return courses
     }
 
@@ -435,24 +450,25 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /** 写行；行不存在时先补建锚点行再重试一次。prefs 镜像由调用方写。 */
+    /**
+     * 写行上的三个设置值，返回是否写成功。**没有行表的平台（桌面 / 测试）返回 true**，
+     * 那里 prefs 就是真相，调用方该照常写镜像。
+     */
     private fun writeRowSettings(
         scheduleId: String,
         currentWeek: Int? = null,
         totalWeeks: Int? = null,
         classStart: String? = null,
-    ) {
+    ): Boolean {
         synchronizedOn(cacheLock) { scheduleSettingsCache = scheduleSettingsCache - scheduleId }
-        val rows = CourseStorage.rows ?: return
-        val write = {
-            rows.writeSettings(scheduleId, currentWeek, totalWeeks, classStart)
-        }
-        runCatching {
+        val rows = CourseStorage.rows ?: return true
+        return runCatching {
             // 行还不存在（新表 / 从没写过课程）：先补建锚点行
             if (rows.settingsOf(scheduleId) == null) {
                 courseRowAnchor(scheduleId)?.let { rows.setBinding(it) }
             }
-            write()
-        }.onFailure { NexioLog.w(TAG, "课表设置写行表失败：$scheduleId", it) }
+            rows.writeSettings(scheduleId, currentWeek, totalWeeks, classStart)
+        }.onFailure { NexioLog.w(TAG, "课表设置写行表失败：$scheduleId", it) }.isSuccess
     }
 
     fun getScheduleSummary(scheduleId: String): String {
@@ -561,6 +577,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 runCatching { rows.markStale(scheduleId) }.onFailure {
                     NexioLog.e(TAG, "清除课程导入标记失败：schedule=$scheduleId", it)
                 }
+                // blob 刚重写，下一次读取值得再试一次导入
+                synchronizedOn(cacheLock) { blobImportFailed = blobImportFailed - scheduleId }
             }
         } else {
             // 行表不可用或未导入：写 JSON，下次读取再尝试导入
@@ -948,8 +966,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun setCurrentWeek(week: Int) {
         val scheduleId = getCurrentScheduleId()
+        // 先写真相（行），写成了再写镜像：镜像领先于行时，读路径会让人以为「改了没生效」
+        if (!writeRowSettings(scheduleId, currentWeek = week)) return
         prefs.edit { putInt("${getScheduleKeyPrefix(scheduleId)}$KEY_CURRENT_WEEK", week) }
-        writeRowSettings(scheduleId, currentWeek = week)
         notifyCourseChanged("settings")
     }
 
@@ -970,8 +989,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** 写目标课表总周数；更新该课表同步时间戳，仅当前课表才通知 UI */
     fun setTotalWeeks(scheduleId: String, weeks: Int) {
         if (weeks !in 1..MAX_TOTAL_WEEKS) return
+        if (!writeRowSettings(scheduleId, totalWeeks = weeks)) return
         prefs.edit { putInt("${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS", weeks) }
-        writeRowSettings(scheduleId, totalWeeks = weeks)
         markScheduleSettingsChanged(scheduleId)
     }
 
@@ -1082,14 +1101,14 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val normalized = normalizeClassStartDate(stored)
         if (normalized != null) {
             if (normalized != stored) {
-                prefs.edit { putString(key, normalized) }
                 writeRowSettings(scheduleId, classStart = normalized)
+                prefs.edit { putString(key, normalized) }
             }
             return normalized
         }
         val default = todayLocalDate().formatSlashDate()
-        prefs.edit { putString(key, default) }
         writeRowSettings(scheduleId, classStart = default)
+        prefs.edit { putString(key, default) }
         return default
     }
 
@@ -1100,8 +1119,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** 指定课表写入开学日；非法日期直接忽略，避免导入路径把开学日写成今天 */
     fun setClassStartTime(scheduleId: String, time: String) {
         val normalized = normalizeClassStartDate(time) ?: return
+        if (!writeRowSettings(scheduleId, classStart = normalized)) return
         prefs.edit { putString("${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME", normalized) }
-        writeRowSettings(scheduleId, classStart = normalized)
         markScheduleSettingsChanged(scheduleId)
     }
 
@@ -1753,10 +1772,31 @@ class CourseRepository private constructor() : PeriodTimeSource {
                     remove(oldBoundKey)
                 }
             }
-            // 行表以课表名为主键，改名必须搬行（含标记与课程）；blob 已冻结，重建只会读回旧课表
+            // 行表以课表名为主键，改名必须搬行（含标记与课程）。搬不动就得把课程落到 JSON 里
+            // 再作废新名字的行表，否则新名字下既没有行也没有 blob —— 课表看着是空的。
+            // 只从「已导入的行表」取，不走读路径：那条路会顺手把已经搬走名字的旧 blob 当成空表重建。
             CourseStorage.rows?.let { rows ->
-                runCatching { rows.renameSchedule(oldName, newName) }
+                val moved = runCatching { rows.renameSchedule(oldName, newName) }
                     .onFailure { NexioLog.w(TAG, "迁移课程行表失败：$oldName → $newName", it) }
+                    .isSuccess
+                if (!moved) {
+                    runCatching {
+                        val courses = if (rows.isImported(oldName)) {
+                            rows.load(oldName).map { it.copy(scheduleId = newName) }
+                        } else {
+                            emptyList()
+                        }
+                        if (courses.isNotEmpty()) {
+                            prefs.edit {
+                                putString(
+                                    "${SCHEDULE_KEY_PREFIX}${newName}_$KEY_COURSES",
+                                    encodeCourses(courses),
+                                )
+                            }
+                            rows.markStale(newName)
+                        }
+                    }.onFailure { NexioLog.e(TAG, "改名兜底落 JSON 也失败：$oldName → $newName", it) }
+                }
             }
             invalidateAllCaches()
         }
@@ -1966,17 +2006,20 @@ class CourseRepository private constructor() : PeriodTimeSource {
     fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) {
         // 0 是「一个配置都没有」的兜底值，不写进绑定
         if (timeConfigId != 0L) {
-            // 没有行表（桌面 / 测试 / 库打不开）时只有镜像可用
-            CourseStorage.rows?.let { rows ->
+            // 没有行表（桌面 / 测试）时只有镜像可用
+            val rows = CourseStorage.rows
+            if (rows != null) {
                 val anchor = rowAnchorFor(scheduleId, timeConfigId)
                 if (anchor == null) {
                     NexioLog.w(TAG, "作息绑定拿不到锚点，仅落镜像：schedule=$scheduleId id=$timeConfigId")
                 } else {
-                    runCatching { rows.setBinding(anchor) }
+                    val written = runCatching { rows.setBinding(anchor) }
                         .onFailure {
-                            // 行表写失败不能阻断改绑：镜像仍然正确，读取会回退到它
-                            NexioLog.w(TAG, "作息绑定写入行表失败，仅落镜像：schedule=$scheduleId id=$timeConfigId", it)
+                            NexioLog.w(TAG, "作息绑定写行表失败：schedule=$scheduleId id=$timeConfigId", it)
                         }
+                        .isSuccess
+                    // 行是真相：写不进去就别改镜像。镜像领先时界面显示新绑定，重启后又变回去
+                    if (!written) return
                 }
             }
         }

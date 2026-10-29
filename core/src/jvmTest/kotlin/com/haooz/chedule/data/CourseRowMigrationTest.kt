@@ -77,16 +77,19 @@ class CourseRowMigrationTest {
         repository.addCourse(course(id = "c3", name = "物理"))
         assertEquals(setOf("c1", "c3"), store.load(SCHEDULE).map { it.id }.toSet())
 
-        // 5) 作废行表、从 JSON 重建：拿回的必须是导入那一刻的课表。
-        //    中间三次改动一次都没进 blob —— 否则这里会看到新备注 / 新课程。
+        // 5) 导入成功后源 JSON 必须被清掉：行表是唯一真相，留着 blob 就等于留一份会过期的第二真相。
+        //    作废行表时没有 blob 可读 ⇒ 读回空表（生产路径都是「先写新 blob 再作废」）。
         store.markStale(SCHEDULE)
         repository.invalidateAllCaches()
-        val fromBlob = repository.getAllCourses()
-        assertEquals(setOf("c1", "c2"), fromBlob.map { it.id }.toSet(), "JSON blob 被整份重写了")
         assertTrue(
-            fromBlob.first { it.id == "c1" }.note.isEmpty(),
-            "JSON blob 被整份重写了：${fromBlob.first { it.id == "c1" }}",
+            repository.getAllCourses().isEmpty(),
+            "导入完成后 schedule_X_courses 应当已被删除",
         )
+
+        // 6) 「先写 blob 再作废」的路径（单表导入 / 恢复备份）：重建出来的就是刚写进去的那版
+        repository.saveCourses(listOf(math.copy(note = "改过的")), notify = false)
+        repository.invalidateAllCaches()
+        assertEquals("改过的", repository.getAllCourses().single().note)
     }
 
     @Test
@@ -102,22 +105,27 @@ class CourseRowMigrationTest {
     }
 
     @Test
-    fun `行表被作废后会重新从 JSON 导入`() {
+    fun `整库恢复作废行表后从恢复出的 JSON 重建，课程不丢`() {
         val repository = CourseRepository.getInstance()
-        val math = course(id = "c1", name = "高等数学")
-        repository.saveCourses(listOf(math), notify = false)
-
         val store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
-        assertEquals(1, repository.getAllCourses().size)
+        assertTrue(repository.getAllCourses().isEmpty())
 
-        // 模拟恢复备份：行表整体作废
-        store.invalidateAll()
-        repository.invalidateAllCaches()
+        // 一份最小可用的全量备份：恢复只认 `schedule_X_courses` 里的 JSON
+        val backup = mapOf(
+            "schedule_names" to """["$SCHEDULE"]""",
+            "current_schedule_id" to SCHEDULE,
+            "schedule_${SCHEDULE}_courses" to
+                """[{"name":"高等数学","dayOfWeek":1,"startSection":1,"endSection":2,""" +
+                """"selectedWeeks":[1,2,3],"classroom":"A101","teacher":"张三"}]""",
+        )
+        repository.importAllPreferences(backup)
 
         val reloaded = repository.getAllCourses()
-        assertEquals(1, reloaded.size, "作废后应当从 JSON 重建，而不是返回空课表")
+        assertEquals(1, reloaded.size, "作废后应当从恢复出的 JSON 重建，而不是返回空课表")
+        assertEquals("高等数学", reloaded.single().name)
+        assertEquals(listOf(1, 2, 3), reloaded.single().selectedWeeks)
         assertTrue(store.isImported(SCHEDULE))
     }
 
