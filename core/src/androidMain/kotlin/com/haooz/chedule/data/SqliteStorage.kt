@@ -39,16 +39,23 @@ object SqliteStorage {
     private val failedNamespaces = LinkedHashSet<String>()
 
     /**
+     * 每个命名空间**唯一**的 store 实例。
+     *
+     * 必须缓存：`SqliteKeyValueStore` 是「内存快照 + 行级写」，两个实例就是两份互相看不见的快照 ——
+     * 一边写完另一边还读旧值，后写者把前者覆盖掉。`AppStorage` 在 commonMain 拿不到跨平台锁，
+     * 唯一性只能在这里保证（`AppStorage.store` 的注释写了这条契约）。
+     */
+    private val stores = HashMap<String, SqliteKeyValueStore>()
+
+    /**
      * 取某个命名空间的存储。异常一律外抛，由调用方决定回退策略 —— 这里不替调用方"决定"用哪套存储，
      * 否则回退路径会藏在内部，排查时看不见。
-     *
-     * @param mirror 过渡期影子写入目标，见 [SqliteKeyValueStore.mirror]。
      */
-    fun store(context: Context, namespace: String, mirror: KeyValueStore? = null): KeyValueStore =
+    fun store(context: Context, namespace: String): KeyValueStore =
         synchronized(lock) {
             val b = backend ?: AndroidSqlBackend(context.applicationContext).also { backend = it }
             importFromSharedPreferencesIfNeeded(context, b, namespace)
-            SqliteKeyValueStore(b, namespace, mirror)
+            stores.getOrPut(namespace) { SqliteKeyValueStore(b, namespace) }
         }
 
     /**

@@ -8,8 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.Bundle
+import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.KeyValueStore
 import com.haooz.chedule.data.NexioLog
-import androidx.core.content.edit
 import com.haooz.chedule.R
 import com.haooz.chedule.i18n.AndroidNotifStr
 import com.haooz.chedule.i18n.AndroidWidgetStr
@@ -94,6 +95,10 @@ object IslandNotificationHelper {
 
         private fun prefName(testMode: Boolean) = if (testMode) PREF_TEST else PREF
 
+        /** 走统一存储入口（Android 上即 SQLite）；直连 SharedPreferences 会让这里永远读旧快照。 */
+        private fun store(context: Context, testMode: Boolean): KeyValueStore =
+            AppStorage.store(prefName(testMode))
+
         fun save(
             context: Context,
             notificationId: Int,
@@ -107,7 +112,7 @@ object IslandNotificationHelper {
             testMode: Boolean = false,
             isCustomTime: Boolean = false
         ) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 putBoolean(K_ACTIVE, true)
                 putBoolean(K_SWITCHED, false)
                 remove(K_SWITCHED_AT)
@@ -125,17 +130,17 @@ object IslandNotificationHelper {
         }
 
         fun snapshot(context: Context, testMode: Boolean = false): Snapshot? {
-            val p = context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE)
+            val p = store(context, testMode)
             if (!p.getBoolean(K_ACTIVE, false)) return null
             val startMillis = p.getLong(K_START_MILLIS, 0L)
             if (startMillis <= 0L) return null
             return Snapshot(
                 notificationId = p.getInt(K_NOTIFICATION_ID, ISLAND_NOTIFICATION_ID),
-                courseName = p.getString(K_COURSE_NAME, "") ?: "",
-                classroom = p.getString(K_CLASSROOM, "") ?: "",
-                section = p.getString(K_SECTION, "") ?: "",
-                startTime = p.getString(K_START_TIME, "") ?: "",
-                endTime = p.getString(K_END_TIME, "") ?: "",
+                courseName = p.getString(K_COURSE_NAME, ""),
+                classroom = p.getString(K_CLASSROOM, ""),
+                section = p.getString(K_SECTION, ""),
+                startTime = p.getString(K_START_TIME, ""),
+                endTime = p.getString(K_END_TIME, ""),
                 startMillis = startMillis,
                 endMillis = p.getLong(K_END_MILLIS, 0L),
                 switched = p.getBoolean(K_SWITCHED, false),
@@ -150,7 +155,7 @@ object IslandNotificationHelper {
 
         // 倒计时态 -> 已上课态后需改写 ID，否则后续对账/dismiss 会去 cancel 一个已不存在的通知
         fun updateNotificationId(context: Context, notificationId: Int, testMode: Boolean = false) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 putInt(K_NOTIFICATION_ID, notificationId)
             }
         }
@@ -166,7 +171,7 @@ object IslandNotificationHelper {
             snapshot(context, testMode)?.switched == true
 
         fun markSwitched(context: Context, testMode: Boolean = false) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 putBoolean(K_SWITCHED, true)
                 putLong(K_SWITCHED_AT, System.currentTimeMillis())
             }
@@ -177,27 +182,27 @@ object IslandNotificationHelper {
         private const val K_LAST_PROGRESS = "last_progress"
 
         fun lastRemainingMinutes(context: Context, testMode: Boolean = false): Int =
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE)
+            store(context, testMode)
                 .getInt(K_LAST_REMAINING, Int.MIN_VALUE)
 
         fun saveLastRemainingMinutes(context: Context, minutes: Int, testMode: Boolean = false) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 putInt(K_LAST_REMAINING, minutes)
             }
         }
 
         fun lastProgress(context: Context, testMode: Boolean = false): Int =
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE)
+            store(context, testMode)
                 .getInt(K_LAST_PROGRESS, Int.MIN_VALUE)
 
         fun saveLastProgress(context: Context, progress: Int, testMode: Boolean = false) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 putInt(K_LAST_PROGRESS, progress)
             }
         }
 
         fun clearLastRemainingMinutes(context: Context, testMode: Boolean = false) {
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 remove(K_LAST_REMAINING)
                 remove(K_LAST_PROGRESS)
             }
@@ -205,7 +210,7 @@ object IslandNotificationHelper {
 
         fun clear(context: Context, testMode: Boolean = false) {
             stopInClassTicker()
-            context.getSharedPreferences(prefName(testMode), Context.MODE_PRIVATE).edit {
+            store(context, testMode).edit {
                 clear()
             }
         }
@@ -372,7 +377,7 @@ object IslandNotificationHelper {
     ): String {
         val json = JSONObject()
 
-        val prefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("course_reminder_prefs")
         val expandGlowEnabled = prefs.getBoolean(KEY_ISLAND_EXPAND_GLOW_ENABLED, true)
         val leftMode = prefs.getInt("island_left_mode", 0)
         val rightMode = prefs.getInt("island_right_mode", 1)
@@ -584,7 +589,7 @@ object IslandNotificationHelper {
         isCustomTime: Boolean = false
     ): String {
         val json = JSONObject()
-        val prefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("course_reminder_prefs")
         val expandGlowEnabled = prefs.getBoolean(KEY_ISLAND_EXPAND_GLOW_ENABLED, true)
         val aodMode = prefs.getInt("island_aod_mode", 0)
         // 课中岛缩略态 B 区：0=正在上课（静态文案），1=距下课倒计时

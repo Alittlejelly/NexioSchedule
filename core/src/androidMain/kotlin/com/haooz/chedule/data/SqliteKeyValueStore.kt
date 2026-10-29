@@ -63,15 +63,6 @@ interface SqlBackend {
 class SqliteKeyValueStore(
     private val backend: SqlBackend,
     private val namespace: String,
-    /**
-     * 过渡期的影子写入目标（通常是同一个命名空间的 [SharedPreferencesStore]）。
-     *
-     * 存在的唯一原因：`CourseReminderHelper` / `IslandNotificationHelper` / `ClassDndHelper`
-     * 里还有几十处**绕过 AppStorage 直读 SharedPreferences** 的调用点，不同步过去它们会读到旧值
-     * （表现为「改了提醒设置，闹钟还是按老的响」）。等这些点全部改走 AppStorage，把这里传 `null`
-     * 就是真删掉 SharedPreferences。
-     */
-    private val mirror: KeyValueStore? = null,
 ) : KeyValueStore {
 
     private val lock = Any()
@@ -187,7 +178,6 @@ class SqliteKeyValueStore(
             }
         }
 
-        mirrorTo(working, affected, cleared)
         notifyListeners(affected)
     }
 
@@ -207,7 +197,6 @@ class SqliteKeyValueStore(
             }
         }
 
-        runCatching { mirror?.remove(key) }
         notifyListeners(listOf(key))
     }
 
@@ -226,7 +215,6 @@ class SqliteKeyValueStore(
             }
         }
 
-        runCatching { mirror?.clear() }
         notifyListeners(removed)
     }
 
@@ -242,27 +230,6 @@ class SqliteKeyValueStore(
     }
 
     // ── 内部 ──────────────────────────────────────────────────────────────────
-
-    /** 影子写入：只把本次受影响的键同步给 mirror，不是整库重放。 */
-    private fun mirrorTo(working: Map<String, KvRow>, affected: Set<String>, cleared: Boolean) {
-        val m = mirror ?: return
-        runCatching {
-            m.edit {
-                if (cleared) {
-                    clear()
-                    working.values.forEach { it.writeTo(this) }
-                } else {
-                    for (key in affected) {
-                        val r = working[key]
-                        if (r != null) r.writeTo(this) else remove(key)
-                    }
-                }
-            }
-        }.onFailure { e ->
-            // 影子写失败不影响主存储，但必须喊出来 —— 否则「提醒改了不生效」这种问题查不到源头
-            NexioLog.w(TAG, "影子写入 $namespace 失败（主存储已提交，直读 SharedPreferences 的旧代码可能读到旧值）", e)
-        }
-    }
 
     private fun notifyListeners(keys: Collection<String>) {
         if (listeners.isEmpty() || keys.isEmpty()) return
@@ -306,20 +273,6 @@ class SqliteKeyValueStore(
             affected += working.keys.toList()
             working.clear()
             onClear()
-        }
-    }
-
-    private fun KvRow.writeTo(editor: KeyValueEditor) {
-        when (type) {
-            TYPE_STRING -> editor.putString(key, value as String)
-            TYPE_INT -> editor.putInt(key, value as Int)
-            TYPE_LONG -> editor.putLong(key, value as Long)
-            TYPE_FLOAT -> editor.putFloat(key, value as Float)
-            TYPE_BOOL -> editor.putBoolean(key, value as Boolean)
-            TYPE_STRING_SET -> {
-                @Suppress("UNCHECKED_CAST")
-                editor.putStringSet(key, value as Set<String>)
-            }
         }
     }
 

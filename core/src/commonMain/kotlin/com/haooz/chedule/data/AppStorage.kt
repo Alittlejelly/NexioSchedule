@@ -27,13 +27,16 @@ object AppStorage {
         cache = emptyMap()
     }
 
-    /** 取某个偏好文件的读写入口。 */
+    /**     * 两个实例 = 两份互相看不见的快照，一边写另一边读旧值、后写者覆盖前者 ——
+     * 表现为「设置改了偶发不生效」这种最难查的形态。本对象在 commonMain，
+     * 没有跨平台的锁可用，所以唯一性的保证下沉到平台工厂（见 `SqliteStorage.store`）。
+     */
     fun store(name: String): KeyValueStore {
         cache[name]?.let { return it }
         val f = factory ?: error(
             "AppStorage 未初始化：请在 Application.onCreate() 中调用 AppStorage.init { name -> … }"
         )
-        // 并发下可能创建两次，但结果等价，后写入者胜出，不加锁。
+        // 并发下可能调用两次工厂，但工厂返回同一实例，后写入者胜出，结果等价。
         val created = f(name)
         cache = cache + (name to created)
         return created

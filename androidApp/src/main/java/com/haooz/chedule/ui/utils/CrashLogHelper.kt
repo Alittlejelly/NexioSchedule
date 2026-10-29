@@ -14,7 +14,11 @@ package com.haooz.chedule.ui.utils
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.KeyValueStore
 import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.asKeyValueStore
+import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
 import java.io.File
@@ -31,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong
 object CrashLogHelper {
 
     private const val TAG = "CrashLogHelper"
+
     private const val CRASH_DIR = "crash_logs"
     // 崩溃日志上限：单份含 logcat，取 12 份控制占用在 1~2MB 内
     private const val MAX_CRASH_FILES = 12
@@ -43,6 +48,16 @@ object CrashLogHelper {
     private const val KEY_RECORDING_FILE = "recording_file"
     private const val KEY_RECORDING_STARTED = "recording_started"
     private const val KEY_READY_FILE = "ready_file"
+
+    /**
+     * 录制状态专用存储口。走统一存储（Android 上即 SQLite），但**保留一条 SharedPreferences 退路**：
+     * 本文件参与崩溃处理，写它的时机恰恰是「别处已经出事」，不能再让存储层自己抛异常
+     * （例如崩溃发生在 Application.onCreate 的 AppStorage.init 之前）。整个文件只有这一处直连 SP。
+     */
+    private fun prefs(context: Context): KeyValueStore =
+        runCatching { AppStorage.store(PREFS) }.getOrElse {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).asKeyValueStore()
+        }
 
     /** 功能轨迹 / 录制时间窗 */
     const val TRACE_WINDOW_MS = 30L * 60L * 1000L
@@ -230,13 +245,13 @@ object CrashLogHelper {
         // 只保留最新一份录制：新文件已写成功，此前的 recording_*.txt 全部清掉。
         // 否则这些含设备信息与操作轨迹的文件会一直累积在 filesDir 里且永不回收。
         runCatching { trimRecordingFiles(dir, file) }
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_RECORDING_ACTIVE, true)
-            .putString(KEY_RECORDING_FILE, file.absolutePath)
-            .putLong(KEY_RECORDING_STARTED, recordingStartedAt)
+        prefs(app).edit {
+            putBoolean(KEY_RECORDING_ACTIVE, true)
+            putString(KEY_RECORDING_FILE, file.absolutePath)
+            putLong(KEY_RECORDING_STARTED, recordingStartedAt)
             // 旧录制的「可分享」标记一并失效，否则下次启动会恢复出一个已被删除的路径
-            .remove(KEY_READY_FILE)
-            .apply()
+            remove(KEY_READY_FILE)
+        }
         readyRecordingPath = file.absolutePath
         hasReadyRecording = false
         readyReason = "recording"
@@ -255,21 +270,19 @@ object CrashLogHelper {
         appContext = app
         if (!isRecording) {
             // 允许对「异常中断」路径补结束
-            val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            if (!prefs.getBoolean(KEY_RECORDING_ACTIVE, false)) return false
+            if (!prefs(app).getBoolean(KEY_RECORDING_ACTIVE, false)) return false
         }
-        val path = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_RECORDING_FILE, null)
-            ?: readyRecordingPath
+        val path = prefs(app).getStringOrNull(KEY_RECORDING_FILE) ?: readyRecordingPath
         flushTracesNow(path, final = true, endReason = reason)
         isRecording = false
         hasReadyRecording = true
         readyReason = reason
         readyRecordingPath = path
-        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_RECORDING_ACTIVE, false)
-            .putString(KEY_READY_FILE, path)
-            .apply()
+        prefs(app).edit {
+            putBoolean(KEY_RECORDING_ACTIVE, false)
+            // 原来是 putString(path = null) 等于删键，别写成空串（那会变成「有个空路径」）
+            if (path != null) putString(KEY_READY_FILE, path) else remove(KEY_READY_FILE)
+        }
         return path != null && File(path).exists()
     }
 
@@ -297,8 +310,7 @@ object CrashLogHelper {
         ensureRecovered(context)
         ensureRecordingNotExpired()
         val path = readyRecordingPath
-            ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_READY_FILE, null)
+            ?: prefs(context).getStringOrNull(KEY_READY_FILE)
         if (path.isNullOrBlank() || !File(path).exists()) {
             // 没有录制文件时回退为完整导出，仍可分享崩溃/轨迹
             return exportAndShare(context)
@@ -476,14 +488,14 @@ object CrashLogHelper {
     }
 
     private fun recoverInterruptedRecording(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val active = prefs.getBoolean(KEY_RECORDING_ACTIVE, false)
-        val path = prefs.getString(KEY_RECORDING_FILE, null)
-        val ready = prefs.getString(KEY_READY_FILE, null)
+        val store = prefs(context)
+        val active = store.getBoolean(KEY_RECORDING_ACTIVE, false)
+        val path = store.getStringOrNull(KEY_RECORDING_FILE)
+        val ready = store.getStringOrNull(KEY_READY_FILE)
         if (!ready.isNullOrBlank() && File(ready).exists()) {
             hasReadyRecording = true
             readyRecordingPath = ready
-            readyReason = prefs.getString("ready_reason", "previous") ?: "previous"
+            readyReason = store.getString("ready_reason", "previous")
         }
         if (active && !path.isNullOrBlank()) {
             // 上次进程被杀：把已刷盘轨迹标成自动结束，分享按钮可点亮
@@ -496,18 +508,17 @@ object CrashLogHelper {
             hasReadyRecording = true
             readyRecordingPath = path
             readyReason = "process_killed"
-            prefs.edit()
-                .putBoolean(KEY_RECORDING_ACTIVE, false)
-                .putString(KEY_READY_FILE, path)
-                .putString("ready_reason", "process_killed")
-                .apply()
+            store.edit {
+                putBoolean(KEY_RECORDING_ACTIVE, false)
+                putString(KEY_READY_FILE, path)
+                putString("ready_reason", "process_killed")
+            }
         }
     }
 
     private fun scheduleFlush() {
-        val path = appContext
-            ?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            ?.getString(KEY_RECORDING_FILE, null) ?: return
+        val ctx = appContext ?: return
+        val path = prefs(ctx).getStringOrNull(KEY_RECORDING_FILE) ?: return
         flushExecutor.execute {
             runCatching { flushTracesNow(path, final = false, endReason = null) }
         }
@@ -658,10 +669,10 @@ object CrashLogHelper {
         readyReason = "crash"
         readyRecordingPath = crashFile.absolutePath
         runCatching {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString("ready_reason", readyReason)
-                .putString(KEY_READY_FILE, crashFile.absolutePath)
-                .apply()
+            prefs(context).edit {
+                putString("ready_reason", readyReason)
+                putString(KEY_READY_FILE, crashFile.absolutePath)
+            }
         }
     }
 

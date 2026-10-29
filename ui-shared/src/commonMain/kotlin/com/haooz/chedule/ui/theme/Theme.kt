@@ -25,6 +25,7 @@ import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.currentDeviceInfo
 import com.haooz.chedule.ui.components.text.TextMotionBox
 import com.haooz.chedule.ui.utils.AppMaterialSettings
+import com.haooz.chedule.ui.utils.installAppSettingDarkBridge
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
@@ -92,6 +93,8 @@ fun CourseScheduleTheme(
     systemDarkTheme: Boolean? = null,
     content: @Composable () -> Unit
 ) {
+    // 把「读 theme_mode」注入 :miuix（它在弹窗里不能靠 Local 拿值）。父先于子组合，顺序有保证。
+    remember { installAppSettingDarkBridge() }
     val prefs = remember { AppStorage.store("app_theme_prefs") }
     val themeMode = remember { mutableStateOf(prefs.getString("theme_mode", "system")) }
     var monetEnabled by remember { mutableStateOf(prefs.getBoolean(KEY_MONET_COLOR, false)) }

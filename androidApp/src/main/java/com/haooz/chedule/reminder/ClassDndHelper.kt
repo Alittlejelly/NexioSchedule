@@ -12,11 +12,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.media.AudioManager
 import android.widget.Toast
-import androidx.core.content.edit
+import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.KeyValueStore
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.i18n.AndroidNotifStr
 import java.util.Calendar
@@ -64,8 +64,8 @@ object ClassDndHelper {
     const val MODE_SILENT = 1
     const val MODE_PRIORITY = 2
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    /** 走统一存储入口（Android 上即 SQLite）；直连 SharedPreferences 会读不到新写入的开关。 */
+    private fun prefs(context: Context): KeyValueStore = AppStorage.store(PREFS_NAME)
 
     private fun notificationManager(context: Context) =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -252,7 +252,7 @@ object ClassDndHelper {
         }
     }
 
-    private fun hasSessionData(p: SharedPreferences): Boolean =
+    private fun hasSessionData(p: KeyValueStore): Boolean =
         p.contains(KEY_APPLIED_MODE) || p.contains(KEY_ORIGINAL_RINGER) ||
             p.contains(KEY_ORIGINAL_FILTER) || p.contains(KEY_SET_STATE) ||
             p.contains(KEY_SET_RINGER) || p.contains(KEY_SET_FILTER) ||
@@ -424,7 +424,7 @@ object ClassDndHelper {
      * 两条通道二选一：实时活动写 countdown_state，超级岛写 IslandState。
      */
     private fun testClassWindow(context: Context): Pair<Long, Long>? {
-        val countdown = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val countdown = AppStorage.store("countdown_state")
         if (countdown.getBoolean("active", false) && countdown.getBoolean("test_mode", false)) {
             val s = countdown.getLong("startMillis", 0L)
             val e = countdown.getLong("endMillis", 0L)
@@ -683,12 +683,12 @@ object ClassDndHelper {
         )
 
     private fun readRcSet(context: Context): Set<Int> =
-        (context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE)
-            .getStringSet(KEY_DND_RCS, emptySet()) ?: emptySet())
+        AppStorage.store(PREF_ALARM_REGISTRY)
+            .getStringSet(KEY_DND_RCS, emptySet())
             .mapNotNull { it.toIntOrNull() }.toSet()
 
     private fun writeRcSet(context: Context, rcs: Set<Int>) {
-        context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE).edit {
+        AppStorage.store(PREF_ALARM_REGISTRY).edit {
             putStringSet(KEY_DND_RCS, rcs.map { it.toString() }.toSet())
         }
     }

@@ -10,9 +10,10 @@ import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.getStringOrNull
+import top.yukonga.miuix.kmp.theme.AppSettingDarkBridge
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.platformDynamicColors
 import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
+import top.yukonga.miuix.kmp.theme.platformDynamicColors
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定。
 // 别名指向 :miuix 里的同一个 CompositionLocal 实例，调用方无需改动。
@@ -65,9 +66,40 @@ fun isAppDarkTheme(): Boolean {
     return dark
 }
 
-// 不经过壁纸强制覆盖，只读 theme_mode（转调 :miuix 的实现，与其读同一份偏好）
+/**
+ * App 偏好里记录的「是否深色」（`theme_mode`：system / light / dark）。
+ *
+ * 实现主体在 :miuix（弹窗要用到，而弹窗会把 `LocalAppSettingDark` 覆盖成 null），
+ * 数据源由本文件的 [installAppSettingDarkBridge] 注入 —— :miuix 不依赖 :core，
+ * 不能自己读存储；它原先直连 SharedPreferences，存储换成 SQLite 后会永远读到迁移前的旧快照
+ * （表现为「切了深浅色，弹窗不跟」）。
+ */
 @Composable
 fun rememberAppSettingDark(): Boolean = miuixRememberAppSettingDark()
+
+/**
+ * 把「读 `theme_mode`」的实现注入 :miuix 的 [AppSettingDarkBridge]。
+ *
+ * 必须在任何 miuix 组件（含弹窗）组合之前调用 —— [CourseScheduleTheme] 在组合根部的
+ * `remember` 里调它，父先于子，顺序有保证。重复调用无副作用。
+ */
+internal fun installAppSettingDarkBridge() {
+    if (AppSettingDarkBridge.read != null) return
+    AppSettingDarkBridge.read = {
+        AppStorage.store("app_theme_prefs").getString("theme_mode", "system")
+    }
+    val subscribe: (onChange: () -> Unit) -> (() -> Unit) = { onChange ->
+        val store = AppStorage.store("app_theme_prefs")
+        // iOS 的回调不带 key（传哨兵），不能按 key 精确过滤，否则通知被丢掉、主题不刷新
+        val token = store.registerListener { key ->
+            if (key == KEY_CHANGED_ANYWHERE || key == "theme_mode") onChange()
+        }
+        // 取消订阅；监听器必须摘掉，否则每次主题重建都会泄漏一个
+        val unsubscribe: () -> Unit = { store.unregisterListener(token) }
+        unsubscribe
+    }
+    AppSettingDarkBridge.subscribe = subscribe
+}
 
 // ── 课表页「默认主题」档位 ───────────────────────────────────────────────
 // 落盘是数据契约：**与全局应用主题共用 app_theme_prefs 文件但键不同**

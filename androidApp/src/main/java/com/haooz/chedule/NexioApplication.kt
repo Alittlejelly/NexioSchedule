@@ -19,6 +19,10 @@ import java.io.File
  * 同名 SharedPreferences 导入并自校验。**任何异常都回退 SharedPreferences** —— 存储层坏掉
  * 不该让用户开不了应用。
  *
+ * 现在全应用（含提醒 / 灵动岛 / 勿扰 / 小部件 / 主题）只通过 [AppStorage] 读写，
+ * 不再需要把写入同步回 SharedPreferences。SharedPreferences 只剩两个身份：
+ * **一次性迁移的数据源**，以及**数据库打不开时的回退**。
+ *
  * 预热：命名空间第一次被访问要读一遍全量行，冷启动主线程同步读几个大命名空间（课程 JSON
  * 可达数百 KB）会被卡住。提前在 IO 线程把热路径的命名空间读进内存，主线程首次读取即纯内存操作。
  */
@@ -29,13 +33,7 @@ class NexioApplication : Application() {
         // 必须最先初始化：之后 AppStorage.store(...) 才可用；工厂按名转发各自命名空间，不在本处汇总以免抄错键名。
         com.haooz.chedule.data.AppStorage.init { name ->
             runCatching {
-                // mirror：过渡期把写入同步回 SharedPreferences，供尚未改走 AppStorage 的直读点
-                // （提醒/灵动岛/勿扰那几个 Helper）使用。这些点全部迁移完成后传 null 即可彻底断开 SP。
-                SqliteStorage.store(
-                    context = this,
-                    namespace = name,
-                    mirror = getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore(),
-                )
+                SqliteStorage.store(context = this, namespace = name)
             }.getOrElse { e ->
                 NexioLog.w(TAG, "SQLite 键值存储不可用，$name 回退 SharedPreferences", e)
                 getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
@@ -139,13 +137,22 @@ class NexioApplication : Application() {
 
     /** 异步预热高频命名空间（不读具体值，只让它把行载入内存）；IO 线程执行，不阻塞主线程。 */
     private fun warmUpStorage() {
-        // 按启动路径上的命中顺序排列：最大的课程数据优先
+        // 按启动路径上的命中顺序排列：最大的课程数据优先。
+        // 后四个是提醒/小部件/勿扰链路的命名空间：它们可能在任何组件（Receiver/Service）里首次被访问，
+        // 那一次会同步做「从 SP 导入 + 自校验」。放在这里做掉，接收器里就只剩纯内存读。
         val names = arrayOf(
             "appearance_settings",     // 壁纸变换 + 卡片参数
             "course_schedule_prefs",   // 课程 / 设置（体积最大）
             "app_preferences",         // 隐藏后台等主界面开关
             "course_reminder_prefs",   // 提醒开关（startReminderService 会读）
-            "app_theme_prefs"          // 主题模式（首帧计算深浅色需要）
+            "app_theme_prefs",         // 主题模式（首帧计算深浅色需要）
+            "countdown_state",         // 实况倒计时状态（每分钟由小部件广播驱动）
+            "island_countdown_state",  // 超级岛状态（真实）
+            "island_countdown_state_test",
+            "reminder_sent_history",   // 提醒去重
+            "reminder_alarm_registry", // 闹钟 requestCode 登记
+            "day_change_state",
+            "crash_log_prefs"          // 崩溃日志录制状态
         )
         CoroutineScope(Dispatchers.IO).launch {
             names.forEach { name ->

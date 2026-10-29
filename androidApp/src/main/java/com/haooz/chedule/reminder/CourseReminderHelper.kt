@@ -20,8 +20,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.content.edit
 import com.haooz.chedule.R
+import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.CourseScheduleDateBounds
@@ -40,6 +40,7 @@ import java.util.Calendar
 import com.haooz.chedule.data.LOG_LEVEL_DEBUG
 import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.logMinLevel
+import com.haooz.chedule.data.getStringOrNull
 import com.haooz.chedule.i18n.AndroidNotifStr
 
 object CourseReminderHelper {
@@ -135,7 +136,7 @@ object CourseReminderHelper {
     const val IN_CLASS_TIMING_BEFORE_END = 1
 
     fun isInClassEnabled(context: Context): Boolean {
-        val prefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("course_reminder_prefs")
         if (prefs.contains(KEY_IN_CLASS)) {
             return prefs.getBoolean(KEY_IN_CLASS, false)
         }
@@ -147,12 +148,12 @@ object CourseReminderHelper {
     fun isInClassLiveEnabled(context: Context): Boolean = isInClassEnabled(context)
 
     fun getInClassTimingMode(context: Context): Int {
-        return context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        return AppStorage.store("course_reminder_prefs")
             .getInt(KEY_IN_CLASS_TIMING_MODE, IN_CLASS_TIMING_FULL)
     }
 
     fun getInClassLeadMinutes(context: Context): Int {
-        return context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        return AppStorage.store("course_reminder_prefs")
             .getInt(KEY_IN_CLASS_LEAD_MINUTES, 10).coerceIn(0, 60)
     }
 
@@ -202,22 +203,22 @@ object CourseReminderHelper {
     private const val PI_FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
     private fun readRcSet(context: Context, key: String): Set<Int> {
-        val prefs = context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE)
-        return (prefs.getStringSet(key, emptySet()) ?: emptySet()).mapNotNull { it.toIntOrNull() }.toSet()
+        val prefs = AppStorage.store(PREF_ALARM_REGISTRY)
+        return prefs.getStringSet(key, emptySet()).mapNotNull { it.toIntOrNull() }.toSet()
     }
 
     private fun writeRcSet(context: Context, key: String, rcs: Set<Int>) {
-        context.getSharedPreferences(PREF_ALARM_REGISTRY, Context.MODE_PRIVATE).edit {
+        AppStorage.store(PREF_ALARM_REGISTRY).edit {
             putStringSet(key, rcs.map { it.toString() }.toSet())
         }
     }
 
     // 跨日后整份记录失效，保证次日可重新提醒
     fun recordPreClassSent(context: Context, courseId: String) {
-        val prefs = context.getSharedPreferences(PREF_SENT_HISTORY, Context.MODE_PRIVATE)
+        val prefs = AppStorage.store(PREF_SENT_HISTORY)
         val today = getTodayDateString()
-        val day = prefs.getString(KEY_SENT_DAY, null)
-        val mapStr = prefs.getString(KEY_SENT_MAP, null)
+        val day = prefs.getStringOrNull(KEY_SENT_DAY)
+        val mapStr = prefs.getStringOrNull(KEY_SENT_MAP)
         val json = if (day == today && !mapStr.isNullOrEmpty()) {
             try {
                 org.json.JSONObject(mapStr)
@@ -236,9 +237,9 @@ object CourseReminderHelper {
 
     // 按 courseId 精确匹配 60 分钟窗口；跨日整份重置以便次日重发
     fun isPreClassSentRecently(context: Context, courseId: String): Boolean {
-        val prefs = context.getSharedPreferences(PREF_SENT_HISTORY, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_SENT_DAY, null) != getTodayDateString()) return false
-        val mapStr = prefs.getString(KEY_SENT_MAP, null) ?: return false
+        val prefs = AppStorage.store(PREF_SENT_HISTORY)
+        if (prefs.getStringOrNull(KEY_SENT_DAY) != getTodayDateString()) return false
+        val mapStr = prefs.getStringOrNull(KEY_SENT_MAP) ?: return false
         val lastTime = try {
             org.json.JSONObject(mapStr).optLong(courseId, 0L)
         } catch (_: Exception) {
@@ -250,9 +251,9 @@ object CourseReminderHelper {
 
     // 岛倒计时是原生 ChronometerCountDown，当天发一次即可；重发会触发岛重新弹出
     fun hasIslandPreClassSentToday(context: Context, courseId: String): Boolean {
-        val prefs = context.getSharedPreferences(PREF_SENT_HISTORY, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_SENT_DAY, null) != getTodayDateString()) return false
-        val mapStr = prefs.getString(KEY_SENT_MAP, null) ?: return false
+        val prefs = AppStorage.store(PREF_SENT_HISTORY)
+        if (prefs.getStringOrNull(KEY_SENT_DAY) != getTodayDateString()) return false
+        val mapStr = prefs.getStringOrNull(KEY_SENT_MAP) ?: return false
         return try {
             org.json.JSONObject(mapStr).has(courseId)
         } catch (_: Exception) {
@@ -263,8 +264,8 @@ object CourseReminderHelper {
     // 日期变化时重调度：原调度仅覆盖今天，跨日后需为新一天重新注册闹钟
     fun checkAndRescheduleOnDayChange(context: Context) {
         val today = getTodayDateString()
-        val prefs = context.getSharedPreferences(PREF_DAY_CHANGE, Context.MODE_PRIVATE)
-        val lastDate = prefs.getString(KEY_LAST_SCHEDULE_DATE, null)
+        val prefs = AppStorage.store(PREF_DAY_CHANGE)
+        val lastDate = prefs.getStringOrNull(KEY_LAST_SCHEDULE_DATE)
 
         if (lastDate == today) return
 
@@ -832,7 +833,7 @@ object CourseReminderHelper {
         val todayCourses = getTodayCourses(context)
 
         // 倒计时/岛激活时需每分钟刷新，便于更新文案与对账补切
-        val countdownPrefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val countdownPrefs = AppStorage.store("countdown_state")
         val hasActiveCountdown = countdownPrefs.getBoolean("active", false) ||
             IslandNotificationHelper.IslandState.isActiveAny(context)
 
@@ -1106,7 +1107,7 @@ object CourseReminderHelper {
     private fun reconcileActiveHolidayCourse(context: Context) {
         val now = System.currentTimeMillis()
         val repository = CourseRepository()
-        val countdownPrefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val countdownPrefs = AppStorage.store("countdown_state")
         val countdownStart = countdownPrefs.getLong("startMillis", 0L)
         val countdownEnd = countdownPrefs.getLong("endMillis", 0L)
         val countdownIsReal = !countdownPrefs.getBoolean("test_mode", false)
@@ -1116,9 +1117,9 @@ object CourseReminderHelper {
                 repository = repository,
                 startMillis = countdownStart,
                 endMillis = countdownEnd,
-                courseName = countdownPrefs.getString("courseName", "") ?: "",
-                classroom = countdownPrefs.getString("classroom", "") ?: "",
-                section = countdownPrefs.getString("section", "") ?: "",
+                courseName = countdownPrefs.getString("courseName", ""),
+                classroom = countdownPrefs.getString("classroom", ""),
+                section = countdownPrefs.getString("section", ""),
             )
             if (!stillScheduled) {
                 val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1127,10 +1128,10 @@ object CourseReminderHelper {
                 manager.cancel(LIVE_IN_CLASS_ID)
                 countdownPrefs.edit {
                     putBoolean("active", false)
-                        .putBoolean("in_class_active", false)
-                        .remove("last_displayed_minutes")
-                        .remove("last_in_class_minutes")
-                        .remove("last_in_class_progress")
+                    putBoolean("in_class_active", false)
+                    remove("last_displayed_minutes")
+                    remove("last_in_class_minutes")
+                    remove("last_in_class_progress")
                 }
             }
         }
@@ -1265,7 +1266,7 @@ object CourseReminderHelper {
         val startedId = liveStartedId(testMode)
         val countdownId = liveCountdownId(testMode)
 
-        val prefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("countdown_state")
         val wasInClass = prefs.getBoolean("in_class_active", false)
         val remainMin = inClassRemainMinutes(endMillis, now)
         val progress = inClassProgressPercent(startMillis, endMillis, remainMin)
@@ -1358,9 +1359,9 @@ object CourseReminderHelper {
         manager.notify(inClassId, notification)
         prefs.edit {
             putBoolean("in_class_active", true)
-                .putInt("in_class_notification_id", inClassId)
-                .putInt("last_in_class_minutes", remainMin)
-                .putInt("last_in_class_progress", progress)
+            putInt("in_class_notification_id", inClassId)
+            putInt("last_in_class_minutes", remainMin)
+            putInt("last_in_class_progress", progress)
         }
     }
 
@@ -1370,11 +1371,11 @@ object CourseReminderHelper {
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(liveInClassId(testMode))
-        val prefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("countdown_state")
         prefs.edit {
             putBoolean("in_class_active", false)
-                .remove("last_in_class_minutes")
-                .remove("last_in_class_progress")
+            remove("last_in_class_minutes")
+            remove("last_in_class_progress")
         }
     }
 
@@ -1431,7 +1432,7 @@ object CourseReminderHelper {
             }
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val startedNotificationId = liveStartedId(testMode)
-        context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        AppStorage.store("countdown_state")
             .edit { putInt("started_notification_id", startedNotificationId) }
         manager.notify(startedNotificationId, startedNotification)
     }
@@ -1530,7 +1531,7 @@ object CourseReminderHelper {
         val minutesUntilStart = ceilMinutesUntil(startMillis)
 
         // 右侧显示模式：0=课程名称，1=上课地点，2=倒计时
-        val reminderPrefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        val reminderPrefs = AppStorage.store("course_reminder_prefs")
         val collapsedMode = reminderPrefs.getInt("live_right_mode", 0)
         val shortCriticalText = when (collapsedMode) {
             // 缩略态只有十几个半角宽，课程名和地点都先按用户规则精简一手
@@ -1586,22 +1587,22 @@ object CourseReminderHelper {
         manager.notify(notificationId, notification)
 
         // 倒计时状态供 WidgetRefreshReceiver 每分钟更新
-        val prefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("countdown_state")
         prefs.edit {
             putBoolean("active", true)
-                .putBoolean("test_mode", testMode)
-                .putString("courseName", courseName)
-                .putString("classroom", classroom)
-                .putString("section", section)
-                .putString("startTime", startTime)
-                .putLong("startMillis", startMillis)
-                .putLong("endMillis", endMillis)
-                .putInt("notificationId", notificationId)
-                .putBoolean("in_class_active", false)
-                .remove("last_displayed_minutes")
-                .remove("last_in_class_minutes")
-                .remove("last_in_class_progress")
-                .remove("started_shown")
+            putBoolean("test_mode", testMode)
+            putString("courseName", courseName)
+            putString("classroom", classroom)
+            putString("section", section)
+            putString("startTime", startTime)
+            putLong("startMillis", startMillis)
+            putLong("endMillis", endMillis)
+            putInt("notificationId", notificationId)
+            putBoolean("in_class_active", false)
+            remove("last_displayed_minutes")
+            remove("last_in_class_minutes")
+            remove("last_in_class_progress")
+            remove("started_shown")
         }
 
         // 精确闹钟保证到点可靠更新
@@ -1652,7 +1653,7 @@ object CourseReminderHelper {
 
     // 每分钟由 WidgetRefreshReceiver 驱动；同 notifyId 重复 notify 无痕更新
     fun updateActiveCountdown(context: Context) {
-        val prefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val prefs = AppStorage.store("countdown_state")
         if (!prefs.getBoolean("active", false)) return
 
         // 岛模式下不显示实况通知：收起残留实况，改由岛状态对账接管
@@ -1668,7 +1669,7 @@ object CourseReminderHelper {
                 manager.cancel(LIVE_TEST_IN_CLASS_ID)
                 prefs.edit {
                     putBoolean("active", false)
-                        .putBoolean("in_class_active", false)
+                    putBoolean("in_class_active", false)
                 }
             }
             reconcileIslandCountdown(context)
@@ -1679,9 +1680,9 @@ object CourseReminderHelper {
         val startMillis = prefs.getLong("startMillis", 0L)
         val endMillis = prefs.getLong("endMillis", 0L)
         val notificationId = liveCountdownId(testMode)
-        val courseName = prefs.getString("courseName", "") ?: ""
-        val classroom = prefs.getString("classroom", "") ?: ""
-        val startTime = prefs.getString("startTime", "") ?: ""
+        val courseName = prefs.getString("courseName", "")
+        val classroom = prefs.getString("classroom", "")
+        val startTime = prefs.getString("startTime", "")
 
         val now = System.currentTimeMillis()
 
@@ -1749,7 +1750,7 @@ object CourseReminderHelper {
             return
         }
 
-        val collapsedPrefs = context.getSharedPreferences("course_reminder_prefs", Context.MODE_PRIVATE)
+        val collapsedPrefs = AppStorage.store("course_reminder_prefs")
         val collapsedMode = collapsedPrefs.getInt("live_right_mode", 0)
 
         val minutesUntilStart = ceilMinutesUntil(startMillis, now)
@@ -2049,7 +2050,7 @@ object CourseReminderHelper {
     // 关闭提醒时清理实况/岛残留
     fun cancelAllReminderNotifications(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val countdownPrefs = context.getSharedPreferences("countdown_state", Context.MODE_PRIVATE)
+        val countdownPrefs = AppStorage.store("countdown_state")
         manager.cancel(LIVE_COUNTDOWN_ID)
         manager.cancel(LIVE_STARTED_ID)
         manager.cancel(LIVE_IN_CLASS_ID)
@@ -2058,10 +2059,10 @@ object CourseReminderHelper {
         manager.cancel(LIVE_TEST_IN_CLASS_ID)
         countdownPrefs.edit {
             putBoolean("active", false)
-                .putBoolean("in_class_active", false)
-                .remove("test_mode")
-                .remove("last_in_class_minutes")
-                .remove("last_in_class_progress")
+            putBoolean("in_class_active", false)
+            remove("test_mode")
+            remove("last_in_class_minutes")
+            remove("last_in_class_progress")
         }
         IslandNotificationHelper.cancelIslandNotifications(context)
         IslandNotificationHelper.IslandState.clear(context)
