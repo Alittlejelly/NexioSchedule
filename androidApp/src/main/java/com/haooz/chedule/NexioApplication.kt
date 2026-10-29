@@ -30,6 +30,8 @@ class NexioApplication : Application() {
                 SqliteStorage.store(context = this, namespace = name)
             }.getOrElse { e ->
                 NexioLog.w(TAG, "SQLite 键值存储不可用，$name 回退 SharedPreferences", e)
+                // 记一笔：这一轮写进 SP 的数据，下次开库要覆盖式重导，否则永久读不到
+                SqliteStorage.recordFallback(this, name)
                 getSharedPreferences(name, MODE_PRIVATE).asKeyValueStore()
             }
         }

@@ -20,6 +20,10 @@ object SqliteStorage {
     /** 导入标记的前缀。带命名空间，缺一个就少导一个，互不影响。 */
     private const val META_IMPORTED_PREFIX = "sp_imported:"
 
+    /** 回退期间的写入标记。单独一个 SP 文件：库打不开时只有 SP 可用，不能存进库。 */
+    private const val FALLBACK_PREFS = "storage_fallback_state"
+    private const val FALLBACK_KEY = "namespaces"
+
     private val lock = Any()
 
     @Volatile
@@ -54,6 +58,35 @@ object SqliteStorage {
     fun isImported(namespace: String): Boolean =
         runCatching { backend?.readMeta(META_IMPORTED_PREFIX + namespace) != null }.getOrDefault(false)
 
+    /**
+     * 记下「这个命名空间曾在 SQLite 不可用时退回 SharedPreferences 写过」。
+     *
+     * 没有这个标记，回退期间写的数据会永久消失：导入标记还在库里，下次启动直接跳过导入，
+     * 那份新写进 SP 的数据既不会被读也不会被清。有了标记，下次开库会覆盖式重导一次。
+     */
+    fun recordFallback(context: Context, namespace: String) {
+        runCatching {
+            val prefs = context.getSharedPreferences(FALLBACK_PREFS, Context.MODE_PRIVATE)
+            val marked = prefs.getStringSet(FALLBACK_KEY, emptySet()).orEmpty()
+            prefs.edit().putStringSet(FALLBACK_KEY, marked + namespace).commit()
+        }.onFailure { NexioLog.w(TAG, "记录回退命名空间失败：$namespace", it) }
+    }
+
+    /** 该命名空间是否有「回退期间写入」的待重导标记。 */
+    private fun isFallbackMarked(context: Context, namespace: String): Boolean = runCatching {
+        context.getSharedPreferences(FALLBACK_PREFS, Context.MODE_PRIVATE)
+            .getStringSet(FALLBACK_KEY, emptySet()).orEmpty().contains(namespace)
+    }.getOrDefault(false)
+
+    /** 重导完成后清标记。失败不清：宁可下次多导一次，也不要把回退期间的数据漏掉。 */
+    private fun clearFallbackMark(context: Context, namespace: String) {
+        runCatching {
+            val prefs = context.getSharedPreferences(FALLBACK_PREFS, Context.MODE_PRIVATE)
+            val remaining = prefs.getStringSet(FALLBACK_KEY, emptySet()).orEmpty() - namespace
+            prefs.edit().putStringSet(FALLBACK_KEY, remaining).commit()
+        }
+    }
+
     /** 从同名 SharedPreferences 文件导入。空文件也写标记，表示「这个命名空间确实没有数据」。 */
     private fun importFromSharedPreferencesIfNeeded(
         context: Context,
@@ -61,7 +94,9 @@ object SqliteStorage {
         namespace: String,
     ) {
         if (namespace in failedNamespaces) error("$namespace 上次导入失败，继续使用 SharedPreferences")
-        if (backend.readMeta(META_IMPORTED_PREFIX + namespace) != null) return
+        // 回退期间写过：以 SP 为准覆盖式重导，否则那批改动永远读不到
+        val reimport = isFallbackMarked(context, namespace)
+        if (!reimport && backend.readMeta(META_IMPORTED_PREFIX + namespace) != null) return
 
         val prefs = context.getSharedPreferences(namespace, Context.MODE_PRIVATE)
         val snapshot = try {
@@ -85,6 +120,9 @@ object SqliteStorage {
 
         try {
             backend.transaction {
+                // 覆盖式重导：回退期间被删掉的键不能留在库里。SP 为空时不覆盖 ——
+                // 「回退期间没写过东西」与「回退期间清空了一切」分不出来，删数据比留设置贵。
+                if (reimport && rows.isNotEmpty()) clearNamespace(namespace)
                 rows.forEach { upsert(namespace, it) }
 
                 // 自校验：读回刚写的，逐键比对类型和值
@@ -107,7 +145,8 @@ object SqliteStorage {
             error("导入 $namespace 失败，已整体回滚：${t.message}")
         }
 
-        NexioLog.w(TAG, "已从 SharedPreferences 导入 $namespace：${rows.size} 个键")
+        if (reimport) clearFallbackMark(context, namespace)
+        NexioLog.w(TAG, "已从 SharedPreferences 导入 $namespace：${rows.size} 个键（回退重导=$reimport）")
     }
 
     /** SharedPreferences 运行时类型 → 带标签的行。认不出返回 null。 */

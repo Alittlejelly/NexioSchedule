@@ -50,7 +50,7 @@ class CourseRowMigrationTest {
 
         // 1) 老状态：只有 JSON
         repository.saveCourses(listOf(math, english), notify = false)
-        val blobBefore = blobOf(repository)
+        val blobBefore = blobOf()
         assertTrue(blobBefore.isNullOrBlank().not(), "前置条件：老状态应当有 JSON blob")
 
         // 2) 装上行表，第一次读取触发迁移
@@ -63,10 +63,9 @@ class CourseRowMigrationTest {
         assertTrue(store.isImported(SCHEDULE), "首次读取必须完成导入并留下标记")
         assertTrue(sameCourseContent(listOf(math, english), loaded), "迁移后内容必须逐字段一致：$loaded")
 
-        // 3) 改一门课：行表更新，JSON 一个字节都不该动 —— 这就是「不再整份重写」的证据
+        // 3) 改一门课：行表更新
         repository.updateCourse(math.copy(note = "改成周三交"))
         assertEquals("改成周三交", store.load(SCHEDULE).first { it.id == "c1" }.note)
-        assertEquals(blobBefore, blobOf(repository), "行表生效后不该再整份重写 JSON blob")
         // 没改的那门课，周次不能被顺手抹掉
         assertEquals(
             listOf(1, 2, 3),
@@ -79,7 +78,17 @@ class CourseRowMigrationTest {
 
         repository.addCourse(course(id = "c3", name = "物理"))
         assertEquals(setOf("c1", "c3"), store.load(SCHEDULE).map { it.id }.toSet())
-        assertEquals(blobBefore, blobOf(repository), "增删课同样只该写行表")
+
+        // 5) 作废行表、从 JSON 重建：拿回的必须是导入那一刻的课表。
+        //    中间三次改动一次都没进 blob —— 否则这里会看到新备注 / 新课程。
+        store.markStale(SCHEDULE)
+        repository.invalidateAllCaches()
+        val fromBlob = repository.getAllCourses()
+        assertEquals(setOf("c1", "c2"), fromBlob.map { it.id }.toSet(), "JSON blob 被整份重写了")
+        assertTrue(
+            fromBlob.first { it.id == "c1" }.note.isEmpty(),
+            "JSON blob 被整份重写了：${fromBlob.first { it.id == "c1" }}",
+        )
     }
 
     @Test
@@ -114,10 +123,42 @@ class CourseRowMigrationTest {
         assertTrue(store.isImported(SCHEDULE))
     }
 
+    /**
+     * 行表生效后 `schedule_X_courses` 停在上次导入那一刻，备份若照抄这份 JSON，
+     * 「备份 → 恢复」就会把之后的所有增删改抹掉。这条把「备份导出的是行表当前内容」钉住。
+     */
+    @Test
+    fun `备份导出的是行表当前内容，恢复后课程还在`() {
+        val repository = CourseRepository.getInstance()
+        val store = SqliteCourseRowStore(NexioDatabase(driver))
+        CourseStorage.install { store }
+        repository.invalidateAllCaches()
+        // 触发导入：此时 blob 是 "[]"，之后新增的课只写行表
+        repository.getAllCourses()
+
+        repository.addCourse(course(id = "c1", name = "高等数学"))
+        repository.invalidateAllCaches()
+        assertEquals(1, repository.getAllCourses().size)
+
+        val backup = repository.exportAllPreferences()
+        val exported = backup["schedule_${SCHEDULE}_courses"] as? String
+        assertTrue(
+            exported.orEmpty().contains("高等数学"),
+            "备份里的课程必须来自行表，而不是冻结的旧 JSON：$exported",
+        )
+
+        // 恢复会作废行表、只认备份里的 JSON
+        repository.importAllPreferences(backup)
+        val restored = repository.getAllCourses()
+        assertEquals(1, restored.size, "恢复后课程不该丢：$restored")
+        assertEquals("高等数学", restored.single().name)
+    }
+
     // ── 工具 ──────────────────────────────────────────────────────────────────
 
-    private fun blobOf(repository: CourseRepository): String? =
-        repository.exportAllPreferences()["schedule_${SCHEDULE}_courses"] as? String
+    /** 备份里该课表那一段。行表没装时它就是 prefs 里那份原始 JSON。 */
+    private fun blobOf(): String? =
+        CourseRepository.getInstance().exportAllPreferences()["schedule_${SCHEDULE}_courses"] as? String
 
     private fun course(
         id: String,

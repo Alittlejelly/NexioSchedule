@@ -10,15 +10,27 @@ import kotlinx.datetime.isoDayNumber
 
 import kotlinx.datetime.LocalDate
 
-/** 课程数据仓库（SharedPreferences，单例） */
+/** 课程数据仓库（单例）：课程读写走行表，设置项走键值存储。 */
 class CourseRepository private constructor() : PeriodTimeSource {
 
     private val prefs: KeyValueStore = AppStorage.store(PREFS_NAME)
 
-    private val courseCache = mutableMapOf<String, List<Course>>()
-    private val occupiedWeeksCache = mutableMapOf<String, Set<Int>>()
+    /**
+     * 缓存一律「不可变 Map + 整体替换」，读不加锁、写持 [cacheLock]。
+     *
+     * 备份走 IO 线程、启动预热也在 IO 线程，与主线程读同时发生；裸 [mutableMapOf] 并发读写
+     * 不是「偶尔读到旧值」，是可能位图损坏或扩容时死循环。
+     */
+    private val cacheLock = Any()
+
+    @Volatile
+    private var courseCache: Map<String, List<Course>> = emptyMap()
+
+    @Volatile
+    private var occupiedWeeksCache: Map<String, Set<Int>> = emptyMap()
     // getPeriodTimes 等高频路径的配置缓存
-    private val timeConfigCache = mutableMapOf<Long, TimeConfig>()
+    @Volatile
+    private var timeConfigCache: Map<Long, TimeConfig> = emptyMap()
     private var timeConfigIdsCache: List<Long>? = null
     // 几乎所有 key 拼接都经过它，全类最热路径
     private var currentScheduleIdCache: String? = null
@@ -32,7 +44,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * [getScheduleTimeConfigId] 在 draw 期被 [getPeriodTimes] / [getSectionsForSchedule] 反复调用，
      * 不缓存就是每帧一次 SQLite 查询。
      */
-    private val bindingCache = mutableMapOf<String, Long>()
+    @Volatile
+    private var bindingCache: Map<String, Long> = emptyMap()
 
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
@@ -101,20 +114,20 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** 绕过本类 setter 直接改写 prefs 后必须调用，否则读到陈旧缓存 */
     // internal：测试要「清缓存 → 重新解码」来模拟重启（见 NotePersistenceTest）
     internal fun invalidateAllCaches() {
-        courseCache.clear()
-        occupiedWeeksCache.clear()
-        timeConfigCache.clear()
+        courseCache = emptyMap()
+        occupiedWeeksCache = emptyMap()
+        timeConfigCache = emptyMap()
         timeConfigIdsCache = null
         currentScheduleIdCache = null
         scheduleNamesCache = null
         scheduleFoldersCache = null
         globalSectionTimesCache = null
-        bindingCache.clear()
+        bindingCache = emptyMap()
     }
 
     /** 节数/节次时间变化会同时影响全局节次映射与分钟级占用判断 */
     private fun invalidateTimeCaches() {
-        occupiedWeeksCache.clear()
+        occupiedWeeksCache = emptyMap()
         globalSectionTimesCache = null
     }
 
@@ -287,7 +300,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     fun getCoursesForSchedule(scheduleId: String): List<Course> {
         courseCache[scheduleId]?.let { return it }
         val courses = loadCourses(scheduleId)
-        courseCache[scheduleId] = courses
+        // 并发下可能被算两次，值等价；整体替换不会破坏快照
+        synchronizedOn(cacheLock) { courseCache = courseCache + (scheduleId to courses) }
         return courses
     }
 
@@ -494,8 +508,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
             }
         }
 
-        courseCache[scheduleId] = normalized
-        occupiedWeeksCache.clear()
+        synchronizedOn(cacheLock) { courseCache = courseCache + (scheduleId to normalized) }
+        occupiedWeeksCache = emptyMap()
         if (notify) dispatchCourseChanged("bulk", "")
     }
 
@@ -1336,7 +1350,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }
 
         if (excludeIds.isEmpty() && startTime == null && endTime == null) {
-            occupiedWeeksCache[occupiedWeeksKey(dayOfWeek, startSection, endSection)] = occupied
+            val key = occupiedWeeksKey(dayOfWeek, startSection, endSection)
+            synchronizedOn(cacheLock) { occupiedWeeksCache = occupiedWeeksCache + (key to occupied) }
         }
 
         return occupied
@@ -1819,7 +1834,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     private fun boundTimeConfigIdOrNull(scheduleId: String): Long? {
         // 按 id 集合校验：删配置后旧缓存自动判成未绑定，无需手动失效
         val resolved = bindingCache[scheduleId] ?: resolveBoundTimeConfigId(scheduleId).also {
-            bindingCache[scheduleId] = it
+            synchronizedOn(cacheLock) { bindingCache = bindingCache + (scheduleId to it) }
         }
         return resolved.takeIf { it != 0L && it in getTimeConfigIds() }
     }
@@ -1915,7 +1930,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }
         prefs.edit { putLong("$SCHEDULE_TIME_CONFIG_PREFIX$scheduleId", timeConfigId) }
         // 写穿缓存：改绑后就地更新，比整体清空更省（清空会让下一次读多打一次库）
-        bindingCache[scheduleId] = timeConfigId
+        synchronizedOn(cacheLock) { bindingCache = bindingCache + (scheduleId to timeConfigId) }
         invalidateTimeCaches()
     }
 
@@ -2068,7 +2083,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
             NexioLog.e(TAG, "time_config_$id 解析异常，回落默认配置", e)
             fallback
         }
-        timeConfigCache[id] = config
+        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + (id to config) }
         return config
     }
 
@@ -2077,7 +2092,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val key = "${TIME_CONFIG_PREFIX}${config.id}"
         val json = encodeTimeConfig(config)
         prefs.edit { putString(key, json) }
-        timeConfigCache[config.id] = config
+        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + (config.id to config) }
         invalidateTimeCaches()
     }
 
@@ -2140,7 +2155,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         if (!ids.remove(id)) return
         saveTimeConfigIds(ids)
         prefs.edit { remove("${TIME_CONFIG_PREFIX}$id") }
-        timeConfigCache.remove(id)
+        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - id }
         if (ids.isNotEmpty() && getCurrentTimeConfigId() == id) {
             setCurrentTimeConfigId(ids.first())
         } else if (ids.isEmpty()) {
@@ -2176,7 +2191,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val kept = ids.filter { it in bound }
         saveTimeConfigIds(kept)
         prefs.edit { orphans.forEach { remove("$TIME_CONFIG_PREFIX$it") } }
-        orphans.forEach { timeConfigCache.remove(it) }
+        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - orphans.toSet() }
         NexioLog.w(TAG, "pruneOrphanTimeConfigs: 保留=$kept 删除=$orphans")
     }
 
@@ -2551,10 +2566,30 @@ class CourseRepository private constructor() : PeriodTimeSource {
             result[KEY_CURRENT_SCHEDULE_ID] = getCurrentScheduleId()
         }
         ensureEmptyScheduleCourseEntries(result, getScheduleNames())
+        syncCoursesIntoBackup(result)
         result.putAll(HolidayManager.exportBackupData())
         // 文件夹用清洗后的结果导出：历史坏数据里的幽灵课表名不应进备份
         result[KEY_SCHEDULE_FOLDERS] = encodeScheduleFolders(getScheduleFolders())
         return result
+    }
+
+    /**
+     * 备份里的课程以行表为准。
+     *
+     * 行表是真相之后 `schedule_{名字}_courses` 就不再更新，直接导出里面那份导入时的旧课表
+     * 会让「备份 → 恢复」把之后的所有增删改抹掉 —— 恢复会作废行表，只认备份里的 JSON。
+     *
+     * 只在行表**确实答得出**时才覆盖：读失败或尚未导入时保留 prefs 里那份，
+     * 否则一次读异常就会拿空表盖掉可能是唯一可抢救数据的原始 JSON。
+     */
+    private fun syncCoursesIntoBackup(result: MutableMap<String, Any>) {
+        val rows = CourseStorage.rows ?: return
+        getScheduleNames().forEach { name ->
+            val authoritative = runCatching {
+                if (rows.isImported(name)) rows.load(name) else null
+            }.getOrNull() ?: return@forEach
+            result["$SCHEDULE_KEY_PREFIX${name}_$KEY_COURSES"] = encodeCourses(authoritative)
+        }
     }
 
     fun importAllPreferences(data: Map<String, Any>) {

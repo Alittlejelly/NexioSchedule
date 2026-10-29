@@ -1,8 +1,8 @@
 package com.haooz.chedule.data
 
 /**
- * 跨平台键值存储。Android 实现必须继续走 SharedPreferences 本身，
- * 换成 DataStore 或自建文件会让存量用户的全部设置读不出来。
+ * 跨平台键值存储。Android 侧由 `SqliteStorage` 提供（`pref` 表），桌面侧是 JSON 文件，
+ * iOS 侧是 UserDefaults。
  *
  * 与 SharedPreferences 的语义差异：
  * 1. 写入分两段，Android 的 `edit {}` 在这里是 [KeyValueEditor]，一个文件内统一用一种。
@@ -53,7 +53,7 @@ interface KeyValueStore {
     fun unregisterListener(token: Any?)
 }
 
-/** 对应 `SharedPreferences.getString(key, null)`：键不存在返回 null。类型不符时仍会抛 ClassCastException。 */
+/** 对应 `SharedPreferences.getString(key, null)`：键不存在返回 null；值不是字符串时返回空串。 */
 fun KeyValueStore.getStringOrNull(key: String): String? =
     if (contains(key)) getString(key, "") else null
 

@@ -73,6 +73,9 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     }
 
     override fun renameSchedule(oldId: String, newId: String) {
+        // 同名等于「REPLACE 自己」：先级联删光课程，再把空行插回来、搬 0 门课、最后连锚点一起删掉，
+        // 而导入标记会被原样写回 —— 课表变空且再也不会从 JSON 重建。UI 挡了同名，存储层也得挡。
+        if (oldId == newId) return
         database.transactionWithResult {
             val flag = q.readMeta(importKey(oldId)).executeAsOneOrNull()
             // 顺序：先建新锚点（课程的 schedule_id 外键要指向它），再搬课程，最后删旧锚点

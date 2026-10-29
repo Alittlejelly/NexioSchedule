@@ -186,6 +186,18 @@ class CourseRowStoreTest {
     }
 
     @Test
+    fun `同名改名不动课表`() {
+        // REPLACE 撞上自己的主键 = 先级联删光课程，再插空行、搬 0 门课、连锚点一起删，
+        // 而导入标记被原样写回 —— 课表变空且再也不会从 JSON 重建。UI 挡了同名，存储层也要挡。
+        store.importAll(anchor(), listOf(course(id = "c1", name = "数学")))
+
+        store.renameSchedule(SCHEDULE, SCHEDULE)
+
+        assertEquals(listOf("c1"), store.load(SCHEDULE).map { it.id }, "同名改名把课清空了")
+        assertTrue(store.isImported(SCHEDULE), "同名改名不该动导入标记")
+    }
+
+    @Test
     fun `恢复备份后整库作废`() {
         store.importAll(anchor(), listOf(course(id = "c1", name = "数学")))
         store.importAll(anchor(scheduleId = "旧课表"), listOf(course(id = "c2", name = "英语", scheduleId = "旧课表")))
