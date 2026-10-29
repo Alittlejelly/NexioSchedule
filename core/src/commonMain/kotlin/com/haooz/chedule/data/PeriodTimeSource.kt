@@ -18,4 +18,23 @@ interface PeriodTimeSource {
     fun getMorningSections(): Int
 
     fun getAfternoonSections(): Int
+
+    /**
+     * 全局节次（1..总节数）→ "HH:mm-HH:mm"。
+     *
+     * 默认实现把三个时段拼起来；[CourseTimeResolver] 解一门课的时间只查一次这张表，
+     * 有现成缓存的实现（[CourseRepository]）可以覆盖掉这三次读取。
+     */
+    fun getSectionTimes(): Map<Int, String> {
+        val morning = getPeriodTimes("morning")
+        val afternoon = getPeriodTimes("afternoon")
+        val evening = getPeriodTimes("evening")
+        val morningSections = getMorningSections()
+        val afternoonSections = getAfternoonSections()
+        return buildMap {
+            morning.forEach { (index, time) -> put(index, time) }
+            afternoon.forEach { (index, time) -> put(morningSections + index, time) }
+            evening.forEach { (index, time) -> put(morningSections + afternoonSections + index, time) }
+        }
+    }
 }

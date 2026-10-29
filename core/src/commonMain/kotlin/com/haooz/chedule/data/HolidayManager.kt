@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.concurrent.Volatile
 
 // ════════════════════════════════════════════════════════════════════════
 //  节假日与调休 · 存储层（加载 / 备份 / 数据源）
@@ -44,6 +45,20 @@ object HolidayManager {
     private const val KEY_FOLLOW_DATE_MIGRATED = "follow_date_migrated"
     private val _dataRevision = MutableStateFlow(0L)
     val dataRevision = _dataRevision.asStateFlow()
+
+    /**
+     * [loadAllByYear] 的快照缓存。它每次都是「prefs 全量快照 + 逐年反序列化」，
+     * 而主线程的智能周末判定、小组件 / 提醒的逐日课表解析都会反复调它。
+     * 键 = 存储实例 + 版本号：任何写入都会换版本号，[AppStorage] 换实例（测试 / 重置）也不再命中。
+     */
+    private class EntriesSnapshot(
+        val store: KeyValueStore,
+        val version: Long,
+        val entries: Map<Int, List<HolidayEntry>>,
+    )
+
+    @Volatile
+    private var allByYearSnapshot: EntriesSnapshot? = null
 
     // 转发到 [HolidayEntry]，调用点 `HolidayManager.TYPE_HOLIDAY` 保持可用
     const val TYPE_HOLIDAY = HolidayEntry.TYPE_HOLIDAY
@@ -94,10 +109,17 @@ object HolidayManager {
             }
         }
 
-    /** 加载所有有存量条目的年份，保留存储年份用于课表查找。 */
+    /** 加载所有有存量条目的年份，保留存储年份用于课表查找。按「存储实例 + 版本号」缓存。 */
     fun loadAllByYear(): Map<Int, List<HolidayEntry>> = synchronizedOn(lock) {
-        val years = storedEntryYears(store().all().keys)
-        years.associateWith { load(it) }
+        val store = store()
+        val version = runCatching { store.getLong(KEY_VERSION, 0L) }.getOrDefault(0L)
+        allByYearSnapshot
+            ?.takeIf { it.store === store && it.version == version }
+            ?.let { return@synchronizedOn it.entries }
+        val years = storedEntryYears(store.all().keys)
+        val entries = years.associateWith { loadLocked(it) }
+        allByYearSnapshot = EntriesSnapshot(store, version, entries)
+        entries
     }
 
     /** 按年原样导出存量 JSON，含自定义映射与跨年范围。 */

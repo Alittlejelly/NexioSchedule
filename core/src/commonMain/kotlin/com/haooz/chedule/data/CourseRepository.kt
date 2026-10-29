@@ -38,6 +38,26 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var globalSectionTimesCache: Map<Int, String>? = null
 
+    /**
+     * 当天生效的作息（`TimeConfig.effective()` 的结果）。`effective()` 要把作息方案逐条转成
+     * 对象、排序、再整份 copy 一次；`CourseTimeResolver` 每门课起止时间各取一遍三个时段，
+     * 于是「一门课 6 次深拷贝」。按 (配置 id, 日期) 缓存后只剩查表。
+     */
+    @Volatile
+    private var effectiveConfigCache: Map<EffectiveConfigKey, TimeConfig> = emptyMap()
+
+    /** 「课表 → 解析后的教学周重组规则」。键里带原始 JSON，存储变了自动重解析，不用手动失效。 */
+    @Volatile
+    private var reorganizationCache: Map<String, CachedReorganizations> = emptyMap()
+
+    /** 「课表 → 规范化后的开学日」。每次教学周换算都要解析一遍，值只在写入时变。 */
+    @Volatile
+    private var classStartCache: Map<String, String> = emptyMap()
+
+    /** 「配置 id → 编码好的 JSON」。课程每次保存都要拿它当锚点 payload，不能回回重编码整份作息。 */
+    @Volatile
+    private var encodedTimeConfigCache: Map<Long, EncodedTimeConfig> = emptyMap()
+
     /** 「课表 → 绑定配置 id」，0 表示未绑定。[getScheduleTimeConfigId] 在 draw 期被反复调用。 */
     @Volatile
     private var bindingCache: Map<String, Long> = emptyMap()
@@ -132,6 +152,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
         scheduleNamesCache = null
         scheduleFoldersCache = null
         globalSectionTimesCache = null
+        effectiveConfigCache = emptyMap()
+        reorganizationCache = emptyMap()
+        classStartCache = emptyMap()
+        encodedTimeConfigCache = emptyMap()
         bindingCache = emptyMap()
         scheduleSettingsCache = emptyMap()
         timeConfigsHydrated = false
@@ -142,6 +166,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     private fun invalidateTimeCaches() {
         occupiedWeeksCache = emptyMap()
         globalSectionTimesCache = null
+        effectiveConfigCache = emptyMap()
     }
 
     /** 为 true 时 [notifyCourseChanged] 延迟到批次结束统一提交，避免连续磁盘写与 UI 抖动 */
@@ -176,6 +201,11 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 仅当写入的是当前课表时才失效缓存并通知 UI / 触发重排。
      */
     private fun markScheduleSettingsChanged(scheduleId: String, changeId: String = "") {
+        // 该行的设置值已经变了，两个按课表缓存的读取结果必须一起作废
+        synchronizedOn(cacheLock) {
+            scheduleSettingsCache = scheduleSettingsCache - scheduleId
+            classStartCache = classStartCache - scheduleId
+        }
         val prefix = getScheduleKeyPrefix(scheduleId)
         prefs.edit { putLong("${prefix}_settings_last_modified", Clock.System.now().toEpochMilliseconds()) }
         if (scheduleId != getCurrentScheduleId()) return
@@ -406,13 +436,29 @@ class CourseRepository private constructor() : PeriodTimeSource {
             scheduleId = scheduleId,
             timeConfigId = timeConfigId,
             timeConfigName = config.name,
-            timeConfigPayload = encodeTimeConfig(config),
+            timeConfigPayload = encodeTimeConfigCached(config),
             sortOrder = getScheduleNames().indexOf(scheduleId).coerceAtLeast(0),
             currentWeek = safeGetInt("${prefix}$KEY_CURRENT_WEEK", 1),
             totalWeeks = safeGetInt("${prefix}$KEY_TOTAL_WEEKS", 20),
             classStart = prefs.getStringOrNull("${prefix}$KEY_CLASS_START_TIME")
                 ?.let { normalizeClassStartDate(it) },
         )
+    }
+
+    /**
+     * 锚点里的作息 payload。`ensureAnchors` 只在行不存在时才真的写它，但每次保存课程都会把
+     * 整份作息重新序列化一遍（含作息方案与节次时间），纯属白跑。
+     * 按实例缓存：配置被替换成新对象时自然重编码。
+     */
+    private fun encodeTimeConfigCached(config: TimeConfig): String {
+        encodedTimeConfigCache[config.id]?.let { cached ->
+            if (cached.config === config) return cached.json
+        }
+        val json = encodeTimeConfig(config)
+        synchronizedOn(cacheLock) {
+            encodedTimeConfigCache = encodedTimeConfigCache + (config.id to EncodedTimeConfig(config, json))
+        }
+        return json
     }
 
     /**
@@ -460,7 +506,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
         totalWeeks: Int? = null,
         classStart: String? = null,
     ): Boolean {
-        synchronizedOn(cacheLock) { scheduleSettingsCache = scheduleSettingsCache - scheduleId }
+        synchronizedOn(cacheLock) {
+            scheduleSettingsCache = scheduleSettingsCache - scheduleId
+            classStartCache = classStartCache - scheduleId
+        }
         val rows = CourseStorage.rows ?: return true
         return runCatching {
             // 行还不存在（新表 / 从没写过课程）：先补建锚点行
@@ -998,12 +1047,24 @@ class CourseRepository private constructor() : PeriodTimeSource {
         scheduleId: String = getCurrentScheduleId(),
     ): List<TeachingWeekReorganizationRule> {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TEACHING_WEEK_REORGANIZATIONS"
-        val raw = prefs.getStringOrNull(key) ?: return emptyList()
-        return runCatching {
-            // Keep a syntactically valid saved rule visible if total_weeks was later reduced;
-            // the editor can then explain/fix it instead of silently hiding the user's data.
-            TeachingWeekReorganization.decode(raw, Int.MAX_VALUE)
-        }.getOrDefault(emptyList())
+        val raw = prefs.getStringOrNull(key)
+        // 键里带原始串：写盘一变就重解析，不需要在每个写入点手动失效
+        reorganizationCache[scheduleId]?.let { cached ->
+            if (cached.raw == raw) return cached.rules
+        }
+        val rules = if (raw == null) {
+            emptyList()
+        } else {
+            runCatching {
+                // Keep a syntactically valid saved rule visible if total_weeks was later reduced;
+                // the editor can then explain/fix it instead of silently hiding the user's data.
+                TeachingWeekReorganization.decode(raw, Int.MAX_VALUE)
+            }.getOrDefault(emptyList())
+        }
+        synchronizedOn(cacheLock) {
+            reorganizationCache = reorganizationCache + (scheduleId to CachedReorganizations(raw, rules))
+        }
+        return rules
     }
 
     /** Validate the entire ruleset before one atomic preference write. */
@@ -1095,21 +1156,26 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     fun getClassStartTime(scheduleId: String): String {
+        // 每次教学周换算都要用：规范化结果只随写入变化，算一遍就够
+        classStartCache[scheduleId]?.let { return it }
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME"
         val stored = rowSettingsOf(scheduleId)?.classStart ?: prefs.getStringOrNull(key)
         // 教务脚本等常写入 yyyy-MM-dd：识别后就地规范化，不能重置成今天
         val normalized = normalizeClassStartDate(stored)
-        if (normalized != null) {
+        val resolved = if (normalized != null) {
             if (normalized != stored) {
                 writeRowSettings(scheduleId, classStart = normalized)
                 prefs.edit { putString(key, normalized) }
             }
-            return normalized
+            normalized
+        } else {
+            val default = todayLocalDate().formatSlashDate()
+            writeRowSettings(scheduleId, classStart = default)
+            prefs.edit { putString(key, default) }
+            default
         }
-        val default = todayLocalDate().formatSlashDate()
-        writeRowSettings(scheduleId, classStart = default)
-        prefs.edit { putString(key, default) }
-        return default
+        synchronizedOn(cacheLock) { classStartCache = classStartCache + (scheduleId to resolved) }
+        return resolved
     }
 
     fun setClassStartTime(time: String) {
@@ -1275,8 +1341,28 @@ class CourseRepository private constructor() : PeriodTimeSource {
     fun getPeriodTimes(period: String, scheduleId: String): Map<Int, String> {
         val configId = getScheduleTimeConfigId(scheduleId)
         // 走生效作息：同一套节次骨架下，按当天日期自动取夏令时/冬令时那套时间
-        return getTimeConfig(configId).effective().getPeriodTimes(period)
+        return effectiveConfig(configId).getPeriodTimes(period)
     }
+
+    /**
+     * 某配置在**今天**生效的那份作息。`effective()` 每次都把作息方案转对象、排序、整份 copy，
+     * `CourseTimeResolver` 解一门课的起止时间会取 6 次时段表，逐次重算等于每门课 6 次深拷贝。
+     * 缓存在这里，跨天或配置被改写时整批作废（见 [invalidateTimeCaches] / [saveTimeConfig]）。
+     */
+    private fun effectiveConfig(configId: Long): TimeConfig {
+        val today = todayLocalDate()
+        val key = EffectiveConfigKey(configId, today)
+        effectiveConfigCache[key]?.let { return it }
+        val config = getTimeConfig(configId).effective(today)
+        synchronizedOn(cacheLock) { effectiveConfigCache = effectiveConfigCache + (key to config) }
+        return config
+    }
+
+    /**
+     * 当前课表的全局节次表（未按节数裁剪，与 [CourseTimeResolver] 原先逐时段拼出来的内容一致）。
+     * 返回的是 [globalSectionTimesCache] 里的实例，调用方只读。
+     */
+    override fun getSectionTimes(): Map<Int, String> = getGlobalSectionTimes()
 
     /** All configured section times, with afternoon and evening keys using global section numbers. */
     fun getCurrentSectionTimes(): Map<Int, String> {
@@ -2235,7 +2321,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
             runCatching { rows.upsertTimeConfig(StoredTimeConfig(config.id, config.name, json)) }
                 .onFailure { NexioLog.w(TAG, "作息写表失败：id=${config.id}", it) }
         }
-        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache + (config.id to config) }
+        synchronizedOn(cacheLock) {
+            timeConfigCache = timeConfigCache + (config.id to config)
+            // 刚编码过就顺手填上，下一次保存课程不必再把整份作息重编码
+            encodedTimeConfigCache =
+                encodedTimeConfigCache + (config.id to EncodedTimeConfig(config, json))
+        }
         invalidateTimeCaches()
     }
 
@@ -2318,7 +2409,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
         CourseStorage.rows?.let { rows ->
             orphans.forEach { orphan -> runCatching { rows.deleteTimeConfigRow(orphan) } }
         }
-        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - orphans.toSet() }
+        synchronizedOn(cacheLock) {
+            timeConfigCache = timeConfigCache - orphans.toSet()
+            encodedTimeConfigCache = encodedTimeConfigCache - orphans.toSet()
+        }
         NexioLog.w(TAG, "pruneOrphanTimeConfigs: 保留=$kept 删除=$orphans")
     }
 
@@ -2984,6 +3078,24 @@ class CourseRepository private constructor() : PeriodTimeSource {
         dispatchCourseChanged("restore", "")
     }
 }
+
+/** 教学周重组规则的解析缓存：原始串一致就直接复用，存储侧写入后自动失效。 */
+private data class CachedReorganizations(
+    val raw: String?,
+    val rules: List<TeachingWeekReorganizationRule>,
+)
+
+/** [CourseRepository] 生效作息的缓存键：配置 id + 日期（作息按日期选方案）。 */
+private data class EffectiveConfigKey(
+    val configId: Long,
+    val date: LocalDate,
+)
+
+/** 已编码的作息配置。`config` 按引用比对，配置被替换成新实例时自然重编码。 */
+private data class EncodedTimeConfig(
+    val config: TimeConfig,
+    val json: String,
+)
 
 internal fun <T> withValidatedFullScheduleBackup(
     data: Map<String, Any>,

@@ -48,6 +48,12 @@ class SqliteKeyValueStore(
 
     private val lock = Any()
 
+    /**
+     * 串行化「落盘 + 换内存快照」。与 [lock] 分开：读只等内存替换那一瞬，
+     * 不必陪着等一次 SQLite 事务提交（编辑课程时主线程正在读设置 / 课表）。
+     */
+    private val commitLock = Any()
+
     /** 全量内存快照。读写一律持 [lock]。 */
     private var data: LinkedHashMap<String, KvRow> = LinkedHashMap()
 
@@ -134,61 +140,48 @@ class SqliteKeyValueStore(
         var cleared = false
 
         // 先在副本上跑：块内抛异常时原状态不动
-        val working = synchronized(lock) { LinkedHashMap(data) }
+        val working = LinkedHashMap<String, KvRow>(synchronized(lock) { data })
         EditorFacade(working, affected) { cleared = true }.block()
 
-        synchronized(lock) {
-            val previous = data
+        synchronized(commitLock) {
             // 只把「受影响的键」合进最新快照，不整张替换：块在锁外执行，这期间别的线程可能
             // 写入了别的键，整张替换会把它们从内存抹掉（磁盘上还在）—— 只有重启才恢复，
             // 表现为「设置改了但界面一直读旧值」。
             val merged = if (cleared) {
                 LinkedHashMap(working)
             } else {
-                LinkedHashMap(previous).apply {
+                LinkedHashMap(synchronized(lock) { data }).apply {
                     for (key in affected) {
                         val row = working[key]
                         if (row != null) put(key, row) else remove(key)
                     }
                 }
             }
-            data = merged
-            try {
-                backend.transaction {
-                    if (cleared) {
-                        clearNamespace(namespace)
-                        merged.values.forEach { upsert(namespace, it) }
-                    } else {
-                        for (key in affected) {
-                            val r = merged[key]
-                            if (r != null) upsert(namespace, r) else delete(namespace, key)
-                        }
+            // 先落盘再换内存：提交失败时内存原样不动，读方也看不到磁盘上没有的状态
+            backend.transaction {
+                if (cleared) {
+                    clearNamespace(namespace)
+                    merged.values.forEach { upsert(namespace, it) }
+                } else {
+                    for (key in affected) {
+                        val r = merged[key]
+                        if (r != null) upsert(namespace, r) else delete(namespace, key)
                     }
                 }
-            } catch (t: Throwable) {
-                // 内存同步回滚，避免与磁盘分叉
-                data = previous
-                throw t
             }
+            synchronized(lock) { data = merged }
         }
 
         notifyListeners(affected)
     }
 
     override fun remove(key: String) {
-        val existed = synchronized(lock) { data.containsKey(key) }
-        if (!existed) return
+        synchronized(commitLock) {
+            val existed = synchronized(lock) { data.containsKey(key) }
+            if (!existed) return
 
-        synchronized(lock) {
-            val previous = data
-            val working = LinkedHashMap(data).apply { remove(key) }
-            data = working
-            try {
-                backend.transaction { delete(namespace, key) }
-            } catch (t: Throwable) {
-                data = previous
-                throw t
-            }
+            backend.transaction { delete(namespace, key) }
+            synchronized(lock) { data = LinkedHashMap(data).apply { remove(key) } }
         }
 
         notifyListeners(listOf(key))
@@ -196,17 +189,12 @@ class SqliteKeyValueStore(
 
     override fun clear() {
         val removed: List<String>
-        synchronized(lock) {
-            if (data.isEmpty()) return
-            removed = data.keys.toList()
-            val previous = data
-            data = LinkedHashMap()
-            try {
-                backend.transaction { clearNamespace(namespace) }
-            } catch (t: Throwable) {
-                data = previous
-                throw t
-            }
+        synchronized(commitLock) {
+            val snapshot = synchronized(lock) { data }
+            if (snapshot.isEmpty()) return
+            removed = snapshot.keys.toList()
+            backend.transaction { clearNamespace(namespace) }
+            synchronized(lock) { data = LinkedHashMap() }
         }
 
         notifyListeners(removed)

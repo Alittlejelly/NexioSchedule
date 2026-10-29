@@ -29,21 +29,9 @@ object CourseTimeResolver {
         isEnd: Boolean = false
     ): String? {
         if (section <= 0) return null
-        val morningTimes = repository.getPeriodTimes("morning")
-        val afternoonTimes = repository.getPeriodTimes("afternoon")
-        val eveningTimes = repository.getPeriodTimes("evening")
-        val morningSections = repository.getMorningSections()
-        val afternoonSections = repository.getAfternoonSections()
-
-        val (timeMap, relativeSection) = when {
-            section <= morningSections ->
-                morningTimes to section
-            section <= morningSections + afternoonSections ->
-                afternoonTimes to (section - morningSections)
-            else ->
-                eveningTimes to (section - morningSections - afternoonSections)
-        }
-        val range = timeMap[relativeSection] ?: return null
+        // 一次取到全局节次表（实现方有缓存），不要再按三个时段各取一遍——
+        // 解一门课的起止时间原本要走 6 次 getPeriodTimes，每一步都要重算生效作息
+        val range = repository.getSectionTimes()[section] ?: return null
         // 同一节次对应 "HH:mm-HH:mm"，起始/结束按 isEnd 取左/右
         return if (isEnd) {
             range.substringAfter("-", range).trim().ifEmpty { null }
