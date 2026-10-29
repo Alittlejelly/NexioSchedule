@@ -70,6 +70,9 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     override fun markStale(scheduleId: String) {
         q.deleteMeta(importKey(scheduleId))
+        // 设置也要重同步：单表导入会直接改写 prefs 里的周次 / 开课日，
+        // 留着标记的话下一次读取认为行已同步，读到的还是导入前的值
+        q.deleteMeta(settingsSyncKey(scheduleId))
     }
 
     override fun renameSchedule(oldId: String, newId: String) {
@@ -85,6 +88,10 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             q.deleteMeta(importKey(oldId))
             // 标记一起搬，否则新名字被判成未导入，会从冻结的 JSON 重建
             if (flag != null) q.writeMeta(importKey(newId), flag)
+            if (isSettingsSynced(oldId)) {
+                q.writeMeta(settingsSyncKey(newId), "1")
+                q.deleteMeta(settingsSyncKey(oldId))
+            }
         }
     }
 
@@ -93,6 +100,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             // course 由 CASCADE 跟着删；标记一起清
             q.deleteSchedule(scheduleId)
             q.deleteMeta(importKey(scheduleId))
+            q.deleteMeta(settingsSyncKey(scheduleId))
         }
     }
 
@@ -110,11 +118,44 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     override fun bindings(): Map<String, Long> =
         q.selectAllScheduleBindings().executeAsList().associate { it.id to it.time_config_id }
 
+    override fun settingsOf(scheduleId: String): ScheduleRowSettings? =
+        runCatching {
+            q.selectScheduleSettings(scheduleId).executeAsOneOrNull()?.let {
+                ScheduleRowSettings(
+                    currentWeek = it.current_week.toInt(),
+                    totalWeeks = it.total_weeks.toInt(),
+                    classStart = it.class_start,
+                )
+            }
+        }.getOrNull()
+
+    override fun writeSettings(
+        scheduleId: String,
+        currentWeek: Int?,
+        totalWeeks: Int?,
+        classStart: String?,
+    ) {
+        q.updateScheduleSettings(
+            currentWeek = currentWeek?.toLong(),
+            totalWeeks = totalWeeks?.toLong(),
+            classStart = classStart,
+            id = scheduleId,
+        )
+    }
+
+    override fun isSettingsSynced(scheduleId: String): Boolean =
+        runCatching { q.readMeta(settingsSyncKey(scheduleId)).executeAsOneOrNull() }.getOrNull() != null
+
+    override fun markSettingsSynced(scheduleId: String) {
+        q.writeMeta(settingsSyncKey(scheduleId), "1")
+    }
+
     override fun invalidateAll() {
         database.transactionWithResult {
             q.deleteAllCourses()
             q.deleteAllSchedules()
             q.deleteCourseImportFlags()
+            q.deleteScheduleSettingsSyncFlags()
         }
     }
 
@@ -200,9 +241,13 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     private fun importKey(scheduleId: String) = "$META_IMPORTED_PREFIX$scheduleId"
 
+    private fun settingsSyncKey(scheduleId: String) = "$META_SETTINGS_SYNC_PREFIX$scheduleId"
+
     private companion object {
         const val TAG = "SqliteCourseRowStore"
         /** 与 SqliteStorage 的 `sp_imported:` 前缀区分：一个是偏好文件、一个是课程行。 */
         const val META_IMPORTED_PREFIX = "courses_imported:"
+        /** 设置值是否已从 prefs 同步进行。行被整体作废后必须一起清，否则不会再同步。 */
+        const val META_SETTINGS_SYNC_PREFIX = "settings_synced:"
     }
 }

@@ -160,6 +160,10 @@ class NexioApplication : Application() {
                 val repository = com.haooz.chedule.data.CourseRepository()
                 repository.getScheduleNames().forEach { schedule ->
                     runCatching { repository.getCoursesForSchedule(schedule) }
+                    // 周次 / 总周数 / 开课日的一次性同步也在 IO 线程做掉，别让它落在首帧
+                    runCatching { repository.getCurrentWeek(schedule) }
+                    runCatching { repository.getTotalWeeks(schedule) }
+                    runCatching { repository.getClassStartTime(schedule) }
                 }
             }.onFailure { NexioLog.w(TAG, "课程预导入行表失败（首屏会再试一次）", it) }
         }

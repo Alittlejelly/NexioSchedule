@@ -163,6 +163,18 @@ SELECT time_config_id FROM schedule WHERE id = ?;
 selectAllScheduleBindings:
 SELECT id, time_config_id FROM schedule;
 
+-- 课表行上的三个设置值（当前周 / 总周数 / 开课日）。行不存在返回 0 行。
+selectScheduleSettings:
+SELECT current_week, total_weeks, class_start FROM schedule WHERE id = ?;
+
+-- 单条更新三个字段：传 null 的保持库里的值（COALESCE），不做读-改-写
+updateScheduleSettings:
+UPDATE schedule SET
+    current_week = COALESCE(:currentWeek, current_week),
+    total_weeks  = COALESCE(:totalWeeks, total_weeks),
+    class_start  = COALESCE(:classStart, class_start)
+WHERE id = :id;
+
 updateScheduleBinding:
 UPDATE schedule SET time_config_id = ? WHERE id = ?;
 
@@ -175,6 +187,9 @@ DELETE FROM schedule;
 
 deleteCourseImportFlags:
 DELETE FROM meta WHERE k LIKE 'courses_imported:%';
+
+deleteScheduleSettingsSyncFlags:
+DELETE FROM meta WHERE k LIKE 'settings_synced:%';
 
 upsertCourse:
 INSERT OR REPLACE INTO course(id, schedule_id, name, classroom, teacher, day_of_week, start_section,

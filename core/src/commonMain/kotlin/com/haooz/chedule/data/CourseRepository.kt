@@ -52,6 +52,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var bindingCache: Map<String, Long> = emptyMap()
 
+    /** 「课表 → 当前周 / 总周数 / 开课日」。行是真相，prefs 是写穿镜像。 */
+    @Volatile
+    private var scheduleSettingsCache: Map<String, ScheduleRowSettings> = emptyMap()
+
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
         // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
@@ -128,6 +132,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         scheduleFoldersCache = null
         globalSectionTimesCache = null
         bindingCache = emptyMap()
+        scheduleSettingsCache = emptyMap()
     }
 
     /** 节数/节次时间变化会同时影响全局节次映射与分钟级占用判断 */
@@ -395,8 +400,64 @@ class CourseRepository private constructor() : PeriodTimeSource {
             sortOrder = getScheduleNames().indexOf(scheduleId).coerceAtLeast(0),
             currentWeek = safeGetInt("${prefix}$KEY_CURRENT_WEEK", 1),
             totalWeeks = safeGetInt("${prefix}$KEY_TOTAL_WEEKS", 20),
-            classStart = prefs.getStringOrNull("${prefix}$KEY_CLASS_START_TIME"),
+            classStart = prefs.getStringOrNull("${prefix}$KEY_CLASS_START_TIME")
+                ?.let { normalizeClassStartDate(it) },
         )
+    }
+
+    /**
+     * 课表行上的设置值。行是真相，prefs 是写穿镜像。
+     *
+     * 老数据的行里只有建行时的快照，所以首次访问先做一次 prefs → 行 同步，之后不再覆盖。
+     */
+    private fun rowSettingsOf(scheduleId: String): ScheduleRowSettings? {
+        scheduleSettingsCache[scheduleId]?.let { return it }
+        val rows = CourseStorage.rows ?: return null
+        val existing = runCatching { rows.settingsOf(scheduleId) }.getOrNull() ?: return null
+        val settings = if (runCatching { rows.isSettingsSynced(scheduleId) }.getOrDefault(false)) {
+            existing
+        } else {
+            syncLegacySettingsIntoRow(scheduleId, rows)
+            runCatching { rows.settingsOf(scheduleId) }.getOrNull() ?: existing
+        }
+        synchronizedOn(cacheLock) { scheduleSettingsCache = scheduleSettingsCache + (scheduleId to settings) }
+        return settings
+    }
+
+    /** prefs → 行，一次性。行还不存在时写入静默无效，等锚点建行后再走正常写路径。 */
+    private fun syncLegacySettingsIntoRow(scheduleId: String, rows: CourseRowStore) {
+        val prefix = getScheduleKeyPrefix(scheduleId)
+        runCatching {
+            rows.writeSettings(
+                scheduleId = scheduleId,
+                currentWeek = safeGetInt("${prefix}$KEY_CURRENT_WEEK", 1),
+                totalWeeks = safeGetInt("${prefix}$KEY_TOTAL_WEEKS", 20),
+                classStart = prefs.getStringOrNull("${prefix}$KEY_CLASS_START_TIME")
+                    ?.let { normalizeClassStartDate(it) },
+            )
+            rows.markSettingsSynced(scheduleId)
+        }.onFailure { NexioLog.w(TAG, "课表设置同步进行表失败：$scheduleId", it) }
+    }
+
+    /** 写行；行不存在时先补建锚点行再重试一次。prefs 镜像由调用方写。 */
+    private fun writeRowSettings(
+        scheduleId: String,
+        currentWeek: Int? = null,
+        totalWeeks: Int? = null,
+        classStart: String? = null,
+    ) {
+        synchronizedOn(cacheLock) { scheduleSettingsCache = scheduleSettingsCache - scheduleId }
+        val rows = CourseStorage.rows ?: return
+        val write = {
+            rows.writeSettings(scheduleId, currentWeek, totalWeeks, classStart)
+        }
+        runCatching {
+            // 行还不存在（新表 / 从没写过课程）：先补建锚点行
+            if (rows.settingsOf(scheduleId) == null) {
+                courseRowAnchor(scheduleId)?.let { rows.setBinding(it) }
+            }
+            write()
+        }.onFailure { NexioLog.w(TAG, "课表设置写行表失败：$scheduleId", it) }
     }
 
     fun getScheduleSummary(scheduleId: String): String {
@@ -881,8 +942,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     fun getCurrentWeek(scheduleId: String): Int {
-        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_CURRENT_WEEK"
-        return safeGetInt(key, 1)
+        rowSettingsOf(scheduleId)?.let { return it.currentWeek }
+        return safeGetInt("${getScheduleKeyPrefix(scheduleId)}$KEY_CURRENT_WEEK", 1)
     }
 
     /** Background readers cannot assume the persisted UI week was refreshed after midnight. */
@@ -891,8 +952,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
             .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
 
     fun setCurrentWeek(week: Int) {
-        val key = "${getScheduleKeyPrefix()}$KEY_CURRENT_WEEK"
-        prefs.edit { putInt(key, week) }
+        val scheduleId = getCurrentScheduleId()
+        prefs.edit { putInt("${getScheduleKeyPrefix(scheduleId)}$KEY_CURRENT_WEEK", week) }
+        writeRowSettings(scheduleId, currentWeek = week)
         notifyCourseChanged("settings")
     }
 
@@ -901,8 +963,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     fun getTotalWeeks(scheduleId: String): Int {
-        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS"
-        return safeGetInt(key, 20).coerceIn(1, MAX_TOTAL_WEEKS)
+        rowSettingsOf(scheduleId)?.let { return it.totalWeeks.coerceIn(1, MAX_TOTAL_WEEKS) }
+        return safeGetInt("${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS", 20)
+            .coerceIn(1, MAX_TOTAL_WEEKS)
     }
 
     fun setTotalWeeks(weeks: Int) {
@@ -912,8 +975,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** 写目标课表总周数；更新该课表同步时间戳，仅当前课表才通知 UI */
     fun setTotalWeeks(scheduleId: String, weeks: Int) {
         if (weeks !in 1..MAX_TOTAL_WEEKS) return
-        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS"
-        prefs.edit { putInt(key, weeks) }
+        prefs.edit { putInt("${getScheduleKeyPrefix(scheduleId)}$KEY_TOTAL_WEEKS", weeks) }
+        writeRowSettings(scheduleId, totalWeeks = weeks)
         markScheduleSettingsChanged(scheduleId)
     }
 
@@ -1019,17 +1082,19 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun getClassStartTime(scheduleId: String): String {
         val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME"
-        val default = todayLocalDate().formatSlashDate()
-        val stored = prefs.getStringOrNull(key)
+        val stored = rowSettingsOf(scheduleId)?.classStart ?: prefs.getStringOrNull(key)
+        // 教务脚本等常写入 yyyy-MM-dd：识别后就地规范化，不能重置成今天
         val normalized = normalizeClassStartDate(stored)
         if (normalized != null) {
-            // 教务脚本等常写入 yyyy-MM-dd：识别后就地规范化，绝不能重置成今天
             if (normalized != stored) {
                 prefs.edit { putString(key, normalized) }
+                writeRowSettings(scheduleId, classStart = normalized)
             }
             return normalized
         }
+        val default = todayLocalDate().formatSlashDate()
         prefs.edit { putString(key, default) }
+        writeRowSettings(scheduleId, classStart = default)
         return default
     }
 
@@ -1040,8 +1105,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** 指定课表写入开学日；非法日期直接忽略，避免导入路径把开学日写成今天 */
     fun setClassStartTime(scheduleId: String, time: String) {
         val normalized = normalizeClassStartDate(time) ?: return
-        val key = "${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME"
-        prefs.edit { putString(key, normalized) }
+        prefs.edit { putString("${getScheduleKeyPrefix(scheduleId)}$KEY_CLASS_START_TIME", normalized) }
+        writeRowSettings(scheduleId, classStart = normalized)
         markScheduleSettingsChanged(scheduleId)
     }
 

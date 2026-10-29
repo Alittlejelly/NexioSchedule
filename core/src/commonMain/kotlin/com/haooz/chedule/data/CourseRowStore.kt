@@ -60,6 +60,21 @@ interface CourseRowStore {
     /** 全部课表的绑定。孤儿配置清理对它求差集。 */
     fun bindings(): Map<String, Long>
 
+    // ── 课表设置 ──────────────────────────────────────────────────────────────
+    // current_week / total_weeks / class_start 是 `schedule` 行上的列，prefs 键是写穿镜像
+    // （备份导出遍历 prefs，没有行表的平台也靠它）。
+
+    /** 三个设置值。行不存在返回 null。 */
+    fun settingsOf(scheduleId: String): ScheduleRowSettings?
+
+    /** 写三个设置值；传 null 的字段保持库里的值。行不存在时静默无效，调用方需先补建行。 */
+    fun writeSettings(scheduleId: String, currentWeek: Int?, totalWeeks: Int?, classStart: String?)
+
+    /** 该课表的设置是否已从 prefs 同步进行，见 `CourseRepository` 的一次性同步。 */
+    fun isSettingsSynced(scheduleId: String): Boolean
+
+    fun markSettingsSynced(scheduleId: String)
+
     /** 全部作废（整库恢复备份后）。下次读取从恢复出的 JSON 重新导入。 */
     fun invalidateAll()
 }
@@ -98,6 +113,13 @@ object CourseStorage {
 internal data class CourseRowDiff(
     val deleted: List<String>,
     val updated: List<Course>,
+)
+
+/** `schedule` 行上的三个设置值。 */
+data class ScheduleRowSettings(
+    val currentWeek: Int,
+    val totalWeeks: Int,
+    val classStart: String?,
 )
 
 /**
