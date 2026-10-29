@@ -13,13 +13,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * [SqlBackend] 的 Android 实现。整个应用一个库文件 `nexio.db`：`pref` 键值表与实体表
- * 同库同连接，一次事务可同时改课表、课程、作息绑定。
+ * [SqlBackend] 的 Android 实现。整个应用一个库文件 `nexio.db`，`pref` 与实体表同库同连接。
  *
- * schema 归 SQLDelight（`commonMain/sqldelight/.../Schedule.sq`），此文件不建表。
- *
- * - 开库后必须 `PRAGMA foreign_keys = ON`：SQLite 默认关闭，漏了所有外键约束都不生效。
- * - journal 用平台默认（Android 非内存库默认 WAL，同步级别 NORMAL）。
+ * - schema 归 SQLDelight，此文件不建表；
+ * - 开库后必须 `PRAGMA foreign_keys = ON`（SQLite 默认关闭，漏了外键都不生效）；
+ * - journal 用平台默认（WAL + NORMAL）；
  * - 写操作一律走 [transaction]。
  */
 class AndroidSqlBackend(context: Context) : SqlBackend {

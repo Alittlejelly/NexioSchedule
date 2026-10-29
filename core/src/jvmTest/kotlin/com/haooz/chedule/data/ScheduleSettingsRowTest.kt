@@ -11,10 +11,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `schedule` 行上的 current_week / total_weeks / class_start：行是真相，prefs 键是写穿镜像。
- *
- * 覆盖三条容易退化的路径：老数据的一次性同步、写设置的双写、导入后标记失效带来的重同步。
- *
+ * current_week / total_weeks / class_start：行是真相，prefs 键是写穿镜像。
  * ⚠ 单例 prefs 在测试类之间共用，课表名一律带纳秒后缀。
  */
 class ScheduleSettingsRowTest {

@@ -37,10 +37,8 @@ interface SqlBackend {
 /**
  * [KeyValueStore] 的 SQLite 实现：内存快照 + 行级写入 + 单事务提交。
  *
- * 读是纯内存（构造时整份载入）；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
- * 类型以 `type` 列为准，读时按需窄化（Long→Int、Float→Int）。
- *
- * 每个命名空间只允许一个实例（[SqliteStorage.store] 缓存）：两份快照会互相看不见。
+ * 读是纯内存；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
+ * 每个命名空间只能有一个实例（[SqliteStorage.store] 缓存），两份快照会互相看不见。
  * `edit{}` 在副本上生效，提交失败时内存同步回滚。
  */
 class SqliteKeyValueStore(

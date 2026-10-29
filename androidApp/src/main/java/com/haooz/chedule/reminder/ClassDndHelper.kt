@@ -398,7 +398,7 @@ object ClassDndHelper {
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
             .format(java.util.Date())
         val token = "$reason:$today"
-        val sent = (p.getStringSet(KEY_WARN_SENT, emptySet()) ?: emptySet()).toMutableSet()
+        val sent = p.getStringSet(KEY_WARN_SENT, emptySet()).toMutableSet()
         if (token in sent) {
             NexioLog.d(TAG, message)
             return

@@ -155,9 +155,7 @@ internal fun diffCourses(previous: List<Course>, next: List<Course>): CourseRowD
 
 /**
  * 行表读回结果与内存对象是否等价，供导入自校验。
- *
- * 只放行两处存储归一化：`selectedWeeks` 落表后按 week 升序（这里比排序后的结果）、
- * `weekNotes` 是 Map（相等与顺序无关）。其余字段必须完全相等。
+ * 只放行两处归一化：`selectedWeeks` 比排序后结果、`weekNotes` 是 Map（与顺序无关）。
  */
 internal fun sameCourseContent(expected: List<Course>, actual: List<Course>): Boolean {
     if (expected.size != actual.size) return false

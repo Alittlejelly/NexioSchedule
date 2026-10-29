@@ -190,5 +190,4 @@ fun jsonToPlainValue(element: JsonElement?): Any? = when (element) {
         element.content == "false" -> false
         else -> element.content.toDoubleOrNull() ?: element.content
     }
-    else -> element.toString()
 }

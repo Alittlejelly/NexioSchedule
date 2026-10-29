@@ -15,12 +15,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     private val prefs: KeyValueStore = AppStorage.store(PREFS_NAME)
 
-    /**
-     * 缓存一律「不可变 Map + 整体替换」，读不加锁、写持 [cacheLock]。
-     *
-     * 备份走 IO 线程、启动预热也在 IO 线程，与主线程读同时发生；裸 [mutableMapOf] 并发读写
-     * 不是「偶尔读到旧值」，是可能位图损坏或扩容时死循环。
-     */
+    /** 缓存一律不可变 Map + 整体替换：读不加锁，写持 [cacheLock]。备份与预热在 IO 线程并发读。 */
     private val cacheLock = Any()
 
     @Volatile
@@ -43,12 +38,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var globalSectionTimesCache: Map<Int, String>? = null
 
-    /**
-     * 「课表 → 绑定的作息配置 id」缓存，0 表示未绑定。
-     *
-     * [getScheduleTimeConfigId] 在 draw 期被 [getPeriodTimes] / [getSectionsForSchedule] 反复调用，
-     * 不缓存就是每帧一次 SQLite 查询。
-     */
+    /** 「课表 → 绑定配置 id」，0 表示未绑定。[getScheduleTimeConfigId] 在 draw 期被反复调用。 */
     @Volatile
     private var bindingCache: Map<String, Long> = emptyMap()
 
@@ -1540,7 +1530,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun getCurrentScheduleId(): String {
         currentScheduleIdCache?.let { return it }
-        val saved = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表") ?: "默认课表"
+        val saved = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表")
         // 不在列表中则回退第一个
         val names = getScheduleNames()
         val resolved = if (saved in names) saved else names.first()
@@ -1704,7 +1694,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         val index = names.indexOf(oldName)
         if (index != -1) {
             // 先更新当前课表 ID，再改名称列表
-            val savedCurrentId = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表") ?: "默认课表"
+            val savedCurrentId = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表")
             if (savedCurrentId == oldName) {
                 setCurrentScheduleId(newName)
             }
@@ -1898,13 +1888,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /**
      * 这张课表绑定的配置。未绑定返回 null。
      *
-     * 两处存储，行表优先：
-     * 1. `schedule.time_config_id`：权威，随行走 —— 改名搬行、删表级联；
-     * 2. `schedule_time_config_{名字}`：写穿镜像，供备份导出（`exportAllPreferences` 遍历 prefs）、
-     *    降级回旧版本、以及没有行表的平台（桌面 / 测试）。
-     *
+     * 行表优先（`schedule.time_config_id`），其次 prefs 镜像（备份 / 无行表平台）。
      * 不能用 [getScheduleTimeConfigId] 判断：它对未绑定会回退，永远不为 0。
-     * 值 0 或指向已删配置，等价于未绑定。
      */
     private fun boundTimeConfigIdOrNull(scheduleId: String): Long? {
         // 按 id 集合校验：删配置后旧缓存自动判成未绑定，无需手动失效
@@ -1931,12 +1916,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 当前被任何课表占用的配置 id：行表 ∪ prefs 镜像。
+     * 当前被任何课表占用的配置 id：行表 ∪ prefs 镜像（恢复备份后只有前者或只有后者是对的）。
      *
-     * 取并集：恢复备份后行表被整体作废，那一刻绑定只在 prefs 里；镜像还没补写时又只有行表是对的。
-     *
-     * @return null 表示判据不可靠（行表在但读失败）。调用方按「不知道」处理：
-     *   清理跳过，补绑宁可复制新配置。
+     * @return null 表示判据不可靠（行表在但读失败），调用方按「不知道」处理。
      */
     private fun boundTimeConfigIdsInUse(): Set<Long>? {
         val result = mutableSetOf<Long>()
@@ -1954,11 +1936,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 写入前取这张课表自己的配置 id，未绑定就当场绑上。
-     *
-     * 读取可以回退，写入不能：未绑定的课表改节次 / 改时间会改到它回退到的那套，即另一张课表的作息。
-     *
-     * 回退那套没有别的课表绑定时直接过户，已被别人绑着就复制一份独立配置。
+     * 写入前取这张课表自己的配置 id，未绑定就当场绑上。读取可以回退，写入不能 ——
+     * 否则会改到它回退到的那套，即另一张课表的作息。
      */
     private fun ensureScheduleTimeConfigId(scheduleId: String): Long {
         boundTimeConfigIdOrNull(scheduleId)?.let { return it }
@@ -1982,9 +1961,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /**
      * 改绑作息。行表是权威，prefs 键是写穿镜像。
-     *
-     * 镜像不能省：`exportAllPreferences` 遍历 prefs 构成备份格式，少了这个键，
-     * 恢复后所有课表会退回旧全局指针、共用一套作息。
+     * 镜像不能省：备份遍历 prefs，少了它会退回旧全局指针、全体共用一套作息。
      */
     fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) {
         // 0 是「一个配置都没有」的兜底值，不写进绑定
@@ -2045,7 +2022,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     fun getDefaultHomepage(): String {
-        return prefs.getString(KEY_DEFAULT_HOMEPAGE, "课程表") ?: "课程表"
+        return prefs.getString(KEY_DEFAULT_HOMEPAGE, "课程表")
     }
 
     fun setDefaultHomepage(homepage: String) {
@@ -2109,18 +2086,19 @@ class CourseRepository private constructor() : PeriodTimeSource {
     /** prefs → 表，一次性。prefs 里一个可解析配置都没有时不动表。 */
     private fun syncTimeConfigsIntoRows(rows: CourseRowStore) {
         val ids = parseTimeConfigIdsFromPrefs()?.takeIf { it.isNotEmpty() } ?: return
-        val kept = mutableSetOf<Long>()
+        var written = 0
         ids.forEach { id ->
             val json = prefs.getStringOrNull("$TIME_CONFIG_PREFIX$id") ?: return@forEach
             val config = runCatching { parseTimeConfigSnapshotOrNull(json) }.getOrNull()
                 ?.let { TimeConfig.sanitize(id, it) } ?: return@forEach
             runCatching {
                 rows.upsertTimeConfig(StoredTimeConfig(id, config.name, encodeTimeConfig(config)))
-            }.onSuccess { kept += id }
+            }.onSuccess { written++ }
         }
-        if (kept.isEmpty()) return
-        // 表里 prefs 已没有的（被 prune 删过的孤儿）要删掉，否则会复活
-        runCatching { rows.timeConfigs().map { it.id }.filter { it !in kept } }.getOrNull()
+        if (written == 0) return
+        // 只删「prefs 的 id 列表里明确没有」的行（被 prune 删过的孤儿）。
+        // 按 kept 删会把「payload 键丢了但 id 还列着」的配置一起删掉 —— 那是 SP 侧损坏，不该连累表。
+        runCatching { rows.timeConfigs().map { it.id }.filter { it !in ids } }.getOrNull()
             ?.forEach { orphan -> runCatching { rows.deleteTimeConfigRow(orphan) } }
     }
 
@@ -2272,27 +2250,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         return true
     }
 
-    fun deleteTimeConfig(id: Long) {
-        val ids = getTimeConfigIds().toMutableList()
-        if (!ids.remove(id)) return
-        saveTimeConfigIds(ids)
-        prefs.edit { remove("${TIME_CONFIG_PREFIX}$id") }
-        CourseStorage.rows?.let { rows -> runCatching { rows.deleteTimeConfigRow(id) } }
-        synchronizedOn(cacheLock) { timeConfigCache = timeConfigCache - id }
-        if (ids.isNotEmpty() && getCurrentTimeConfigId() == id) {
-            setCurrentTimeConfigId(ids.first())
-        } else if (ids.isEmpty()) {
-            saveTimeConfigIds(listOf(0L))
-            setCurrentTimeConfigId(0L)
-        }
-    }
-
-    /**
-     * 清理没有课表绑定的孤儿时间配置。删除不可逆，判据不足时不动手。
-     *
-     * 判据是 [collectBoundTimeConfigIds]：行表绑定 ∪ prefs 镜像 ∪ 旧全局指针及其解析值。
-     * 未绑定的课表会回退到旧指针，而指针值本身就在判据里，所以不影响正确性。
-     */
+    /** 清理没有课表绑定的孤儿配置。删除不可逆，判据不足时不动手（见 [collectBoundTimeConfigIds]）。 */
     fun pruneOrphanTimeConfigsIfNeeded() {
         val ids = getTimeConfigIds()
         if (ids.size <= 1) return
@@ -2700,11 +2658,10 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 备份以表为准。表成为真相之后，镜像只是「最近一次成功写入」的快照：
-     * 任何只写表没写镜像的路径（建锚点、写镜像失败被吞掉）都会让备份落后，
-     * 而恢复只认备份。
+     * 备份以表为准：课程、作息、三个设置字段都从表物化。
+     * 镜像只是「最近一次成功写入」的快照，会落后；而恢复只认备份。
      *
-     * 每段都只在表答得出时覆盖；表不可用 / 未导入时保留镜像里那份。
+     * 每段都只在表答得出时覆盖，表不可用 / 未导入时保留镜像。
      */
     private fun syncRowsIntoBackup(result: MutableMap<String, Any>) {
         val rows = CourseStorage.rows ?: return

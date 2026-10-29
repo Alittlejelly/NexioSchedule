@@ -10,10 +10,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * 备份必须以表为准。
- *
- * 表成为真相之后，prefs 镜像只是「最近一次成功写入」的快照：建锚点、写镜像失败被吞掉，
- * 都会让镜像落后。而恢复只认备份，镜像一落后就是「备份 → 恢复」丢数据。
+ * 备份必须以表为准：镜像只是「最近一次成功写入」的快照，会落后，而恢复只认备份。
  */
 class BackupMaterializationTest {
 

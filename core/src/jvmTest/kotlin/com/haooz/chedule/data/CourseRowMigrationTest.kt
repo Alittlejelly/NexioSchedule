@@ -9,10 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * JSON blob → 课程行表 导入链路的端到端回归。
- *
- * 测 [CourseRepository] 而不是 [SqliteCourseRowStore]：会丢数据的是切换逻辑 ——
- * 何时判定行表为真相、写行表后还要不要写 blob、读失败退回哪里。
+ * JSON blob → 课程行表 的端到端回归。测 [CourseRepository] 的切换逻辑（何时认行表、
+ * 写完要不要写 blob、读失败退回哪里），而不是表本身。
  */
 class CourseRowMigrationTest {
 

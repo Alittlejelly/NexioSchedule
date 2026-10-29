@@ -11,10 +11,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 作息配置的存储：`time_config` 表是真相，prefs 的 `time_config_{id}` 与 `time_config_ids` 是写穿镜像。
- *
- * 重点在两条容易退化的路径：老 payload 的一次性同步（行里是建行时的快照）、
- * 删除时必须连表行一起删（否则订阅行还在，配置会复活）。
+ * 作息配置：`time_config` 表是真相，prefs 的 `time_config_{id}` 与 `time_config_ids` 是镜像。
+ * 重点是老 payload 的一次性同步、删除时必须连表行一起删。
  */
 class TimeConfigRowTest {
 
@@ -97,14 +95,21 @@ class TimeConfigRowTest {
     }
 
     @Test
-    fun `删除配置同时删表行`() {
-        val name = schedule("删除")
-        val id = repository.addTimeConfig(config(name, morning = 4))
-        assertNotNull(store.timeConfigs().firstOrNull { it.id == id })
+    fun `清理孤儿配置时连表行一起删`() {
+        val name = schedule("孤儿")
+        freshState(name)
+        val bound = repository.addTimeConfig(config(name, morning = 4))
+        repository.setScheduleTimeConfigId(name, bound)
+        val orphan = repository.addTimeConfig(config("$name-未绑定", morning = 3))
+        repository.setCurrentTimeConfigId(bound)
 
-        repository.deleteTimeConfig(id)
+        repository.pruneOrphanTimeConfigsIfNeeded()
 
-        assertNull(store.timeConfigs().firstOrNull { it.id == id }, "表行不删，配置会在下次读取时复活")
+        assertNull(
+            store.timeConfigs().firstOrNull { it.id == orphan },
+            "只删 prefs 键不删表行，配置会在下次读取时复活",
+        )
+        assertNotNull(store.timeConfigs().firstOrNull { it.id == bound }, "在用配置不能删")
     }
 
     @Test
@@ -120,6 +125,17 @@ class TimeConfigRowTest {
     // ── 工具 ──────────────────────────────────────────────────────────────────
 
     private fun schedule(prefix: String) = "$prefix-${System.nanoTime()}"
+
+    private fun freshState(name: String) {
+        val cleaned = repository.exportAllPreferences()
+            .filterKeys { !it.startsWith("schedule_") }
+            .toMutableMap()
+        cleaned["schedule_names"] = encodeStringList(listOf(name))
+        cleaned["schedule_folders"] = "[]"
+        cleaned["current_schedule_id"] = name
+        cleaned["schedule_${name}_courses"] = "[]"
+        repository.importAllPreferences(cleaned)
+    }
 
     private fun config(name: String, morning: Int) = TimeConfig(
         id = 0L,

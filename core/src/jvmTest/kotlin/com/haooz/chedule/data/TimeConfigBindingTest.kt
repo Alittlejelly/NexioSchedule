@@ -10,11 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 作息绑定的回归：真相在 `schedule.time_config_id`，prefs 里的键是写穿镜像
- * （服务备份导出、降级回旧版本、无行表的平台）。两边都断言。
- *
- * ⚠ `CourseRepository` 是单例，prefs 在首次构造时钉死当时的 store，测试类之间共用同一份；
- * 每个用例自己造数据，不假设 store 为空。
+ * 作息绑定：真相在 `schedule.time_config_id`，prefs 键是镜像，两边都断言。
+ * ⚠ `CourseRepository` 是单例，prefs 在首次构造时钉死，测试类之间共用。
  */
 class TimeConfigBindingTest {
 

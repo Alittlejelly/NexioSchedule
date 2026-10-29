@@ -5,12 +5,10 @@ import com.haooz.chedule.data.db.NexioDatabase
 
 /**
  * [CourseRowStore] 的实现。只用 [NexioDatabase] 与 `transactionWithResult`，无平台 API，
- * 因此放在 commonMain：三端一份逻辑，宿主机也能用 JVM 驱动跑真 SQL。
+ * 所以放在 commonMain：三端一份逻辑，宿主机也能跑真 SQL。
  *
- * 一次 [writeDiff] 一个事务，锚点、删除、更新都在里面，中途失败整体回滚。
- *
- * ⚠ `upsertCourse` 是 `INSERT OR REPLACE`，`foreign_keys=ON` 时 REPLACE 先删旧行、
- * 级联删掉该课的 course_week / course_week_note。所以必须先 upsert 课程再写周次。
+ * 一次 [writeDiff] 一个事务，中途失败整体回滚。
+ * ⚠ `upsertCourse` 是 `INSERT OR REPLACE`，会级联删掉子表，必须先 upsert 课程再写周次。
  */
 class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore {
 

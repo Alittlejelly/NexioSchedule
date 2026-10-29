@@ -22,6 +22,8 @@ CREATE TABLE pref (
 );
 
 -- ── 文件夹 ────────────────────────────────────────────────────────────────
+-- 仅在 `schedule.folder_id` 的外键里被引用；文件夹本身仍存在 prefs 的 `schedule_folders` JSON，
+-- 表里没有读写。迁文件夹时在这里落数据即可。
 CREATE TABLE folder (
     id         TEXT NOT NULL PRIMARY KEY,
     name       TEXT NOT NULL,
@@ -94,19 +96,6 @@ CREATE TABLE course_week_note (
 
 -- ══ 查询 ═══════════════════════════════════════════════════════════════════
 
--- 启动快照：三条查询各扫一遍，在 Kotlin 里组装，不做 N+1
-selectAllSchedules:
-SELECT * FROM schedule ORDER BY sort_order, name;
-
-selectAllCourses:
-SELECT * FROM course ORDER BY schedule_id, day_of_week, start_section;
-
-selectAllCourseWeeks:
-SELECT course_id, week FROM course_week ORDER BY course_id, week;
-
-selectAllCourseWeekNotes:
-SELECT course_id, week, note FROM course_week_note ORDER BY course_id, week;
-
 selectCoursesOf:
 SELECT * FROM course WHERE schedule_id = ? ORDER BY day_of_week, start_section;
 
@@ -123,17 +112,8 @@ SELECT n.course_id, n.week, n.note FROM course_week_note n
 JOIN course c ON c.id = n.course_id
 WHERE c.schedule_id = ?;
 
-selectFolderList:
-SELECT * FROM folder ORDER BY sort_order, name;
-
-selectTimeConfigIds:
-SELECT id FROM time_config ORDER BY id;
-
 selectAllTimeConfigs:
 SELECT id, name, payload FROM time_config ORDER BY id;
-
-selectTimeConfig:
-SELECT * FROM time_config WHERE id = ?;
 
 -- ── 写：全部是行级，且都在调用方的事务里 ──────────────────────────────────
 
@@ -212,20 +192,8 @@ DELETE FROM course WHERE schedule_id = ?;
 insertWeek:
 INSERT OR IGNORE INTO course_week(course_id, week) VALUES (?, ?);
 
-deleteWeeksOf:
-DELETE FROM course_week WHERE course_id = ?;
-
 insertWeekNote:
 INSERT OR REPLACE INTO course_week_note(course_id, week, note) VALUES (?, ?, ?);
-
-deleteWeekNotesOf:
-DELETE FROM course_week_note WHERE course_id = ?;
-
-upsertFolder:
-INSERT OR REPLACE INTO folder(id, name, sort_order) VALUES (?, ?, ?);
-
-deleteFolder:
-DELETE FROM folder WHERE id = ?;
 
 insertTimeConfig:
 INSERT INTO time_config(name, payload) VALUES (?, ?);

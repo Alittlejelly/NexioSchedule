@@ -2,12 +2,7 @@ package com.haooz.chedule.data
 
 import kotlin.concurrent.Volatile
 
-/**
- * 全局存储入口：启动时 [init] 一次，业务用 [store] 按偏好名取读写通道。
- *
- * 每个偏好名是一个独立命名空间（Android 侧是同一张表的 `namespace` 分区）。
- * 未初始化时读取抛异常，不静默返回空数据。
- */
+/** 全局存储入口：启动时 [init] 一次，业务用 [store] 按偏好名取读写通道。未初始化时抛异常。 */
 object AppStorage {
     // 必须用 kotlin.concurrent.Volatile：裸 @Volatile 在 Kotlin/Native 与 JS 上无法解析
     @Volatile

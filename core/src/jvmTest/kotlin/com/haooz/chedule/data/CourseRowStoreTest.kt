@@ -10,13 +10,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 课程行表回归 —— **跑真 SQLite**，不是假后端。
- *
- * 这里要验的四件事，任何一件错了都是静默丢数据，而且只有真库能验：
- * 1. 导入后能原样读回来（自校验那条判断本身是否成立）；
- * 2. 差量写只动该动的行（周次 / 备注不能被顺手抹掉）；
- * 3. `INSERT OR REPLACE` + `ON DELETE CASCADE` 的组合不会把子表清空；
- * 4. 改名 / 删课表时行数据跟着走，且不复活。
+ * 课程行表回归，跑真 SQLite。验四件事：导入能原样读回、差量写不误伤周次、
+ * REPLACE + CASCADE 不清空子表、改名/删表后数据不复活。
  */
 class CourseRowStoreTest {
 

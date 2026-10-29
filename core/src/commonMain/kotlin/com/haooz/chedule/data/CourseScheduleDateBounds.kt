@@ -106,7 +106,7 @@ object CourseScheduleDateBounds {
                 if (displayWeek !in 1L..lastAllowedWeek.toLong()) return@mapNotNull null
                 val legacyDay = entry.followWeekday.takeIf { it in 1..7 }
                 val displayDay = when {
-                    followPosition?.weekday != null -> followPosition.weekday!!
+                    followPosition?.weekday != null -> followPosition.weekday
                     legacyDay != null -> legacyDay
                     followDate != null -> followDate.dayOfWeek.isoDayNumber
                     else -> datePosition.weekday ?: firstDate.dayOfWeek.isoDayNumber

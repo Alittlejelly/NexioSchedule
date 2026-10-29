@@ -5,10 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 /**
- * [AppStorage] 的实例唯一性契约：同名只创建一个实例。
- *
- * 存储实现持内存快照，两个实例会互相看不见对方写入。唯一性由平台工厂保证
- * （`SqliteStorage.store` 按命名空间缓存），这里守住 AppStorage 这一层。
+ * [AppStorage] 实例唯一性：同名只创建一个实例（两份内存快照会互相看不见）。
  */
 class AppStorageInstanceTest {
 

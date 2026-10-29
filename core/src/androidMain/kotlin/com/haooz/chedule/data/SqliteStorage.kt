@@ -3,15 +3,11 @@ package com.haooz.chedule.data
 import android.content.Context
 
 /**
- * 键值存储入口：建库、按命名空间发 [KeyValueStore]、首次访问时从同名 SharedPreferences 导入一次。
+ * 建库、按命名空间发 [KeyValueStore]、首次访问时从同名 SharedPreferences 导入一次。
  *
- * 导入规则：
- * - 不删不改 SharedPreferences 原文件，它留作回滚版本的冷快照；
- * - 导入、回读比对、写导入标记在同一个事务里，任一步失败整体回滚且不写标记；
- * - 失败即退回 SharedPreferences（由 [NexioApplication] 的工厂兜住），不重试。
- *
- * 导入只在命名空间第一次 `store()` 时发生，之后只读一行 meta。
- * 冷启动路径上的命名空间由 [NexioApplication] 在 IO 线程预热。
+ * - 不删不改 SharedPreferences 原文件（回滚版本的冷快照）；
+ * - 导入、回读比对、写标记同一事务，任一步失败整体回滚且不写标记；
+ * - 失败退回 SharedPreferences，不重试。之后 `store()` 只读一行 meta。
  */
 object SqliteStorage {
 
@@ -54,15 +50,9 @@ object SqliteStorage {
         SqliteCourseRowStore(b.database).also { courseStore = it }
     }
 
-    /** 该命名空间是否已导入（诊断页 / 统计用）。 */
-    fun isImported(namespace: String): Boolean =
-        runCatching { backend?.readMeta(META_IMPORTED_PREFIX + namespace) != null }.getOrDefault(false)
-
     /**
      * 记下「这个命名空间曾在 SQLite 不可用时退回 SharedPreferences 写过」。
-     *
-     * 没有这个标记，回退期间写的数据会永久消失：导入标记还在库里，下次启动直接跳过导入，
-     * 那份新写进 SP 的数据既不会被读也不会被清。有了标记，下次开库会覆盖式重导一次。
+     * 没有它，回退期间写的数据会永久消失：导入标记还在，下次启动直接跳过导入。
      */
     fun recordFallback(context: Context, namespace: String) {
         runCatching {

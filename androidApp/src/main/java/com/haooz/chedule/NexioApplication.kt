@@ -13,12 +13,8 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * 存储与平台能力接线。
- *
- * 全应用只通过 [AppStorage] 读写，SQLite 是唯一存储；SharedPreferences 只在两处出现：
- * 首次访问时的导入源，以及 SQLite 初始化失败时的回退。
- *
- * [warmUpStorage] 把热路径命名空间在 IO 线程读进内存，使主线程首次读取为纯内存操作。
+ * 存储与平台能力接线。全应用只通过 [AppStorage] 读写；SharedPreferences 只作导入源与回退。
+ * [warmUpStorage] 在 IO 线程预热热路径命名空间。
  */
 class NexioApplication : Application() {
 

@@ -1,13 +1,11 @@
 package com.haooz.chedule.data
 
 /**
- * 跨平台键值存储。Android 侧由 `SqliteStorage` 提供（`pref` 表），桌面侧是 JSON 文件，
- * iOS 侧是 UserDefaults。
+ * 跨平台键值存储（Android 是 `pref` 表，桌面是 JSON 文件，iOS 是 UserDefaults）。
  *
- * 语义约定：
- * 1. 写入走 [edit]，回调里是 [KeyValueEditor]，一次 edit 是一个事务。
- * 2. 类型不匹配时**返回默认值而非抛异常**。
- * 3. [all] 返回拷贝，改动它不影响存储。
+ * 1. 写入走 [edit]，一次 edit 是一个事务；
+ * 2. 类型不匹配返回默认值，不抛异常；
+ * 3. [all] 返回拷贝。
  */
 
 /**
