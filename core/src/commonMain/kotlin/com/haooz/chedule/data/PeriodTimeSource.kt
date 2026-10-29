@@ -5,7 +5,7 @@ package com.haooz.chedule.data
  *
  * `CourseTimeResolver` 原本直接把 `CourseRepository` 当参数类型，而它是强 Android 依赖
  * （构造要 `Context`、内部全是 SharedPreferences），跟着进 commonMain 会直接阻断 iOS 目标。
- * 这里只把它真正用到的三个方法抽成接口：Android 侧由 `CourseRepository` 实现（签名本来就
+ * 这里只把它真正用到的能力抽成接口：Android 侧由 `CourseRepository` 实现（签名本来就
  * 完全一致，不需要改实现），iOS / 桌面侧将来各自提供一个 actual 实现即可。
  *
  * 调用方（CourseReminderHelper 与 4 个 widget）传的还是 CourseRepository 实例，

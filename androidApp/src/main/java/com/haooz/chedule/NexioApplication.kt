@@ -145,11 +145,9 @@ class NexioApplication : Application() {
             }.onFailure { NexioLog.w(TAG, "课表设置预热失败（首屏会再读一次）", it) }
 
             // 节假日：首帧的 holidayEntriesByYear 是「整份偏好快照 + 逐年反序列化」，
-            // 两级剔除配置也是每次解析都读一遍；预热后首帧直接命中快照缓存。
+            // 预热后直接命中它的快照缓存。两级剔除配置没有缓存（几次内存读），不值得预热。
             runCatching {
                 com.haooz.chedule.data.HolidayManager.loadAllByYear()
-                com.haooz.chedule.data.HolidayManager.loadEndCourseExclusion()
-                com.haooz.chedule.data.HolidayManager.loadBeforeCourseExclusion()
             }.onFailure { NexioLog.w(TAG, "节假日预热失败（首屏会再读一次）", it) }
         }
     }

@@ -1350,14 +1350,20 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 缓存在这里，跨天或配置被改写时整批作废（见 [invalidateTimeCaches] / [saveTimeConfig]）。
      * 条目里带日期：跨天自动重算，条目数恒等于配置数，不会随运行天数增长。
      */
-    private fun effectiveConfig(configId: Long): TimeConfig {
-        val today = todayLocalDate()
+    private fun effectiveConfig(configId: Long): TimeConfig =
+        effectiveConfigOn(configId, todayLocalDate())
+
+    /**
+     * 同 [effectiveConfig]，但按指定日期算。生产只用今天；测试用它钉「跨天必须重算」——
+     * 缓存条目只比对日期，日期一变就重算，条目数恒等于配置数。
+     */
+    internal fun effectiveConfigOn(configId: Long, date: LocalDate): TimeConfig {
         effectiveConfigCache[configId]?.let { cached ->
-            if (cached.date == today) return cached.config
+            if (cached.date == date) return cached.config
         }
-        val config = getTimeConfig(configId).effective(today)
+        val config = getTimeConfig(configId).effective(date)
         synchronizedOn(cacheLock) {
-            effectiveConfigCache = effectiveConfigCache + (configId to EffectiveConfig(today, config))
+            effectiveConfigCache = effectiveConfigCache + (configId to EffectiveConfig(date, config))
         }
         return config
     }

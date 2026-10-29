@@ -1,5 +1,6 @@
 package com.haooz.chedule.data
 
+import kotlinx.datetime.LocalDate
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -136,6 +137,87 @@ class RepositoryCacheInvalidationTest {
             setOf(2026),
             HolidayManager.loadAllByYear().keys,
             "换了存储实例还返回上一次的快照 = 读到别人的数据",
+        )
+    }
+
+    /**
+     * 生效作息按日期选方案（夏令时 / 冬令时）。缓存条目只比对日期：日期一变必须重算，
+     * 否则跨天之后课程时间还按昨天那套方案显示。
+     */
+    @Test
+    fun `生效作息跨天必须重算`() {
+        val name = schedule("跨天")
+        freshState(name)
+        // quickTimeEnabled：时间由「上课时间 + 时长」算出来，否则 getPeriodTimes 走 sectionTimes
+        // 覆盖表（空表回落到内置默认时间），看不出两套方案的差别
+        val summer = TimeRoutine(
+            id = 1,
+            name = "夏令",
+            effectiveMonth = 3,
+            effectiveDay = 1,
+            quickTimeEnabled = true,
+            morningStartHour = 8,
+            morningStartMinute = 0,
+        )
+        val winter = TimeRoutine(
+            id = 2,
+            name = "冬令",
+            effectiveMonth = 10,
+            effectiveDay = 1,
+            quickTimeEnabled = true,
+            morningStartHour = 8,
+            morningStartMinute = 30,
+        )
+        val configId = repository.addTimeConfig(
+            TimeConfig(
+                name = name,
+                morningSections = 4,
+                afternoonSections = 4,
+                eveningSections = 4,
+                routines = listOf(summer, winter),
+            )
+        )
+        repository.setScheduleTimeConfigId(name, configId)
+
+        val march = repository.effectiveConfigOn(configId, LocalDate(2026, 3, 15))
+        val october = repository.effectiveConfigOn(configId, LocalDate(2026, 10, 15))
+        assertEquals("08:00", march.getPeriodTimes("morning")[1]?.substringBefore("-"))
+        assertEquals(
+            "08:30",
+            october.getPeriodTimes("morning")[1]?.substringBefore("-"),
+            "日期变了还在用缓存里的旧方案",
+        )
+    }
+
+    /**
+     * 孤儿配置被 prune 掉之后，`addTimeConfig` 会复用那个 id。生效作息缓存是按 id 存的，
+     * 复用必须重算，否则新配置的课程时间还按被删的那套算。
+     */
+    @Test
+    fun `孤儿配置被清后 id 复用，生效作息不能拿旧的`() {
+        val name = schedule("id复用")
+        freshState(name)
+        val bound = repository.addTimeConfig(
+            TimeConfig(name = name, morningSections = 4, afternoonSections = 4, eveningSections = 4)
+        )
+        repository.setScheduleTimeConfigId(name, bound)
+        // 孤儿放在最大 id 上：prune 之后 addTimeConfig 正好把它复用
+        val orphan = repository.addTimeConfig(
+            TimeConfig(name = "没人要的", morningSections = 5, afternoonSections = 5, eveningSections = 5)
+        )
+        // 先把孤儿的生效作息灌进缓存
+        repository.effectiveConfigOn(orphan, todayLocalDate())
+        assertEquals(5, repository.effectiveConfigOn(orphan, todayLocalDate()).morningSections)
+
+        repository.pruneOrphanTimeConfigsIfNeeded()
+        val reused = repository.addTimeConfig(
+            TimeConfig(name = "新的", morningSections = 3, afternoonSections = 3, eveningSections = 3)
+        )
+        assertEquals(orphan, reused, "前置条件：prune 掉的是最大 id，新配置应当复用它")
+        assertEquals(
+            3,
+            repository.effectiveConfigOn(reused, todayLocalDate()).morningSections,
+            "id 复用后生效作息还是被删那套 = 课程时间全错",
         )
     }
 
