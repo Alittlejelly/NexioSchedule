@@ -118,17 +118,13 @@ fun CourseTimeSettingsScreen(
     )
 
     var config by remember {
-        mutableStateOf(
-            repository.getTimeConfig(
-                repository.getScheduleTimeConfigId(repository.getCurrentScheduleId())
-            ).ensureRoutine()
-        )
+        // 走「可写」入口：未绑定的课表会先补绑，否则下面 commit() 的 saveTimeConfig
+        // 会把节次/作息改动写进它回退到的那套（别人的）配置
+        mutableStateOf(repository.getWritableCurrentTimeConfig().ensureRoutine())
     }
 
     fun refreshList() {
-        config = repository.getTimeConfig(
-            repository.getScheduleTimeConfigId(repository.getCurrentScheduleId())
-        ).ensureRoutine()
+        config = repository.getWritableCurrentTimeConfig().ensureRoutine()
     }
 
     LaunchedEffect(refreshTrigger) {

@@ -1016,7 +1016,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun setMorningSections(count: Int) {
         val scheduleId = getCurrentScheduleId()
-        val configId = getScheduleTimeConfigId(scheduleId)
+        // 写路径一律 ensure：未绑定就走回退会改到别人的配置上
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         saveTimeConfig(config.copy(morningSections = count))
         notifyCourseChanged("settings")
@@ -1031,7 +1032,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun setAfternoonSections(count: Int) {
         val scheduleId = getCurrentScheduleId()
-        val configId = getScheduleTimeConfigId(scheduleId)
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         saveTimeConfig(config.copy(afternoonSections = count))
         notifyCourseChanged("settings")
@@ -1046,7 +1047,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun setEveningSections(count: Int) {
         val scheduleId = getCurrentScheduleId()
-        val configId = getScheduleTimeConfigId(scheduleId)
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         saveTimeConfig(config.copy(eveningSections = count))
         notifyCourseChanged("settings")
@@ -1085,7 +1086,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /** 仅目标是当前课表时才通知，避免导入目标课表时无谓刷新当前页 */
     fun savePeriodTimes(period: String, times: Map<Int, String>, scheduleId: String) {
-        val configId = getScheduleTimeConfigId(scheduleId)
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         // 编辑的是「当天生效的那套作息」，改完只写回它，不影响其它作息方案
         val activeRoutineId = config.effectiveRoutineId()
@@ -1673,11 +1674,56 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     /** 绑定失效时必须回退到旧全局指针的解析值，不能 `firstOrNull()` —— 见 [pruneOrphanTimeConfigsIfNeeded] */
     fun getScheduleTimeConfigId(scheduleId: String): Long {
-        val id = prefs.getLong("$SCHEDULE_TIME_CONFIG_PREFIX$scheduleId", 0L)
-        if (id != 0L && id in getTimeConfigIds()) {
-            return id
-        }
+        boundTimeConfigIdOrNull(scheduleId)?.let { return it }
         return resolveLegacyCurrentTimeConfigId()
+    }
+
+    /**
+     * 「这张课表真正绑定了哪个配置」——没绑定就是 null。
+     * 不能用 [getScheduleTimeConfigId] 判断：它对未绑定会回退到旧全局指针 / 第一个配置，
+     * 永远不为 0；也不能只看 `prefs.contains`：值是 0 或指向已删配置时，等价于没绑。
+     */
+    private fun boundTimeConfigIdOrNull(scheduleId: String): Long? {
+        val key = "$SCHEDULE_TIME_CONFIG_PREFIX$scheduleId"
+        if (!prefs.contains(key)) return null
+        val id = prefs.getLong(key, 0L)
+        return id.takeIf { it != 0L && it in getTimeConfigIds() }
+    }
+
+    /**
+     * 写入前取「这张课表自己的」配置 id，未绑定就当场绑上。
+     *
+     * 为什么必须有这一步：**读取**回退是兜底（不能让页面空白），但**写入**绝不能回退 ——
+     * 否则未绑定的课表改节次 / 改时间 / 删作息时，改的是它回退到的那套配置，
+     * 也就是另一张课表的作息（「只改了 A 的作息，B 跟着变」/「同步只同步了作息」）。
+     *
+     * 回退到的那套若没有别的课表显式绑定（多半是删表留下的孤儿），直接过户给它，不凭空多一份；
+     * 已被别的课表绑着就复制一份独立配置，绝不共享。
+     */
+    private fun ensureScheduleTimeConfigId(scheduleId: String): Long {
+        boundTimeConfigIdOrNull(scheduleId)?.let { return it }
+        val fallbackId = resolveLegacyCurrentTimeConfigId()
+        // 用 all() 的原始值判等，不走 getLong：Android 的 SharedPreferences.getLong
+        // 遇到类型不符的脏值会抛 ClassCastException，而这里是用户操作路径
+        val selfKey = "$SCHEDULE_TIME_CONFIG_PREFIX$scheduleId"
+        val boundElsewhere = prefs.all().any { (key, value) ->
+            key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) && key != selfKey &&
+                (value as? Number)?.toLong() == fallbackId
+        }
+        val id = if (boundElsewhere) {
+            addTimeConfig(getTimeConfig(fallbackId).copy(id = 0L, name = scheduleId))
+        } else {
+            fallbackId
+        }
+        // id=0 是「一个配置都没有」的兜底值，不能写进绑定键：
+        // pruneOrphanTimeConfigsIfNeeded 用 prefs.contains 判断「有绑定」，写成 0 会让它误认为可靠
+        if (id == 0L) return 0L
+        NexioLog.w(
+            TAG,
+            "课表 $scheduleId 未绑定时间配置，已补绑 id=$id（fallback=$fallbackId 被他人绑定=$boundElsewhere）"
+        )
+        setScheduleTimeConfigId(scheduleId, id)
+        return id
     }
 
     fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) {
@@ -1687,17 +1733,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
 
     fun switchToSchedule(scheduleId: String) {
         setCurrentScheduleId(scheduleId)
-        val timeConfigId = getScheduleTimeConfigId(scheduleId)
+        // 补绑必须走 ensure：以前用 getScheduleTimeConfigId 判断「是否已绑定」，
+        // 而它未绑定时会回退成非 0，于是补绑分支永远不可达，未绑定的课表一直共用别人的作息
+        val timeConfigId = ensureScheduleTimeConfigId(scheduleId)
         if (timeConfigId != 0L) {
             val config = getTimeConfig(timeConfigId)
             setCurrentTimeConfigId(timeConfigId)
-            applyTimeConfigToSchedule(config)
-        } else if (getTimeConfigIds().isNotEmpty()) {
-            // 未绑定则用第一个配置并补绑
-            val firstConfigId = getTimeConfigIds().first()
-            val config = getTimeConfig(firstConfigId)
-            setCurrentTimeConfigId(firstConfigId)
-            setScheduleTimeConfigId(scheduleId, firstConfigId)
             applyTimeConfigToSchedule(config)
         }
         notifyCourseChanged("settings")
@@ -1881,7 +1922,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 删除后「生效的那套」可能换人（也可能时间变了），必须广播，否则提醒 / 小部件仍按旧作息排时间。
      */
     fun deleteRoutine(routineId: Long): Boolean {
-        val configId = getScheduleTimeConfigId(getCurrentScheduleId())
+        val configId = ensureScheduleTimeConfigId(getCurrentScheduleId())
         val original = getTimeConfig(configId)
         val remaining = original.withRoutineRemoved(routineId)
         if (remaining.safeRoutines.size == original.safeRoutines.size) return false
@@ -1896,7 +1937,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
      */
     fun saveRoutine(routineId: Long, edited: TimeConfig, nameOverride: String? = null): Boolean {
         val scheduleId = getCurrentScheduleId()
-        val base = getTimeConfig(getScheduleTimeConfigId(scheduleId))
+        val base = getTimeConfig(ensureScheduleTimeConfigId(scheduleId))
         val routine = edited.routineOf(routineId, nameOverride)
         if (base.routineById(routineId) == null) {
             NexioLog.w(
@@ -1971,6 +2012,21 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
+     * 当前课表**可写**的配置：未绑定会先补绑（见 `ensureScheduleTimeConfigId`）。
+     *
+     * 改作息 / 改节次的页面必须用它取配置 —— 拿 [getScheduleTimeConfigId] 的返回值去
+     * `saveTimeConfig` 时，未绑定的课表会把改动写进它回退到的那套（别人的）配置。
+     */
+    fun getWritableCurrentTimeConfig(): TimeConfig {
+        return getTimeConfig(ensureScheduleTimeConfigId(getCurrentScheduleId()))
+    }
+
+    /** 同 [getWritableCurrentTimeConfig]，作用于指定课表（如教务导入的目标课表） */
+    fun getWritableTimeConfig(scheduleId: String): TimeConfig {
+        return getTimeConfig(ensureScheduleTimeConfigId(scheduleId))
+    }
+
+    /**
      * 跨过作息生效日期后，补一次「设置变更」广播，让课程提醒 / 小部件按新作息重排：
      * 作息到日期自动切换、切换那一刻没有写操作，而提醒闹钟只在设置变更时重排。
      * 只在生效作息真的换了时才广播；prefs 里没值时只登记不重排，首次排程交给冷启动链路。
@@ -2030,7 +2086,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         targetScheduleId: String = getCurrentScheduleId()
     ): Boolean {
         if (sourceScheduleId == targetScheduleId) return false
-        val targetId = getScheduleTimeConfigId(targetScheduleId)
+        val targetId = ensureScheduleTimeConfigId(targetScheduleId)
         val source = getTimeConfig(getScheduleTimeConfigId(sourceScheduleId))
         val target = getTimeConfig(targetId)
         // 节次骨架变了就按相对位置平移课程，避免课被挤到网格外
@@ -2058,7 +2114,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         morningSections: Int, afternoonSections: Int, eveningSections: Int,
         morningTimes: Map<Int, String>, afternoonTimes: Map<Int, String>, eveningTimes: Map<Int, String>
     ) {
-        val configId = getScheduleTimeConfigId(scheduleId)
+        // 未绑定时必须 ensure：直接回退会把时间写进别的课表那套配置
+        val configId = ensureScheduleTimeConfigId(scheduleId)
 
         val sectionTimes = buildMap {
             morningTimes.forEach { (k, v) -> put("morning_$k", v) }
@@ -2106,7 +2163,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         classDuration: Int,
         shortBreak: Int,
     ) {
-        val configId = getScheduleTimeConfigId(scheduleId)
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         if (configId != 0L) {
             val base = getTimeConfig(configId)
             saveTimeConfig(
@@ -2205,7 +2262,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
      */
     private fun applyTimeConfigToSchedule(config: TimeConfig) {
         val scheduleId = getCurrentScheduleId()
-        val configId = getScheduleTimeConfigId(scheduleId)
+        val configId = ensureScheduleTimeConfigId(scheduleId)
         val base = getTimeConfig(configId)
 
         // 配置空则回退默认时段时间；非空但某时段缺失时保留原值

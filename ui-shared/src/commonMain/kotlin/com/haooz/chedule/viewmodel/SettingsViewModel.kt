@@ -311,9 +311,10 @@ class SettingsViewModel : ViewModel() {
     fun getEveningTimes(): Map<Int, String> = _eveningTimes.value
 
     fun updateSpecialBlocks(blocks: List<com.haooz.chedule.data.SpecialBlock>) {
-        val config = repository.getEffectiveTimeConfig()
-        val routineId = repository.getCurrentTimeConfig().effectiveRoutineId()
-        val base = repository.getCurrentTimeConfig()
+        // 用「可写」入口：未绑定的课表先补绑，否则特殊时段块会写进别人的配置
+        val base = repository.getWritableCurrentTimeConfig()
+        val config = base.effective()
+        val routineId = base.effectiveRoutineId()
         val updated = config.copy(specialBlocks = blocks)
         repository.saveTimeConfig(
             if (routineId == null) updated

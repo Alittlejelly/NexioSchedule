@@ -641,7 +641,9 @@ internal fun applyComboSchedule(
             return
         }
 
-        val base = repository.getTimeConfig(repository.getScheduleTimeConfigId(targetId))
+        // 目标课表可能未绑定（脚本指定的表 / 历史脏数据）：用「可写」入口先补绑，
+        // 否则下面的 saveTimeConfig 会把组合作息写进它回退到的那套配置
+        val base = repository.getWritableTimeConfig(targetId)
         val morning = base.morningSections
         val afternoon = base.afternoonSections
         val evening = base.eveningSections
