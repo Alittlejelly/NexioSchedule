@@ -10,6 +10,7 @@ import com.haooz.chedule.data.AppStorage
 import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import top.yukonga.miuix.kmp.theme.AppSettingDarkBridge
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
@@ -113,6 +114,33 @@ fun loadScheduleThemeMode(): ThemeMode = ThemeMode.fromPrefsValue(
 fun saveScheduleThemeMode(mode: ThemeMode) {
     AppStorage.store(SCHEDULE_THEME_PREFS_FILE).edit {
         putString(ThemeMode.SCHEDULE_THEME_MODE_KEY, mode.prefsValue)
+    }
+}
+
+// ── 课表页视图模式（周网格 / 时间轴）──────────────────────────────────
+// 与主题档位共用 app_theme_prefs 文件、键独立。键名与取值是落盘契约，改了即丢用户选择。
+
+private const val SCHEDULE_VIEW_MODE_KEY = "schedule_view_mode"
+private const val VIEW_MODE_WEEK = 0
+private const val VIEW_MODE_TIMELINE = 1
+
+/** 读课表页视图模式（缺省 = 周网格） */
+fun loadScheduleViewMode(): ScheduleViewMode =
+    if (AppStorage.store(SCHEDULE_THEME_PREFS_FILE)
+            .getInt(SCHEDULE_VIEW_MODE_KEY, VIEW_MODE_WEEK) == VIEW_MODE_TIMELINE
+    ) {
+        ScheduleViewMode.TIMELINE
+    } else {
+        ScheduleViewMode.WEEK
+    }
+
+/** 写课表页视图模式（课表外观弹窗切换时落盘） */
+fun saveScheduleViewMode(mode: ScheduleViewMode) {
+    AppStorage.store(SCHEDULE_THEME_PREFS_FILE).edit {
+        putInt(
+            SCHEDULE_VIEW_MODE_KEY,
+            if (mode == ScheduleViewMode.TIMELINE) VIEW_MODE_TIMELINE else VIEW_MODE_WEEK
+        )
     }
 }
 

@@ -79,6 +79,10 @@ class CourseViewModel : ViewModel() {
     private val _addDialogDefaultWeeks = MutableStateFlow<Set<Int>>(emptySet())
     val addDialogDefaultWeeks: StateFlow<Set<Int>> = _addDialogDefaultWeeks.asStateFlow()
 
+    /** 添加时的默认自定义时间（时间轴空白点开）：非空即弹窗以自定义时间模式打开 */
+    private val _addDialogCustomTime = MutableStateFlow<Pair<String, String>?>(null)
+    val addDialogCustomTime: StateFlow<Pair<String, String>?> = _addDialogCustomTime.asStateFlow()
+
     private val _showJumpWeekDialog = MutableStateFlow(false)
     val showJumpWeekDialog: StateFlow<Boolean> = _showJumpWeekDialog.asStateFlow()
 
@@ -423,6 +427,8 @@ class CourseViewModel : ViewModel() {
         startSection: Int? = null,
         endSection: Int? = null,
         defaultWeeks: Set<Int> = emptySet(),
+        customStartTime: String? = null,
+        customEndTime: String? = null,
     ) {
         _editingCourse.value = null
         _selectedDay.value = dayOfWeek ?: 0
@@ -431,12 +437,19 @@ class CourseViewModel : ViewModel() {
             _selectedEndSection.value = endSection ?: startSection
         }
         _addDialogDefaultWeeks.value = defaultWeeks
+        _addDialogCustomTime.value =
+            if (customStartTime != null && customEndTime != null) {
+                customStartTime to customEndTime
+            } else {
+                null
+            }
         _showAddDialog.value = true
     }
 
     fun showEditDialog(course: Course) {
         _editingCourse.value = course
         _addDialogDefaultWeeks.value = emptySet()
+        _addDialogCustomTime.value = null
         _showAddDialog.value = true
     }
 
@@ -444,6 +457,7 @@ class CourseViewModel : ViewModel() {
         _showAddDialog.value = false
         _editingCourse.value = null
         _addDialogDefaultWeeks.value = emptySet()
+        _addDialogCustomTime.value = null
     }
 
     fun showJumpWeekDialog() {

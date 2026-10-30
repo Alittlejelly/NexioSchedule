@@ -50,6 +50,7 @@ import com.haooz.chedule.data.CardRefractionLevel
 import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseTimeSpan
+import com.haooz.chedule.data.pickNonCurrentWeekCourse
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import com.haooz.chedule.data.HolidayCourseExclusion
@@ -408,14 +409,9 @@ private fun CourseCardsLayer(
                     hiddenCoursesMap[slotKey] = hidden
                 }
             } else {
-                val allEnded = otherCourses.all { it.endWeek < currentWeek }
-                val courseToShow = if (allEnded) {
-                    otherCourses.maxByOrNull { it.endWeek } ?: otherCourses.first()
-                } else {
-                    otherCourses.filter { it.startWeek > currentWeek }
-                        .minByOrNull { it.startWeek }
-                        ?: otherCourses.first()
-                }
+                // 本周没课：按「谁下一次更早会上」挑一条（见 pickNonCurrentWeekCourse 的注释）
+                val courseToShow = pickNonCurrentWeekCourse(otherCourses, currentWeek)
+                    ?: return@forEach
                 displayedCourses.add(courseToShow)
                 val hidden = otherCourses - courseToShow
                 if (hidden.isNotEmpty()) {
@@ -590,10 +586,36 @@ private fun PendingSectionBox(
     hapticFeedback: HapticFeedback,
     onEmptyClick: (Int) -> Unit
 ) {
+    PendingAddCard(
+        hasBlur = hasBlur,
+        isDark = isDark,
+        cardCornerRadius = cardCornerRadius,
+        cardBlurRadius = cardBlurRadius,
+        cardRefraction = cardRefraction,
+        wallpaperBackdrop = wallpaperBackdrop,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+        onEmptyClick(section)
+    }
+}
+
+/** 加号卡片：网格空槽与时间轴空白点击共用同一张，外观只在这里改。 */
+@Composable
+internal fun PendingAddCard(
+    hasBlur: Boolean,
+    isDark: Boolean,
+    cardCornerRadius: Float,
+    cardBlurRadius: Float,
+    cardRefraction: CardRefractionLevel,
+    wallpaperBackdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val pendingColor = (if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF9E9E9E))
         .copy(alpha = if (isDark) 0.13f else 0.15f)
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         if (hasBlur) {
@@ -668,10 +690,7 @@ private fun PendingSectionBox(
                             color = Color.Transparent,
                             contentColor = if (isDark) Color(0xFFF0F0F0).copy(alpha = 0.64f) else Color(0xFF242424).copy(alpha = 0.5f)
                         ),
-                        onClick = {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                            onEmptyClick(section)
-                        }
+                        onClick = onClick
                     ) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -701,10 +720,7 @@ private fun PendingSectionBox(
                     contentColor = if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.onSurfaceVariantActions
                         else Color(0xFF9E9E9E).copy(alpha = 0.5f)
                 ),
-                onClick = {
-                    hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onEmptyClick(section)
-                }
+                onClick = onClick
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -721,8 +737,11 @@ private fun PendingSectionBox(
     }
 }
 
-// 自定义时间课用起止时间区分槽位，避免同时段不同节被折叠合并
-private fun courseSlotKey(course: Course): String {
+/**
+ * 槽位键：网格与时间轴共用的「同一格」判据。
+ * 自定义时间课按起止时间区分，其余只按**起始节次**（8 节与 8-9 节是同一格）。
+ */
+internal fun courseSlotKey(course: Course): String {
     if (course.hasValidCustomTime()) {
         return "custom|${course.customStartTime}|${course.customEndTime}"
     }

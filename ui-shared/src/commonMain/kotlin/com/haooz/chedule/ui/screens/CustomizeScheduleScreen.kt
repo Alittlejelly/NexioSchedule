@@ -95,6 +95,7 @@ import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
 import com.haooz.chedule.ui.basic.OverlayDropdownMenu
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
 import com.haooz.chedule.ui.effects.motion.CustomizePageEasing
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
@@ -214,6 +215,9 @@ fun CustomizeScheduleScreen(
     // 外观配置：编辑器以 AppearanceConfig 整体读写，避免逐字段回调散点
     appearance: AppearanceConfig = AppearanceConfig(),
     onAppearanceChange: (AppearanceConfig) -> Unit = {},
+    /** 课表页当前呈现方式（周网格 / 时间轴）。外观页里改它，回主界面即生效。 */
+    scheduleViewMode: ScheduleViewMode = ScheduleViewMode.WEEK,
+    onScheduleViewModeChange: (ScheduleViewMode) -> Unit = {},
     hasWallpaper: Boolean = false,
     /** 预览页：0=今日，1=课程表；椭圆滑块与取消/应用同一行 */
     previewPage: Int = 0,
@@ -1543,7 +1547,9 @@ fun CustomizeScheduleScreen(
                                 value = cardHeightValue,
                                 valueRange = 34f..92f,
                                 keyPoints = listOf(54f),
-                                enabled = true,
+                                // 时间轴高度由真实时长决定，卡高档位无效：禁用并写明原因，否则像「拖了没反应」
+                                enabled = scheduleViewMode != ScheduleViewMode.TIMELINE,
+                                disabledText = SchedStr.timelineFixedHeight(),
                                 onValueChange = { cardHeightValue = it },
                                 quantize = { (it.roundToInt() / 2 * 2).toFloat() },
                                 suffix = "dp",
@@ -1656,23 +1662,58 @@ fun CustomizeScheduleScreen(
                         }
                     }
                     SheetCard {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = SchedStr.breakDividers(),
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 17.sp,
-                                color = MiuixTheme.colorScheme.onSurface
+                        Column {
+                            // 视图与分界线同卡：后者是否可用取决于前者
+                            val viewModeEntry = DropdownEntry(
+                                items = listOf(
+                                    DropdownItem(
+                                        text = SchedStr.viewAsWeek(),
+                                        selected = scheduleViewMode == ScheduleViewMode.WEEK,
+                                        onClick = {
+                                            onScheduleViewModeChange(ScheduleViewMode.WEEK)
+                                        }
+                                    ),
+                                    DropdownItem(
+                                        text = SchedStr.viewAsTimeline(),
+                                        selected = scheduleViewMode == ScheduleViewMode.TIMELINE,
+                                        onClick = {
+                                            onScheduleViewModeChange(ScheduleViewMode.TIMELINE)
+                                        }
+                                    ),
+                                )
                             )
-                            Switch(
-                                checked = showBreakDividersValue,
-                                onCheckedChange = { showBreakDividersValue = it }
+                            OverlayDropdownMenu(
+                                title = SchedStr.viewAs(),
+                                entry = viewModeEntry,
+                                collapseOnSelection = true,
+                                liquidGlassBackdrop = LocalSheetContentBackdrop.current
+                                    ?: liquidGlassBackdrop,
+                                dropdownColors = liquidGlassDropdownColors,
                             )
+                            // 时间轴没有节次分界线（纵轴是连续时间），开关置灰
+                            val dividersEnabled = scheduleViewMode != ScheduleViewMode.TIMELINE
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = SchedStr.breakDividers(),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 17.sp,
+                                    color = MiuixTheme.colorScheme.onSurface.copy(
+                                        alpha = if (dividersEnabled) 1f else 0.4f
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Switch(
+                                    checked = showBreakDividersValue,
+                                    onCheckedChange = { showBreakDividersValue = it },
+                                    enabled = dividersEnabled
+                                )
+                            }
                         }
                     }
                 }

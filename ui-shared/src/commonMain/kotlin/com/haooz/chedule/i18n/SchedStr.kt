@@ -14,13 +14,18 @@ object SchedStr {
     val badgeHoliday = L("假", "H")
     val badgeAdjusted = L("调", "Adj")
 
+    // ── 时间轴视图 ──
+    val viewAsTimeline = L("时间轴视图", "Timeline view")
+    val viewAsWeek = L("周视图", "Week view")
+    val viewAs = L("课表视图", "Schedule view")
+    val timelineFixedHeight = L("时间轴按真实时长", "Real duration")
+
     // ── 课表网格 / 课程详情 ──
     val specialCourses = L("特殊课程", "Special block")
     val unnamed = L("未命名", "Unnamed")
     val lunchBreak = L("午休", "Lunch break")
     val dinnerBreak = L("晚休", "Dinner break")
     val addCourse = L("添加课程", "Add Course")
-    val nonCurrentWeekName = L("%s（非本周）", "%s (not this week)")
     val nextDayTime = L("次日%s", "Next day %s")
     val courseDetails = L("课程详情", "Course details")
     val enterName = L("请输入名称", "Please enter a name")

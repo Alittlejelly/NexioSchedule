@@ -93,6 +93,7 @@ import com.haooz.chedule.ui.utils.rememberCardEdgeLight
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import com.haooz.chedule.ui.utils.pagerAxisTakeoverGesture
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -412,7 +413,10 @@ fun TodayScreen(
     holidayDataTick: Int = 0,
     /** 今日助手卡（天气+智能提示）槽位：Android 宿主注入 TodayAssistantCard；null 不渲染 */
     todayAssistantCard: (@Composable (TodayAssistantCardData) -> Unit)? = null,
+    /** 课表页当前呈现方式：时间轴时今日页也换成时间轴（外观弹窗里那个开关，两页共用） */
+    scheduleViewMode: ScheduleViewMode = ScheduleViewMode.WEEK,
 ) {
+    val todayIsDark = isAppDarkTheme()
     val courses by viewModel.courses.collectAsState()
     val classStartTime by viewModel.classStartTime.collectAsState()
     val totalWeeks by viewModel.totalWeeks.collectAsState()
@@ -859,7 +863,15 @@ fun TodayScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                            if (scheduleViewMode == ScheduleViewMode.TIMELINE && pageCourses.isNotEmpty()) {
+                                addTodayTimeline(
+                                    pageCourses, sectionTimes, pageWeek, isPageToday, todayIsDark,
+                                    cardBackdrop, cardBlurRadius, courseCardOpacity,
+                                    showClassroom, showTeacher,
+                                ) { course -> openTodayCourse(course, pageWeek, openDetailSheet) }
+                            } else {
+                                addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                            }
                         }
                     }
                 } else {
@@ -935,7 +947,15 @@ fun TodayScreen(
                                 )
                             }
                         }
-                        addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, courses, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                        if (scheduleViewMode == ScheduleViewMode.TIMELINE && pageCourses.isNotEmpty()) {
+                            addTodayTimeline(
+                                pageCourses, sectionTimes, pageWeek, isPageToday, todayIsDark,
+                                cardBackdrop, cardBlurRadius, courseCardOpacity,
+                                showClassroom, showTeacher,
+                            ) { course -> openTodayCourse(course, pageWeek, openDetailSheet) }
+                        } else {
+                            addCourseSections(morningCourses, afternoonCourses, eveningCourses, pageCourses, isPageToday, pageDate, pageWeek, sectionTimes, openDetailSheet, cardBackdrop, cardBlurRadius, courseCardOpacity, showClassroom, showTeacher, isHolidayDate = pageResolution.isHolidayDate)
+                        }
                     }
                 }
             }
@@ -1459,6 +1479,40 @@ private fun CourseDetailSectionCard(
     }
 }
 
+/** 时间轴版课程区：整页一条时间轴（今日页单列），与列表版二选一 */
+private fun LazyListScope.addTodayTimeline(
+    pageCourses: List<Course>,
+    sectionTimes: Map<Int, String>,
+    pageWeek: Int,
+    isPageToday: Boolean,
+    isDark: Boolean,
+    wallpaperBackdrop: Backdrop?,
+    blurRadius: Float,
+    surfaceOpacity: Float,
+    showClassroom: Boolean,
+    showTeacher: Boolean,
+    onCourseClick: (Course) -> Unit,
+) {
+    item(key = "today-timeline") {
+        TodayTimelineSection(
+            courses = pageCourses,
+            sectionTimes = sectionTimes,
+            pageWeek = pageWeek,
+            isToday = isPageToday,
+            style = TodayTimelineStyle(
+                isDark = isDark,
+                backdrop = wallpaperBackdrop,
+                blurRadius = blurRadius,
+                // 与今日列表行同一档表面不透明度（不是课表页的课程色着色度）
+                surfaceOpacity = surfaceOpacity,
+                showClassroom = showClassroom,
+                showTeacher = showTeacher,
+            ),
+            onCourseClick = onCourseClick,
+        )
+    }
+}
+
 private fun LazyListScope.addCourseSections(
     morningCourses: List<Course>,
     afternoonCourses: List<Course>,
@@ -1467,7 +1521,6 @@ private fun LazyListScope.addCourseSections(
     isPageToday: Boolean,
     pageDate: LocalDate,
     pageWeek: Int,
-    courses: List<Course>,
     sectionTimes: Map<Int, String>,
     onCourseClick: (courses: List<Course>, cardLeft: Float, cardTop: Float, cardWidth: Float, cardHeight: Float, snapshot: TransitionLayerSnapshot?, courseIdToHide: String, targetWeek: Int) -> Unit,
     wallpaperBackdrop: Backdrop? = null,
@@ -1490,7 +1543,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         morningCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1511,7 +1564,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         afternoonCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1532,7 +1585,7 @@ private fun LazyListScope.addCourseSections(
                     Column {
                         eveningCourses.forEach { course ->
                             key(course.id) {
-                                CourseItemWithClick(course, courses, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
+                                CourseItemWithClick(course, sectionTimes, pageDate, pageWeek, onCardClick, wallpaperBackdrop != null, showClassroom, showTeacher)
                             }
                         }
                     }
@@ -1568,10 +1621,23 @@ private fun LazyListScope.addCourseSections(
     }
 }
 
+/**
+ * 今日页点课程 → 弹详情：只带被点的这一节。
+ *
+ * 今日页每一行 / 每张卡就是当天的一节课，点谁只看谁；别的周里节次压过来的课不进弹窗。
+ */
+private fun openTodayCourse(
+    course: Course,
+    pageWeek: Int,
+    openDetailSheet: (List<Course>, Float, Float, Float, Float, TransitionLayerSnapshot?, String, Int) -> Unit,
+) {
+    // 位置/图层参数供「点卡片直接 morph 进详情」用；今日页先弹详情弹窗，起点由弹窗内卡片提供
+    openDetailSheet(listOf(course), 0f, 0f, 0f, 0f, null, course.id, pageWeek)
+}
+
 @Composable
 private fun CourseItemWithClick(
     course: Course,
-    allCourses: List<Course>,
     sectionTimes: Map<Int, String>,
     pageDate: LocalDate,
     pageWeek: Int,
@@ -1589,16 +1655,7 @@ private fun CourseItemWithClick(
             //   surfaceContainer 取 tone 94/12，差 4 个明度阶，写错会偏色。
             .then(if (hasWallpaper) Modifier else Modifier.background(MiuixTheme.colorScheme.surfaceContainer))
             .clickable {
-                // 按槽位捞（同星期 + 节次重叠），与课程表页口径一致：
-                // 按课名捞会把同名但排在别的天/别的节次那条也带进来，弹窗里看着就是同一门课重复
-                val coursesAtSlot = allCourses.filter {
-                    it.dayOfWeek == course.dayOfWeek &&
-                        it.startSection <= course.endSection &&
-                        it.endSection >= course.startSection
-                }.distinctBy { it.id }.sortedBy { it.startSection }
-                // 位置/图层参数是给「点卡片直接 morph 进详情」用的；今日页现在先弹详情弹窗，
-                // 起点由弹窗里的卡片提供，这里传空即可（也不必再录制离屏图层）。
-                onCourseClick(coursesAtSlot, 0f, 0f, 0f, 0f, null, course.id, pageWeek)
+                openTodayCourse(course, pageWeek, onCourseClick)
             }
     ) {
         CourseItemContent(course, sectionTimes, pageDate, showClassroom, showTeacher, pageWeek)

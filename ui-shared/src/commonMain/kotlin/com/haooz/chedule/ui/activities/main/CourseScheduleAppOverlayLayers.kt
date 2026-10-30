@@ -52,8 +52,10 @@ import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.SwitchScheduleScreen
 import com.haooz.chedule.ui.basic.ShortcutMenu
+import com.haooz.chedule.ui.basic.ShortcutMenuShadowPadding
 import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.activities.classschedule.CourseCard
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import com.haooz.chedule.ui.components.CrossWeekDropHint
 import com.haooz.chedule.ui.components.EdgeAutoPageIndicator
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
@@ -236,10 +238,15 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                 modifier = Modifier
                                     .offset(x = baseOffsetX, y = baseOffsetY)
                                     .size(width = width, height = height)
-                                    // 自定义时间课的高度已是扣完外缝的可见高，这里不能再缝一次
+                                    // 自定义时间课与时间轴卡的高度都是实测可见高，这里不能再缝一次
                                     .then(
-                                        if (course.hasValidCustomTime()) Modifier
-                                        else Modifier.padding(vertical = 2.dp)
+                                        if (course.hasValidCustomTime() ||
+                                            scheduleViewMode == ScheduleViewMode.TIMELINE
+                                        ) {
+                                            Modifier
+                                        } else {
+                                            Modifier.padding(vertical = 2.dp)
+                                        }
                                     )
                                     .graphicsLayer {
                                         translationX = floatingOffsetX.floatValue
@@ -369,9 +376,9 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                                 }
                             )
                         )
-                        // ⚠ 自定义时间课不给「复制」：粘贴是按节次跨度落位的，复制它既粘不出
-                        // 正确的时间段、又会让用户以为能复制出一份自定义时间课。
-                        if (!activeShortcutCourse.hasValidCustomTime()) {
+                        // 自定义时间课与时间轴视图都不给「复制」：粘贴按节次跨度落位，
+                        // 复制它既粘不出正确的时间段、又会让用户以为能复制出一份相同时间段的课。
+                        if (shortcutMenuAllowCopy && !activeShortcutCourse.hasValidCustomTime()) {
                             add(
                                 ShortcutMenuItem(
                                     icon = MiuixIcons.Copy,
@@ -466,9 +473,23 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                     show = shortcutMenuVisible,
                     items = menuItems,
                     modifier = Modifier.offset(
-                        // ShadowPadding 12dp，左移使可见左缘与卡片对齐
-                        x = with(density) { shortcutMenuPosition.x.toDp() - 12.dp },
-                        y = with(density) { (shortcutMenuPosition.y - shortcutMenuSize.height).toDp() + 4.dp }
+                        // 菜单布局四周有 ShortcutMenuShadowPadding 的阴影留白，可见面板
+                        // 是布局四边各内收这么多之后的区域：间距与右缘对齐都要按它换算
+                        x = with(density) {
+                            shortcutMenuPosition.x.toDp() - ShortcutMenuShadowPadding
+                        },
+                        y = with(density) {
+                            // 普通课卡的锚点还含 2dp 格缝，可见间距 8dp 就够；自定义时间/时间轴
+                            // 的锚点是实测边界，8dp 看着像贴上去，要 16dp。
+                            // 卡片很长时会顶出屏幕，至少留在容器内
+                            val measuredAnchor = draggedCardCourse?.let {
+                                it.hasValidCustomTime() || scheduleViewMode == ScheduleViewMode.TIMELINE
+                            } == true
+                            val gap = if (measuredAnchor) 16.dp.toPx() else 8.dp.toPx()
+                            val visibleTop = shortcutMenuPosition.y - shortcutMenuSize.height +
+                                ShortcutMenuShadowPadding.toPx() - gap
+                            maxOf(visibleTop, 12.dp.toPx()).toDp()
+                        }
                     ),
                     backdrop = liquidGlassBackdrop,
                     anchorRightPx = shortcutMenuPosition.x + shortcutMenuAnchorWidth,
@@ -677,6 +698,9 @@ internal fun BoxScope.CourseScheduleAppOverlayLayers(
                         },
                         pendingEnterCutout = pendingEnterCutout,
                         onCutoutEntered = { pendingEnterCutout = false },
+                        // 视图模式：外观弹窗里切，切完即落盘（与主题档位一致）
+                        scheduleViewMode = scheduleViewMode,
+                        onScheduleViewModeChange = { applyScheduleViewMode(it) },
                         combinations = customizeThumbnails,
                         currentCombinationIndex = currentCombinationIndex,
                         isExiting = isCustomizeExiting,

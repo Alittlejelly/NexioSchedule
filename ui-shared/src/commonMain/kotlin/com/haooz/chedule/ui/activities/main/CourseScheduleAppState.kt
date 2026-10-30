@@ -38,10 +38,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.haooz.chedule.data.AppearanceConfig
 import com.haooz.chedule.data.AppearanceStore
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
+import com.haooz.chedule.ui.utils.loadScheduleViewMode
+import com.haooz.chedule.ui.utils.saveScheduleViewMode
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.TeachingWeekReorganizationRule
 import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.UpdateController
@@ -371,6 +373,9 @@ class CourseScheduleAppState {
 
     // 左移时菜单右边缘对齐卡片右边缘
     var shortcutMenuAnchorWidth by mutableFloatStateOf(0f)
+
+    /** 长按菜单是否给「复制」：时间轴是只读视图，复制/粘贴按节次跨度落位，不给 */
+    var shortcutMenuAllowCopy by mutableStateOf(true)
 
     // (星期, 起始节次)；粘贴目标=长按格
     // columnDay 用于格子高亮；addDay/addWeek 供「添加」默认落到调课来源星期/周
@@ -1694,6 +1699,19 @@ class CourseScheduleAppState {
     var scheduleChanged by mutableStateOf(false)
     var showMorePopup by mutableStateOf(false)
     var showTodayMorePopup by mutableStateOf(false)
+
+    /** 课表页呈现方式（网格 / 时间轴），落盘在 app_theme_prefs 的 schedule_view_mode */
+    var scheduleViewMode by mutableStateOf(loadScheduleViewMode())
+
+    /**
+     * 切换视图模式：先更新内存再落盘，UI 不等磁盘回调。
+     * 名字避开 `setScheduleViewMode` —— 会与 `var` 的自动 setter 撞 JVM 签名。
+     */
+    fun applyScheduleViewMode(mode: ScheduleViewMode) {
+        if (scheduleViewMode == mode) return
+        scheduleViewMode = mode
+        saveScheduleViewMode(mode)
+    }
 
     // 按钮原地随菜单展开淡出，形成"按钮连贯变为菜单"的单一动画
     val morePopupFraction = Animatable(0f)

@@ -6,7 +6,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.hsvToRgb
+import com.haooz.chedule.data.rgbToHsv
 import com.materialkolor.hct.Hct
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -51,3 +54,53 @@ internal fun rememberCourseColors(course: Course, isDark: Boolean): CourseColors
 @Composable
 internal fun scheduleAccentColor(): Color =
     if (MiuixTheme.isDynamicColor) MiuixTheme.colorScheme.primary else Color(0xFF3482FF)
+
+/**
+ * 课卡文字色。
+ *
+ * 网格卡与时间轴卡共用这一份，否则同一门课在两个视图里颜色不一致。
+ *
+ * @param background 卡片最终表面色（已 compositeOver 过垫底色），莫奈档的对比度兜底要用它
+ */
+internal fun courseCardTextColor(
+    courseColors: CourseColors,
+    useMonet: Boolean,
+    inactiveColor: Color,
+    background: Color,
+    isCurrentWeek: Boolean,
+    isHoliday: Boolean,
+    isCourseCancelled: Boolean,
+    hasBlur: Boolean,
+    isDark: Boolean,
+    cardTextColor: CardTextColor,
+): Color {
+    if (!(isCurrentWeek && !isHoliday && !isCourseCancelled)) {
+        return if (hasBlur) {
+            if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.3f)
+        } else {
+            inactiveColor.copy(alpha = if (isDark) 0.28f else 0.45f)
+        }
+    }
+    if (cardTextColor == CardTextColor.SOLID) {
+        return if (isDark) Color.White.copy(alpha = 0.74f) else Color.Black.copy(alpha = 0.74f)
+    }
+    if (useMonet) return readableCourseTextColor(courseColors.onTint, background)
+    if (!hasBlur) return courseColors.tint
+    // 玻璃卡：课程色提亮、降饱和，才有对比度
+    val hsv = FloatArray(3)
+    val c = courseColors.tint
+    rgbToHsv(
+        (c.red * 255).toInt(),
+        (c.green * 255).toInt(),
+        (c.blue * 255).toInt(),
+        hsv,
+    )
+    if (isDark) {
+        hsv[1] = (hsv[1] * 0.5f).coerceIn(0f, 1f)
+        hsv[2] = (hsv[2] + 0.4f).coerceIn(0f, 1f)
+    } else {
+        hsv[1] = (hsv[1] * 0.84f).coerceIn(0f, 1f)
+        hsv[2] = (hsv[2] + 0.5f).coerceIn(0f, 1f)
+    }
+    return Color(hsvToRgb(hsv))
+}

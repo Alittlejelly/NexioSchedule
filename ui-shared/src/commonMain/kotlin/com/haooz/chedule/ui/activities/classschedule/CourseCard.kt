@@ -62,9 +62,7 @@ import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.Course
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.ui.theme.rememberCourseColors
-import com.haooz.chedule.ui.theme.readableCourseTextColor
-import com.haooz.chedule.data.hsvToRgb
-import com.haooz.chedule.data.rgbToHsv
+import com.haooz.chedule.ui.theme.courseCardTextColor
 import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.BackdropEffectScope
@@ -281,41 +279,19 @@ fun CourseCard(
         isDark,
         cardTextColor,
     ) {
-        // 纯色模式仅本周课：黑白 0.74f；非本周/假期沿用灰色
-        if (isCurrentWeek && !isHoliday && !isCourseCancelled &&
-            cardTextColor == CardTextColor.SOLID
-        ) {
-            if (isDark) Color.White.copy(alpha = 0.74f) else Color.Black.copy(alpha = 0.74f)
-        } else if (isCurrentWeek && !isHoliday && !isCourseCancelled) {
-            if (useMonet) readableCourseTextColor(courseColors.onTint, monetCardBackground)
-            else if (hasBlur) courseColors.tint.let { c ->
-                val hsv = FloatArray(3)
-                // AOSP Color.RGBToHSV/HSVToColor 的跨平台移植（:core 的纯数学版，golden vectors 锁定）
-                rgbToHsv(
-                    (c.red * 255).toInt(),
-                    (c.green * 255).toInt(),
-                    (c.blue * 255).toInt(),
-                    hsv
-                )
-                if (isDark) {
-                    hsv[1] = (hsv[1] * 0.5f).coerceIn(0f, 1f)
-                    hsv[2] = (hsv[2] + 0.4f).coerceIn(0f, 1f)
-                } else {
-                    hsv[1] = (hsv[1] * 0.84f).coerceIn(0f, 1f)
-                    hsv[2] = (hsv[2] + 0.5f).coerceIn(0f, 1f)
-                }
-                // hsvToRgb 返回打包 ARGB（alpha 满格）；Color(Int) 按 ARGB 解析 ——
-                // 与原「HSVToColor → 取三通道 → Color(r,g,b)」逐位等价
-                Color(hsvToRgb(hsv))
-            }
-            else courseColors.tint
-        } else {
-            if (hasBlur) {
-                if (isDark) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.3f)
-            } else {
-                inactiveColor.copy(alpha = if (isDark) 0.28f else 0.45f)
-            }
-        }
+        // 推导在 ui/theme/ScheduleColors.kt，时间轴卡片共用同一份
+        courseCardTextColor(
+            courseColors = courseColors,
+            useMonet = useMonet,
+            inactiveColor = inactiveColor,
+            background = monetCardBackground,
+            isCurrentWeek = isCurrentWeek,
+            isHoliday = isHoliday,
+            isCourseCancelled = isCourseCancelled,
+            hasBlur = hasBlur,
+            isDark = isDark,
+            cardTextColor = cardTextColor,
+        )
     }
 
     if (hasBlur) {
@@ -794,6 +770,7 @@ private fun Modifier.courseCardGesture(
             ) {
                 touchState.clearDragTracking()
             }
+
         }
     }
 }

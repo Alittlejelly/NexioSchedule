@@ -225,6 +225,8 @@ fun MainScheduleScreen(
     onWallpaperOffsetChange: (Offset) -> Unit = {},
     onWallpaperScaleChange: (Float) -> Unit = {},
     appearance: AppearanceConfig = AppearanceConfig(),
+    /** 周页呈现方式：网格（可编辑）或时间轴（按真实时间比例、只读） */
+    scheduleViewMode: ScheduleViewMode = ScheduleViewMode.WEEK,
     liquidGlassBackdrop: Backdrop? = null,
     /**
      * 主内容正被外层 `graphicsLayer` 缩放/位移（进课表外观页、窗口开洞、退场、导航切页）。
@@ -394,6 +396,18 @@ fun MainScheduleScreen(
             cardHeightPerSection = cardHeightPerSection,
             dividerGap = if (showBreakDividers) 24 else 0
         )
+    }
+
+    // 切回网格时归零：时间轴的纵向尺度（分钟）远大于节次，沿用它的值会停在网格底部附近。
+    // 只在「时间轴 → 网格」这一次切换时做，首次进入或从别的页面返回都保持原滚动位置。
+    var previousViewMode by remember { mutableStateOf(scheduleViewMode) }
+    LaunchedEffect(scheduleViewMode) {
+        val from = previousViewMode
+        previousViewMode = scheduleViewMode
+        // 课表页顶栏始终折叠，不要在这里调 scrollBehavior.expand()，那会顶出大标题
+        if (from == ScheduleViewMode.TIMELINE && scheduleViewMode == ScheduleViewMode.WEEK) {
+            externalScrollState.scrollTo(0)
+        }
     }
 
     // 睡到下一次节次边界再重算，避免长时间停留后高亮过期
@@ -949,11 +963,18 @@ fun MainScheduleScreen(
                 // 否则一屏卡片的字各糊一遍 460ms，看起来像整页重播入场动画。
                 val borrowedPage = jumpNeighbor?.isBorrowed(physicalPage) == true
                 CompositionLocalProvider(LocalTextMotionInstant provides borrowedPage) {
+                    // 本周显示哪几天（周末只看有没有课）：网格与时间轴共用，顶栏星期行的列数也依赖它
+                    val pageDayRange = remember(weekendDaysByWeek, week) {
+                        (1..5).toList() + (weekendDaysByWeek[week] ?: emptySet())
+                            .filter { it in 6..7 }
+                    }
                     // 页级玻璃：一页挂一个采样节点，替掉页内 N 张卡各自的 drawBackdrop。
-                    // 每页一个（而不是整块 pager 一个）是有意的：pager 平移会把整页连同玻璃层一起移
+                    // 每页一个（而不是整块 pager 一个）是有意的：pager 平移会把整页连同玻璃层一起移。
+                    // 时间轴的玻璃要压在小时横线之上，由内层自己插；这里只给网格用。
                     val pageGlassRegistry = remember { GlassCardRegistry() }
+                    val usePageGlass = pageGlassActive
                     Box(modifier = Modifier.fillMaxSize()) {
-                        if (pageGlassActive) {
+                        if (usePageGlass && scheduleViewMode == ScheduleViewMode.WEEK) {
                             PageGlass(
                                 registry = pageGlassRegistry,
                                 backdrop = sharedBlurManager,
@@ -965,8 +986,128 @@ fun MainScheduleScreen(
                             )
                         }
                         CompositionLocalProvider(
-                            LocalGlassCards provides if (pageGlassActive) pageGlassRegistry else null
+                            LocalGlassCards provides if (usePageGlass) pageGlassRegistry else null
                         ) {
+                            // 时间轴视图：同一个 pager 页，把「节次」纵轴换成真实时间纵轴。
+                            // 早退而不是 if/else 包住下面整段网格：条件分支的 group 处理与 if/else 等价。
+                            if (scheduleViewMode == ScheduleViewMode.TIMELINE) {
+                                // 空白处点出的待添加槽位（只在本页有效）
+                                var pendingAdd by remember(page) {
+                                    mutableStateOf<TimelinePendingAdd?>(null)
+                                }
+                                val timelineDays = pageDayRange.map { day ->
+                                    val info = weekFilteredCourses[page]?.get(day)
+                                    val flags = weekDayFlags[page]?.get(day) ?: (false to false)
+                                    TimelineDay(
+                                        day = day,
+                                        displayWeek = info?.second ?: week,
+                                        displayDay = info?.first ?: day,
+                                        courses = info?.third.orEmpty(),
+                                        cancelledIds = weekHolidayCancelledCourseIds[page]
+                                            ?.get(day).orEmpty(),
+                                        exemptIds = weekHolidayExemptCourseIds[page]
+                                            ?.get(day).orEmpty(),
+                                        isHoliday = flags.first,
+                                        isWorkSwap = flags.second,
+                                    )
+                                }
+                                TimelineWeekGrid(
+                                    days = timelineDays,
+                                    sectionTimes = sectionTimes,
+                                    isTablet = isTablet,
+                                    isCurrentWeekView = week == currentWeek,
+                                    style = TimelineCardStyle(
+                                        isDark = scheduleIsDark,
+                                        backdrop = activeCardBackdrop,
+                                        cardBlurRadius = cardBlurRadius,
+                                        cardAlpha = cardAlpha,
+                                        cardSurfaceAlpha = cardSurfaceAlpha,
+                                        solidBacking = cardSolidBacking,
+                                        cardHeightPerSection = cardHeightPerSection,
+                                        cardCornerRadius = cardCornerRadius,
+                                        cardContentAlignment = cardContentAlignment,
+                                        cardTextColor = cardTextColor,
+                                        cardTextScale = cardTextScale,
+                                        showClassroom = showClassroom,
+                                        showTeacher = showTeacher,
+                                        cardRefraction = cardRefraction,
+                                    ),
+                                    contentTopPadding = contentTopPaddingDp,
+                                    contentBottomPadding = scheduleEndSpacer,
+                                    scrollState = externalScrollState,
+                                    scrollBehavior = scheduleScrollBehavior,
+                                    pendingAdd = pendingAdd,
+                                    // 点空白：先立一张加号卡片（上下中心落在点下的那一分钟）
+                                    onEmptyTap = { day, minute ->
+                                        if (dateForTeachingPosition(week, day.day) != null) {
+                                            val section = sectionAtMinute(sectionTimes, minute)
+                                            pendingAdd = TimelinePendingAdd(
+                                                day = day.day,
+                                                centerMinute = minute,
+                                                durationMinutes = sectionMinutesOf(sectionTimes, section),
+                                            )
+                                        }
+                                    },
+                                    // 点加号卡片：按自定义时间新建，起止就是卡片覆盖的那一段
+                                    onPendingAddClick = { day, startMinute, durationMinutes ->
+                                        val section = sectionAtMinute(sectionTimes, startMinute)
+                                        pendingAdd = null
+                                        viewModel.showAddDialog(
+                                            dayOfWeek = if (day.isWorkSwap) day.displayDay else day.day,
+                                            startSection = section,
+                                            endSection = section,
+                                            defaultWeeks = if (day.isWorkSwap) {
+                                                setOf(day.displayWeek)
+                                            } else {
+                                                emptySet()
+                                            },
+                                            customStartTime = minuteText(startMinute),
+                                            customEndTime = minuteText(
+                                                (startMinute + durationMinutes) % (24 * 60)
+                                            ),
+                                        )
+                                    },
+                                    // 长按：起浮层 + 菜单（拖不动、不给复制），与网格自定义时间课同一套
+                                    onCourseLongPress = { course, cx, cy, w, h, displayWeek ->
+                                        onCourseLongPress(
+                                            course, cx, cy, w, h,
+                                            activeCardBackdrop ?: courseCardBackdrop,
+                                            displayWeek
+                                        )
+                                    },
+                                    // 浮层期间隐藏原卡
+                                    hiddenSlots = draggingCourseSlots,
+                                    // 与网格卡片同一入口：调休列用该列映射后的周次查槽位
+                                    onCourseClick = { course, displayWeek ->
+                                        val coursesAtSlot = viewModel.getCoursesAtSlot(
+                                            displayWeek,
+                                            course.dayOfWeek,
+                                            course.startSection,
+                                            course.endSection
+                                        )
+                                        selectedCourses = coursesAtSlot
+                                        selectedCourse = coursesAtSlot.find { it.id == course.id }
+                                            ?: course
+                                        showCourseDetail = true
+                                        onPopupStateChange(true)
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                    glassBehindCards = { glassModifier ->
+                                        if (usePageGlass) {
+                                            PageGlass(
+                                                registry = pageGlassRegistry,
+                                                backdrop = sharedBlurManager,
+                                                bakedLayer = sharedBlurManager.blurredLayer,
+                                                bakeScale = sharedBlurManager.blurredScale,
+                                                refractionHeight = pageGlassRefractionHeightPx,
+                                                refractionAmount = pageGlassRefractionAmountPx,
+                                                modifier = glassModifier
+                                            )
+                                        }
+                                    },
+                                )
+                                return@CompositionLocalProvider
+                            }
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1047,10 +1188,6 @@ fun MainScheduleScreen(
                                         onGridGeometryChange(buildGridGeometry())
                                     }
                                     // 提升到 Row 之外：特殊横带按同一套列宽切分内部星期子块
-                                    val pageDayRange = remember(weekendDaysByWeek, week) {
-                                        (1..5).toList() + (weekendDaysByWeek[week]
-                                            ?: emptySet()).filter { it in 6..7 }
-                                    }
                                     // 每个可见列实际显示的星期（调休列画的是被调星期的课）；横带子块必须
                                     // 跟着它走，与下面 DayColumn 的 displayDayForCol 同源，别再拿列下标当星期。
                                     val pageColumnDays =

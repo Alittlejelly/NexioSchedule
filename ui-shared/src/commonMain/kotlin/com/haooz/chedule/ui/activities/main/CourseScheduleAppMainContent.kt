@@ -82,6 +82,7 @@ import com.haooz.chedule.ui.activities.classschedule.LandRippleSpec
 import com.haooz.chedule.ui.activities.classschedule.LocalLandRipple
 import com.haooz.chedule.ui.activities.classschedule.MainScheduleScreen
 import com.haooz.chedule.ui.activities.classschedule.ScheduleTopBar
+import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import com.haooz.chedule.ui.activities.today.TodayScreen
 import com.haooz.chedule.ui.components.BackToNowFloatingButton
 import com.haooz.chedule.ui.components.LiquidNavigationRail
@@ -913,6 +914,8 @@ internal fun CourseScheduleAppMainContent(
                                                             },
                                                             // 今日助手卡留在 :androidApp（天气/定位/Geocoder），通过槽位注入
                                                             todayAssistantCard = todayAssistantCard,
+                                                            // 视图模式与课表页共用同一个开关
+                                                            scheduleViewMode = scheduleViewMode,
                                                         )
                                                     }
                                                 }
@@ -943,6 +946,7 @@ internal fun CourseScheduleAppMainContent(
                                                                 viewModel = viewModel,
                                                                 settingsViewModel = settingsViewModel,
                                                                 pagerState = pagerState,
+                                                                scheduleViewMode = scheduleViewMode,
                                                                 jumpNeighbor = weekJumpNeighbor,
                                                                 pagerGestureState = weekGestureState,
                                                                 hiddenCourseIds = hiddenCourseIds,
@@ -979,10 +983,14 @@ internal fun CourseScheduleAppMainContent(
                                                                     )
                                                                     shortcutMenuAnchorWidth = width
                                                                 },
-                                                                onCourseLongPress = { course, left, top, width, height, backdrop, currentWeek ->
-                                                                    hapticFeedback.performHapticFeedback(
-                                                                        HapticFeedbackType.LongPress
-                                                                    )
+                                                                onCourseLongPress = longPress@{ course, left, top, width, height, backdrop, currentWeek ->
+                                                                    // 非本周的课（灰卡）两种视图都不给长按菜单：它只是「这格以后会上什么」的占位
+                                                                    if (!course.isActiveInWeek(currentWeek)) return@longPress
+                                                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                    // 时间轴卡片按真实时间定位，节次几何对它没有意义：锚点直接用卡片实测值。
+                                                                    // 自定义时间课同理。时间轴卡片 dragEnabled=false，浮层起来也拖不动。
+                                                                    val measuredAnchor = course.hasValidCustomTime() ||
+                                                                        scheduleViewMode == ScheduleViewMode.TIMELINE
                                                                     // 浮层照常起（原卡隐藏、浮层顶在原地）—— 自定义时间课也一样
                                                                     isDraggingCard = true
                                                                     floatingCardVisible = true
@@ -1017,8 +1025,8 @@ internal fun CourseScheduleAppMainContent(
                                                                         // X 必须用卡片实测中心 left：调课日列数据星期 ≠ 列星期，
                                                                         // dayBounds[course.dayOfWeek] 会取到隔壁列；自定义时间课按时间轴定位。
                                                                         anchorCenter = when {
-                                                                            course.hasValidCustomTime() ->
-                                                                                Offset(left, top)
+                                                                            measuredAnchor ->
+                                                                            Offset(left, top)
 
                                                                             bounds != null && bounds.size >= 3 ->
                                                                                 Offset(
@@ -1030,8 +1038,8 @@ internal fun CourseScheduleAppMainContent(
                                                                                 Offset(left, top)
                                                                         }
                                                                         anchorSize =
-                                                                            if (course.hasValidCustomTime()) {
-                                                                                Offset(width, height)
+                                                                            if (measuredAnchor) {
+                                                                            Offset(width, height)
                                                                             } else {
                                                                                 Offset(width, fullH)
                                                                             }
@@ -1063,12 +1071,15 @@ internal fun CourseScheduleAppMainContent(
                                                                     shortcutMenuAnchorWidth =
                                                                         anchorSize.x
                                                                     shortcutMenuBackdrop = backdrop
+                                                                    shortcutMenuAllowCopy = scheduleViewMode != ScheduleViewMode.TIMELINE
                                                                 },
                                                                 onCourseDragStart = { _ ->
                                                                     // 拖过位移阈值才到这里（卡片侧 moved > slop 才回调），
-                                                                    // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单
-                                                                    setPendingDropTarget(null)
+                                                                    // 跟手高光从这一刻才亮，紧接着 onCourseMenuDismiss 收菜单。
+                                                                    // 落点也在这里先算一次（此刻就是源格），让遮罩和高光同一帧出现，
+                                                                    // 否则要等下一帧 onCourseDrag 才补上，看着比高光慢半拍
                                                                     isFloatingCardDragging = true
+                                                                    refreshPendingDropTarget()
                                                                 },
                                                                 onCourseMenuDismiss = {
                                                                     shortcutMenuVisible = false
@@ -1387,7 +1398,12 @@ internal fun CourseScheduleAppMainContent(
                                                                     } else {
                                                                         val target = pendingDropTarget
                                                                         val source = draggedCardCourse
-                                                                        if (floatingCardVisible && target != null && source != null) {
+                                                                        // 与跟手高光同源：真拖起来才出遮罩，长按起浮层但还没拖时不示意；
+                                                                        // 松手后的冲突悬停/二次确认也要保留落点（isFloatingCardDragging 此时已关）
+                                                                        if (floatingCardVisible &&
+                                                                            (isFloatingCardDragging || pendingConflictCourse != null) &&
+                                                                            target != null && source != null
+                                                                        ) {
                                                                             val sectionSpan =
                                                                                 source.endSection - source.startSection
                                                                             target.first to (target.second..(target.second + sectionSpan))
@@ -1397,7 +1413,10 @@ internal fun CourseScheduleAppMainContent(
                                                                 dropHighlightOrigin = {
                                                                     dropTargetRevision
                                                                     val source = draggedCardCourse
-                                                                    if (floatingCardVisible && source != null && !isPasteFlight) {
+                                                                    if (floatingCardVisible &&
+                                                                        (isFloatingCardDragging || pendingConflictCourse != null) &&
+                                                                        source != null && !isPasteFlight
+                                                                    ) {
                                                                         // 高亮画在网格列上：调课日列要用列星期，不能用数据星期
                                                                         draggedColumnDay to (source.startSection..source.endSection)
                                                                     } else {
@@ -1739,6 +1758,7 @@ internal fun CourseScheduleAppMainContent(
                     MiuixTheme(controller = appDialogController) {
                         CompositionLocalProvider(LocalForcedDarkTheme provides null) {
                             val addDialogDefaultWeeks by viewModel.addDialogDefaultWeeks.collectAsState()
+                            val addDialogCustomTime by viewModel.addDialogCustomTime.collectAsState()
                             AddCourseDialog(
                                 show = showAddDialog,
                                 course = editingCourse,
@@ -1749,6 +1769,8 @@ internal fun CourseScheduleAppMainContent(
                                 defaultStartSection = editingStartSection,
                                 defaultEndSection = editingEndSection,
                                 defaultWeeks = addDialogDefaultWeeks,
+                                defaultCustomStartTime = addDialogCustomTime?.first,
+                                defaultCustomEndTime = addDialogCustomTime?.second,
                                 getOccupiedWeeks = { dayOfWeek, startSection, endSection, excludeIds, startTime, endTime ->
                                     viewModel.getOccupiedWeeks(
                                         dayOfWeek = dayOfWeek,

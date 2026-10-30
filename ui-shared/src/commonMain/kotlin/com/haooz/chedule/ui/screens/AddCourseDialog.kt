@@ -112,6 +112,8 @@ private class AddCourseFormState(
     defaultStartSection: Int,
     defaultEndSection: Int,
     defaultWeeks: Set<Int> = emptySet(),
+    defaultCustomStartTime: String? = null,
+    defaultCustomEndTime: String? = null,
 ) {
     var name by mutableStateOf(course?.name ?: "")
     var classroom by mutableStateOf(course?.classroom ?: "")
@@ -122,9 +124,13 @@ private class AddCourseFormState(
     var startSection by mutableIntStateOf(course?.startSection ?: defaultStartSection)
     var endSection by mutableIntStateOf(course?.endSection ?: defaultEndSection)
     var selectedColor by mutableLongStateOf(course?.colorRes ?: Course.courseColors.first())
-    var isCustomTime by mutableStateOf(course?.isCustomTime ?: false)
-    var customStartTime by mutableStateOf(course?.customStartTime ?: "")
-    var customEndTime by mutableStateOf(course?.customEndTime ?: "")
+    // 有预填的自定义时间就直接以自定义时间模式打开（时间轴空白处点开走这条路）
+    var isCustomTime by mutableStateOf(
+        course?.isCustomTime
+            ?: (defaultCustomStartTime != null && defaultCustomEndTime != null)
+    )
+    var customStartTime by mutableStateOf(course?.customStartTime ?: defaultCustomStartTime ?: "")
+    var customEndTime by mutableStateOf(course?.customEndTime ?: defaultCustomEndTime ?: "")
 
     val selectedWeeks: MutableSet<Int> = mutableStateSetOf<Int>().apply {
         if (course != null) {
@@ -164,6 +170,9 @@ fun AddCourseDialog(
     defaultStartSection: Int = 1,
     defaultEndSection: Int = 2,
     defaultWeeks: Set<Int> = emptySet(),
+    /** 以自定义时间打开并预填起止（时间轴空白处点开时由调用方算好） */
+    defaultCustomStartTime: String? = null,
+    defaultCustomEndTime: String? = null,
     getOccupiedWeeks: (dayOfWeek: Int, startSection: Int, endSection: Int, excludeIds: List<String>, startTime: String?, endTime: String?) -> Set<Int> = { _, _, _, _, _, _ -> emptySet() },
     onDismiss: () -> Unit,
     onConfirm: (Course) -> Unit,
@@ -191,16 +200,26 @@ fun AddCourseDialog(
 
     // 父级组合期不解引用 form 字段，读取下沉到各卡片内部
     val form = remember(openKey) {
-        AddCourseFormState(course, selectedDay, defaultStartSection, defaultEndSection, defaultWeeks)
+        AddCourseFormState(
+            course,
+            selectedDay,
+            defaultStartSection,
+            defaultEndSection,
+            defaultWeeks,
+            defaultCustomStartTime,
+            defaultCustomEndTime,
+        )
     }
 
     // 自定义上课时间弹窗暂存值（只在时间弹窗内被读取）
     var showTimeDialog by remember(openKey) { mutableStateOf(false) }
     var timeError by remember(openKey) { mutableStateOf(false) }
-    var tempStartHour by remember(openKey) { mutableIntStateOf(parseTimeHour(course?.customStartTime)) }
-    var tempStartMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(course?.customStartTime)) }
-    var tempEndHour by remember(openKey) { mutableIntStateOf(parseTimeHour(course?.customEndTime)) }
-    var tempEndMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(course?.customEndTime)) }
+    val initialCustomStart = course?.customStartTime ?: defaultCustomStartTime
+    val initialCustomEnd = course?.customEndTime ?: defaultCustomEndTime
+    var tempStartHour by remember(openKey) { mutableIntStateOf(parseTimeHour(initialCustomStart)) }
+    var tempStartMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(initialCustomStart)) }
+    var tempEndHour by remember(openKey) { mutableIntStateOf(parseTimeHour(initialCustomEnd)) }
+    var tempEndMinute by remember(openKey) { mutableIntStateOf(parseTimeMinute(initialCustomEnd)) }
 
     // 勾选自定义时间时自动从节次时间预填
     LaunchedEffect(form.isCustomTime) {

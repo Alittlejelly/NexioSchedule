@@ -59,7 +59,11 @@ import top.yukonga.miuix.kmp.interactive.computeDragTransform
 
 private val MenuEnterEasing = CubicBezierEasing(0.3f, 1.25f, 0.32f, 1f)
 private val MenuExitEasing = CubicBezierEasing(0.3f, 1f, 0.3f, 1f)
-private val ShadowPadding = 12.dp
+/**
+ * 菜单布局四周的阴影留白：面板可见区比测量尺寸四边各小这么多。
+ * 调用方算「与卡片的间距 / 右缘对齐」要按它换算（见 OverlayLayers 的 offset）。
+ */
+internal val ShortcutMenuShadowPadding = 12.dp
 
 data class ShortcutMenuItem(
     val icon: ImageVector,
@@ -110,11 +114,11 @@ fun ShortcutMenu(
     }
 
     // 默认向右展开；可见右边缘超出屏幕安全边距时向左平移，右边缘对齐卡片右边缘
-    // 菜单 layout 宽含左右 ShadowPadding，可见右边缘 = menuPositionX + menuWidth - ShadowPadding
+    // 菜单 layout 宽含左右 ShortcutMenuShadowPadding，可见右边缘 = menuPositionX + menuWidth - ShortcutMenuShadowPadding
     var menuPositionX by remember { mutableStateOf(0f) }
     var menuWidth by remember { mutableStateOf(0) }
     val safetyPaddingPx = with(density) { 4.dp.toPx() }
-    val shadowPadPx = with(density) { ShadowPadding.toPx() }
+    val shadowPadPx = with(density) { ShortcutMenuShadowPadding.toPx() }
     val screenRightEdge = containerWidthPx - safetyPaddingPx
     val shouldShiftLeft = remember(menuPositionX, menuWidth, screenRightEdge) {
         val visibleRightEdge = menuPositionX + menuWidth - shadowPadPx
@@ -189,10 +193,10 @@ fun ShortcutMenu(
                     addRoundRect(
                         RoundRect(
                             rect = Rect(
-                                ShadowPadding.toPx(),
-                                ShadowPadding.toPx(),
-                                size.width - ShadowPadding.toPx(),
-                                size.height - ShadowPadding.toPx(),
+                                ShortcutMenuShadowPadding.toPx(),
+                                ShortcutMenuShadowPadding.toPx(),
+                                size.width - ShortcutMenuShadowPadding.toPx(),
+                                size.height - ShortcutMenuShadowPadding.toPx(),
                             ),
                             cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
                         ),
@@ -208,9 +212,9 @@ fun ShortcutMenu(
         Box(
             modifier = Modifier
                 .wrapContentSize()
-                .padding(ShadowPadding)
+                .padding(ShortcutMenuShadowPadding)
                 // 面板内容区在 root 里的位置：项把 boundsInRoot 换算成面板局部坐标。
-                // 与手势同一段链条，两个坐标系同源，ShadowPadding 不掺进差值
+                // 与手势同一段链条，两个坐标系同源，ShortcutMenuShadowPadding 不掺进差值
                 .onGloballyPositioned {
                     dragSelectState.panelTopInRoot = it.boundsInRoot().top
                     dragSelectState.panelLeftInRoot = it.boundsInRoot().left

@@ -381,6 +381,62 @@ data class Course(
  */
 private fun Int.pad2(): String = if (this in 0..9) "0$this" else toString()
 
+// ── 同一槽位里「该显示哪一条」 ───────────────────────────────────────
+// 网格与时间轴共用这一份：同一格可能堆着几门不同周次的课，显示哪张决定了用户看到的是不是本周那节。
+
+/** 该课在 [week] **之后**最近一次会上的是哪一周；已经全部上完返回 null。 */
+fun Course.nextActiveWeekAfter(week: Int): Int? {
+    if (selectedWeeks.isNotEmpty()) {
+        return selectedWeeks.filter { it > week }.minOrNull()
+    }
+    if (endWeek < week) return null
+    val from = maxOf(week + 1, startWeek)
+    if (from > endWeek) return null
+    return (from..endWeek).firstOrNull { isActiveInWeek(it) }
+}
+
+/** 该课在 [week] **及之前**最后一次会上的是哪一周；还没开始返回 null。 */
+fun Course.lastActiveWeekAtOrBefore(week: Int): Int? {
+    if (selectedWeeks.isNotEmpty()) {
+        return selectedWeeks.filter { it <= week }.maxOrNull()
+    }
+    if (startWeek > week) return null
+    val to = minOf(week, endWeek)
+    if (to < startWeek) return null
+    return (to downTo startWeek).firstOrNull { isActiveInWeek(it) }
+}
+
+/**
+ * 一组同槽位、**本周都没课**的课里挑一条显示。
+ *
+ * 取「下一次会上」最近的那门；全都上完了取最后结束的那门。
+ * 判据用 [nextActiveWeekAfter] 而不是 `startWeek`：后者会把「1 周开始、第 10 周还有一次」
+ * 的课判出局，明明下周就上却显示成下个月才上的那门。
+ */
+fun pickNonCurrentWeekCourse(group: List<Course>, week: Int): Course? {
+    if (group.isEmpty()) return null
+    if (group.size == 1) return group.first()
+
+    val upcoming = group.mapNotNull { course ->
+        course.nextActiveWeekAfter(week)?.let { course to it }
+    }
+    if (upcoming.isNotEmpty()) {
+        return upcoming.minWithOrNull(
+            compareBy({ it.second }, { it.first.startSection }, { it.first.endWeek })
+        )?.first
+    }
+
+    val past = group.mapNotNull { course ->
+        course.lastActiveWeekAtOrBefore(week)?.let { course to it }
+    }
+    if (past.isNotEmpty()) {
+        return past.maxWithOrNull(
+            compareBy({ it.second }, { it.first.endWeek })
+        )?.first
+    }
+    return group.first()
+}
+
 /**
  * 备注截断到 [Course.NOTE_MAX_LENGTH]，**不把代理对切一半**。
  *
