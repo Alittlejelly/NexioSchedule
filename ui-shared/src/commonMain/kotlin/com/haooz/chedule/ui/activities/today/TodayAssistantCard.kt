@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -96,6 +100,51 @@ private fun WeatherIcon(
     )
 }
 
+/** 状态徽标：胶囊底 + 主题色文字，比裸文字更能一眼分辨「正在上课 / 下节课」。 */
+@Composable
+private fun StatusBadge(text: String) {
+    val accent = MiuixTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .background(accent.copy(alpha = 0.14f), CircleShape)
+            .padding(horizontal = 9.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = text,
+            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 12.sp),
+            fontWeight = FontWeight.Medium,
+            color = accent,
+            maxLines = 1
+        )
+    }
+}
+
+/** 上课进度条：剩余时间从「文字」变成「刻度」，不占横向空间也读得出。 */
+@Composable
+private fun CourseProgressBar(percent: Int) {
+    val accent = MiuixTheme.colorScheme.primary
+    val track = remember(accent) { accent.copy(alpha = 0.08f) }
+    // 左淡右浓的横向渐变：已过的部分越靠前越实，尾巴留一点淡出，整条比实心色轻一档
+    val fill = remember(accent) {
+        Brush.horizontalGradient(
+            listOf(accent.copy(alpha = 0.28f), accent.copy(alpha = 0.62f))
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(5.dp)
+            .background(track, CircleShape)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(percent.coerceIn(0, 100) / 100f)
+                .fillMaxHeight()
+                .background(fill, CircleShape)
+        )
+    }
+}
+
 private fun parseTime(timeStr: String): LocalTime? {
     return try {
         parseHourMinute(timeStr)
@@ -127,8 +176,24 @@ private data class CourseStatus(
     val nextCourse: Course? = null,
     val timeMessage: String = "",
     /** 当前课结束时刻；跨过该时刻时触发下课庆祝 */
-    val currentEnd: LocalTime? = null
+    val currentEnd: LocalTime? = null,
+    /** 当前课已过的整数百分比（0..100）；null = 不在课上，不画进度 */
+    val progressPercent: Int? = null
 )
+
+/**
+ * 上课进度，按整数百分比量化。
+ *
+ * 量化是刻意的：每秒重算只有跨过 1% 才会让 [CourseStatus] 变化，
+ * 一节课 45 分钟约 27 秒才触发一次重组，进度条看起来仍连续。
+ */
+private fun progressPercentOf(range: CourseTimeRange, now: LocalTime): Int {
+    // 起止相同按满 24 小时处理，与 CourseTimeSpan 的口径一致
+    val total = millisBetween(range.start, range.end, allowRollover = true)
+        .takeIf { it > 0L } ?: (24L * 60L * 60L * 1000L)
+    val elapsed = millisBetween(range.start, now, allowRollover = true)
+    return ((elapsed * 100L) / total).coerceIn(0L, 100L).toInt()
+}
 
 @Composable
 private fun rememberCourseStatus(
@@ -150,7 +215,13 @@ private fun rememberCourseStatus(
             courses.isEmpty() -> ""
             else -> ""
         }
-        return CourseStatus(current?.course, next?.course, message, current?.end)
+        return CourseStatus(
+            currentCourse = current?.course,
+            nextCourse = next?.course,
+            timeMessage = message,
+            currentEnd = current?.end,
+            progressPercent = current?.let { progressPercentOf(it, now) }
+        )
     }
     // 初值必须当场算出来：留空会让新组合的助手卡先闪一帧「当前没有课程」，
     // 一秒后才跳回真实课程（借位页 / 首次进今日页都踩得到）。
@@ -519,6 +590,8 @@ fun TodayAssistantCard(
     fireworksOverlay: (@Composable (trigger: Int, modifier: Modifier) -> Unit)? = null,
 ) {
     val courseStatus = rememberCourseStatus(courses, sectionTimes)
+    // 卡片强调色：状态徽标、倒计时、进度条、右上角柔光共用同一支，避免多色打架
+    val accent = MiuixTheme.colorScheme.primary
     var smartTip by remember { mutableStateOf("") }
     LaunchedEffect(courses, tomorrowCourses, sectionTimes, morningSections, afternoonSections) {
         while (true) {
@@ -559,8 +632,7 @@ fun TodayAssistantCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 12.dp)
         ) {
             val currentCourse = courseStatus.currentCourse
             val nextCourse = courseStatus.nextCourse
@@ -568,7 +640,6 @@ fun TodayAssistantCard(
             val label = when {
                 currentCourse != null -> AssistantStr.inClass()
                 nextCourse != null -> AssistantStr.nextClass()
-                courses.isEmpty() -> ""
                 else -> ""
             }
             val name = when {
@@ -578,41 +649,39 @@ fun TodayAssistantCard(
                 else -> AssistantStr.noCourseNow()
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // weight 限制左侧宽度，过长课程名换行，右侧剩余时间保持完整
+            // 第一行只放状态徽标与倒计时：两者都从课名那一行搬出来，
+            // 课名因此独占整卡宽度（最多两行），长课名不再被右侧倒计时挤成两三个字。
+            if (label.isNotBlank() || courseStatus.timeMessage.isNotBlank()) {
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (label.isNotBlank()) {
-                        Text(
-                            text = label,
-                            style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        StatusBadge(text = label)
                     }
-                    Text(
-                        text = name,
-                        style = MiuixTheme.textStyles.body1.copy(fontSize = 17.sp),
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface
-                    )
+                    if (courseStatus.timeMessage.isNotBlank()) {
+                        Text(
+                            text = courseStatus.timeMessage,
+                            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 13.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = accent,
+                            textAlign = TextAlign.End,
+                            maxLines = 1
+                        )
+                    }
                 }
-                if (courseStatus.timeMessage.isNotBlank()) {
-                    Text(
-                        text = courseStatus.timeMessage,
-                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 15.sp),
-                        color = MiuixTheme.colorScheme.primary,
-                        textAlign = TextAlign.End,
-                    )
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
+
+            Text(
+                text = name,
+                style = MiuixTheme.textStyles.body1.copy(fontSize = 18.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
 
             val location = when {
                 currentCourse != null -> currentCourse.classroom
@@ -626,29 +695,43 @@ fun TodayAssistantCard(
             }
             val displayLocation = if (showClassroom) location else ""
             val displayTeacher = if (showTeacher) teacher else ""
-            if (displayLocation.isNotBlank() || displayTeacher.isNotBlank()) {
+            val meta = buildString {
+                if (displayLocation.isNotBlank()) append(displayLocation)
+                if (displayLocation.isNotBlank() && displayTeacher.isNotBlank()) append(" · ")
+                if (displayTeacher.isNotBlank()) append(displayTeacher)
+            }
+            if (meta.isNotBlank()) {
+                Spacer(modifier = Modifier.height(5.dp))
                 Text(
-                    text = buildString {
-                        if (displayLocation.isNotBlank()) append(displayLocation)
-                        if (displayLocation.isNotBlank() && displayTeacher.isNotBlank()) append(" | ")
-                        if (displayTeacher.isNotBlank()) append(displayTeacher)
-                    },
-                    style = MiuixTheme.textStyles.body2.copy(fontSize = 14.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    text = meta,
+                    style = MiuixTheme.textStyles.body2.copy(fontSize = 13.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+
+            // 上课中多给一条进度：剩余时间从「文字」变成「刻度」，不占横向空间也读得出。
+            // 有进度条时上下各留 8dp（比常规的 14dp 紧一档，进度条因此贴着课程信息收成一组）。
+            val progress = courseStatus.progressPercent
+            if (currentCourse != null && progress != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CourseProgressBar(percent = progress)
+                Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                Spacer(modifier = Modifier.height(14.dp))
+            }
             Spacer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 2.dp)
                     .height(0.5.dp)
-                    .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.07f))
+                    .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.09f))
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (smartTip.isNotBlank()) {
                     Text(
