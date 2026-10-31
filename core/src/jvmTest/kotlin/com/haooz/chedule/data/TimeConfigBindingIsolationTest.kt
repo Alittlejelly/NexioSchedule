@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.db.NexioDatabase
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,11 +28,26 @@ import kotlin.test.assertNotEquals
 class TimeConfigBindingIsolationTest {
 
     private lateinit var repository: CourseRepository
+    private lateinit var driver: JdbcSqliteDriver
+    private lateinit var store: SqliteCourseRowStore
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
+        // 零兜底之后没有「无行表」的平台：作息与绑定都只认表
+        driver = openInMemoryDriver()
+        NexioDatabase.Schema.create(driver)
+        store = SqliteCourseRowStore(NexioDatabase(driver))
+        CourseStorage.install { store }
         repository = CourseRepository.getInstance()
+        repository.invalidateAllCaches()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        CourseStorage.install { null }
+        repository.invalidateAllCaches()
+        driver.close()
     }
 
     /**

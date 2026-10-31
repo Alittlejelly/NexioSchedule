@@ -55,9 +55,6 @@ interface CourseRowStore {
     /** 行级差量写：只写 [previous] 与 [next] 之间变了的课。 */
     fun writeDiff(anchor: CourseRowAnchor, previous: List<Course>, next: List<Course>)
 
-    /** 清掉导入标记，让该课表退回以 JSON 为准，下次读取重新导入。 */
-    fun markStale(scheduleId: String)
-
     /**
      * 课表改名：把行数据搬到新名字下。不能删了等重新导入 ——
      * 导入之后 JSON blob 不再更新，重建只会读到导入那一刻的课表。
@@ -90,10 +87,32 @@ interface CourseRowStore {
     /** 写三个设置值；传 null 的字段保持库里的值。行不存在时静默无效，调用方需先补建行。 */
     fun writeSettings(scheduleId: String, currentWeek: Int?, totalWeeks: Int?, classStart: String?)
 
-    /** 该课表的设置是否已从 prefs 同步进行，见 `CourseRepository` 的一次性同步。 */
-    fun isSettingsSynced(scheduleId: String): Boolean
+    // ── 显示开关 ──────────────────────────────────────────────────────────────
+    // 跟着课表走，以前是 prefs 的 schedule_{名}_smart_weekend / _show_non_current_week。
 
-    fun markSettingsSynced(scheduleId: String)
+    /** 两个显示开关。行不存在返回 null，调用方回落 prefs 的默认值。 */
+    fun displaySettingsOf(scheduleId: String): ScheduleDisplaySettings?
+
+    fun writeSmartWeekend(scheduleId: String, smart: Boolean)
+
+    fun writeShowNonCurrentWeek(scheduleId: String, show: Boolean)
+
+    // ── 教学周重组规则 ────────────────────────────────────────────────────────
+    // payload 是整份规则列表的 JSON（TeachingWeekReorganization.encode 的产物）。
+
+    /** 整份规则 JSON。没有行返回 null。 */
+    fun teachingWeekReorganizationsOf(scheduleId: String): String?
+
+    fun writeTeachingWeekReorganizations(scheduleId: String, payload: String)
+
+    // ── 文件夹 ────────────────────────────────────────────────────────────────
+
+    fun folders(): List<StoredFolder>
+
+    /** 写一整行：先 UPDATE，不存在再 INSERT OR IGNORE（父表被 schedule 引用，不能用 REPLACE）。 */
+    fun upsertFolder(row: StoredFolder)
+
+    fun deleteFolder(id: String)
 
     // ── 作息配置 ──────────────────────────────────────────────────────────────
     // payload 是完整 TimeConfig JSON，一行一份；prefs 的 time_config_{id} 是写穿镜像。
@@ -105,20 +124,17 @@ interface CourseRowStore {
 
     fun deleteTimeConfigRow(id: Long)
 
-    /** 作息是否已从 prefs 同步进表。一次性标记，整库恢复后要清。 */
-    fun areTimeConfigsSynced(): Boolean
-
-    fun markTimeConfigsSynced()
-
     /** 全部作废（整库恢复备份后）。下次读取从恢复出的 JSON 重新导入。 */
     fun invalidateAll()
 
     // ── 一次性迁移 ────────────────────────────────────────────────────────────
-    // 「blob / prefs → 实体表」是否已经整体搬完。写完这个标记之后，[loadCourses] 的
-    // blob 导入、[rowSettingsOf] 的 prefs→行 同步、[hydrateTimeConfigs] 的 prefs→表 同步
-    // 都只会是空操作 —— 那时才是删掉这些路径的时机。
+    // 标记里存迁移块版本。没到版本就重跑，跑完 prefs 副本立刻删掉 ——
+    // 表是唯一真相，读路径不再回落 prefs。
+    //
+    // ⚠ 用布尔的话，1.6.7 已经迁完的用户升级到 1.6.8 会直接判「已迁完」，新块永远不执行，
+    //   而读路径只认表 —— 表现就是「升级后设置被重置、文件夹消失」。
 
-    /** 迁移是否已经跑完。恢复备份会清掉它（恢复出的是另一套数据）。 */
+    /** 迁移是否已经跑到当前块版本。恢复备份会清掉它（恢复出的是另一套数据）。 */
     fun isFullyMigrated(): Boolean
 
     fun markFullyMigrated()
@@ -166,6 +182,20 @@ data class ScheduleRowSettings(
     val currentWeek: Int,
     val totalWeeks: Int,
     val classStart: String?,
+)
+
+/** `schedule` 行上的两个显示开关。 */
+data class ScheduleDisplaySettings(
+    val smartWeekend: Boolean,
+    val showNonCurrentWeek: Boolean,
+)
+
+/** `folder` 表的一行。[schedules] 是组内课表名，顺序即用户排的顺序。 */
+data class StoredFolder(
+    val id: String,
+    val name: String,
+    val schedules: List<String>,
+    val sortOrder: Int,
 )
 
 /**

@@ -37,27 +37,40 @@ interface SqlBackend {
 /**
  * [KeyValueStore] 的 SQLite 实现：内存快照 + 行级写入 + 单事务提交。
  *
- * 读是纯内存；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
+ * 读是纯内存**且无锁**；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
  * 每个命名空间只能有一个实例（[SqliteStorage] / [SqlNamespaceStorage] 缓存），
  * 两份快照会互相看不见。`edit{}` 在副本上生效，提交失败时内存同步回滚。
  *
- * 互斥走 [synchronizedOn]（Kotlin/Native 没有 `synchronized`），三端同一份代码。
+ * ## 读为什么不用锁
+ *
+ * [data] 是**不可变快照**：每次写入都整份换新（copy-on-write），绝不原地改。读只取一次
+ * 字段引用再查表，看到的一定是某个完整提交后的状态。`@Volatile` 只保证「换指针」这件事
+ * 对别的线程立即可见。
+ *
+ * 这条路径在 draw 期被反复走（`getScheduleTimeConfigId`、主题、显示开关），原来的
+ * `synchronizedOn(lock) { data[key] }` 会让每一帧去抢一把正被写操作持着的 monitor ——
+ * 而 Native 侧 [synchronizedOn] 是直通实现，加了锁也只是 JVM/Android 单方面的开销。
+ *
+ * 写换快照在 [commitLock] 里串行（不必用 [lock]：读根本不进锁）。
  */
 class SqliteKeyValueStore(
     private val backend: SqlBackend,
     private val namespace: String,
 ) : KeyValueStore {
 
+    /** 只守 [listeners]，读路径不再经过它。 */
     private val lock = Any()
 
-    /**
-     * 串行化「落盘 + 换内存快照」。与 [lock] 分开：读只等内存替换那一瞬，
-     * 不必陪着等一次 SQLite 事务提交（编辑课程时主线程正在读设置 / 课表）。
-     */
+    /** 串行化「落盘 + 换内存快照」，让并发写入按提交顺序换指针。 */
     private val commitLock = Any()
 
-    /** 全量内存快照。读写一律持 [lock]。 */
-    private var data: LinkedHashMap<String, KvRow> = LinkedHashMap()
+    /**
+     * 全量内存快照，**不可变**：任何写入都换新实例，原地修改会破坏无锁读的可见性假设。
+     *
+     * `LinkedHashMap` 保插入顺序（`all()` 的键序即导入顺序）。
+     */
+    @Volatile
+    private var data: Map<String, KvRow> = LinkedHashMap()
 
     /**
      * 变更监听。强引用；由注册方持 token 注销。
@@ -68,12 +81,15 @@ class SqliteKeyValueStore(
     private val listeners = mutableListOf<(String) -> Unit>()
 
     init {
-        backend.loadNamespace(namespace).forEach { data[it.key] = it }
+        val loaded = LinkedHashMap<String, KvRow>()
+        backend.loadNamespace(namespace).forEach { loaded[it.key] = it }
+        data = loaded
     }
 
     // ── 读 ────────────────────────────────────────────────────────────────────
 
-    private fun row(key: String): KvRow? = synchronizedOn(lock) { data[key] }
+    /** 只取一次 [data]：两次读之间别的线程可能换了快照，取两次会拼出不属于同一状态的值。 */
+    private fun row(key: String): KvRow? = data[key]
 
     override fun getString(key: String, defaultValue: String): String =
         (row(key)?.takeIf { it.type == TYPE_STRING }?.value as? String) ?: defaultValue
@@ -131,13 +147,15 @@ class SqliteKeyValueStore(
 
     override fun contains(key: String): Boolean = row(key) != null
 
-    override fun all(): Map<String, Any?> = synchronizedOn(lock) {
-        val out = LinkedHashMap<String, Any?>(data.size)
-        data.forEach { (k, row) ->
+    override fun all(): Map<String, Any?> {
+        // 快照不可变，直接遍历；Set 值必须返回副本（调用方会就地 add）
+        val snapshot = data
+        val out = LinkedHashMap<String, Any?>(snapshot.size)
+        snapshot.forEach { (k, row) ->
             val v = row.value
             out[k] = if (v is Set<*>) LinkedHashSet(v) else v
         }
-        out
+        return out
     }
 
     // ── 写 ────────────────────────────────────────────────────────────────────
@@ -147,7 +165,7 @@ class SqliteKeyValueStore(
         var cleared = false
 
         // 先在副本上跑：块内抛异常时原状态不动
-        val working = LinkedHashMap<String, KvRow>(synchronizedOn(lock) { data })
+        val working = LinkedHashMap<String, KvRow>(data)
         EditorFacade(working, affected) { cleared = true }.block()
 
         synchronizedOn(commitLock) {
@@ -157,7 +175,7 @@ class SqliteKeyValueStore(
             val merged = if (cleared) {
                 LinkedHashMap(working)
             } else {
-                LinkedHashMap(synchronizedOn(lock) { data }).apply {
+                LinkedHashMap(data).apply {
                     for (key in affected) {
                         val row = working[key]
                         if (row != null) put(key, row) else remove(key)
@@ -176,7 +194,7 @@ class SqliteKeyValueStore(
                     }
                 }
             }
-            synchronizedOn(lock) { data = merged }
+            data = merged
         }
 
         notifyListeners(affected)
@@ -184,12 +202,12 @@ class SqliteKeyValueStore(
 
     override fun remove(key: String) {
         val removed = synchronizedOn(commitLock) {
-            val existed = synchronizedOn(lock) { data.containsKey(key) }
-            if (!existed) {
+            val snapshot = data
+            if (!snapshot.containsKey(key)) {
                 false
             } else {
                 backend.transaction { delete(namespace, key) }
-                synchronizedOn(lock) { data = LinkedHashMap(data).apply { remove(key) } }
+                data = LinkedHashMap(snapshot).apply { remove(key) }
                 true
             }
         }
@@ -200,13 +218,13 @@ class SqliteKeyValueStore(
 
     override fun clear() {
         val removed: List<String> = synchronizedOn(commitLock) {
-            val snapshot = synchronizedOn(lock) { data }
+            val snapshot = data
             if (snapshot.isEmpty()) {
                 emptyList()
             } else {
                 val keys = snapshot.keys.toList()
                 backend.transaction { clearNamespace(namespace) }
-                synchronizedOn(lock) { data = LinkedHashMap() }
+                data = LinkedHashMap()
                 keys
             }
         }

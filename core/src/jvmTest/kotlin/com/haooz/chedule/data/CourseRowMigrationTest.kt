@@ -6,11 +6,16 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
  * JSON blob → 课程行表 的端到端回归。测 [CourseRepository] 的切换逻辑（何时认行表、
- * 写完要不要写 blob、读失败退回哪里），而不是表本身。
+ * 迁移完 blob 的归宿、没有行表时怎么办），而不是表本身。
+ *
+ * blob 的合法身份只有一个：**待迁移的旧数据**。导入成功后它必须消失；
+ * 任何业务写都不许再造一份（写失败就抛，见 `saveCourses`）。
  */
 class CourseRowMigrationTest {
 
@@ -19,17 +24,15 @@ class CourseRowMigrationTest {
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        // 无行表状态（只有 JSON）
+        // 起点是「只有 prefs、没有行表」的老状态
         CourseStorage.install { null }
         val repository = CourseRepository.getInstance()
         repository.saveScheduleNames(listOf(SCHEDULE))
         repository.setCurrentScheduleId(SCHEDULE)
-        repository.saveCourses(emptyList(), notify = false)
         repository.invalidateAllCaches()
 
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
     }
 
     @AfterTest
@@ -46,10 +49,12 @@ class CourseRowMigrationTest {
         val math = course(id = "c1", name = "高等数学", selectedWeeks = listOf(1, 2, 3))
         val english = course(id = "c2", name = "英语", dayOfWeek = 3)
 
-        // 1) 老状态：只有 JSON
-        repository.saveCourses(listOf(math, english), notify = false)
-        val blobBefore = blobOf()
-        assertTrue(blobBefore.isNullOrBlank().not(), "前置条件：老状态应当有 JSON blob")
+        // 1) 老状态：只有 JSON（还没装行表，备份导入只写 prefs）
+        restoreLegacyJson(repository, listOf(math, english))
+        assertTrue(
+            blobOf().orEmpty().contains("高等数学"),
+            "前置条件：老状态应当有 JSON blob",
+        )
 
         // 2) 装上行表，第一次读取触发迁移
         val store = SqliteCourseRowStore(NexioDatabase(driver))
@@ -77,35 +82,40 @@ class CourseRowMigrationTest {
         repository.addCourse(course(id = "c3", name = "物理"))
         assertEquals(setOf("c1", "c3"), store.load(SCHEDULE).map { it.id }.toSet())
 
-        // 5) 导入成功后源 JSON 必须被清掉：行表是唯一真相，留着 blob 就等于留一份会过期的第二真相。
-        //    作废行表时没有 blob 可读 ⇒ 读回空表（生产路径都是「先写新 blob 再作废」）。
-        store.markStale(SCHEDULE)
+        // 5) 迁移成功后源 JSON 必须被清掉：卸掉行表再读，读不到任何课程 ——
+        //    说明库里没有第二份数据可以「顶上来」。
+        CourseStorage.install { null }
         repository.invalidateAllCaches()
         assertTrue(
             repository.getAllCourses().isEmpty(),
             "导入完成后 schedule_X_courses 应当已被删除",
         )
-
-        // 6) 「先写 blob 再作废」的路径（单表导入 / 恢复备份）：重建出来的就是刚写进去的那版
-        repository.saveCourses(listOf(math.copy(note = "改过的")), notify = false)
-        repository.invalidateAllCaches()
-        assertEquals("改过的", repository.getAllCourses().single().note)
     }
 
+    /**
+     * 没有行表时保存**直接抛**，不写 JSON 副本。
+     *
+     * 这条守着「不许再造第二真相」：以前写失败会落一份 blob 再作废行表标记，
+     * 读路径无法分辨「待迁移的旧数据」和「抢救副本」。
+     */
     @Test
-    fun `没有行表时读写的仍是 JSON`() {
+    fun `没有行表时保存直接抛，不写第二份 JSON`() {
         val repository = CourseRepository.getInstance()
-        val math = course(id = "c1", name = "高等数学", note = "带计算器")
-        repository.saveCourses(listOf(math), notify = false)
+        CourseStorage.install { null }
         repository.invalidateAllCaches()
 
-        // CourseStorage 装的是 null（setUp 里装的），等同桌面端 / 测试环境
-        val loaded = repository.getAllCourses().single()
-        assertEquals("带计算器", loaded.note)
+        val error = assertFailsWith<IllegalStateException> {
+            repository.saveCourses(listOf(course(id = "c1", name = "高等数学")), notify = false)
+        }
+        assertTrue(
+            error.message.orEmpty().contains("课程行表没有接线"),
+            "失败原因要说清楚是存储没接线：${error.message}",
+        )
+        assertNull(blobOf()?.takeIf { it.contains("高等数学") }, "不许回落到 JSON：${blobOf()}")
     }
 
     @Test
-    fun `整库恢复作废行表后从恢复出的 JSON 重建，课程不丢`() {
+    fun `整库恢复作废行表后立刻重建，课程不丢`() {
         val repository = CourseRepository.getInstance()
         val store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
@@ -126,11 +136,11 @@ class CourseRowMigrationTest {
         assertEquals(1, reloaded.size, "作废后应当从恢复出的 JSON 重建，而不是返回空课表")
         assertEquals("高等数学", reloaded.single().name)
         assertEquals(listOf(1, 2, 3), reloaded.single().selectedWeeks)
-        assertTrue(store.isImported(SCHEDULE))
+        assertTrue(store.isImported(SCHEDULE), "恢复完当场建表，不留「等下次启动」的窗口")
     }
 
     /**
-     * 行表生效后 `schedule_X_courses` 停在上次导入那一刻，备份若照抄这份 JSON，
+     * 行表生效后 `schedule_X_courses` 停在上次迁移那一刻，备份若照抄这份 JSON，
      * 「备份 → 恢复」就会把之后的所有增删改抹掉。这条把「备份导出的是行表当前内容」钉住。
      */
     @Test
@@ -139,7 +149,7 @@ class CourseRowMigrationTest {
         val store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
-        // 触发导入：此时 blob 是 "[]"，之后新增的课只写行表
+        // 触发导入：此时没有 blob 键，按空表导入
         repository.getAllCourses()
 
         repository.addCourse(course(id = "c1", name = "高等数学"))
@@ -161,6 +171,17 @@ class CourseRowMigrationTest {
     }
 
     // ── 工具 ──────────────────────────────────────────────────────────────────
+
+    /** 造「老用户升级前」的形态：只有 prefs 里的课程 JSON，行表还没接。 */
+    private fun restoreLegacyJson(repository: CourseRepository, courses: List<Course>) {
+        repository.importAllPreferences(
+            mapOf(
+                "schedule_names" to encodeStringList(listOf(SCHEDULE)),
+                "current_schedule_id" to SCHEDULE,
+                "schedule_${SCHEDULE}_courses" to encodeCourses(courses),
+            ),
+        )
+    }
 
     /** 备份里该课表那一段。行表没装时它就是 prefs 里那份原始 JSON。 */
     private fun blobOf(): String? =

@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.db.NexioDatabase
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,14 +14,26 @@ import kotlin.test.assertEquals
  * 重建对象（UnsafeAllocator 可能给出 null 字段）。那里漏一个字段，表现就是
  * 「重启后备注全丢」—— 2026-10-29 实际踩过一次。
  *
- * 这里用「清内存缓存 → 重新解码」模拟重启，锁住这条路径。
+ * 这里用「清内存缓存 → 从行表重新读」模拟重启，锁住这条路径。
  */
 class NotePersistenceTest {
+
+    private lateinit var driver: JdbcSqliteDriver
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
+        driver = openInMemoryDriver()
+        NexioDatabase.Schema.create(driver)
+        CourseStorage.install { SqliteCourseRowStore(NexioDatabase(driver)) }
         CourseRepository.getInstance().invalidateAllCaches()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        CourseStorage.install { null }
+        CourseRepository.getInstance().invalidateAllCaches()
+        driver.close()
     }
 
     @Test

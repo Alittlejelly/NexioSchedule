@@ -70,13 +70,6 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         }
     }
 
-    override fun markStale(scheduleId: String) {
-        q.deleteMeta(importKey(scheduleId))
-        // 设置也要重同步：单表导入会直接改写 prefs 里的周次 / 开课日，
-        // 留着标记的话下一次读取认为行已同步，读到的还是导入前的值
-        q.deleteMeta(settingsSyncKey(scheduleId))
-    }
-
     override fun renameSchedule(oldId: String, newId: String) {
         // 同名等于「REPLACE 自己」：先级联删光课程，再把空行插回来、搬 0 门课、最后连锚点一起删掉，
         // 而导入标记会被原样写回 —— 课表变空且再也不会从 JSON 重建。UI 挡了同名，存储层也得挡。
@@ -90,10 +83,6 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             q.deleteMeta(importKey(oldId))
             // 标记一起搬，否则新名字被判成未导入，会从冻结的 JSON 重建
             if (flag != null) q.writeMeta(importKey(newId), flag)
-            if (isSettingsSynced(oldId)) {
-                q.writeMeta(settingsSyncKey(newId), "1")
-                q.deleteMeta(settingsSyncKey(oldId))
-            }
         }
     }
 
@@ -102,7 +91,6 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             // course 由 CASCADE 跟着删；标记一起清
             q.deleteSchedule(scheduleId)
             q.deleteMeta(importKey(scheduleId))
-            q.deleteMeta(settingsSyncKey(scheduleId))
         }
     }
 
@@ -161,37 +149,94 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         q.deleteTimeConfig(id)
     }
 
-    override fun areTimeConfigsSynced(): Boolean =
-        runCatching { q.readMeta(META_TIME_CONFIGS_SYNCED).executeAsOneOrNull() }.getOrNull() != null
-
-    override fun markTimeConfigsSynced() {
-        q.writeMeta(META_TIME_CONFIGS_SYNCED, "1")
-    }
-
-    override fun isSettingsSynced(scheduleId: String): Boolean =
-        runCatching { q.readMeta(settingsSyncKey(scheduleId)).executeAsOneOrNull() }.getOrNull() != null
-
-    override fun markSettingsSynced(scheduleId: String) {
-        q.writeMeta(settingsSyncKey(scheduleId), "1")
-    }
-
+    /**
+     * 标记里存的是**块版本号**，不是布尔。读到旧值（或读不到）就重跑一遍迁移 ——
+     * 迁移本身是幂等的，重跑只多一次遍历，漏跑却是永久丢数据。
+     */
     override fun isFullyMigrated(): Boolean =
-        runCatching { q.readMeta(META_FULLY_MIGRATED).executeAsOneOrNull() }.getOrNull() != null
+        runCatching {
+            q.readMeta(META_ENTITY_VERSION).executeAsOneOrNull()?.toIntOrNull()
+        }.getOrNull()
+            ?.let { it >= ENTITY_MIGRATION_VERSION } ?: false
 
     override fun markFullyMigrated() {
-        q.writeMeta(META_FULLY_MIGRATED, "1")
+        q.writeMeta(META_ENTITY_VERSION, ENTITY_MIGRATION_VERSION.toString())
+    }
+
+    // ── 显示开关 ──────────────────────────────────────────────────────────────
+
+    override fun displaySettingsOf(scheduleId: String): ScheduleDisplaySettings? =
+        runCatching {
+            q.selectScheduleDisplaySettings(scheduleId).executeAsOneOrNull()?.let {
+                ScheduleDisplaySettings(
+                    smartWeekend = it.smart_weekend != 0L,
+                    showNonCurrentWeek = it.show_non_current_week != 0L,
+                )
+            }
+        }.getOrNull()
+
+    override fun writeSmartWeekend(scheduleId: String, smart: Boolean) {
+        q.updateSmartWeekend(if (smart) 1L else 0L, scheduleId)
+    }
+
+    override fun writeShowNonCurrentWeek(scheduleId: String, show: Boolean) {
+        q.updateShowNonCurrentWeek(if (show) 1L else 0L, scheduleId)
+    }
+
+    // ── 教学周重组规则 ────────────────────────────────────────────────────────
+
+    override fun teachingWeekReorganizationsOf(scheduleId: String): String? =
+        runCatching { q.selectTeachingWeekReorganizations(scheduleId).executeAsOneOrNull() }.getOrNull()
+
+    override fun writeTeachingWeekReorganizations(scheduleId: String, payload: String) {
+        q.upsertTeachingWeekReorganizations(scheduleId, payload)
+    }
+
+    // ── 文件夹 ────────────────────────────────────────────────────────────────
+
+    override fun folders(): List<StoredFolder> =
+        q.selectAllFolders().executeAsList().map {
+            StoredFolder(
+                id = it.id,
+                name = it.name,
+                schedules = runCatching { decodeStringList(it.payload) }.getOrDefault(emptyList()),
+                sortOrder = it.sort_order.toInt(),
+            )
+        }
+
+    override fun upsertFolder(row: StoredFolder) {
+        val payload = encodeStringList(row.schedules)
+        database.transactionWithResult {
+            q.updateFolderRow(
+                name = row.name,
+                payload = payload,
+                sortOrder = row.sortOrder.toLong(),
+                id = row.id,
+            )
+            q.insertFolderRow(
+                id = row.id,
+                name = row.name,
+                payload = payload,
+                sortOrder = row.sortOrder.toLong(),
+            )
+        }
+    }
+
+    override fun deleteFolder(id: String) {
+        q.deleteFolder(id)
     }
 
     override fun invalidateAll() {
         database.transactionWithResult {
             q.deleteAllCourses()
             q.deleteAllSchedules()
+            // 课表删完之后才删文件夹：schedule.folder_id 是 SET NULL，顺序反了会白跑一遍
+            q.deleteAllTeachingWeekReorganizations()
+            q.deleteAllFolders()
+            q.deleteAllTimeConfigs()
             q.deleteCourseImportFlags()
-            q.deleteScheduleSettingsSyncFlags()
-            // 作息表也作废：恢复备份会覆盖 prefs 里的 time_config_*，下次要从那边重新同步
-            q.deleteTimeConfigsSyncFlag()
             // 恢复出的是另一套数据：整体迁移标记也要清，否则新数据会被当成「已经迁完」
-            q.deleteMeta(META_FULLY_MIGRATED)
+            q.deleteMeta(META_ENTITY_VERSION)
         }
     }
 
@@ -279,17 +324,21 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     private fun importKey(scheduleId: String) = "$META_IMPORTED_PREFIX$scheduleId"
 
-    private fun settingsSyncKey(scheduleId: String) = "$META_SETTINGS_SYNC_PREFIX$scheduleId"
-
     private companion object {
         const val TAG = "SqliteCourseRowStore"
         /** 与 SqliteStorage 的 `sp_imported:` 前缀区分：一个是偏好文件、一个是课程行。 */
         const val META_IMPORTED_PREFIX = "courses_imported:"
-        /** 设置值是否已从 prefs 同步进行。行被整体作废后必须一起清，否则不会再同步。 */
-        const val META_SETTINGS_SYNC_PREFIX = "settings_synced:"
         /** 作息配置是否已从 prefs 同步进表。 */
         const val META_TIME_CONFIGS_SYNCED = "time_configs_synced"
-        /** 「全部历史数据已搬进实体表」的全局标记。写完它，迁移代码就可以整体删除。 */
-        const val META_FULLY_MIGRATED = "entity_tables_v1"
+        /**
+         * 「全部历史数据已搬进实体表」的标记。值是 [ENTITY_MIGRATION_VERSION]。
+         *
+         * 1.6.7 用的是 `entity_tables_v1 = "1"`，不带版本语义，1.6.8 新增三块数据后
+         * 老用户会被判成「已迁完」而跳过 —— 所以这里换了键名，旧标记自然作废。
+         * 以后再加块：只把 [ENTITY_MIGRATION_VERSION] +1，不要改键名。
+         */
+        const val META_ENTITY_VERSION = "entity_tables_version"
+        /** 迁移块版本。新增一块要搬的数据就 +1。 */
+        const val ENTITY_MIGRATION_VERSION = 2
     }
 }

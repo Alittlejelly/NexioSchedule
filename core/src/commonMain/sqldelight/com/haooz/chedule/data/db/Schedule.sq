@@ -1,7 +1,10 @@
--- 课程表 schema（v1）
+-- 课程表 schema（最新版本号见 databases/ 目录里的最高编号；当前 = 2）
 --
 -- 按「改动粒度」拆表：会单点改的（课程、周次、周备注）行级；整份编辑的小聚合
 -- （作息配置）一行一份 JSON；需要被外键引用的（课表、文件夹）列出来。
+--
+-- 加表 / 加列前先跑 `:core:generateCommonMainNexioDatabaseSchema` 落一份当前版本基线，
+-- 再写 `N.sqm`。verifyMigrations 会让「缺迁移脚本」直接编译失败。
 
 CREATE TABLE meta (
     k TEXT NOT NULL PRIMARY KEY,
@@ -22,12 +25,17 @@ CREATE TABLE pref (
 );
 
 -- ── 文件夹 ────────────────────────────────────────────────────────────────
--- 仅在 `schedule.folder_id` 的外键里被引用；文件夹本身仍存在 prefs 的 `schedule_folders` JSON，
--- 表里没有读写。迁文件夹时在这里落数据即可。
+-- payload 是「这个文件夹里的课表名列表」的 JSON 数组，保留组内顺序。
+-- 不拆成 folder_schedule 关联表：组内顺序是用户手动排的，拆表就得再加一列 sort_order，
+-- 而文件夹本身是「整份编辑整份保存」的小聚合根，一行一份 JSON 更省。
+--
+-- ⚠ payload 必须在 sort_order **之后**：它是 1.sqm 里 ALTER 追加的列，
+--   而迁移校验是逐列比对的，顺序不同直接编译失败。
 CREATE TABLE folder (
     id         TEXT NOT NULL PRIMARY KEY,
     name       TEXT NOT NULL,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    payload    TEXT NOT NULL DEFAULT '[]'
 );
 
 -- ── 作息配置 ──────────────────────────────────────────────────────────────
@@ -50,10 +58,22 @@ CREATE TABLE schedule (
     sort_order     INTEGER NOT NULL DEFAULT 0,
     current_week   INTEGER NOT NULL DEFAULT 1,
     total_weeks    INTEGER NOT NULL DEFAULT 20,
-    class_start    TEXT
+    class_start    TEXT,
+    -- 智能周末 / 显示非本周课程：两个开关跟着课表走，以前是 prefs 的
+    -- schedule_{名}_smart_weekend / _show_non_current_week
+    smart_weekend          INTEGER NOT NULL DEFAULT 0,
+    show_non_current_week  INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX schedule_by_folder ON schedule(folder_id, sort_order);
+
+-- ── 教学周重组规则 ────────────────────────────────────────────────────────
+-- payload 是整份规则列表的 JSON（TeachingWeekReorganization.encode 的产物）。
+-- 整份编辑整份保存，和 time_config 同款：规则没有稳定 id，拆行反而要造一个。
+CREATE TABLE teaching_week_reorganizations (
+    schedule_id TEXT NOT NULL PRIMARY KEY REFERENCES schedule(id) ON DELETE CASCADE,
+    payload     TEXT NOT NULL
+);
 
 -- ── 课程 ──────────────────────────────────────────────────────────────────
 CREATE TABLE course (
@@ -130,8 +150,8 @@ DELETE FROM schedule WHERE id = ?;
 -- OR REPLACE：改成已存在的名字时覆盖它，REPLACE 会级联删掉目标课表原有的课程，
 -- 随后 moveCoursesToSchedule 把源课表的课程搬进来。
 copyScheduleRow:
-INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start)
-SELECT ?, ?, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start
+INSERT OR REPLACE INTO schedule(id, name, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start, smart_weekend, show_non_current_week)
+SELECT ?, ?, folder_id, time_config_id, sort_order, current_week, total_weeks, class_start, smart_weekend, show_non_current_week
 FROM schedule WHERE id = ?;
 
 moveCoursesToSchedule:
@@ -161,6 +181,48 @@ WHERE id = :id;
 updateScheduleBinding:
 UPDATE schedule SET time_config_id = ? WHERE id = ?;
 
+-- ── 课表显示开关 ──────────────────────────────────────────────────────────
+-- 跟着课表走（以前是 prefs 的 schedule_{名}_smart_weekend / _show_non_current_week）
+selectScheduleDisplaySettings:
+SELECT smart_weekend, show_non_current_week FROM schedule WHERE id = ?;
+
+updateSmartWeekend:
+UPDATE schedule SET smart_weekend = ? WHERE id = ?;
+
+updateShowNonCurrentWeek:
+UPDATE schedule SET show_non_current_week = ? WHERE id = ?;
+
+-- ── 教学周重组规则 ────────────────────────────────────────────────────────
+selectTeachingWeekReorganizations:
+SELECT payload FROM teaching_week_reorganizations WHERE schedule_id = ?;
+
+upsertTeachingWeekReorganizations:
+INSERT OR REPLACE INTO teaching_week_reorganizations(schedule_id, payload) VALUES (?, ?);
+
+deleteTeachingWeekReorganizations:
+DELETE FROM teaching_week_reorganizations WHERE schedule_id = ?;
+
+deleteAllTeachingWeekReorganizations:
+DELETE FROM teaching_week_reorganizations;
+
+-- ── 文件夹 ────────────────────────────────────────────────────────────────
+selectAllFolders:
+SELECT id, name, payload, sort_order FROM folder ORDER BY sort_order, id;
+
+-- 父表被 schedule.folder_id 引用（ON DELETE SET NULL），OR REPLACE 会先删行，
+-- 把已归到这个文件夹下的课表全部解除归类。所以先 UPDATE，不存在再 INSERT OR IGNORE。
+updateFolderRow:
+UPDATE folder SET name = :name, payload = :payload, sort_order = :sortOrder WHERE id = :id;
+
+insertFolderRow:
+INSERT OR IGNORE INTO folder(id, name, payload, sort_order) VALUES (:id, :name, :payload, :sortOrder);
+
+deleteFolder:
+DELETE FROM folder WHERE id = ?;
+
+deleteAllFolders:
+DELETE FROM folder;
+
 -- 整库恢复备份时用。清空后由下一次读取从恢复出的 JSON 重新导入。
 deleteAllCourses:
 DELETE FROM course;
@@ -168,14 +230,13 @@ DELETE FROM course;
 deleteAllSchedules:
 DELETE FROM schedule;
 
+-- 恢复备份时连作息一起清：以前靠「prefs → 表」重同步，那条兜底链已经删了，
+-- 旧作息留着就是恢复出另一套课表的残留。必须在 deleteAllSchedules 之后（外键 RESTRICT）。
+deleteAllTimeConfigs:
+DELETE FROM time_config;
+
 deleteCourseImportFlags:
 DELETE FROM meta WHERE k LIKE 'courses_imported:%';
-
-deleteScheduleSettingsSyncFlags:
-DELETE FROM meta WHERE k LIKE 'settings_synced:%';
-
-deleteTimeConfigsSyncFlag:
-DELETE FROM meta WHERE k = 'time_configs_synced';
 
 upsertCourse:
 INSERT OR REPLACE INTO course(id, schedule_id, name, classroom, teacher, day_of_week, start_section,

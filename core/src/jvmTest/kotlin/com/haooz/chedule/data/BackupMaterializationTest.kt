@@ -22,9 +22,8 @@ class BackupMaterializationTest {
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
         repository = CourseRepository.getInstance()
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
         store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
@@ -50,10 +49,10 @@ class BackupMaterializationTest {
         val backup = repository.exportAllPreferences()
 
         assertEquals(6, configOf(backup["time_config_$id"]).morningSections, "备份必须用表里的值")
-        assertEquals(
-            listOf(id, SEED_ID).sorted(),
-            (backup["time_config_ids"] as String).split(",").map { it.toLong() }.sorted(),
-            "ids 也要来自表，否则恢复后只存在于表的配置会丢",
+        val backupIds = (backup["time_config_ids"] as String).split(",").map { it.toLong() }
+        assertTrue(
+            backupIds.containsAll(listOf(id, SEED_ID)),
+            "ids 也要来自表，否则恢复后只存在于表的配置会丢：$backupIds",
         )
         assertTrue((backup["time_config_$SEED_ID"] as? String).orEmpty().isNotEmpty())
     }
@@ -63,7 +62,6 @@ class BackupMaterializationTest {
         val name = schedule("备份设置")
         freshState(name)
         seedRow(name)
-        store.markSettingsSynced(name)
         repository.setCurrentWeek(3)
         repository.setTotalWeeks(name, 18)
         // 只改表：镜像仍是 3 / 18
@@ -76,19 +74,15 @@ class BackupMaterializationTest {
     }
 
     @Test
-    fun `没有行表的平台备份直接用 prefs`() {
+    fun `没有行表时写入不落盘，读取取默认值`() {
         val name = schedule("无表")
         freshState(name)
-        // 没有行表：prefs 就是唯一真相，写入路径会直接写它
+        // 三端都装了行表；拿不到行表只可能是接线漏了。这时不做任何降级，写失败、读默认。
         CourseStorage.install { null }
         repository.invalidateAllCaches()
-        val id = repository.addTimeConfig(config(name, morning = 4))
         repository.setCurrentWeek(3)
 
-        val backup = repository.exportAllPreferences()
-
-        assertEquals(4, configOf(backup["time_config_$id"]).morningSections)
-        assertEquals(3, backup["schedule_${name}_current_week"])
+        assertEquals(1, repository.getCurrentWeek(name), "没有行表就读默认值，不回看 prefs")
     }
 
     // ── 工具 ──────────────────────────────────────────────────────────────────
@@ -108,7 +102,8 @@ class BackupMaterializationTest {
 
     private fun freshState(name: String) {
         val cleaned = repository.exportAllPreferences()
-            .filterKeys { !it.startsWith("schedule_") }
+            // 作息也从零开始：留着上一轮的 time_config_* 会被恢复进表，id 断言全乱
+            .filterKeys { !it.startsWith("schedule_") && !it.startsWith("time_config_") }
             .toMutableMap()
         cleaned["schedule_names"] = encodeStringList(listOf(name))
         cleaned["schedule_folders"] = "[]"

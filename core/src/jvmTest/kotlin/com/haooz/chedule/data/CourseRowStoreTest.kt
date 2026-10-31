@@ -20,10 +20,8 @@ class CourseRowStoreTest {
 
     @BeforeTest
     fun setUp() {
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        // 外键是连接级开关，SQLite 默认关；不打开的话级联删除全是装饰
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
         store = SqliteCourseRowStore(NexioDatabase(driver))
     }
 

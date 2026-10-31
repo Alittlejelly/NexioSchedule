@@ -23,9 +23,8 @@ class TimeConfigBindingTest {
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
         repository = CourseRepository.getInstance()
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
         store = SqliteCourseRowStore(NexioDatabase(driver))
     }
 
@@ -38,7 +37,7 @@ class TimeConfigBindingTest {
     }
 
     @Test
-    fun `改绑写进行表，并留下 prefs 镜像`() {
+    fun `改绑写进行表，并出现在备份里`() {
         val a = schedule("绑定-甲")
         freshState(listOf(a))
         CourseStorage.install { store }
@@ -50,9 +49,31 @@ class TimeConfigBindingTest {
         assertEquals(
             configId,
             mirrorOf(a),
-            "prefs 镜像不能省：备份是全量遍历 prefs 的，少了这个键恢复后所有课表会共用一套作息",
+            "备份必须带出这个绑定：导出是按表物化的，少了键恢复后所有课表会共用一套作息",
         )
         assertEquals(configId, repository.getScheduleTimeConfigId(a))
+    }
+
+    /**
+     * 同名改名必须是空操作。
+     *
+     * 改名的 prefs 搬运会把每个键 put 到新键名再 remove 旧键：新旧同名时等于「写完自己删掉」，
+     * 一次同名改名就能把这张课表在 prefs 里的残留键清空。UI 挡了，存储层也得挡。
+     */
+    @Test
+    fun `同名改名是空操作`() {
+        val a = schedule("同名")
+        freshState(listOf(a))
+        CourseStorage.install { store }
+        val configId = repository.addTimeConfig(TimeConfig(name = a))
+        repository.setScheduleTimeConfigId(a, configId)
+        repository.addCourse(course(a, id = "same-name-1"))
+
+        repository.renameSchedule(a, a)
+
+        assertEquals(listOf(a), repository.getScheduleNames(), "名字不该变")
+        assertEquals(configId, store.bindingOf(a), "同名改名不能把行搬丢")
+        assertEquals(listOf("same-name-1"), store.load(a).map { it.id }, "课程也不该受影响")
     }
 
     @Test
@@ -92,52 +113,49 @@ class TimeConfigBindingTest {
     }
 
     /**
-     * 行表与镜像不一致时以行表为准。
+     * 绑定只有行表一个来源。
      *
-     * 这不是假想场景：镜像只在改绑时同步写，而行表在恢复备份后会被整体作废、再由读取重建；
-     * 两次重建之间如果镜像被旧值覆盖（旧版本恢复），读路径必须认行表，否则改绑看起来「没生效」。
+     * prefs 的 `schedule_time_config_{名}` 是迁移源，迁移完成即删；读路径不再看它，
+     * 所以「行表与镜像不一致」这种状态本身就不存在了。
      */
     @Test
-    fun `行表绑定优先于 prefs 镜像`() {
+    fun `绑定只认行表`() {
         val a = schedule("优先-甲")
         freshState(listOf(a))
-        val configA = repository.addTimeConfig(TimeConfig(name = a))
+        repository.addTimeConfig(TimeConfig(name = a))
         val configB = repository.addTimeConfig(TimeConfig(name = a + "-乙"))
 
-        // 只有镜像（此刻还没装行表）
-        repository.setScheduleTimeConfigId(a, configA)
-        assertEquals(configA, mirrorOf(a))
-
-        // 行表说另一套 —— 读路径必须信它
         CourseStorage.install { store }
         store.setBinding(anchorOf(a, configB))
         // 绕过仓库直接写库 = 别处写的数据，必须清缓存才能读到（缓存是仓库自己的一致性边界）
         repository.invalidateAllCaches()
 
-        assertEquals(configB, repository.getScheduleTimeConfigId(a), "行表是权威，读路径不能回头信镜像")
+        assertEquals(configB, repository.getScheduleTimeConfigId(a))
+        assertEquals(configB, store.bindingOf(a))
+        assertEquals(configB, mirrorOf(a), "备份里的绑定也必须来自表")
     }
 
     /**
-     * 恢复备份：行表被整体作废，绑定这一刻只在刚写回的镜像里。
-     * 之后第一次读取课程会重建锚点行，绑定必须**如实落到行上**，不能凭空回退到旧全局指针。
+     * 恢复备份：行表先整体作废，再**当场**按备份重建成表。
+     *
+     * 没有「等第一次读课程再重建」的窗口 —— 那段窗口里读表只能读到空的。
      */
     @Test
-    fun `恢复备份后绑定从镜像读回，并随首次读取落回行表`() {
+    fun `恢复备份后绑定当场落回行表`() {
         val a = schedule("恢复-甲")
         freshState(listOf(a))
         CourseStorage.install { store }
         val configA = repository.addTimeConfig(TimeConfig(name = a))
         repository.setScheduleTimeConfigId(a, configA)
 
-        // 恢复一份「绑定还是 configA」的备份：行表整体作废
         repository.importAllPreferences(backupWithOnly(listOf(a), mapOf(a to configA)))
-        assertNull(store.bindingOf(a), "恢复备份必须作废行表，否则读到的还是恢复前的课表")
-        assertEquals(configA, repository.getScheduleTimeConfigId(a), "行没了就该回退镜像，而不是旧全局指针")
 
-        // 首次读取课程 → 重建锚点行 → 绑定落回行表
+        assertEquals(configA, store.bindingOf(a), "恢复完绑定就该在行上")
+        assertEquals(configA, repository.getScheduleTimeConfigId(a), "不能回退到旧全局指针")
+
+        // 继续写课程不能把绑定弄丢
         repository.addCourse(course(a, id = "binding-restore-1"))
-
-        assertEquals(configA, store.bindingOf(a), "锚点行重建时没把镜像里的绑定写回去")
+        assertEquals(configA, store.bindingOf(a), "写课程不能覆盖掉绑定")
     }
 
     /**

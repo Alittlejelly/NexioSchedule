@@ -1,6 +1,9 @@
 package com.haooz.chedule.data
 
 import kotlinx.datetime.LocalDate
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.db.NexioDatabase
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,14 +20,25 @@ import kotlin.test.assertTrue
 class RepositoryCacheInvalidationTest {
 
     private lateinit var repository: CourseRepository
+    private lateinit var driver: JdbcSqliteDriver
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        // JVM 上没有行表：设置与作息都走 prefs，正好覆盖「读缓存 + 写穿镜像」这条链路
-        CourseStorage.install { null }
+        // 零兜底之后没有「无行表」这种形态：三端都装行表，测试也必须跑真库，
+        // 否则写入全是空失败，测不出缓存有没有失效。
+        driver = openInMemoryDriver()
+        NexioDatabase.Schema.create(driver)
+        CourseStorage.install { SqliteCourseRowStore(NexioDatabase(driver)) }
         repository = CourseRepository.getInstance()
         repository.invalidateAllCaches()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        CourseStorage.install { null }
+        repository.invalidateAllCaches()
+        driver.close()
     }
 
     @Test

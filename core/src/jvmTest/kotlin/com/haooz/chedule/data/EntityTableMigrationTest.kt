@@ -10,7 +10,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 一次性迁移（`entity_tables_v1`）：三端启动各调一次，跑完写全局标记。
+ * 一次性迁移（标记 `entity_tables_version`，见 [SqliteCourseRowStore.ENTITY_MIGRATION_VERSION]）：
+ * 三端启动各调一次，跑完写全局标记。
  *
  * 标记写下的意义：懒迁移路径（blob 导入 / prefs→行 同步 / prefs→表 同步）从此只会空转，
  * 删掉它们的时机就是「这个标记已经在所有用户身上写下」。
@@ -25,9 +26,8 @@ class EntityTableMigrationTest {
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
         repository = CourseRepository.getInstance()
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
         store = SqliteCourseRowStore(NexioDatabase(driver))
     }
 
@@ -142,11 +142,19 @@ class EntityTableMigrationTest {
     @Test
     fun `迁移完成后 prefs 里的实体残留键被清空`() {
         val name = schedule()
+        // 规则是「顶层对象」格式，不能随手写 "[]"（decode 会拒）
+        val reorgRaw = TeachingWeekReorganization.encode(emptyList(), Int.MAX_VALUE)
         repository.importAllPreferences(
             backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
                 "schedule_${name}_current_week" to 3,
                 "schedule_${name}_total_weeks" to 18,
                 "schedule_${name}_class_start_time" to "2026/09/01",
+                "schedule_${name}_smart_weekend" to true,
+                "schedule_${name}_show_non_current_week" to false,
+                "schedule_${name}_teaching_week_reorganizations" to reorgRaw,
+                "schedule_folders" to encodeScheduleFolders(
+                    listOf(ScheduleFolder(id = "f1", name = "学期", schedules = listOf(name))),
+                ),
                 "schedule_time_config_$name" to 1L,
                 "time_config_1" to """{"name":"默认"}""",
                 "time_config_ids" to "1",
@@ -162,6 +170,10 @@ class EntityTableMigrationTest {
         assertEquals(3, store.settingsOf(name)?.currentWeek)
         assertEquals(1L, store.bindingOf(name))
         assertEquals(listOf(1L), store.timeConfigs().map { it.id })
+        assertEquals(true, store.displaySettingsOf(name)?.smartWeekend)
+        assertEquals(false, store.displaySettingsOf(name)?.showNonCurrentWeek)
+        assertEquals(reorgRaw, store.teachingWeekReorganizationsOf(name))
+        assertEquals(listOf("f1"), store.folders().map { it.id })
 
         // 盘上的副本全没了
         val remaining = AppStorage.store("course_schedule_prefs").all().keys
@@ -170,11 +182,137 @@ class EntityTableMigrationTest {
                 key == "schedule_${name}_current_week" ||
                 key == "schedule_${name}_total_weeks" ||
                 key == "schedule_${name}_class_start_time" ||
+                key == "schedule_${name}_smart_weekend" ||
+                key == "schedule_${name}_show_non_current_week" ||
+                key == "schedule_${name}_teaching_week_reorganizations" ||
+                key == "schedule_folders" ||
                 key == "schedule_time_config_$name" ||
                 key == "time_config_1" ||
                 key == "time_config_ids"
         }
         assertTrue(leftovers.isEmpty(), "迁移完成后这些键不该还在：$leftovers")
+    }
+
+    /**
+     * 1.6.7 留下的标记是**布尔**语义（`entity_tables_v1 = "1"`）。1.6.8 新增了三块要搬的数据，
+     * 如果继续认这个标记，老用户会直接被判成「已迁完」，新块永远不执行 ——
+     * 而读路径已经表优先，表现就是「升级后智能周末被关、显示非本周被开、文件夹消失」。
+     */
+    @Test
+    fun `1_6_7 的旧标记不算已迁完，新增的三块会重跑`() {
+        val name = schedule()
+        repository.importAllPreferences(
+            backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
+                "schedule_${name}_smart_weekend" to true,
+                "schedule_${name}_show_non_current_week" to false,
+                "schedule_folders" to encodeScheduleFolders(
+                    listOf(ScheduleFolder(id = "f1", name = "学期", schedules = listOf(name))),
+                ),
+            ),
+        )
+        // 模拟 1.6.7：只写了旧键，没有版本号
+        NexioDatabase(driver).scheduleQueries.writeMeta("entity_tables_v1", "1")
+        CourseStorage.install { store }
+
+        val outcome = repository.migrateLegacyEntitiesOnce()
+
+        assertTrue(outcome is MigrationOutcome.Done, "旧标记必须被当成「未迁完」：$outcome")
+        assertEquals(true, store.displaySettingsOf(name)?.smartWeekend, "智能周末要被搬进行")
+        assertEquals(false, store.displaySettingsOf(name)?.showNonCurrentWeek)
+        assertEquals(listOf("f1"), store.folders().map { it.id }, "文件夹要被搬进表")
+    }
+
+    /**
+     * 备份导出的往返：导出 → 恢复 → 再导出，两次必须一模一样。
+     *
+     * 这条守着「读路径表优先了，但导出还在自己拼 prefs 键」这类错位 ——
+     * 迁移会把 prefs 副本删掉，导出再拼键就只能是「备份里永远缺这一块」。
+     */
+    @Test
+    fun `备份导出带上显示开关与重组规则，恢复往返不丢`() {
+        val name = schedule()
+        val reorgRaw = TeachingWeekReorganization.encode(emptyList(), Int.MAX_VALUE)
+        repository.importAllPreferences(
+            backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
+                "schedule_${name}_current_week" to 5,
+                // 有重组规则就必须有合法开课日，恢复校验会拒（见 validateFullScheduleBackupStructure）
+                "schedule_${name}_class_start_time" to "2026/09/01",
+                "schedule_${name}_smart_weekend" to true,
+                "schedule_${name}_show_non_current_week" to false,
+                "schedule_${name}_teaching_week_reorganizations" to reorgRaw,
+            ),
+        )
+        CourseStorage.install { store }
+        // 迁移会把 prefs 里的副本删干净，之后导出只能从表来
+        repository.migrateLegacyEntitiesOnce()
+
+        val exported = repository.exportAllPreferences()
+
+        assertEquals(true, exported["schedule_${name}_smart_weekend"], "备份必须带上智能周末")
+        assertEquals(false, exported["schedule_${name}_show_non_current_week"], "备份必须带上显示非本周")
+        assertEquals(
+            reorgRaw,
+            exported["schedule_${name}_teaching_week_reorganizations"],
+            "备份必须带上教学周重组规则",
+        )
+
+        // 走一遍恢复：恢复会作废行表，重读只能靠备份里的键
+        repository.importAllPreferences(exported)
+        assertEquals(true, repository.getSmartWeekend(name), "恢复后智能周末要跟备份一致")
+        assertEquals(false, repository.getShowNonCurrentWeek(name))
+        // 往返判据用「再导出一次」，不走 AppStorage 直读：仓库是单例，它的 prefs
+        // 指向 @BeforeTest 里那一份，AppStorage.store 拿到的是另一个实例（见测试陷阱）。
+        val reExported = repository.exportAllPreferences()
+        assertEquals(
+            exported["schedule_${name}_smart_weekend"],
+            reExported["schedule_${name}_smart_weekend"],
+            "恢复后智能周末要跟备份一致",
+        )
+        assertEquals(
+            exported["schedule_${name}_show_non_current_week"],
+            reExported["schedule_${name}_show_non_current_week"],
+        )
+        assertEquals(
+            reorgRaw,
+            reExported["schedule_${name}_teaching_week_reorganizations"],
+            "恢复后重组规则要跟备份一致",
+        )
+
+        // 再模拟一次重启迁移：值必须还能进表，而不是又被默认值盖掉
+        repository.invalidateAllCaches()
+        repository.migrateLegacyEntitiesOnce()
+        assertEquals(true, store.displaySettingsOf(name)?.smartWeekend)
+        assertEquals(reorgRaw, store.teachingWeekReorganizationsOf(name))
+    }
+
+    /**
+     * 恢复备份后**当场**重建成实体表，不留「等下次启动再迁」的窗口。
+     *
+     * 这是零兜底的前提：恢复完 prefs 副本已经被删干净，读路径只有表可用，
+     * 停留一下都会读到被清空的行。
+     */
+    @Test
+    fun `恢复备份后立刻重建成表并删掉 prefs 副本`() {
+        val name = schedule()
+        // 三端启动时就装好行表：恢复完当场迁，没有「等下次启动」的窗口
+        CourseStorage.install { store }
+        repository.importAllPreferences(
+            backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
+                "schedule_${name}_smart_weekend" to true,
+                "schedule_folders" to encodeScheduleFolders(
+                    listOf(ScheduleFolder(id = "f1", name = "学期", schedules = listOf(name))),
+                ),
+            ),
+        )
+        val exported = repository.exportAllPreferences()
+        // 往返一次：恢复只认备份，导出丢了什么这里就会现形
+        repository.importAllPreferences(exported)
+
+        assertTrue(store.isImported(name), "恢复完就该有行，不能等下次启动")
+        assertEquals(listOf("高等数学"), store.load(name).map { it.name })
+        assertEquals(true, store.displaySettingsOf(name)?.smartWeekend)
+        assertEquals(listOf("f1"), repository.getScheduleFolders().map { it.id })
+        assertEquals(true, repository.getSmartWeekend(name), "读取只走表也必须读得到")
     }
 
     // ── 工具 ──────────────────────────────────────────────────────────────────

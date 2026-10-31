@@ -14,6 +14,10 @@ sqldelight {
     databases {
         create("NexioDatabase") {
             packageName.set("com.haooz.chedule.data.db")
+            // 历史版本的基线库。verifyMigrations 需要它：拿 v1.db + 1.sqm 跑一遍，
+            // 结果必须与 .sq 声明的最新 schema 完全一致，否则编译失败。
+            // 加新版本时：改 .sq 前先跑 generateCommonMainNexioDatabaseSchema 落一份基线。
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
             // 迁移文件缺失时**编译失败**，而不是运行时丢数据。存量用户的数据只有一份。
             verifyMigrations.set(true)
         }

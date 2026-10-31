@@ -24,9 +24,8 @@ class TimeConfigRowTest {
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
         repository = CourseRepository.getInstance()
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
-        driver.execute(identifier = null, sql = "PRAGMA foreign_keys = ON", parameters = 0)
         store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
@@ -80,18 +79,20 @@ class TimeConfigRowTest {
     }
 
     @Test
-    fun `老数据首次访问时把 prefs 同步进表`() {
+    fun `恢复备份时把 prefs 里的作息搬进表`() {
         val name = schedule("老作息")
-        val stale = config(name, morning = 1)
         // 表里先放一份过期快照（建锚点那一刻写进去的）
-        store.upsertTimeConfig(StoredTimeConfig(SEED_ID, name, encodeTimeConfig(stale)))
-        // prefs 里是用户后来改过的值
+        store.upsertTimeConfig(StoredTimeConfig(SEED_ID, name, encodeTimeConfig(config(name, morning = 1))))
+        // prefs 里是用户后来改过的值。importAllPreferences 恢复完会当场重建表
         writeOnlyPrefs(name, morning = 6)
 
         repository.invalidateAllCaches()
-        assertEquals(6, repository.getTimeConfig(SEED_ID).morningSections, "首次访问要用 prefs 覆盖表的旧快照")
-        assertEquals(6, store.timeConfigs().first { it.id == SEED_ID }.let { configOf(it.payload).morningSections })
-        assertTrue(store.areTimeConfigsSynced(), "同步后要留标记，之后不再覆盖")
+
+        assertEquals(6, repository.getTimeConfig(SEED_ID).morningSections, "迁移要用 prefs 的值覆盖表的旧快照")
+        assertEquals(
+            6,
+            store.timeConfigs().first { it.id == SEED_ID }.let { configOf(it.payload).morningSections },
+        )
     }
 
     @Test
@@ -116,7 +117,6 @@ class TimeConfigRowTest {
     fun `hydrate 直读表`() {
         store.upsertTimeConfig(StoredTimeConfig(SEED_ID, "x", encodeTimeConfig(config("x", morning = 5))))
 
-        store.markTimeConfigsSynced()
         repository.invalidateAllCaches()
 
         assertEquals(5, repository.getTimeConfig(SEED_ID).morningSections)
@@ -128,7 +128,8 @@ class TimeConfigRowTest {
 
     private fun freshState(name: String) {
         val cleaned = repository.exportAllPreferences()
-            .filterKeys { !it.startsWith("schedule_") }
+            // 作息也从零开始：留着上一轮的 time_config_* 会被恢复进表
+            .filterKeys { !it.startsWith("schedule_") && !it.startsWith("time_config_") }
             .toMutableMap()
         cleaned["schedule_names"] = encodeStringList(listOf(name))
         cleaned["schedule_folders"] = "[]"
@@ -155,7 +156,7 @@ class TimeConfigRowTest {
     private fun writeOnlyPrefs(name: String, morning: Int) {
         // 过滤掉所有旧课表的键，否则结构校验会报「course data belongs to an unknown schedule」
         val backup = repository.exportAllPreferences()
-            .filterKeys { !it.startsWith("schedule_") }
+            .filterKeys { !it.startsWith("schedule_") && !it.startsWith("time_config_") }
             .toMutableMap()
         backup["schedule_names"] = encodeStringList(listOf(name))
         backup["schedule_folders"] = "[]"
