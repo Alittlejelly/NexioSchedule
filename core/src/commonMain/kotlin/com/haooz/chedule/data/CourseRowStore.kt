@@ -5,7 +5,8 @@ import kotlin.concurrent.Volatile
 /**
  * 写行表前必须先就位的两行外键目标：`time_config(id)` 与 `schedule(id)`。
  *
- * `current_week` / `total_weeks` / `class_start` 写进行表只为让行自洽，读仍以 prefs 为准。
+ * 三个设置字段（当前周 / 总周数 / 开课日）跟着锚点一起落进行 —— 行建出来之后，
+ * 读路径只认这几列，prefs 里已经没有副本了。
  */
 data class CourseRowAnchor(
     val scheduleId: String,
@@ -229,3 +230,15 @@ internal fun sameCourseContent(expected: List<Course>, actual: List<Course>): Bo
     }
     return true
 }
+
+/**
+ * 课表文件夹：把多个课表归为一组，便于切换页分类。
+ *
+ * 一个课表最多属于一个文件夹（其余课表位于根目录「全部课表」下）。
+ * 文件夹只保存课表名引用，不改动 getScheduleNames() 的全局顺序。
+ */
+data class ScheduleFolder(
+    val id: String,
+    val name: String,
+    val schedules: List<String> = emptyList()
+)
