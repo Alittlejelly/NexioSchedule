@@ -3,11 +3,31 @@
 import org.gradle.api.artifacts.ModuleDependency
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// ===== 本地签名（不进版本库）=====
+// 取值优先级：`-P` 参数 > 环境变量 > 仓库根目录的 `keystore.properties`。
+// `keystore.properties` 与 `keystore/` 都在 .gitignore 里 —— 钥匙和密码都不许提交。
+//
+// ⚠ **debug 变体也用这把钥匙**：测试机装的是 release 签名（CN=王凯哲）的正式包，
+//   签名不一致的 APK 装不上去，也就没法「覆盖安装 + 保留 data」来验升级迁移。
+//   没有 `keystore.properties` 时自动退回 Android 默认 debug 签名，日常开发不受影响。
+val keystorePropertiesProvider = providers.fileContents(
+    rootProject.layout.projectDirectory.file("keystore.properties"),
+).asText.map { text -> Properties().apply { text.reader().use { load(it) } } }
+
+fun keyMaterial(name: String): String? =
+    (project.findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: keystorePropertiesProvider.orNull?.getProperty(name)?.takeIf { it.isNotBlank() }
+
+val signingStoreFile = keyMaterial("RELEASE_STORE_FILE")?.let { rootProject.file(it) }?.takeIf { it.isFile }
+val hasSigningKey = signingStoreFile != null
 
 android {
     namespace = "com.haooz.chedule"
@@ -25,14 +45,33 @@ android {
         }
     }
 
+    signingConfigs {
+        // 只在钥匙真的存在时才创建：否则 assembleRelease 会因为 storeFile 为空而失败，
+        // 而 clone 下来只想跑 debug 的人根本不该被签名拦住。
+        if (hasSigningKey) {
+            create("haooz") {
+                storeFile = signingStoreFile
+                storePassword = keyMaterial("RELEASE_STORE_PASSWORD")
+                keyAlias = keyMaterial("RELEASE_KEY_ALIAS")
+                keyPassword = keyMaterial("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasSigningKey) signingConfig = signingConfigs.getByName("haooz")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        // 与手机上那个 release 包同签名，才能直接 `adb install -r` 覆盖安装、保留 data。
+        // 只影响签名，debuggable / Compose tooling 这些仍然照旧。
+        debug {
+            if (hasSigningKey) signingConfig = signingConfigs.getByName("haooz")
         }
     }
     packaging {
