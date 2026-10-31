@@ -31,8 +31,9 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # GITEE_REPO 可留空，格式为「Gitee 用户名/仓库名」，留空则用默认值
-          echo "target=${REPO:-HaoZai000/NexioSchedule}" >> "$GITHUB_OUTPUT"
+          # 默认目标：gitee.com/com_haooz_account/nexio-schedule
+          # 需要临时改到别的仓库时，配一个 GITEE_REPO secret（格式「用户名/仓库名」）即可覆盖
+          echo "target=${REPO:-com_haooz_account/nexio-schedule}" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: 镜像到 Gitee
