@@ -1,11 +1,15 @@
 package com.haooz.chedule.data
 
 /**
- * 跨平台键值存储（Android 是 `pref` 表，桌面是 JSON 文件，iOS 是 UserDefaults）。
+ * 跨平台键值存储。三端都是 SQLite（同一个 `nexio.db`、同一份 [SqlDriverBackend]），
+ * 差别只在 driver：Android `AndroidSqliteDriver`、iOS `NativeSqliteDriver`、桌面 `JdbcSqliteDriver`。
  *
  * 1. 写入走 [edit]，一次 edit 是一个事务；
  * 2. 类型不匹配返回默认值，不抛异常；
  * 3. [all] 返回拷贝。
+ *
+ * 历史实现 [FileKeyValueStore]（JSON 文件）与 [UserDefaultsStore] 已退出运行时，
+ * 只作备份格式的类型标签参照保留。
  */
 
 /**

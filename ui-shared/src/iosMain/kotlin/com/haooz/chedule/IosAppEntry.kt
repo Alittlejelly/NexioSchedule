@@ -14,9 +14,11 @@ import com.kyant.capsule.continuities.G2Continuity
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.CourseStorage
 import com.haooz.chedule.data.IosBackupFileController
 import com.haooz.chedule.data.IosCourseLiveActivity
 import com.haooz.chedule.data.IosCourseNotifier
+import com.haooz.chedule.data.IosSqlStorage
 import com.haooz.chedule.data.IosWidgetSnapshot
 import com.haooz.chedule.data.IosScheduleFileController
 import com.haooz.chedule.data.IosWallpaperBackend
@@ -27,7 +29,6 @@ import com.haooz.chedule.data.PrivacyConsent
 import com.haooz.chedule.data.ScheduleChangeSink
 import com.haooz.chedule.data.ScheduleEffects
 import com.haooz.chedule.data.StatsReporter
-import com.haooz.chedule.data.UserDefaultsStore
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.defaultDocumentsDir
 import com.haooz.chedule.data.showToast
@@ -94,9 +95,14 @@ fun bootstrapNexioIos() {
         .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "unknown"
     AppInfo.init(version)
 
-    // 按名字转发到各自 UserDefaults suite（名字由各业务文件自带，这里不汇总）。
-    // ⚠ 合并成一张表会篡改存量数据的落盘位置，见 UserDefaultsStore 的类注释。
-    AppStorage.init { name -> UserDefaultsStore(name) }
+    // 与 Android 同一个 nexio.db：键值表 + 课程行表同库同事务。
+    // ⚠ 不能退回 UserDefaults：两端 schema 分叉会让备份/恢复只在一端正确。
+    AppStorage.init { name -> IosSqlStorage.store(name) }
+    // 课程行表接线。取不到就抛，不退回 JSON。
+    CourseStorage.install { IosSqlStorage.courseRows() }
+    // iOS 从第一天就是 nexio.db：没有 blob / UserDefaults 存量可搬，直接记为已迁移。
+    // Android 那边由 LegacyStorageMigration 调 migrateLegacyEntitiesOnce 真正搬数据。
+    runCatching { IosSqlStorage.courseRows().markFullyMigrated() }
 
     // 语言镜像尽早就位：core 数据类的显示变体（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值
     com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())

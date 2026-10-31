@@ -76,14 +76,15 @@ class BackupMaterializationTest {
     }
 
     @Test
-    fun `表不可用时备份退回镜像`() {
+    fun `没有行表的平台备份直接用 prefs`() {
         val name = schedule("无表")
         freshState(name)
+        // 没有行表：prefs 就是唯一真相，写入路径会直接写它
+        CourseStorage.install { null }
+        repository.invalidateAllCaches()
         val id = repository.addTimeConfig(config(name, morning = 4))
         repository.setCurrentWeek(3)
 
-        CourseStorage.install { null }
-        repository.invalidateAllCaches()
         val backup = repository.exportAllPreferences()
 
         assertEquals(4, configOf(backup["time_config_$id"]).morningSections)

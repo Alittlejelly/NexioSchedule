@@ -23,7 +23,8 @@ object AppStorage {
 
     /**
      * 取某个偏好文件的读写入口。工厂对同一个名字必须返回同一个实例
-     * （Android 侧由 [SqliteStorage.store] 缓存保证）；存储实现持内存快照，两个实例互相看不见对方写入。
+     * （Android 由 [SqliteStorage.store] 缓存、iOS / 桌面由 [SqlNamespaceStorage.store] 缓存）；
+     * 存储实现持内存快照，两个实例互相看不见对方写入。
      */
     fun store(name: String): KeyValueStore {
         cache[name]?.let { return it }

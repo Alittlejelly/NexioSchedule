@@ -35,38 +35,26 @@ object LegacyStorageMigration {
             // 1) 全部搬进 `pref` 表：写入 + 同事务回读逐键对拍 + 标记。失败直接抛。
             for (namespace in pending) SqliteStorage.store(context, namespace)
 
-            // 2) 旧结构搬进实体表：课程 blob → 行表（搬成功后 blob 立刻删）、作息 → time_config、
-            //    三个设置字段 → schedule 行。数据此时已在库里，个别课表失败只记日志。
-            migrateEntityTables(context)
-
-            // 3) 删掉刚迁完的文件
+            // 2) 删掉刚迁完的文件
             var deleted = 0
             for (namespace in pending) if (deletePrefFiles(prefsDir, namespace)) deleted++
             NexioLog.w(TAG, "旧存储已全部迁入 nexio.db 并删除：${pending.size} 个命名空间 / $deleted 个文件")
+        }
+
+        // 3) 旧结构（课程 blob / 作息 / 三个设置字段）搬进实体表。
+        //    独立于上面那段：老版本可能搬了一半就退出，靠全局标记决定是否重跑，
+        //    不能靠「还有没有 prefs 文件」—— 文件已经删了但表没写完的正是要重试的。
+        val outcome = runCatching { CourseRepository().migrateLegacyEntitiesOnce() }
+            .onFailure { NexioLog.e(TAG, "实体表迁移异常，下次启动重试", it) }
+            .getOrNull()
+        if (outcome is MigrationOutcome.Incomplete) {
+            NexioLog.e(TAG, "升级迁移未完成，下次启动继续：${outcome.failed}")
         }
 
         // 回退账本不是业务数据，删；空目录本身也删掉（Android 需要时会自己重建）
         deletePrefFiles(prefsDir, LEGACY_FALLBACK_LEDGER)
         if (prefsDir.list().isNullOrEmpty()) prefsDir.delete()
         deleteLegacyKvDb(context)
-    }
-
-    /**
-     * 把 prefs 里的旧结构搬进实体表。逐个课表做，一个课表出错不连累其他课表：
-     * 课程读完即完成「blob → 行表 → 删 blob」，设置三项与作息在各自的首次访问里各同步一次。
-     */
-    private fun migrateEntityTables(context: Context) {
-        val repository = CourseRepository()
-        for (name in repository.getScheduleNames()) {
-            runCatching { repository.getCoursesForSchedule(name) }
-                .onFailure { NexioLog.w(TAG, "课程搬入行表失败（读路径会再导一次）：$name", it) }
-            runCatching { repository.getCurrentWeek(name) }
-            runCatching { repository.getTotalWeeks(name) }
-            runCatching { repository.getClassStartTime(name) }
-        }
-        // 作息配置：prefs 的 time_config_{id} → time_config 表（一次性标记）
-        runCatching { repository.getTimeConfigIds() }
-            .onFailure { NexioLog.w(TAG, "作息搬入 time_config 表失败", it) }
     }
 
     private fun deleteLegacyKvDb(context: Context) {

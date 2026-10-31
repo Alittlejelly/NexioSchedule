@@ -38,7 +38,7 @@ class ScheduleSettingsRowTest {
     }
 
     @Test
-    fun `写周次同时落行与镜像`() {
+    fun `写周次只落行，备份仍能导出`() {
         val name = schedule("周次")
         freshState(name)
         CourseStorage.install { store }
@@ -53,10 +53,10 @@ class ScheduleSettingsRowTest {
         assertEquals(16, row.totalWeeks)
         assertEquals("2026/09/08", row.classStart)
         assertEquals(7, repository.getCurrentWeek(name))
-        // 镜像不能省：备份是遍历 prefs 导出的
-        assertEquals(7, mirrorOf(name, "current_week"))
-        assertEquals(16, mirrorOf(name, "total_weeks"))
-        assertEquals("2026/09/08", mirrorOf(name, "class_start_time"))
+        // 不再写 prefs 镜像：备份的值一律从表物化，所以这里必须仍然正确
+        assertEquals(7, backupValueOf(name, "current_week"))
+        assertEquals(16, backupValueOf(name, "total_weeks"))
+        assertEquals("2026/09/08", backupValueOf(name, "class_start_time"))
     }
 
     @Test
@@ -75,16 +75,10 @@ class ScheduleSettingsRowTest {
     @Test
     fun `老数据首次读取时把 prefs 同步进行`() {
         val name = schedule("老数据")
-        freshState(name)
+        // 升级用户的形态：prefs 里是正确值，行是建行时的旧快照，且没有同步标记
+        freshState(name, currentWeek = 9, totalWeeks = 17, classStart = "2026/09/01")
         CourseStorage.install { store }
-        // 行已存在（seedRow 只建行、不写同步标记），字段是建行时的快照
         seedRow(name, currentWeek = 1, totalWeeks = 20, classStart = null)
-        // 再让 repository 写出一套正确值（prefs + 行），最后把行改回旧快照：
-        // 这就是升级用户的形态 —— prefs 是对的，行里是旧值，且没有同步标记。
-        repository.setCurrentWeek(9)
-        repository.setTotalWeeks(name, 17)
-        repository.setClassStartTime(name, "2026/09/01")
-        store.writeSettings(name, 1, 20, null)
         repository.invalidateAllCaches()
 
         assertEquals(
@@ -105,13 +99,13 @@ class ScheduleSettingsRowTest {
         freshState(name)
         CourseStorage.install { store }
         seedRow(name, currentWeek = 1, totalWeeks = 20, classStart = null)
-        repository.setCurrentWeek(3)
         store.markSettingsSynced(name)
+        store.writeSettings(name, 3, null, null)
         assertEquals(3, repository.getCurrentWeek(name))
 
         // 单表导入的形态：prefs 被改成 11，行还是旧的 3，然后清标记等重建
-        repository.setCurrentWeek(11)
-        store.writeSettings(name, 3, null, null)
+        freshState(name, currentWeek = 11)
+        seedRow(name, currentWeek = 3, totalWeeks = 20, classStart = null)
         repository.invalidateAllCaches()
         store.markStale(name)
         repository.invalidateAllCaches()
@@ -155,7 +149,16 @@ class ScheduleSettingsRowTest {
 
     private fun schedule(prefix: String) = "$prefix-${System.nanoTime()}"
 
-    private fun freshState(name: String) {
+    /**
+     * 清空课表并写入一条 `name` 的课表。带设置参数时同时把值写进 prefs ——
+     * 模拟「升级用户 prefs 里有值」的形态（新代码不再写穿 prefs，只能从这里造）。
+     */
+    private fun freshState(
+        name: String,
+        currentWeek: Int? = null,
+        totalWeeks: Int? = null,
+        classStart: String? = null,
+    ) {
         val cleaned = repository.exportAllPreferences()
             .filterKeys { !it.startsWith("schedule_") }
             .toMutableMap()
@@ -163,6 +166,9 @@ class ScheduleSettingsRowTest {
         cleaned["schedule_folders"] = "[]"
         cleaned["current_schedule_id"] = name
         cleaned["schedule_${name}_courses"] = "[]"
+        currentWeek?.let { cleaned["schedule_${name}_current_week"] = it }
+        totalWeeks?.let { cleaned["schedule_${name}_total_weeks"] = it }
+        classStart?.let { cleaned["schedule_${name}_class_start_time"] = it }
         repository.importAllPreferences(cleaned)
     }
 
@@ -183,6 +189,7 @@ class ScheduleSettingsRowTest {
         )
     }
 
-    private fun mirrorOf(scheduleId: String, key: String): Any? =
+    /** 备份里这个键的值。镜像已不再写，所以这是「备份是否正确」而不是「prefs 里有什么」。 */
+    private fun backupValueOf(scheduleId: String, key: String): Any? =
         repository.exportAllPreferences()["schedule_${scheduleId}_$key"]
 }

@@ -19,6 +19,26 @@ data class CourseRowAnchor(
 )
 
 /**
+ * 一次性迁移（`CourseRepository.migrateLegacyEntitiesOnce`）的结果。
+ *
+ * 调用方据此决定要不要打日志 / 提示用户 —— 迁移失败是**静默的**（懒路径会兜住界面），
+ * 没有这个返回值就只能靠翻 logcat。
+ */
+sealed interface MigrationOutcome {
+    /** 没有行表。三端都装了行表，走到这里说明接线漏了。 */
+    data object NoRowStore : MigrationOutcome
+
+    /** 之前已经迁完，这次是空操作。 */
+    data object AlreadyDone : MigrationOutcome
+
+    /** 全部课表都进了实体表，全局标记已写。 */
+    data class Done(val scheduleCount: Int) : MigrationOutcome
+
+    /** 还有课表没进去，标记没写，下次启动重试。 */
+    data class Incomplete(val failed: List<String>) : MigrationOutcome
+}
+
+/**
  * 课程行表访问口。实现缺失时（[CourseStorage.rows] 为 null）调用方退回 JSON。
  */
 interface CourseRowStore {
@@ -92,6 +112,16 @@ interface CourseRowStore {
 
     /** 全部作废（整库恢复备份后）。下次读取从恢复出的 JSON 重新导入。 */
     fun invalidateAll()
+
+    // ── 一次性迁移 ────────────────────────────────────────────────────────────
+    // 「blob / prefs → 实体表」是否已经整体搬完。写完这个标记之后，[loadCourses] 的
+    // blob 导入、[rowSettingsOf] 的 prefs→行 同步、[hydrateTimeConfigs] 的 prefs→表 同步
+    // 都只会是空操作 —— 那时才是删掉这些路径的时机。
+
+    /** 迁移是否已经跑完。恢复备份会清掉它（恢复出的是另一套数据）。 */
+    fun isFullyMigrated(): Boolean
+
+    fun markFullyMigrated()
 }
 
 /**

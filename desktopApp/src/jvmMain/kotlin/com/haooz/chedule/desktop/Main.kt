@@ -30,8 +30,9 @@ import androidx.compose.ui.window.rememberWindowState
 import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.AppInfo
 import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.CourseStorage
+import com.haooz.chedule.data.DesktopSqlStorage
 import com.haooz.chedule.data.FileAppFile
-import com.haooz.chedule.data.FileKeyValueStore
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
@@ -61,13 +62,17 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 fun main() {
     // ── 启动注入（对应 Android 的 NexioApplication.onCreate 的四个 init）──────────
-    // 1. 存储：按名字分文件（17 个偏好名，绝不合并），JSON + 类型标签持久化
+    // 1. 存储：与 Android / iOS 同一个 nexio.db（键值表 + 课程行表同库同事务）
     val dataDir = File(
         System.getProperty("user.home"),
-        ".nexio-chedule",   // 桌面数据目录；Android 的 17 个偏好文件名原样沿用
+        ".nexio-chedule",   // 桌面数据目录；Android 的 17 个偏好名原样沿用为命名空间
     )
     dataDir.mkdirs()
-    AppStorage.init { name -> FileKeyValueStore(File(dataDir, "$name.json")) }
+    DesktopSqlStorage.init(dataDir)
+    AppStorage.init { name -> DesktopSqlStorage.store(name) }
+    CourseStorage.install { DesktopSqlStorage.courseRows() }
+    // 桌面从第一天就是 nexio.db：没有 blob 存量可搬，直接记为已迁移
+    runCatching { DesktopSqlStorage.courseRows().markFullyMigrated() }
     // 语言镜像尽早就位：core 数据类的显示变体（DisplayLang）依赖它；与 CourseScheduleApp 里的恢复同值
     com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
 

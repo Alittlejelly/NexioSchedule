@@ -175,6 +175,13 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         q.writeMeta(settingsSyncKey(scheduleId), "1")
     }
 
+    override fun isFullyMigrated(): Boolean =
+        runCatching { q.readMeta(META_FULLY_MIGRATED).executeAsOneOrNull() }.getOrNull() != null
+
+    override fun markFullyMigrated() {
+        q.writeMeta(META_FULLY_MIGRATED, "1")
+    }
+
     override fun invalidateAll() {
         database.transactionWithResult {
             q.deleteAllCourses()
@@ -183,6 +190,8 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             q.deleteScheduleSettingsSyncFlags()
             // 作息表也作废：恢复备份会覆盖 prefs 里的 time_config_*，下次要从那边重新同步
             q.deleteTimeConfigsSyncFlag()
+            // 恢复出的是另一套数据：整体迁移标记也要清，否则新数据会被当成「已经迁完」
+            q.deleteMeta(META_FULLY_MIGRATED)
         }
     }
 
@@ -280,5 +289,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
         const val META_SETTINGS_SYNC_PREFIX = "settings_synced:"
         /** 作息配置是否已从 prefs 同步进表。 */
         const val META_TIME_CONFIGS_SYNCED = "time_configs_synced"
+        /** 「全部历史数据已搬进实体表」的全局标记。写完它，迁移代码就可以整体删除。 */
+        const val META_FULLY_MIGRATED = "entity_tables_v1"
     }
 }

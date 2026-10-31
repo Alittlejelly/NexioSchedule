@@ -1,7 +1,5 @@
 package com.haooz.chedule.data
 
-import java.util.concurrent.CopyOnWriteArrayList
-
 /**
  * 键值表的一行。[type] 取 `s`/`i`/`l`/`f`/`b`/`ss`，与 [FileKeyValueStore] 的落盘标签一致。
  */
@@ -9,6 +7,8 @@ class KvRow(val key: String, val type: String, val value: Any)
 
 /**
  * 键值表的存储后端。接口只为宿主机单测能跑真事务，不需要真机或 Robolectric。
+ *
+ * 放在 commonMain：三端共用 [SqlDriverBackend]，Android 只多一层 SharedPreferences 导入。
  *
  * ⚠ [SqlTx] 的方法只在 [transaction] 块内有效，块外拿到的事务不代表任何一致性。
  */
@@ -38,8 +38,10 @@ interface SqlBackend {
  * [KeyValueStore] 的 SQLite 实现：内存快照 + 行级写入 + 单事务提交。
  *
  * 读是纯内存；写只碰受影响的行，`edit{}` 内的多次 put 合并成一次事务。
- * 每个命名空间只能有一个实例（[SqliteStorage.store] 缓存），两份快照会互相看不见。
- * `edit{}` 在副本上生效，提交失败时内存同步回滚。
+ * 每个命名空间只能有一个实例（[SqliteStorage] / [SqlNamespaceStorage] 缓存），
+ * 两份快照会互相看不见。`edit{}` 在副本上生效，提交失败时内存同步回滚。
+ *
+ * 互斥走 [synchronizedOn]（Kotlin/Native 没有 `synchronized`），三端同一份代码。
  */
 class SqliteKeyValueStore(
     private val backend: SqlBackend,
@@ -57,8 +59,13 @@ class SqliteKeyValueStore(
     /** 全量内存快照。读写一律持 [lock]。 */
     private var data: LinkedHashMap<String, KvRow> = LinkedHashMap()
 
-    /** 变更监听。强引用；由注册方持 token 注销。 */
-    private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
+    /**
+     * 变更监听。强引用；由注册方持 token 注销。
+     *
+     * 用普通 list + [lock] 而不是 `CopyOnWriteArrayList`：后者是 JVM 专有，
+     * Kotlin/Native 上没有；监听器只有个位数，加锁复制一次的开销可以忽略。
+     */
+    private val listeners = mutableListOf<(String) -> Unit>()
 
     init {
         backend.loadNamespace(namespace).forEach { data[it.key] = it }
@@ -66,7 +73,7 @@ class SqliteKeyValueStore(
 
     // ── 读 ────────────────────────────────────────────────────────────────────
 
-    private fun row(key: String): KvRow? = synchronized(lock) { data[key] }
+    private fun row(key: String): KvRow? = synchronizedOn(lock) { data[key] }
 
     override fun getString(key: String, defaultValue: String): String =
         (row(key)?.takeIf { it.type == TYPE_STRING }?.value as? String) ?: defaultValue
@@ -124,7 +131,7 @@ class SqliteKeyValueStore(
 
     override fun contains(key: String): Boolean = row(key) != null
 
-    override fun all(): Map<String, Any?> = synchronized(lock) {
+    override fun all(): Map<String, Any?> = synchronizedOn(lock) {
         val out = LinkedHashMap<String, Any?>(data.size)
         data.forEach { (k, row) ->
             val v = row.value
@@ -140,17 +147,17 @@ class SqliteKeyValueStore(
         var cleared = false
 
         // 先在副本上跑：块内抛异常时原状态不动
-        val working = LinkedHashMap<String, KvRow>(synchronized(lock) { data })
+        val working = LinkedHashMap<String, KvRow>(synchronizedOn(lock) { data })
         EditorFacade(working, affected) { cleared = true }.block()
 
-        synchronized(commitLock) {
+        synchronizedOn(commitLock) {
             // 只把「受影响的键」合进最新快照，不整张替换：块在锁外执行，这期间别的线程可能
             // 写入了别的键，整张替换会把它们从内存抹掉（磁盘上还在）—— 只有重启才恢复，
             // 表现为「设置改了但界面一直读旧值」。
             val merged = if (cleared) {
                 LinkedHashMap(working)
             } else {
-                LinkedHashMap(synchronized(lock) { data }).apply {
+                LinkedHashMap(synchronizedOn(lock) { data }).apply {
                     for (key in affected) {
                         val row = working[key]
                         if (row != null) put(key, row) else remove(key)
@@ -169,54 +176,65 @@ class SqliteKeyValueStore(
                     }
                 }
             }
-            synchronized(lock) { data = merged }
+            synchronizedOn(lock) { data = merged }
         }
 
         notifyListeners(affected)
     }
 
     override fun remove(key: String) {
-        synchronized(commitLock) {
-            val existed = synchronized(lock) { data.containsKey(key) }
-            if (!existed) return
-
-            backend.transaction { delete(namespace, key) }
-            synchronized(lock) { data = LinkedHashMap(data).apply { remove(key) } }
+        val removed = synchronizedOn(commitLock) {
+            val existed = synchronizedOn(lock) { data.containsKey(key) }
+            if (!existed) {
+                false
+            } else {
+                backend.transaction { delete(namespace, key) }
+                synchronizedOn(lock) { data = LinkedHashMap(data).apply { remove(key) } }
+                true
+            }
         }
+        if (!removed) return
 
         notifyListeners(listOf(key))
     }
 
     override fun clear() {
-        val removed: List<String>
-        synchronized(commitLock) {
-            val snapshot = synchronized(lock) { data }
-            if (snapshot.isEmpty()) return
-            removed = snapshot.keys.toList()
-            backend.transaction { clearNamespace(namespace) }
-            synchronized(lock) { data = LinkedHashMap() }
+        val removed: List<String> = synchronizedOn(commitLock) {
+            val snapshot = synchronizedOn(lock) { data }
+            if (snapshot.isEmpty()) {
+                emptyList()
+            } else {
+                val keys = snapshot.keys.toList()
+                backend.transaction { clearNamespace(namespace) }
+                synchronizedOn(lock) { data = LinkedHashMap() }
+                keys
+            }
         }
+        if (removed.isEmpty()) return
 
         notifyListeners(removed)
     }
 
     override fun registerListener(listener: (String) -> Unit): Any? {
-        listeners.add(listener)
+        synchronizedOn(lock) { listeners.add(listener) }
         return listener
     }
 
     override fun unregisterListener(token: Any?) {
         // 函数类型擦除，只能按引用移除
         @Suppress("UNCHECKED_CAST")
-        (token as? (String) -> Unit)?.let { listeners.remove(it) }
+        val target = token as? (String) -> Unit ?: return
+        synchronizedOn(lock) { listeners.remove(target) }
     }
 
     // ── 内部 ──────────────────────────────────────────────────────────────────
 
     private fun notifyListeners(keys: Collection<String>) {
-        if (listeners.isEmpty() || keys.isEmpty()) return
+        if (keys.isEmpty()) return
+        val snapshot = synchronizedOn(lock) { listeners.toList() }
+        if (snapshot.isEmpty()) return
         for (key in keys) {
-            for (l in listeners) {
+            for (l in snapshot) {
                 runCatching { l(key) }.onFailure { e ->
                     NexioLog.w(TAG, "listener 异常（已跳过）: namespace=$namespace key=$key", e)
                 }
