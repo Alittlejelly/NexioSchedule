@@ -59,8 +59,10 @@ import com.haooz.chedule.data.util.toJsonElement
  * 只负责「数据在键值快照与实体表之间搬一个来回」；格式定义与结构校验在 `ScheduleBackup`。
  *
  * 两条硬约定：
- * - **导出先带镜像、再由表覆盖**。表答不出时备份里还留着镜像；反过来（跳过镜像、无条件物化）
- *   需要维护一份「哪些键归表管」的手工清单，加字段漏一处就是静默丢数据。
+ * - **键值里的键先全部带走，表管的那些再由表覆盖**。遍历键值不是为了给表数据兜底，
+ *   而是为了不必维护一份「还有哪些键要备份」的清单 —— 漏一个就是静默丢数据。
+ *   反过来，表既然管了这些键，就只有表说了算：表答不出就把键从备份里删掉，
+ *   不拿键值里的旧副本顶上（那是会过期的第二真相，恢复时按旧值写回去）。
  * - **恢复后立刻重建实体表**。留一个「等下次启动再迁」的窗口，窗口里读表读到的是刚被清空的行。
  */
 internal class BackupTransfer(private val host: RepoHost) {
@@ -241,10 +243,10 @@ internal class BackupTransfer(private val host: RepoHost) {
     // ── 导出：从表物化 ────────────────────────────────────────────────────────
 
     /**
-     * 用表里的值覆盖镜像。
+     * 表管的键，一律以表为准。
      *
      * 覆盖面：课程、作息 ids 与 payload、绑定、三个设置字段、两个显示开关、重组规则。
-     * 每条都遵循「表答得出才覆盖」，所以行还没建的课表仍是镜像说了算。
+     * **表答不出就从备份里删掉这个键**，不保留键值里的旧副本。
      */
     private fun materializeRowBackedKeys(result: MutableMap<String, Any>, names: List<String>) {
         val rows = host.rowStore()
@@ -262,85 +264,107 @@ internal class BackupTransfer(private val host: RepoHost) {
         }
 
         names.forEach { name ->
+            // 读失败会抛（见 [readCoursesForBackup]）：导出一份「课表是空的」备份，
+            // 恢复时等于把这张表清空，比备份失败更糟。
             val key = host.getScheduleKeyPrefix(name) + KEY_COURSES
-            val courses = readCoursesForBackup(name)
-            if (courses != null) {
-                result[key] = encodeCourses(courses)
-            } else {
-                val mirror = host.prefs.getStringOrNull(key)
-                NexioLog.e(TAG, "备份导出：$name 的课程行表读不出来，改用镜像（有镜像=${mirror != null}）")
-                if (mirror != null) result[key] = mirror
-            }
+            result[key] = encodeCourses(readCoursesForBackup(name).orEmpty())
         }
 
-        // 作息：ids 与 payload 一起物化，顺手清掉表里已经没有的残留键
-        val configs = runCatching { rows?.timeConfigs() }.getOrNull()
-        val liveIds = configs.orEmpty().map { it.id }.filter { it > 0 }
-        if (liveIds.isNotEmpty()) {
-            result[KEY_TIME_CONFIG_IDS] = liveIds.joinToString(",")
-            val live = configs.orEmpty().mapNotNull { row ->
-                val parsed = runCatching { parseTimeConfigSnapshotOrNull(row.payload) }.getOrNull()
-                    ?: return@mapNotNull null
-                "$TIME_CONFIG_PREFIX${row.id}" to encodeTimeConfig(TimeConfig.sanitize(row.id, parsed))
-            }.toMap()
+        // 作息：ids 与 payload 一起物化。表里没有配置就是没有，键值里的旧条目一并删掉。
+        val configs = rows?.let {
+            runCatching { it.timeConfigs() }.getOrElse { e ->
+                throw IllegalStateException("备份导出：作息表读不出来", e)
+            }
+        }
+        if (configs != null) {
             result.keys
                 .filter { it.startsWith(TIME_CONFIG_PREFIX) && it != KEY_TIME_CONFIG_IDS }
                 .forEach { result.remove(it) }
-            result.putAll(live)
-        } else if (rows != null) {
-            NexioLog.w(TAG, "备份导出：作息表读不出配置，作息条目沿用镜像")
+            val liveIds = configs.map { it.id }.filter { it > 0 }
+            if (liveIds.isEmpty()) {
+                result.remove(KEY_TIME_CONFIG_IDS)
+            } else {
+                result[KEY_TIME_CONFIG_IDS] = liveIds.joinToString(",")
+                configs.mapNotNull { row ->
+                    val parsed = runCatching { parseTimeConfigSnapshotOrNull(row.payload) }
+                        .getOrNull() ?: return@mapNotNull null
+                    "$TIME_CONFIG_PREFIX${row.id}" to
+                        encodeTimeConfig(TimeConfig.sanitize(row.id, parsed))
+                }.toMap().let { result.putAll(it) }
+            }
         }
 
         // 绑定：`schedule.time_config_id` 是真相，物化成备份要的扁平键
-        val bindings = runCatching { rows?.bindings() }.getOrNull()
-        if (bindings != null) {
+        if (rows != null) {
+            val bindings = runCatching { rows.bindings() }.getOrElse { e ->
+                throw IllegalStateException("备份导出：作息绑定读不出来", e)
+            }
             // 先清再整体写：已删课表的残留绑定会被恢复校验当成未知课表
             result.keys
                 .filter { it.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) }
                 .forEach { result.remove(it) }
             bindings.forEach { (name, id) -> result["$SCHEDULE_TIME_CONFIG_PREFIX$name"] = id }
-        } else if (rows != null) {
-            NexioLog.w(TAG, "备份导出：绑定表读不出来，绑定条目沿用镜像")
         }
 
         // 三个设置字段只取行里的值，**不走 getClassStartTime**：它缺值时会写今天并建行，
         // 导出过程中建行，下面物化到的就是默认列 —— 等于把用户设置改成默认值。
         names.forEach { name ->
-            val row = host.rowSettingsOf(name) ?: return@forEach
             val prefix = host.getScheduleKeyPrefix(name)
+            val row = host.rowSettingsOf(name)
+            if (row == null) {
+                // 没有行 = 这张课表没有任何设置，键值里那份是别处留下的旧值
+                result.remove("${prefix}$KEY_CURRENT_WEEK")
+                result.remove("${prefix}$KEY_TOTAL_WEEKS")
+                result.remove("${prefix}$KEY_CLASS_START_TIME")
+                return@forEach
+            }
             result["${prefix}$KEY_CURRENT_WEEK"] = row.currentWeek
             result["${prefix}$KEY_TOTAL_WEEKS"] = row.totalWeeks
-            row.classStart?.let { result["${prefix}$KEY_CLASS_START_TIME"] = it }
+            if (row.classStart != null) {
+                result["${prefix}$KEY_CLASS_START_TIME"] = row.classStart
+            } else {
+                result.remove("${prefix}$KEY_CLASS_START_TIME")
+            }
         }
 
         // 显示开关：行不存在就不写。写默认值等于替用户伪造一次设置，
         // 而镜像里如果还留着旧值，上面的遍历已经带进来了。
         names.forEach { name ->
-            val display = runCatching { rows?.displaySettingsOf(name) }.getOrNull() ?: return@forEach
             val prefix = host.getScheduleKeyPrefix(name)
+            val display = runCatching { rows?.displaySettingsOf(name) }.getOrNull()
+            if (display == null) {
+                result.remove("${prefix}$KEY_SMART_WEEKEND")
+                result.remove("${prefix}$KEY_SHOW_NON_CURRENT_WEEK")
+                return@forEach
+            }
             result["${prefix}$KEY_SMART_WEEKEND"] = display.smartWeekend
             result["${prefix}$KEY_SHOW_NON_CURRENT_WEEK"] = display.showNonCurrentWeek
         }
 
         // 重组规则必须走读路径：迁移会把 prefs 副本删掉，这里自己拼键等于「备份里永远没有这一块」
         names.forEach { name ->
-            val raw = host.teachingWeekReorganizationsRawOf(name) ?: return@forEach
-            result["${host.getScheduleKeyPrefix(name)}$KEY_TEACHING_WEEK_REORGANIZATIONS"] = raw
+            val prefix = host.getScheduleKeyPrefix(name)
+            val raw = host.teachingWeekReorganizationsRawOf(name)
+            if (raw == null) result.remove("${prefix}$KEY_TEACHING_WEEK_REORGANIZATIONS")
+            else result["${prefix}$KEY_TEACHING_WEEK_REORGANIZATIONS"] = raw
         }
     }
 
     /**
-     * 备份专用的课程读法。返回 null 表示「读不出来」，调用方回落镜像。
+     * 备份专用的课程读法。
      *
-     * 与 `loadCourses` 的差别：后者把读失败当空表（界面宁可空也不能崩），备份跟着当空表
-     * 就会把一张有课的课表导成 `[]`。未导入的课表返回 null 而**不顺手导入** ——
-     * 导出过程中建行会把刚建出来的默认列当成用户设置写进备份。
+     * 与 `loadCourses` 的差别：后者把读失败当空表（界面宁可空也不能崩），备份不能 ——
+     * 那会把一张有课的课表导成 `[]`，恢复时直接清空，所以读失败在这里抛。
+     * 未导入的课表返回空表而**不顺手导入**：导出过程中建行，会把刚建出来的默认列
+     * 当成用户设置写进备份。没有行表的宿主退回 blob。
      */
     private fun readCoursesForBackup(scheduleId: String): List<Course>? {
         val rows = host.rowStore() ?: return host.readCoursesFromBlob(scheduleId)
         return runCatching {
-            if (rows.isImported(scheduleId)) rows.load(scheduleId) else null
-        }.getOrNull()
+            if (rows.isImported(scheduleId)) rows.load(scheduleId) else emptyList()
+        }.getOrElse { e ->
+            throw IllegalStateException("备份导出：$scheduleId 的课程读不出来", e)
+        }
     }
 
     // ── 恢复 ──────────────────────────────────────────────────────────────────
