@@ -77,45 +77,56 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var blobImportFailed: Set<String> = emptySet()
 
+    /**
+     * 迁移器的仓库侧能力。
+     *
+     * 只递出去搬运需要的动作：键名规则、锚点、缓存都留在仓库里。
+     * 迁移是「绕过业务入口的直写」，所以写完必须显式作废对应缓存。
+     */
+    private val migrationHost = object : LegacyEntityMigration.Host {
+        override fun scheduleNames() = getScheduleNames()
+
+        override fun scheduleKeyPrefix(scheduleId: String) = getScheduleKeyPrefix(scheduleId)
+
+        override fun loadCourses(scheduleId: String) = getCoursesForSchedule(scheduleId)
+
+        override fun timeConfig(id: Long) = getTimeConfig(id)
+
+        override fun addTimeConfig(config: TimeConfig) = this@CourseRepository.addTimeConfig(config)
+
+        override fun legacyGlobalTimeConfigId() = resolveLegacyCurrentTimeConfigId()
+
+        override fun anchorFor(scheduleId: String, timeConfigId: Long) =
+            rowAnchorFor(scheduleId, timeConfigId)
+
+        override fun createScheduleRowIfAbsent(scheduleId: String) {
+            CourseStorage.rows?.let { this@CourseRepository.createScheduleRowIfAbsent(it, scheduleId) }
+        }
+
+        override fun onTimeConfigsWritten() {
+            synchronizedOn(cacheLock) {
+                timeConfigsHydrated = false
+                timeConfigIdsCache = null
+                timeConfigCache = emptyMap()
+            }
+        }
+
+        override fun onBindingsWritten() {
+            synchronizedOn(cacheLock) { bindingCache = emptyMap() }
+        }
+
+        override fun folders() = getScheduleFolders()
+
+        override fun saveFolders(folders: List<ScheduleFolder>) = saveScheduleFolders(folders)
+    }
+
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
         // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
-        migrateSchedulesIntoDefaultFolder()
+        newMigration().migrateIntoDefaultFolder()
         pruneOrphanTimeConfigsIfNeeded()
     }
 
-
-    /**
-     * 首次使用时把现有课表全部收进「默认文件夹」，只跑一次。
-     * 备份恢复会清掉标记再跑：已有同 id 文件夹必须并入而非再 add，否则 LazyColumn key 冲突会闪退。
-     */
-    private fun migrateSchedulesIntoDefaultFolder() {
-        if (prefs.getBoolean(KEY_DEFAULT_FOLDER_MIGRATED, false)) return
-        val names = getScheduleNames()
-        val folders = getScheduleFolders().toMutableList()
-        val ungrouped = if (folders.isEmpty()) names
-        else names.filter { name -> folders.none { name in it.schedules } }
-        if (ungrouped.isNotEmpty()) {
-            val existingIndex = folders.indexOfFirst { it.id == DEFAULT_FOLDER_ID }
-            if (existingIndex >= 0) {
-                val existing = folders[existingIndex]
-                val merged = (existing.schedules + ungrouped).distinct()
-                folders[existingIndex] = existing.copy(
-                    schedules = names.filter { it in merged }
-                )
-            } else {
-                folders.add(
-                    ScheduleFolder(
-                        id = DEFAULT_FOLDER_ID,
-                        name = DEFAULT_FOLDER_NAME,
-                        schedules = ungrouped
-                    )
-                )
-            }
-            saveScheduleFolders(folders)
-        }
-        prefs.edit { putBoolean(KEY_DEFAULT_FOLDER_MIGRATED, true) }
-    }
 
     // 变更回调：多播列表，避免后构造的 ViewModel 覆盖先注册的监听。
     // @Volatile 不可变列表 + 写时复制：读走快照、写不阻塞读。
@@ -281,22 +292,22 @@ class CourseRepository private constructor() : PeriodTimeSource {
         const val MAX_TOTAL_WEEKS = 30
 
         private const val PREFS_NAME = "course_schedule_prefs"
-        private const val KEY_COURSES = "courses"
+        internal const val KEY_COURSES = "courses"
         /** 坏 JSON 的留档键。原键被删掉，字节搬到这里，人工排查/恢复时还在。 */
         private const val KEY_CORRUPT_COURSES = "courses_corrupt"
-        private const val KEY_CURRENT_WEEK = "current_week"
-        private const val KEY_TOTAL_WEEKS = "total_weeks"
-        private const val KEY_CLASS_START_TIME = "class_start_time"
-        private const val KEY_TEACHING_WEEK_REORGANIZATIONS = "teaching_week_reorganizations"
-        private const val KEY_SMART_WEEKEND = "smart_weekend"
-        private const val KEY_SHOW_NON_CURRENT_WEEK = "show_non_current_week"
+        internal const val KEY_CURRENT_WEEK = "current_week"
+        internal const val KEY_TOTAL_WEEKS = "total_weeks"
+        internal const val KEY_CLASS_START_TIME = "class_start_time"
+        internal const val KEY_TEACHING_WEEK_REORGANIZATIONS = "teaching_week_reorganizations"
+        internal const val KEY_SMART_WEEKEND = "smart_weekend"
+        internal const val KEY_SHOW_NON_CURRENT_WEEK = "show_non_current_week"
         private const val KEY_CURRENT_SCHEDULE_ID = "current_schedule_id"
         private const val KEY_SCHEDULE_NAMES = "schedule_names"
-        private const val KEY_SCHEDULE_FOLDERS = "schedule_folders"
+        internal const val KEY_SCHEDULE_FOLDERS = "schedule_folders"
         /** 首次引入文件夹时的归档标记；只跑一次 */
-        private const val KEY_DEFAULT_FOLDER_MIGRATED = "default_folder_migrated"
-        private const val DEFAULT_FOLDER_NAME = "默认文件夹"
-        private const val DEFAULT_FOLDER_ID = "folder_default"
+        internal const val KEY_DEFAULT_FOLDER_MIGRATED = "default_folder_migrated"
+        internal const val DEFAULT_FOLDER_NAME = "默认文件夹"
+        internal const val DEFAULT_FOLDER_ID = "folder_default"
         private const val KEY_PRE_CLASS_REMINDER = "pre_class_reminder"
         private const val KEY_PRE_CLASS_REMINDER_MINUTES = "pre_class_reminder_minutes"
         private const val KEY_NEXT_DAY_REMINDER = "next_day_reminder"
@@ -310,12 +321,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
         private const val KEY_SHIFT_SELECTED_SCHEDULES = "shift_selected_schedules"
         private const val KEY_DEFAULT_HOMEPAGE = "default_homepage"
         private const val KEY_WIDGET_PADDING_MODE = "widget_padding_mode"
-        private const val SCHEDULE_KEY_PREFIX = "schedule_"
-        private const val KEY_TIME_CONFIG_IDS = "time_config_ids"
+        internal const val SCHEDULE_KEY_PREFIX = "schedule_"
+        internal const val KEY_TIME_CONFIG_IDS = "time_config_ids"
         private const val KEY_CURRENT_TIME_CONFIG_ID = "current_time_config_id"
-        private const val TIME_CONFIG_PREFIX = "time_config_"
+        internal const val TIME_CONFIG_PREFIX = "time_config_"
         // 不匹配 schedule_{name}_ 前缀，删/迁课表时需单独处理
-        private const val SCHEDULE_TIME_CONFIG_PREFIX = "schedule_time_config_"
+        internal const val SCHEDULE_TIME_CONFIG_PREFIX = "schedule_time_config_"
 
         /**
          * 小组件 padding 档位的出厂默认档，仅在用户从未手动选过时生效：
@@ -456,283 +467,16 @@ class CourseRepository private constructor() : PeriodTimeSource {
     }
 
     /**
-     * 把全部历史数据一次性搬进实体表，跑完写全局标记 [CourseRowStore.isFullyMigrated]。
+     * 一次性把旧版本（1.6.7 及更早）的本地数据搬进实体表。启动时与恢复备份后各调一次。
      *
-     * 三端启动时各调一次，这是**唯一**的迁移入口。跑完之后
-     * - [loadCourses] 的 blob 导入、
-     * - [rowSettingsOf] 的 prefs → 行 同步、
-     * - [hydrateTimeConfigs] 的 prefs → 表 同步
-     * 都只会是空操作 —— 那时删掉这些路径才是安全的。
-     *
-     * **升级只发生一次**：所以这里不轻易说「下次再说」。每张课表的 blob 都有确定归宿
-     * （正常导入 / 坏数据留档后按空表导入），第一轮没搬完的立刻再跑一轮；
-     * 两轮都没过才留下标记，交给下次启动。
+     * 搬迁细节全在 [LegacyEntityMigration]，这里只提供它需要的写入能力。
+     * 跑完之后 [loadCourses] 的 blob 导入只会是空操作 —— 那时删掉那条路径才是安全的。
      */
-    fun migrateLegacyEntitiesOnce(): MigrationOutcome {
-        val rows = CourseStorage.rows ?: return MigrationOutcome.NoRowStore
-        if (runCatching { rows.isFullyMigrated() }.getOrDefault(false)) {
-            return MigrationOutcome.AlreadyDone
-        }
+    fun migrateLegacyEntitiesOnce(): MigrationOutcome = newMigration().run()
 
-        val names = getScheduleNames()
-        var failed = migrateEntities(names, rows)
-        if (failed.isNotEmpty()) {
-            // 第一轮失败的原因基本只有两种：坏 JSON（已留档）、锚点缺失（已自愈）。
-            // 所以第二轮几乎必然过，多跑一轮比留一堆「下次再说」划算。
-            NexioLog.w(TAG, "迁移第一轮未完成 ${failed.size} 张，立即重试：$failed")
-            failed = migrateEntities(failed, rows)
-        }
+    private fun newMigration() =
+        LegacyEntityMigration(prefs, CourseStorage.rows, migrationHost)
 
-        return if (failed.isEmpty()) {
-            runCatching { rows.markFullyMigrated() }
-                .onFailure { NexioLog.e(TAG, "写迁移标记失败，下次启动会重跑", it) }
-            // 全部进表之后才删盘上的副本：先删后写等于删用户数据
-            purgeMigratedPrefsKeys(names)
-            NexioLog.w(TAG, "迁移完成：${names.size} 张课表已全部落在实体表")
-            MigrationOutcome.Done(names.size)
-        } else {
-            NexioLog.e(TAG, "迁移仍有 ${failed.size} 张未完成，下次启动重试：$failed")
-            MigrationOutcome.Incomplete(failed)
-        }
-    }
-
-    /**
-     * 搬一批课表，返回**没进表**的那些。以行表的导入标记为准，不信调用返回值。
-     *
-     * 任何一块没搬成功都要如实返回：调用方据此**不写版本标记**，下次启动重跑。
-     * 读路径只认表，静默吞掉失败就是永久丢数据。
-     */
-    private fun migrateEntities(names: List<String>, rows: CourseRowStore): List<String> {
-        // 作息先就位：课程锚点的 time_config_id 是 NOT NULL 外键，目标行必须先存在。
-        // 以前这步藏在 hydrate 的懒同步里，现在显式搬 —— 懒路径全删了。
-        if (!migrateTimeConfigs(rows)) {
-            NexioLog.e(TAG, "迁移：作息搬入 time_config 表失败，本轮作废")
-            return names
-        }
-        // 表刚被写过，内存里的 id 列表要重建
-        synchronizedOn(cacheLock) {
-            timeConfigsHydrated = false
-            timeConfigIdsCache = null
-            timeConfigCache = emptyMap()
-        }
-
-        // 绑定必须在课程导入**之前**定：导入会建 schedule 行，锚点里带的 time_config_id
-        // 一旦回退到共用那套，两张课表就共用一行了（改一套另一套跟着变）。
-        migrateBindings(names, rows)
-
-        val failed = names.filter { name ->
-            // 课程最先：导入成功会顺手删掉 blob，后面的设置同步才有行可写
-            runCatching { getCoursesForSchedule(name) }
-                .onFailure { NexioLog.e(TAG, "迁移：$name 课程读取异常", it) }
-            runCatching { getCurrentWeek(name) }
-            runCatching { getTotalWeeks(name) }
-            runCatching { getClassStartTime(name) }
-            // 读不抛也可能没导入（库异常），所以以标记为准
-            !runCatching { rows.isImported(name) }.getOrDefault(false)
-        }.toMutableSet()
-
-        // 三块「以前只存在 prefs」的课表级数据，同样搬进表
-        // 快照读一次：prefs.all() 每次都是一份全量复制，按课表循环读会白复制 N 遍
-        val snapshot = prefs.all()
-        names.forEach { name ->
-            if (!migrateDisplaySettings(name, rows, snapshot)) failed += name
-            if (!migrateTeachingWeekReorganizations(name, rows)) failed += name
-        }
-        // 文件夹是全局一份：搬不动就等于整轮没完成，让下一轮整体重来
-        if (!migrateFolders(rows)) return names
-
-        return failed.toList()
-    }
-
-    /**
-     * 作息配置：prefs 的 `time_config_ids` + `time_config_{id}` → `time_config` 表。
-     *
-     * 返回是否成功落表。「本来就没有配置」算成功。规则 decode 不了的那条跳过
-     * （它在旧版里也已经读不出来了），但不影响其余配置迁移。
-     */
-    private fun migrateTimeConfigs(rows: CourseRowStore): Boolean {
-        val ids = parseLegacyTimeConfigIds()
-        if (ids.isEmpty()) return true
-        return runCatching {
-            ids.forEach { id ->
-                val raw = prefs.getStringOrNull("$TIME_CONFIG_PREFIX$id") ?: return@forEach
-                val config = parseTimeConfigSnapshotOrNull(raw)
-                    ?.let { TimeConfig.sanitize(id, it) } ?: return@forEach
-                rows.upsertTimeConfig(StoredTimeConfig(id, config.name, encodeTimeConfig(config)))
-            }
-        }.onFailure { NexioLog.e(TAG, "迁移：作息写表失败", it) }.isSuccess
-    }
-
-    /** `time_config_ids` 的两种历史写法：逗号分隔 / JSON 数组。只给迁移用，读路径不碰它。 */
-    private fun parseLegacyTimeConfigIds(): List<Long> {
-        val raw = prefs.getStringOrNull(KEY_TIME_CONFIG_IDS)?.trim() ?: return emptyList()
-        return if (raw.startsWith("[")) {
-            runCatching { decodeLongList(raw) }.getOrDefault(emptyList())
-        } else {
-            raw.split(",").mapNotNull { it.trim().toLongOrNull() }
-        }
-    }
-
-    /**
-     * 两个显示开关：prefs 的 `schedule_{名}_smart_weekend` / `_show_non_current_week` → schedule 列。
-     *
-     * 返回是否成功落表。「两个键都不存在」也算成功（这张课表本来就没设过）。
-     */
-    private fun migrateDisplaySettings(
-        scheduleId: String,
-        rows: CourseRowStore,
-        snapshot: Map<String, Any?>,
-    ): Boolean {
-        val prefix = getScheduleKeyPrefix(scheduleId)
-        val smart = snapshot["${prefix}$KEY_SMART_WEEKEND"] as? Boolean
-        val show = snapshot["${prefix}$KEY_SHOW_NON_CURRENT_WEEK"] as? Boolean
-        if (smart == null && show == null) return true
-        createScheduleRowIfAbsent(rows, scheduleId)
-        return runCatching {
-            smart?.let { rows.writeSmartWeekend(scheduleId, it) }
-            show?.let { rows.writeShowNonCurrentWeek(scheduleId, it) }
-        }.onFailure { NexioLog.e(TAG, "迁移：$scheduleId 显示开关写行失败", it) }.isSuccess
-    }
-
-    /**
-     * 教学周重组规则：prefs 的整份 JSON → `teaching_week_reorganizations` 一行。
-     *
-     * 返回是否成功落表。「没有这个键」算成功（这张课表本来就没规则）。
-     */
-    private fun migrateTeachingWeekReorganizations(scheduleId: String, rows: CourseRowStore): Boolean {
-        val raw = prefs.getStringOrNull("${getScheduleKeyPrefix(scheduleId)}$KEY_TEACHING_WEEK_REORGANIZATIONS")
-            ?: return true
-        createScheduleRowIfAbsent(rows, scheduleId)
-        return runCatching { rows.writeTeachingWeekReorganizations(scheduleId, raw) }
-            .onFailure { NexioLog.e(TAG, "迁移：$scheduleId 教学周重组规则写行失败", it) }
-            .isSuccess
-    }
-
-    /**
-     * 文件夹：prefs 的整份 JSON → `folder` 表，顺序即列表下标。
-     *
-     * 返回是否成功落表。「没有这个键 / 是空数组」算成功。解析失败返回 false，
-     * 不写版本标记 → 下次启动整轮重跑（不保留半套数据）。
-     */
-    private fun migrateFolders(rows: CourseRowStore): Boolean {
-        val json = prefs.getStringOrNull(KEY_SCHEDULE_FOLDERS) ?: return true
-        if (json.isBlank()) return true
-        val folders = runCatching { decodeScheduleFolders(json) }.getOrElse { e ->
-            NexioLog.e(TAG, "迁移：文件夹 JSON 无法解析", e)
-            return false
-        }
-        return runCatching {
-            folders.forEachIndexed { index, folder ->
-                rows.upsertFolder(StoredFolder(folder.id, folder.name, folder.schedules, index))
-            }
-        }.onFailure { NexioLog.e(TAG, "迁移：文件夹写表失败", it) }.isSuccess
-    }
-
-    /**
-     * 把 prefs 里的作息绑定搬进 `schedule.time_config_id`。
-     *
-     * 只搬「prefs 有值 且 id 在作息表里真实存在」的：老数据里可能有指向已删配置的孤儿绑定，
-     * 写进去会被外键拒绝（`ON DELETE RESTRICT` 的目标不存在）。
-     *
-     * **没有有效绑定的课表，迁移时给一套独立配置**：旧版语义是共用全局那套，照搬过来
-     * 就是两张课表共用一行 —— 改一套另一套跟着变。独立之后各自可改。
-     */
-    private fun migrateBindings(names: List<String>, rows: CourseRowStore) {
-        val all = prefs.all()
-        val liveIds = runCatching { rows.timeConfigs().map { it.id }.toSet() }.getOrDefault(emptySet())
-        names.forEach { name ->
-            val id = (all["$SCHEDULE_TIME_CONFIG_PREFIX$name"] as? Number)?.toLong()
-            if (id != null && id > 0L && id in liveIds) {
-                val anchor = rowAnchorFor(name, id) ?: return@forEach
-                runCatching { rows.setBinding(anchor) }
-                    .onFailure { NexioLog.e(TAG, "迁移：$name 绑定搬入行表失败", it) }
-            } else {
-                giveOwnTimeConfig(name, rows)
-            }
-        }
-        // 绑定是直接写行的（没走 [setScheduleTimeConfigId]），缓存必须整体作废：
-        // 课程导入时已经先把「未绑定」读成 0 缓存住了，不作废的话本次进程内的
-        // getScheduleTimeConfigId 会一直回退到旧全局指针 —— 就是「改一套另一套跟着变」。
-        synchronizedOn(cacheLock) { bindingCache = emptyMap() }
-    }
-
-    /** 复制一套只属于这张课表的作息配置并绑定。迁移专用（旧版共用配置的课表各自独立）。 */
-    private fun giveOwnTimeConfig(scheduleId: String, rows: CourseRowStore) {
-        // 已经绑过就别再发一套：迁移是**幂等**的（版本 +1 会重跑、恢复备份也会重跑），
-        // 每跑一次复制一份作息并把绑定改过去，作息表就会越滚越多、用户改的那套悄悄换了人。
-        // 直接读行、不走 bindingCache：迁移期间课程导入会先把「未绑定」缓存成 0，读缓存会判错。
-        val alreadyBound = runCatching { rows.bindingOf(scheduleId) }.getOrNull()
-        if (alreadyBound != null && alreadyBound > 0L) return
-        runCatching {
-            val base = getTimeConfig(resolveLegacyCurrentTimeConfigId())
-            val newId = addTimeConfig(base.copy(id = 0L, name = scheduleId))
-            if (newId == 0L) return@runCatching
-            val anchor = rowAnchorFor(scheduleId, newId) ?: return@runCatching
-            rows.setBinding(anchor)
-        }.onFailure { NexioLog.e(TAG, "迁移：$scheduleId 复制独立作息失败", it) }
-    }
-
-    /**
-     * 1.6.7 及更早的「课表级作息」键后缀：作息搬进 `time_config` 表之后，这些键再也没有读者
-     * （`morning_start` / `long_break_*` / `section_times` 那一整套）。
-     *
-     * 不删的代价是它们会跟着备份一起导出、恢复时原样写回来，永远滚在库里看着像数据。
-     *
-     * ⚠ `active_routine` **不在这个表里**：`syncRoutineAfterDateChange` 还在读写它
-     * （记录上次生效的作息，跨日期切换才广播重排）。`today_show_wallpaper` 是已删功能的开关，
-     * 全仓无引用，可以清。
-     */
-    private val DEAD_SCHEDULE_KEY_SUFFIXES = setOf(
-        "morning_start", "morning_start_min",
-        "afternoon_start", "afternoon_start_min",
-        "evening_start", "evening_start_min",
-        "morning_sections", "afternoon_sections", "evening_sections",
-        "class_duration", "short_break", "section_times",
-        "long_break_enabled",
-        "long_break_morning", "long_break_morning_section",
-        "long_break_afternoon", "long_break_afternoon_section",
-        "long_break_evening", "long_break_evening_section",
-        "quick_time_enabled",
-        "today_show_wallpaper",
-    )
-
-    /**
-     * 迁移确认完成后，把 prefs 里的实体残留键全部删掉。
-     *
-     * 这些键在盘上留着一份会过期的副本：读路径早就表优先，备份也从表物化，它们只剩
-     * 「看着像数据、其实是旧快照」的副作用。删掉之后「表是唯一真相」在物理上也成立。
-     *
-     * ⚠ 只在全部课表都进了表之后调用 —— 表没写完就删等于删用户数据。
-     * 不删 `*_courses_corrupt`：那是坏数据的留档，删了就没法人工捞。
-     * 不删 `current_time_config_id`：它是遗留全局指针，不是镜像。
-     */
-    private fun purgeMigratedPrefsKeys(names: List<String>) {
-        val prefixes = names.map { getScheduleKeyPrefix(it) }
-        val removable = prefs.all().keys.filter { key ->
-            when {
-                key == KEY_TIME_CONFIG_IDS -> true
-                key == KEY_SCHEDULE_FOLDERS -> true
-                key.startsWith(TIME_CONFIG_PREFIX) ->
-                    key.removePrefix(TIME_CONFIG_PREFIX).toLongOrNull() != null
-                key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) -> true
-                // 死键按后缀匹配，不按课表名：已删课表留下的那批同样该清（它们没有任何读者）
-                key.startsWith(SCHEDULE_KEY_PREFIX) &&
-                    DEAD_SCHEDULE_KEY_SUFFIXES.any { suffix -> key.endsWith("_$suffix") } -> true
-                else -> prefixes.any { prefix ->
-                    key == "${prefix}$KEY_COURSES" ||
-                        key == "${prefix}$KEY_CURRENT_WEEK" ||
-                        key == "${prefix}$KEY_TOTAL_WEEKS" ||
-                        key == "${prefix}$KEY_CLASS_START_TIME" ||
-                        key == "${prefix}$KEY_SMART_WEEKEND" ||
-                        key == "${prefix}$KEY_SHOW_NON_CURRENT_WEEK" ||
-                        key == "${prefix}$KEY_TEACHING_WEEK_REORGANIZATIONS"
-                }
-            }
-        }
-        if (removable.isEmpty()) return
-        prefs.edit { removable.forEach { remove(it) } }
-        NexioLog.w(TAG, "迁移后已清理 ${removable.size} 个残留键")
-    }
 
     /**
      * 行表的外键锚点。`schedule.time_config_id` 是 NOT NULL 外键，必须有一份真实存在的作息配置。
@@ -3266,7 +3010,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 .onFailure { NexioLog.e(TAG, "恢复备份后作废课程行表失败，可能读到恢复前的课表", it) }
         }
         invalidateAllCaches()
-        if (!preserveFolderMembership) migrateSchedulesIntoDefaultFolder()
+        if (!preserveFolderMembership) newMigration().migrateIntoDefaultFolder()
         // 恢复出的是另一套数据：立刻重建成实体表并删掉 prefs 副本。
         // 不留「等下次启动再迁」的窗口 —— 那段窗口里读表会读到刚被清空的行。
         if (CourseStorage.rows != null) {
