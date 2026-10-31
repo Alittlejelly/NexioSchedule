@@ -13,13 +13,13 @@ import com.haooz.chedule.data.IosBackupFileController
 import com.haooz.chedule.data.IosCourseLiveActivity
 import com.haooz.chedule.data.IosCourseNotifier
 import com.haooz.chedule.data.IosScheduleFileController
-import com.haooz.chedule.data.IosSqlStorage
+import com.haooz.chedule.data.storage.IosSqlStorage
 import com.haooz.chedule.data.IosWallpaperBackend
 import com.haooz.chedule.data.IosWallpaperPicker
 import com.haooz.chedule.data.IosWidgetSnapshot
-import com.haooz.chedule.data.NsFileAppFile
+import com.haooz.chedule.data.platform.NsFileAppFile
 import com.haooz.chedule.data.WallpaperStore
-import com.haooz.chedule.data.defaultDocumentsDir
+import com.haooz.chedule.data.platform.defaultDocumentsDir
 import com.haooz.chedule.data.platform.AppFiles
 import com.haooz.chedule.data.platform.AppInfo
 import com.haooz.chedule.data.platform.NexioLog
@@ -30,7 +30,7 @@ import com.haooz.chedule.data.platform.StatsReporter
 import com.haooz.chedule.data.platform.showToast
 import com.haooz.chedule.data.storage.AppStorage
 import com.haooz.chedule.data.storage.CourseStorage
-import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.data.platform.toByteArray
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.main.CourseScheduleApp

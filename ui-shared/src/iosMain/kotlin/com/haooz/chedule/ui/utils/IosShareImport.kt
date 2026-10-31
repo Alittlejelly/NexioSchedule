@@ -2,12 +2,12 @@
 
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.createHttpService
-import com.haooz.chedule.data.optBoolean
-import com.haooz.chedule.data.optJsonArray
-import com.haooz.chedule.data.optJsonObject
-import com.haooz.chedule.data.optString
 import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.createHttpService
+import com.haooz.chedule.data.util.optBoolean
+import com.haooz.chedule.data.util.optJsonArray
+import com.haooz.chedule.data.util.optJsonObject
+import com.haooz.chedule.data.util.optString
 import com.haooz.chedule.data.platform.HttpTimeouts
 import com.haooz.chedule.data.platform.ioDispatcher
 import com.haooz.chedule.data.school.ScriptRepository

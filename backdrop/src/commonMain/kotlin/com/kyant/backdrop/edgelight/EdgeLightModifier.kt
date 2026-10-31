@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -87,6 +88,10 @@ internal class EdgeLightNode(
     private val paint =
         Paint().apply {
             style = PaintingStyle.Stroke
+            // 光带是**内侧**描边（画完裁到轮廓里）。融球颈与本体相接的肩部是凹角，
+            // 默认 Miter 会把外侧（也就是材质内侧）拉成一根楔形尖刺，四个肩部各一根，
+            // 看起来就像描边长出了毛刺。圆角接头把它磨成小圆角，光带沿轮廓连续。
+            strokeJoin = StrokeJoin.Round
         }
     private var clipPath: Path? = null
 

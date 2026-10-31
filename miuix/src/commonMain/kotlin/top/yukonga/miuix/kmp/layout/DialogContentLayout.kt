@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
-import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -73,6 +72,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
+import top.yukonga.miuix.kmp.material.rememberMaterialEdgeLight
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.LocalDismissState
@@ -405,7 +405,7 @@ internal fun DialogContent(
         )
         .edgeLight(
             shape = ContinuousRoundedRectangle(bottomCornerRadius),
-            edgeLight = rememberDefaultEdgeLight(baseColor = backgroundColor),
+            edgeLight = rememberMaterialEdgeLight(baseColor = backgroundColor),
         )
         .background(
             // 玻璃开：玻璃层之上压半透明底色保证文字对比度（深色压得更暗）；

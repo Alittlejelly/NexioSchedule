@@ -184,7 +184,7 @@ fun LiquidTopBarButton(
                     layerBlock = { alpha = backdropAlpha },
                     onDrawSurface = buttonOnDrawSurface
                 )
-                .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
+                .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(degradedBaseColor = resolvedContainerColor))
                 .zIndex(0f)
         )
         // 按压高光单独一层、与材质层平级：drawBackdrop 的 layerBlock 会把整个节点 alpha

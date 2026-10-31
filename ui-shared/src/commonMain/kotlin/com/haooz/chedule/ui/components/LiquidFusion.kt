@@ -37,6 +37,14 @@ data class LiquidFusion(
     val overlapLeadDp: Float = 4f,
     /** 融合强度曲线的指数。越小，贴住阈值的头一段桥越粗 */
     val rampPower: Float = 0.22f,
+    /**
+     * 并体焊缝的**场融合半径**（dp）。双胶囊用平滑最小值（smooth-min）把两团的距离场焊在一起，
+     * 这个值就是焊缝的宽度量级：
+     * - 太小 → 焊缝只剩一个尖角，两团之间还是一道折痕；
+     * - 太大 → 腰被填鼓，两颗按钮读起来变成一整块。
+     * 只有 [FusionPairShape] 用它；底栏仍走 [neckStrength] 那条贝塞尔颈。
+     */
+    val weldRadiusDp: Float = 2.5f,
 ) {
     companion object {
         /** 首页底栏在用的那一套。全局改手感就改这里 */

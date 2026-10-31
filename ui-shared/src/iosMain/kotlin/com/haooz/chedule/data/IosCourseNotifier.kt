@@ -2,6 +2,17 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.synchronizedOn
+import com.haooz.chedule.data.platform.ReminderController
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.repo.DayScheduleResolver
+import com.haooz.chedule.data.util.CourseTimeSpan
+import com.haooz.chedule.data.model.CourseTimeResolver
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.storage.AppStorage
 import com.haooz.chedule.i18n.L
 import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ExperimentalForeignApi

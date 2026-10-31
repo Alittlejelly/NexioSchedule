@@ -2,6 +2,8 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.AppFile
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import kotlinx.cinterop.useContents

@@ -10,7 +10,7 @@ import com.haooz.chedule.data.IosCourseNotifier
 import com.haooz.chedule.data.IosWidgetSnapshot
 import com.haooz.chedule.data.backup.BackupFileController
 import com.haooz.chedule.data.backup.ScheduleFileController
-import com.haooz.chedule.data.createHttpService
+import com.haooz.chedule.data.platform.createHttpService
 import com.haooz.chedule.data.holiday.HolidayManager
 import com.haooz.chedule.data.platform.AppInfo
 import com.haooz.chedule.data.platform.HttpTimeouts

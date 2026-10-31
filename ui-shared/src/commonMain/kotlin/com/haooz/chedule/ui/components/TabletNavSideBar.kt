@@ -232,7 +232,7 @@ fun TabletNavSideBar(
     val containerColor =
         if (isLightTheme) Color(0xFFFFFFFF).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f))
         else Color(0xFF242424).copy(com.haooz.chedule.ui.utils.AppMaterialSettings.solidSurfaceAlpha(0.8f))
-    val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+    val defaultEdgeLight = rememberDefaultEdgeLight(degradedBaseColor = containerColor)
     // 按压高光：跟手光晕，按哪亮哪。
     val animationScope = rememberCoroutineScope()
     val interactiveHighlight = remember(animationScope) {

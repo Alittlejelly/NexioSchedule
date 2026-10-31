@@ -64,8 +64,9 @@ fun CrossWeekDropHint(
     val hintShape: Shape = ContinuousCapsule()
     val chromeLens = AppMaterialSettings.chromeLensEnabled()
     val glassBlur = AppMaterialSettings.glassBlurDp()
-    val edgeLight = rememberDefaultEdgeLight(baseColor = MiuixTheme.colorScheme.primary)
-    val onDrawSurface: DrawScope.() -> Unit = remember {
+    val edgeLight = rememberDefaultEdgeLight(degradedBaseColor = MiuixTheme.colorScheme.primary)
+    // 底色随材质档（无材质档 alpha → 1），必须进 key，否则切档后仍画旧半透明面
+    val onDrawSurface: DrawScope.() -> Unit = remember(containerColor) {
         { drawRect(containerColor) }
     }
 

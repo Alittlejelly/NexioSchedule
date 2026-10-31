@@ -75,6 +75,7 @@ import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.LocalOverScrollState
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /**
  * 平板切换课表：左右分栏。
@@ -427,6 +428,7 @@ private fun SemesterSchedulePreview(
             .fillMaxSize()
             .background(MiuixTheme.colorScheme.surface)
             .overScrollVertical()
+            .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove)
             .verticalScroll(scrollState)
             .padding(start = 20.dp, end = 20.dp, top = contentTopPadding, bottom = 60.dp),
     ) {

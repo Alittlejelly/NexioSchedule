@@ -1,7 +1,12 @@
 package top.yukonga.miuix.kmp.material
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.Color
+import com.kyant.backdrop.edgelight.EdgeLight
+import com.kyant.backdrop.edgelight.isSystemLightTheme
 
 /**
  * 材质档位能力的注入点。
@@ -42,3 +47,35 @@ data class GlassSurfaceAlphaDrop(
 )
 
 val LocalGlassSurfaceAlphaDrop = compositionLocalOf { GlassSurfaceAlphaDrop() }
+
+/**
+ * 描边光降级解析器：材质档策略在 App 侧，:miuix 不能反向依赖，只能注入。
+ *
+ * 入参是 backdrop 生成的高光描边、当前是否浅色、以及调用点传入的底色（降级时按它提亮）。
+ * 默认原样返回，与不注入时行为一致。App 侧必须让实例身份随材质档变化
+ * （`remember(level) { ... }`），否则调用点按它做 key 时切档不会重算。
+ */
+val LocalEdgeLightResolver =
+    compositionLocalOf<(EdgeLight, Boolean, Color?) -> EdgeLight> { { base, _, _ -> base } }
+
+/**
+ * 模块内统一取描边光。
+ *
+ * backdrop 的 `rememberDefaultEdgeLight` 只按亮暗 / 底色缓存，不知道 App 材质档，
+ * 切到性能优先 / 无材质档后仍会返回旧的高光描边。这里把注入的解析器放进 `key`：
+ * 解析器身份随档位变，切档时整组重算，降级当场生效。
+ */
+@Composable
+fun rememberMaterialEdgeLight(
+    baseColor: Color? = null,
+    isLightTheme: Boolean = isSystemLightTheme(),
+): EdgeLight {
+    val resolver = LocalEdgeLightResolver.current
+    return key(resolver) {
+        com.kyant.backdrop.edgelight.rememberDefaultEdgeLight(
+            baseColor = baseColor,
+            isLightTheme = isLightTheme,
+            resolveMaterial = resolver,
+        )
+    }
+}

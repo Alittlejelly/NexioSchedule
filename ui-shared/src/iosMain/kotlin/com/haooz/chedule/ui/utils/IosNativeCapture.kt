@@ -4,7 +4,7 @@ package com.haooz.chedule.ui.utils
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.data.platform.toByteArray
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image

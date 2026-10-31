@@ -68,7 +68,6 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
-import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
@@ -77,6 +76,7 @@ import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.layout.rememberCollapsibleTopAppBarState
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
+import top.yukonga.miuix.kmp.material.rememberMaterialEdgeLight
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.LocalForcedDarkTheme
 import top.yukonga.miuix.kmp.theme.LocalMonetColorEnabled
@@ -305,7 +305,7 @@ private fun BlurBottomSheetTabletContent(
                 .then(if (isBottomAligned) Modifier.padding(bottom = 20.dp) else Modifier)
                 .clip(sheetShape)
                 // 弹窗本体不做壁纸玻璃模糊，纯实色
-                .edgeLight(shape = sheetShape, edgeLight = rememberDefaultEdgeLight(baseColor = sheetBgColor))
+                .edgeLight(shape = sheetShape, edgeLight = rememberMaterialEdgeLight(baseColor = sheetBgColor))
                 .background(sheetBgColor)
                 // A centered sheet already clears the window edges by this distance.
                 .consumeWindowInsets(PaddingValues(horizontal = horizontalGap))

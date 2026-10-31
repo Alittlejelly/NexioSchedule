@@ -620,7 +620,8 @@ internal fun PendingAddCard(
             key(cardCornerRadius) {
                 val backdropShape = remember(cardCornerRadius) { ContinuousRoundedRectangle(cardCornerRadius.dp) }
                 val density = LocalDensity.current
-                val outlineColor = remember(isDark) { scheduleOutlineColor(pendingColor, isDark) }
+                // pendingColor 还跟着动态取色 / 主题主色变，只 key isDark 会留下旧描边色
+                val outlineColor = remember(pendingColor, isDark) { scheduleOutlineColor(pendingColor, isDark) }
                 val outlineWidthPx = remember(density) { with(density) { SCHEDULE_OUTLINE_WIDTH.toPx() } }
                 val outlineCache = remember { OutlineCache() }
                 val blurPx = with(density) { remember(cardBlurRadius) { cardBlurRadius.dp.toPx() } }

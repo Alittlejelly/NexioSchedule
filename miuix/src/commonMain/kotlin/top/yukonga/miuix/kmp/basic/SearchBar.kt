@@ -68,7 +68,6 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.edgelight.isSystemLightTheme
-import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -83,6 +82,7 @@ import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
 import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
+import top.yukonga.miuix.kmp.material.rememberMaterialEdgeLight
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
@@ -196,7 +196,7 @@ fun SearchBar(
                                         layerBlock = { alpha = backdropAlpha },
                                         onDrawSurface = {}
                                     )
-                                    .edgeLight(shape = CircleShape, edgeLight = rememberDefaultEdgeLight(baseColor = MiuixTheme.colorScheme.surfaceContainerHigh))
+                                    .edgeLight(shape = CircleShape, edgeLight = rememberMaterialEdgeLight(baseColor = MiuixTheme.colorScheme.surfaceContainerHigh))
                             )
                         }
                         Box(
@@ -447,7 +447,7 @@ fun InputField(
                                 },
                                 onDrawSurface = {}
                             )
-                            .edgeLight(shape = capsuleShape, edgeLight = rememberDefaultEdgeLight(baseColor = containerColor))
+                            .edgeLight(shape = capsuleShape, edgeLight = rememberMaterialEdgeLight(baseColor = containerColor))
                     )
                 }
                 Row(

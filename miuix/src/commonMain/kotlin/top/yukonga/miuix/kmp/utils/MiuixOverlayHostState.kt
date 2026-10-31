@@ -13,8 +13,10 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.kyant.backdrop.edgelight.EdgeLight
 import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalEdgeLightResolver
 import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
@@ -115,6 +117,8 @@ internal data class MiuixOverlayTheme(
     val glassDialogBlurDp: Float,
     /** 玻璃底色 alpha 降幅快照（通透玻璃档 >0，其余 0），同上。 */
     val glassSurfaceAlphaDrop: GlassSurfaceAlphaDrop,
+    /** 描边降级解析器快照，同上：弹窗描边在 root host 算，读不到声明页面的 CompositionLocal。 */
+    val edgeLightResolver: (EdgeLight, Boolean, Color?) -> EdgeLight,
     /**
      * 换字动效宿主快照，同上：弹窗在 root host 渲染，读不到声明页面的 CompositionLocal。
      * 漏传的表现是「页面里的文字换字有模糊，弹窗标题 / 摘要却硬切」。
@@ -142,6 +146,7 @@ internal data class MiuixOverlayTheme(
             LocalGlassPanelBlurDp provides glassPanelBlurDp,
             LocalGlassDialogBlurDp provides glassDialogBlurDp,
             LocalGlassSurfaceAlphaDrop provides glassSurfaceAlphaDrop,
+            LocalEdgeLightResolver provides edgeLightResolver,
             LocalMiuixTextMotion provides textMotion,
             LocalPredictiveBackEnabled provides predictiveBackEnabled,
             content = content,
@@ -168,6 +173,7 @@ internal fun currentMiuixOverlayTheme(): MiuixOverlayTheme = MiuixOverlayTheme(
     glassPanelBlurDp = LocalGlassPanelBlurDp.current,
     glassDialogBlurDp = LocalGlassDialogBlurDp.current,
     glassSurfaceAlphaDrop = LocalGlassSurfaceAlphaDrop.current,
+    edgeLightResolver = LocalEdgeLightResolver.current,
     textMotion = LocalMiuixTextMotion.current,
     predictiveBackEnabled = LocalPredictiveBackEnabled.current,
 )

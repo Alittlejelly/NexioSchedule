@@ -2,10 +2,10 @@
 
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.optBoolean
-import com.haooz.chedule.data.optJsonArray
-import com.haooz.chedule.data.optJsonObject
-import com.haooz.chedule.data.optString
+import com.haooz.chedule.data.util.optBoolean
+import com.haooz.chedule.data.util.optJsonArray
+import com.haooz.chedule.data.util.optJsonObject
+import com.haooz.chedule.data.util.optString
 import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.data.util.parseJsonArray
 import com.haooz.chedule.data.util.parseJsonObject

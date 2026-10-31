@@ -2,6 +2,13 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.repo.DayScheduleResolver
+import com.haooz.chedule.data.util.CourseTimeSpan
+import com.haooz.chedule.data.model.CourseTimeResolver
+import com.haooz.chedule.data.repo.CourseRepository
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod

@@ -568,7 +568,7 @@ private fun WidgetChromeCapsule(
             .background(containerColor)
             .edgeLight(
                 shape = ContinuousCapsule(),
-                edgeLight = rememberDefaultEdgeLight(baseColor = edgeLightColor),
+                edgeLight = rememberDefaultEdgeLight(degradedBaseColor = edgeLightColor),
             )
             .clickable(
                 interactionSource = null,

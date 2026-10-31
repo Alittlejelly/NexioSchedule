@@ -244,7 +244,7 @@ fun ShortcutMenu(
                         drawRect(containerColor)
                     }
                 )
-                .edgeLight(shape = ContinuousRoundedRectangle(18.dp), edgeLight = rememberDefaultEdgeLight(baseColor = containerColor))
+                .edgeLight(shape = ContinuousRoundedRectangle(18.dp), edgeLight = rememberDefaultEdgeLight(degradedBaseColor = containerColor))
                 .clip(ContinuousRoundedRectangle(18.dp))
                 .then(interactiveHighlight.modifier)
         ) {

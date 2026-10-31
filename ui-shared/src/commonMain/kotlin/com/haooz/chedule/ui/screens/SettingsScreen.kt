@@ -230,7 +230,7 @@ fun SettingsScreen(
                     top = paddingValues.calculateTopPadding() +
                         CollapsibleTopAppBarDefaults.CollapsedHeight,
                     end = tabletHorizontalPadding,
-                    bottom = nativeChromeInset?.plus(24.dp) ?: 120.dp
+                    bottom = nativeChromeInset?.plus(24.dp) ?: 60.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

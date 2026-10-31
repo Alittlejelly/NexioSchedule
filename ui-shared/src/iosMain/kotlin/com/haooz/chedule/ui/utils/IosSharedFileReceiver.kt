@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.data.platform.showToast
-import com.haooz.chedule.data.toByteArray
+import com.haooz.chedule.data.platform.toByteArray
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.components.SharedFileIntent
 import platform.Foundation.NSData

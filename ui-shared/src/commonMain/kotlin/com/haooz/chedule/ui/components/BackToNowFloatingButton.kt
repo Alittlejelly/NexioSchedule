@@ -204,7 +204,12 @@ fun BackToNowFloatingButton(
                     },
                     onDrawSurface = buttonOnDrawSurface
                 )
-                .edgeLight(shape = buttonShape, edgeLight = rememberDefaultEdgeLight(baseColor = resolvedContainerColor))
+                // 描边：正常档走通用高光色（主题色描边会和填充同色，整圈糊在边缘）；
+                // 降级档没有模糊高光，纯色描边按按钮底色提亮，否则白描边在彩色按钮上很突兀
+                .edgeLight(
+                    shape = buttonShape,
+                    edgeLight = rememberDefaultEdgeLight(degradedBaseColor = resolvedContainerColor),
+                )
                 .then(interactiveHighlight.modifier)
                 .then(interactiveHighlight.gestureModifier)
                 .then(

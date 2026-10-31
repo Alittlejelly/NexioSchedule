@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -28,9 +29,11 @@ import com.haooz.chedule.ui.utils.AppMaterialSettings
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.installAppSettingDarkBridge
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
+import com.kyant.backdrop.edgelight.EdgeLight
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.material.GlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalEdgeLightResolver
 import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassDialogBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
@@ -172,6 +175,14 @@ fun CourseScheduleTheme(
             // 1. `LocalIndication = ripple()`（顶掉 miuix 的 MiuixIndication）；2. `ProvideTextStyle(bodyLarge)`（只写 fontSize 不写 lineHeight 的 Text）
             val miuixIndication: Indication = LocalIndication.current
             val outerTextStyle: TextStyle = LocalTextStyle.current
+            // :miuix 内部弹窗 / 搜索栏的描边降级解析器。实例身份必须随材质档变化：
+            // miuix 那边拿它当 remember key，身份不变就会一直复用切档前的旧描边。
+            val edgeLightResolver: (EdgeLight, Boolean, Color?) -> EdgeLight =
+                remember(AppMaterialSettings.level) {
+                    { source, isLightTheme, baseColor ->
+                        AppMaterialSettings.resolveEdgeLight(source, isLightTheme, baseColor)
+                    }
+                }
             CompositionLocalProvider(
                 LocalScreenCornerRadius provides screenCornerRadius,
                 LocalScreenTopCornerRadii provides screenTopCorners,
@@ -195,6 +206,7 @@ fun CourseScheduleTheme(
                     light = AppMaterialSettings.glassSurfaceAlphaDrop(isLight = true),
                     dark = AppMaterialSettings.glassSurfaceAlphaDrop(isLight = false),
                 ),
+                LocalEdgeLightResolver provides edgeLightResolver,
                 LocalPredictiveBackEnabled provides PredictiveBackSettings.enabled,
                 // :miuix 内部绘制的展示文字（偏好项标题/副标题、下拉菜单当前值、
                 // 弹窗标题/摘要）交给我们的换字动效：模块不能反向依赖 :ui-shared，

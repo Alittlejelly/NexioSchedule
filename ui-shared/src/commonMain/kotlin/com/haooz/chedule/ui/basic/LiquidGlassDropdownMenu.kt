@@ -375,7 +375,7 @@ fun LiquidGlassDropdownMenu(
                     )
                     .edgeLight(
                         shape = ContinuousRoundedRectangle(PanelCornerRadius),
-                        edgeLight = rememberDefaultEdgeLight(baseColor = containerColor),
+                        edgeLight = rememberDefaultEdgeLight(degradedBaseColor = containerColor),
                     )
             )
 

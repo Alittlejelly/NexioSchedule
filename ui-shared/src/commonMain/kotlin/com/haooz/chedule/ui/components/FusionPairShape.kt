@@ -10,16 +10,25 @@ import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import com.kyant.capsule.Continuity
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
  * 两颗胶囊并排、中间按 [LiquidFusion] 缝合的轮廓，**每一半各自可形变**。
  *
  * 和底栏（[BarShape]）同一套手感：左胶囊当「本体」（轴线膨胀端头半径），右胶囊的左端头当「另一团」，
- * 间隙就是表面 gap —— 走进 [LiquidFusion] 的阈值就鼓山丘、拉颈，两颗按钮读起来是一块玻璃。
+ * 间隙就是表面 gap —— 走进 [LiquidFusion] 的阈值就鼓山丘，再靠近就把两团的距离场用
+ * 平滑最小值（smooth-min）焊成一片，两颗按钮读起来是一块玻璃。
  *
  * 参数全是 draw 期才读的 lambda：按压缩放、跟手位移都不进组合期，和 [BarShape] 同理。
  * 形变只改几何，不做 graphicsLayer 变换 —— 因为整块材质是一条 Path，缩放某一半只能改 Path。
@@ -67,6 +76,8 @@ internal class FusionPairFrame(
     val rightSx: Float,
     val rightSy: Float,
     val neck: BarNeckGeometry?,
+    /** 焊缝的场融合半径，px；与折射 shader 的 `weldK` 是同一个数 */
+    val weldK: Float,
 )
 
 internal fun FusionPairParams.frame(size: Size, density: Density): FusionPairFrame? {
@@ -117,10 +128,9 @@ internal fun FusionPairParams.frame(size: Size, density: Density): FusionPairFra
         fusion = fusion,
         density = density,
         // 形变后的端头是椭圆（rx ≠ ry）：按正圆算会把轴端点摆错，颈的锚点落进本体内部，
-        // 接缝处就是一道折痕。两轴半径照实给，切线也改用椭圆的真实切线。
+        // 接缝处就是一道折痕。两轴半径照实给。
         pillRadiusX = lrx,
         pillRadiusY = lry,
-        ellipseTangents = true,
     )
 
     return FusionPairFrame(
@@ -131,6 +141,7 @@ internal fun FusionPairParams.frame(size: Size, density: Density): FusionPairFra
         baseW = cw0, baseH = h0,
         leftSx = ls.x, leftSy = ls.y, rightSx = rs.x, rightSy = rs.y,
         neck = neck,
+        weldK = with(density) { fusion.weldRadiusDp.dp.toPx() },
     )
 }
 
@@ -180,25 +191,24 @@ internal class FusionPairShape(private val p: FusionPairParams) : Shape {
             if (a == null || b == null) null else Path().apply { op(a, b, PathOperation.Union) }
         }
 
-        if (!geom.hasNeck) return unionWith(merged, bulge) ?: Outline.Generic(merged)
+        // 本体 ∪ 山丘：山丘在接触之前就有了，是「鼓起来」的那一段
+        val body = unionWith(merged, bulge) ?: merged
 
-        // 颈的八个点取自共享几何，两端沿本体切线切出去，与胶囊的夹角恒为 0
-        val neck = Path().apply {
-            moveTo(geom.pu.x, geom.pu.y)
-            cubicTo(geom.c1u.x, geom.c1u.y, geom.c2u.x, geom.c2u.y, geom.cu.x, geom.cu.y)
-            lineTo(geom.cl.x, geom.cl.y)
-            cubicTo(geom.c2l.x, geom.c2l.y, geom.c1l.x, geom.c1l.y, geom.pl.x, geom.pl.y)
-            close()
-        }
-        val withNeck = Path()
-        if (!withNeck.op(merged, neck, PathOperation.Union)) return Outline.Generic(merged)
-        return unionWith(withNeck, bulge) ?: Outline.Generic(withNeck)
+        // 并体：两团的距离场用 smooth-min 焊在一起，轮廓取同一个场的零等值面。
+        // 场与折射 shader 的 sceneSdf 是同一份公式 —— 形状和折射天然就是同一条边，
+        // 也不再有「平底 + 两端曲率突变」那种折痕。
+        val weld = weldPatchPath(f, geom)
+        if (weld == null) return Outline.Generic(body)
+
+        val out = Path()
+        if (!out.op(body, weld, PathOperation.Union)) return Outline.Generic(body)
+        return Outline.Generic(out)
     }
 
-    private fun unionWith(base: Path, extra: Path?): Outline.Generic? {
+    private fun unionWith(base: Path, extra: Path?): Path? {
         if (extra == null) return null
         val out = Path()
-        return if (out.op(base, extra, PathOperation.Union)) Outline.Generic(out) else null
+        return if (out.op(base, extra, PathOperation.Union)) out else null
     }
 
     /**
@@ -233,30 +243,249 @@ internal class FusionPairShape(private val p: FusionPairParams) : Shape {
         )
     }
 
+    /**
+     * 焊缝补丁：两团的距离场取**平滑最小值**（smooth-min），再取这个场的零等值面。
+     *
+     * 只在中缝两侧各 [WELD_SPAN_RATIO]×weldK 的 x 范围内采样：越往两端，smin 与 min 的差按指数
+     * 衰减，那里早已回到本体表面；再叠一段平滑内收（[WELD_END_INSET_RATIO]×weldK），保证竖直闭合边
+     * 整个埋在本体里，并集之后完全看不见。
+     *
+     * 为什么不是本体路径：本体是 Continuity（连续曲率）胶囊，shader 用的 SDF 胶囊只是它的近似，
+     * 直接拿 SDF 的等值面当外轮廓会与本体差出亚像素级的台阶 —— 描边一放大就是一条缝。
+     */
+    private fun weldPatchPath(f: FusionPairFrame, geom: BarNeckGeometry): Path? {
+        val weldK = f.weldK
+        if (weldK <= 0.05f) return null
+        val sigma = p.fusion.bulgeSigma
+        val gaussEdge = geom.gaussEdge
+        val leftCapX = f.leftCx + f.leftHalfW - f.leftRx
+        val rightCapX = f.rightCx - f.rightHalfW + f.rightRx
+        val midX = (leftCapX + rightCapX) * 0.5f
+        val midY = (f.leftCy + f.rightCy) * 0.5f
+
+        val sd: (Float, Float) -> Float = { x, y ->
+            val dl = capsuleSdf(
+                px = x, py = y,
+                centerX = f.leftCx, centerY = f.leftCy,
+                halfW = f.leftHalfW,
+                rx = f.leftRx, ry = f.leftRy,
+                angleC = geom.bulgeAngle, phi = geom.phiPill,
+                bulgeH = geom.bulgeH, sigma = sigma, gaussEdge = gaussEdge,
+            )
+            val dr = capsuleSdf(
+                px = x, py = y,
+                centerX = f.rightCx, centerY = f.rightCy,
+                halfW = f.rightHalfW,
+                rx = f.rightRx, ry = f.rightRy,
+                angleC = geom.bulgeAngle + PI_F, phi = geom.phiCircle,
+                bulgeH = geom.bulgeH, sigma = sigma, gaussEdge = gaussEdge,
+            )
+            smoothMin(dl, dr, weldK)
+        }
+
+        // 中缝还连不起来：两团各鼓各的山丘，没有焊缝可补
+        if (sd(midX, midY) >= 0f) return null
+
+        val halfSpan = WELD_SPAN_RATIO * weldK
+        val segments = ceil(halfSpan / max(weldK / 3f, 1f)).toInt().coerceIn(4, 40)
+        val dx = (halfSpan * 2f) / segments
+        val limit = max(f.leftHalfH, f.rightHalfH) + weldK * 2f
+        val marchStep = max(limit / 24f, 1f)
+        val insetPx = WELD_END_INSET_RATIO * weldK
+
+        val top = FloatArray(segments + 1)
+        val bottom = FloatArray(segments + 1)
+        // 相邻采样点热启动：边界随 x 连续移动，从上一个结果出发只需走一两步
+        var yTop = midY
+        var yBottom = midY
+        for (i in 0..segments) {
+            val x = midX - halfSpan + dx * i
+            val t = traceBoundary(sd, x, yTop, up = true, limit = limit, step = marchStep)
+                ?: return null
+            val b = traceBoundary(sd, x, yBottom, up = false, limit = limit, step = marchStep)
+                ?: return null
+            top[i] = t
+            bottom[i] = b
+            yTop = t
+            yBottom = b
+        }
+
+        // 两端平滑内收进本体（smoothstep：两端一阶导为 0，不会在收口处留折角）
+        for (i in 0..segments) {
+            val u = abs(i - segments * 0.5f) / (segments * 0.5f)
+            val w = ((u - WELD_TAPER_START) / (1f - WELD_TAPER_START)).coerceIn(0f, 1f)
+            val inset = insetPx * w * w * (3f - 2f * w)
+            top[i] += inset
+            bottom[i] -= inset
+        }
+
+        val upper = ArrayList<Offset>(segments + 1)
+        val lower = ArrayList<Offset>(segments + 1)
+        for (i in 0..segments) {
+            val x = midX - halfSpan + dx * i
+            upper.add(Offset(x, top[i]))
+            lower.add(Offset(x, bottom[i]))
+        }
+
+        return Path().apply {
+            appendCatmullRom(upper, move = true)
+            // 上边界末端 → 下边界末端是一段竖直闭合边，整段落在本体内部
+            lineTo(lower.last().x, lower.last().y)
+            appendCatmullRom(lower.asReversed(), move = false)
+            close()
+        }
+    }
+
     private companion object {
         const val PI_F = 3.1415927f
+
+        /** 焊缝采样范围（× weldK）：两端处 smin 与 min 的差已衰减到亚像素 */
+        const val WELD_SPAN_RATIO = 3.4f
+
+        /** 焊缝两端平滑内收的起点（0 = 中心，1 = 端点）与幅度（× weldK） */
+        const val WELD_TAPER_START = 0.55f
+        const val WELD_END_INSET_RATIO = 0.4f
     }
 }
 
-/** 山丘某个角度上的高度系数（0..1）；与 [BarShape] 内的 bumpAt 同一条归一化高斯。 */
-private fun fusionBumpAt(
-    angle: Float,
-    center: Float,
+/**
+ * 沿一串点铺 Catmull-Rom 曲线（转成三次贝塞尔）。直接用 `lineTo` 会在焊缝的鞍部留下
+ * 肉眼可见的折线棱角 —— 采样步长只有几 px，而那里的曲率半径也只有焊缝量级。
+ */
+private fun Path.appendCatmullRom(points: List<Offset>, move: Boolean) {
+    if (points.isEmpty()) return
+    if (move) moveTo(points[0].x, points[0].y)
+    for (i in 0 until points.size - 1) {
+        val p0 = points[(i - 1).coerceAtLeast(0)]
+        val p1 = points[i]
+        val p2 = points[i + 1]
+        val p3 = points[(i + 2).coerceAtMost(points.size - 1)]
+        cubicTo(
+            p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f,
+            p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f,
+            p2.x, p2.y,
+        )
+    }
+}
+
+/**
+ * 从 [ySeed] 出发找场 [sd] 的零等值面：`up = true` 找上边界（向外是 -y）。
+ *
+ * 种子大概率已经贴着上一条采样点的边界，所以先判断种子在内 / 在外，再朝相应方向走，
+ * 找到符号变化后二分。这样每个 x 只需 2~3 次场求值 + 7 次二分。
+ */
+private fun traceBoundary(
+    sd: (Float, Float) -> Float,
+    x: Float,
+    ySeed: Float,
+    up: Boolean,
+    limit: Float,
+    step: Float,
+): Float? {
+    val outward = if (up) -1f else 1f
+    var yIn = ySeed
+    if (sd(x, yIn) >= 0f) {
+        // 种子已经出界（边界比上一条采样高 / 低）：先向里挪回内部
+        var moved = 0f
+        while (moved < limit) {
+            yIn -= outward * step
+            moved += step
+            if (sd(x, yIn) < 0f) break
+        }
+        if (moved >= limit) return null
+    }
+    var yOut = yIn
+    var moved = 0f
+    while (moved < limit) {
+        yOut += outward * step
+        moved += step
+        if (sd(x, yOut) >= 0f) break
+    }
+    if (moved >= limit) return null
+    repeat(7) {
+        val mid = (yIn + yOut) * 0.5f
+        if (sd(x, mid) < 0f) yIn = mid else yOut = mid
+    }
+    return (yIn + yOut) * 0.5f
+}
+
+/** 椭圆的真实有符号距离；4 次 Newton 迭代，与 shader 的 `sdEllipse` 逐字一致。 */
+private fun ellipseSdf(px: Float, py: Float, rx: Float, ry: Float): Float {
+    // 正圆是绝大多数状态（等比缩放）：直接闭式解，省掉 4 次三角函数 + Newton
+    if (abs(rx - ry) <= 1e-3f) return hypot(px, py) - rx
+    val ax = max(rx, 1e-4f)
+    val ay = max(ry, 1e-4f)
+    var t = atan2(py / ay, px / ax)
+    repeat(4) {
+        val ct = cos(t)
+        val st = sin(t)
+        val qx = ax * ct
+        val qy = ay * st
+        val dqx = -ax * st
+        val dqy = ay * ct
+        val f = (qx - px) * dqx + (qy - py) * dqy
+        val df = dqx * dqx + dqy * dqy - (qx - px) * ax * ct - (qy - py) * ay * st
+        t -= f / (if (abs(df) > 1e-4f) df else 1e-4f)
+    }
+    val qx = ax * cos(t)
+    val qy = ay * sin(t)
+    val dist = hypot(px - qx, py - qy)
+    val nx = px / ax
+    val ny = py / ay
+    return if (nx * nx + ny * ny < 1f) -dist else dist
+}
+
+/**
+ * 胶囊距离场：轴线在 x 上、端头是椭圆，山丘（bulge）直接减进距离里。
+ * 与 shader 的 `sdCapsule` 逐字一致 —— 任何一处不同，轮廓和折射就会错开。
+ */
+private fun capsuleSdf(
+    px: Float,
+    py: Float,
+    centerX: Float,
+    centerY: Float,
+    halfW: Float,
+    rx: Float,
+    ry: Float,
+    angleC: Float,
     phi: Float,
+    bulgeH: Float,
     sigma: Float,
     gaussEdge: Float,
 ): Float {
-    // atan 在 ±π 跳变；角度差先折到 (-π, π] 再比，否则张角会被劈成两半
-    var da = angle - center
-    da -= 6.2831853f * kotlin.math.floor(da / 6.2831853f + 0.5f)
-    val t = (da + phi) / (2f * phi)
-    if (t <= 0f || t >= 1f) return 0f
-    val dx = t - 0.5f
-    val rawG = exp(-(dx * dx) / (2f * sigma * sigma))
-    return ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
+    val qx = px - centerX
+    val qy = py - centerY
+    val axisHalf = max(halfW - rx, 0f)
+    val dx = qx - qx.coerceIn(-axisHalf, axisHalf)
+    val dy = qy
+    var d = ellipseSdf(dx, dy, rx, ry)
+    if (bulgeH > 0.01f && hypot(dx, dy) > 1e-4f) {
+        d -= bulgeH * fusionBumpAt(atan2(dy, dx), angleC, phi, sigma, gaussEdge)
+    }
+    return d
 }
 
-/** 山丘扇形的采样轮廓；[bulgeH] 太小直接返回 null（省一次 union）。 */
+/**
+ * 指数平滑最小值：`-k·ln(e^{-a/k} + e^{-b/k})`。
+ *
+ * 比 `min(a, b)` 小（更早进入内部），于是两团靠近时轮廓会先「焊」出一小段腰，而且是**连续**地
+ * 从两团并到一起 —— 不像贝塞尔颈那样有一个「开始拉丝」的换挡点，也不会在谷底留下平底。
+ * 先减去 `min` 再取指数，参数里至少有一项是 1，数值上不会下溢。
+ */
+private fun smoothMin(a: Float, b: Float, k: Float): Float {
+    if (k <= 1e-4f) return min(a, b)
+    val m = min(a, b)
+    return m - k * ln(exp(-(a - m) / k) + exp(-(b - m) / k))
+}
+
+/**
+ * 山丘扇形的采样轮廓；[bulgeH] 太小直接返回 null（省一次 union）。
+ *
+ * 两端各留一段 [HILL_END_TAPER] 的收口，把半径往**本体内侧**压 [HILL_END_INSET_RATIO]×半径：
+ * 本体的胶囊是 Continuity 曲线，这里的基准半径是椭圆 SDF，两者在端头附近差 1~2px。
+ * 端点若正好压在椭圆上，并集之后就会在本体外侧剩一个 1~2px 的小尖刺 —— 被内侧描边一放大
+ * 就是山丘根部的一道接缝。压进本体之后这一小段整段不可见，山丘是「从本体里长出来」的。
+ */
 private fun fusionHillPath(
     centerX: Float,
     centerY: Float,
@@ -271,11 +500,15 @@ private fun fusionHillPath(
     if (bulgeH < 0.3f) return null
     return Path().apply {
         val steps = 56
+        val endInset = HILL_END_INSET_RATIO * min(rx, ry)
         for (i in 0..steps) {
             val t = i.toFloat() / steps
             val a = (angleCenter - phi) + 2f * phi * t
+            val edge = (min(t, 1f - t) / HILL_END_TAPER).coerceAtMost(1f)
+            val dip = 1f - edge * edge * (3f - 2f * edge)
             val radius = ellipseRadiusAt(rx, ry, a) +
-                bulgeH * fusionBumpAt(a, angleCenter, phi, sigma, gaussEdge)
+                bulgeH * fusionBumpAt(a, angleCenter, phi, sigma, gaussEdge) -
+                endInset * dip
             val x = centerX + radius * cos(a)
             val y = centerY + radius * sin(a)
             if (i == 0) moveTo(x, y) else lineTo(x, y)
@@ -284,12 +517,19 @@ private fun fusionHillPath(
     }
 }
 
+/** 山丘根部收口：占弧长的比例与收进本体的深度（× 端头半径） */
+private const val HILL_END_TAPER = 0.18f
+private const val HILL_END_INSET_RATIO = 0.035f
+
 /**
  * 这两颗按钮的折射 shader。
  *
  * `lens()` 对自定义 Shape 直接跳过（`cornerRadii` 只认圆角矩形），所以必须自己给一份：
- * 用解析 SDF 描述**整条融合轮廓** —— 左胶囊 ∪ 右胶囊 ∪ 融合颈，
+ * 用解析 SDF 描述**整条融合轮廓** —— 左胶囊、右胶囊的距离场取指数平滑最小值（smooth-min），
  * 于是边缘一圈折射沿「两颗按钮 + 中间的腰」连续走，接缝处不会断成两截。
+ *
+ * 形状那边用的是同一个 `smoothMin` + 同一个 `sdCapsule`：轮廓和折射读同一条边，
+ * 不会再出现「形状焊上了、折射还在按 min 算」的错位缝。
  *
  * 端头支持椭圆（rx / ry 分开给）：拖拽时胶囊被非等比拉伸，按正圆算折射会与真实边缘错开。
  */
@@ -303,15 +543,8 @@ uniform float2 lr;
 uniform float2 rc;
 uniform float2 rh;
 uniform float2 rr;
-uniform float2 pu;
-uniform float2 c1u;
-uniform float2 c2u;
-uniform float2 cu;
-uniform float2 pl;
-uniform float2 c1l;
-uniform float2 c2l;
-uniform float2 cl;
-uniform float neckRadius;
+// 并体焊缝的场融合半径（px）；与 FusionPairShape 的 weldK 同一个数
+uniform float weldK;
 uniform float refractionHeight;
 uniform float refractionAmount;
 uniform float bulgeH;
@@ -331,11 +564,18 @@ float bumpAt(float angle, float center, float phi) {
     }
     float dx = t - 0.5;
     float rawG = exp(-(dx * dx) / (2.0 * bulgeSigma * bulgeSigma));
-    return clamp((rawG - bulgeGaussEdge) / (1.0 - bulgeGaussEdge), 0.0, 1.0);
+    float bell = clamp((rawG - bulgeGaussEdge) / (1.0 - bulgeGaussEdge), 0.0, 1.0);
+    // 端点乘窗：值归零且（乘上值为 0 的 bell 后）一阶导也归零，山丘根部不留折角
+    float u = 2.0 * t - 1.0;
+    return bell * (1.0 - u * u * u * u);
 }
 
 float sdEllipse(float2 p, float2 c, float2 ab) {
     float2 d = p - c;
+    // 正圆走闭式解，与形状那边同一个分支
+    if (abs(ab.x - ab.y) <= 0.001) {
+        return length(d) - ab.x;
+    }
     float t = atan(d.y / max(ab.y, 1e-4), d.x / max(ab.x, 1e-4));
     for (int i = 0; i < 4; i++) {
         float ct = cos(t);
@@ -365,77 +605,19 @@ float sdCapsule(float2 p, float2 c, float2 halfSize, float2 radii, float angleC,
     return d0;
 }
 
-float2 cBez(float2 a, float2 b, float2 c, float2 d, float t) {
-    float mt = 1.0 - t;
-    float mt2 = mt * mt;
-    float t2 = t * t;
-    return mt2 * mt * a + (3.0 * mt2 * t) * b + (3.0 * mt * t2) * c + t2 * t * d;
-}
-
-float2 dBez(float2 a, float2 b, float2 c, float2 d, float t) {
-    float mt = 1.0 - t;
-    return 3.0 * mt * mt * (b - a) + 6.0 * mt * t * (c - b) + 3.0 * t * t * (d - c);
-}
-
-float2 d2Bez(float2 a, float2 b, float2 c, float2 d, float t) {
-    float mt = 1.0 - t;
-    return 6.0 * mt * (c - 2.0 * b + a) + 6.0 * t * (d - 2.0 * c + b);
-}
-
-float nearestT(float2 p, float2 a, float2 b, float2 c, float2 d) {
-    float bestD = 1e9;
-    float bestT = 0.0;
-    for (int k = 0; k < 2; k++) {
-        float t = (k == 0) ? 0.25 : 0.75;
-        for (int i = 0; i < 5; i++) {
-            float2 q = cBez(a, b, c, d, t);
-            float2 dq = dBez(a, b, c, d, t);
-            float2 d2q = d2Bez(a, b, c, d, t);
-            float f = dot(q - p, dq);
-            float df = dot(dq, dq) + dot(q - p, d2q);
-            t = clamp(t - f / (abs(df) > 1e-4 ? df : 1e-4), 0.0, 1.0);
-        }
-        float dd = length(cBez(a, b, c, d, t) - p);
-        if (dd < bestD) {
-            bestD = dd;
-            bestT = t;
-        }
+// 指数平滑最小值：形状那边用同一个公式取等值面，所以轮廓与折射永远是同一条边。
+float smoothMin(float a, float b, float k) {
+    if (k <= 0.0001) {
+        return min(a, b);
     }
-    return bestT;
-}
-
-float sdNeck(float2 p) {
-    float tu = nearestT(p, pu, c1u, c2u, cu);
-    float tl = nearestT(p, pl, c1l, c2l, cl);
-    float2 qu = cBez(pu, c1u, c2u, cu, tu);
-    float2 ql = cBez(pl, c1l, c2l, cl, tl);
-
-    float2 du = dBez(pu, c1u, c2u, cu, tu);
-    float2 dl = dBez(pl, c1l, c2l, cl, tl);
-    if (tu < 0.02 || tu > 0.98) {
-        du = cu - pu;
-    }
-    if (tl < 0.02 || tl > 0.98) {
-        dl = cl - pl;
-    }
-    float sU = (du.x * (p.y - qu.y) - du.y * (p.x - qu.x)) / max(length(du), 1e-4);
-    float sL = (dl.x * (p.y - ql.y) - dl.y * (p.x - ql.x)) / max(length(dl), 1e-4);
-
-    float2 ax = cu - pu;
-    ax = ax / max(length(ax), 1e-4);
-    float dLong = max(-dot(p - pu, ax), dot(p - cu, ax));
-    return max(sU, -sL) + max(0.0, dLong);
+    float m = min(a, b);
+    return m - k * log(exp(-(a - m) / k) + exp(-(b - m) / k));
 }
 
 float sceneSdf(float2 p) {
-    float d = min(
-        sdCapsule(p, lc, lh, lr, bulgeAngleL, bulgePhiL),
-        sdCapsule(p, rc, rh, rr, bulgeAngleR, bulgePhiR)
-    );
-    if (neckRadius > 0.001) {
-        d = min(d, sdNeck(p));
-    }
-    return d;
+    float dL = sdCapsule(p, lc, lh, lr, bulgeAngleL, bulgePhiL);
+    float dR = sdCapsule(p, rc, rh, rr, bulgeAngleR, bulgePhiR);
+    return smoothMin(dL, dR, weldK);
 }
 
 float circleMap(float x) {

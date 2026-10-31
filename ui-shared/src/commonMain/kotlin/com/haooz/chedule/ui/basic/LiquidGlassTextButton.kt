@@ -198,7 +198,9 @@ fun LiquidGlassTextButton(
                 )
                 .edgeLight(
                     shape = buttonShape,
-                    edgeLight = rememberDefaultEdgeLight(baseColor = Color.White),
+                    // 正常档用通用白高光；降级档没有模糊高光，纯色描边按按钮底色同色系提亮 ——
+                    // 白描边在彩色按钮上会像描了一圈白线
+                    edgeLight = rememberDefaultEdgeLight(degradedBaseColor = resolvedContainerColor),
                 )
                 .then(interactiveHighlight.modifier)
                 .then(if (enabled) interactiveHighlight.gestureModifier else Modifier)

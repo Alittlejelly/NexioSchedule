@@ -76,7 +76,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.edgelight.edgeLight
-import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
@@ -96,6 +95,7 @@ import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
 import top.yukonga.miuix.kmp.material.LocalGlassPanelBlurDp
 import top.yukonga.miuix.kmp.material.LocalGlassSurfaceAlphaDrop
 import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
+import top.yukonga.miuix.kmp.material.rememberMaterialEdgeLight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // =====================================================================
@@ -1313,7 +1313,7 @@ private fun BoxScope.PopupMaterialLayer(
             )
             .edgeLight(
                 shape = panelShape,
-                edgeLight = rememberDefaultEdgeLight(baseColor = style.backgroundColor),
+                edgeLight = rememberMaterialEdgeLight(baseColor = style.backgroundColor),
             ),
     )
 }

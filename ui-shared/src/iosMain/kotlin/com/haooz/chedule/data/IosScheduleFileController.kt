@@ -2,6 +2,10 @@
 
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.toByteArray
+import com.haooz.chedule.data.platform.toNSData
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.backup.ScheduleFileController
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.utils.IosUiHost
 import platform.Foundation.NSData

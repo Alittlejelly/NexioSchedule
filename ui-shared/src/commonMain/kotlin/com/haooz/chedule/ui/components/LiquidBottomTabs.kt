@@ -176,7 +176,7 @@ fun LiquidBottomTabs(
     val isLightTheme = !isAppDarkTheme()
     val accentColor = if (isLightTheme) Color.Black else Color.White
     val containerColor = bottomBarSurfaceColor()
-    val defaultEdgeLight = rememberDefaultEdgeLight(baseColor = containerColor)
+    val defaultEdgeLight = rememberDefaultEdgeLight(degradedBaseColor = containerColor)
 
     val tabsBackdrop = rememberLayerBackdrop()
 

@@ -111,6 +111,7 @@ import top.yukonga.miuix.kmp.layout.collapsibleTopInset
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /** 4×2 组件预览统一宽高比，锁定后不随设备屏宽变化 */
 private const val WidgetPreviewRatio4x2 = 2.15f
@@ -211,6 +212,7 @@ fun WidgetIntroScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .overScrollVertical()
+                    .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove)
                     .collapsibleTopInset(scrollBehavior)
                     .then(
                         scrollBehavior?.let { Modifier.nestedScroll(it.nestedScrollConnection) } ?: Modifier

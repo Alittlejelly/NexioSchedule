@@ -17,6 +17,7 @@ import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -60,6 +61,35 @@ internal class BarNeckGeometry(
     val phiCircle: Float,
     val gaussEdge: Float,
 )
+
+/** 角度差折到 (-π, π]：atan 在 ±π 处跳变，不折的话张角会被劈成两半。 */
+private fun fusionWrapAngle(delta: Float): Float =
+    delta - 6.2831853f * floor(delta / 6.2831853f + 0.5f)
+
+/**
+ * 山丘在角度 [angle] 上的高度系数（0..1），**带端点窗**的版本。
+ *
+ * 归一化高斯本身在张角端点只是函数值为 0，一阶导并不为 0，山丘根部与本体之间就是一道折角；
+ * 再乘一扇 `1-(2t-1)^4` 窗之后端点值和斜率都归零。
+ *
+ * 只有 [FusionPairShape]（双胶囊焊缝）用它；底栏 [BarShape] 与
+ * [barNeckGeometryPx] 仍走各自的高斯，和折射 shader 逐字一致。
+ */
+internal fun fusionBumpAt(
+    angle: Float,
+    center: Float,
+    phi: Float,
+    sigma: Float,
+    gaussEdge: Float,
+): Float {
+    val t = (fusionWrapAngle(angle - center) + phi) / (2f * phi)
+    if (t <= 0f || t >= 1f) return 0f
+    val dx = t - 0.5f
+    val rawG = exp(-(dx * dx) / (2f * sigma * sigma))
+    val bell = ((rawG - gaussEdge) / (1f - gaussEdge)).coerceIn(0f, 1f)
+    val u = 2f * t - 1f
+    return bell * (1f - u * u * u * u)
+}
 
 /** 角度 [a] 处的单位切线，方向取与 [toward] 同侧的那个。 */
 private fun tangentAt(a: Float, toward: Offset): Offset {

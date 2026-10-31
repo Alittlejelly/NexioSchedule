@@ -116,6 +116,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.LocalOverScrollState
 import top.yukonga.miuix.kmp.utils.OverScrollState
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /**
  * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。
@@ -489,7 +490,8 @@ fun TabletSettingsScreen(
                         // 与完整设置页相同：只用公共 overScrollVertical
                         modifier = Modifier
                             .fillMaxSize()
-                            .overScrollVertical(),
+                            .overScrollVertical()
+                            .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove),
                         contentPadding = PaddingValues(
                             start = paneHorizontal,
                             top = chromeTop,
@@ -1148,6 +1150,7 @@ private fun TabletSemesterPane(
         modifier = Modifier
             .fillMaxSize()
             .overScrollVertical()
+            .scrollEndHaptic(hapticFeedbackType = HapticFeedbackType.TextHandleMove)
             .then(
                 if (scrollBehavior != null) {
                     Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)

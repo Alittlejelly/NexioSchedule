@@ -207,7 +207,7 @@ fun WebViewScreen(
             drawRect(webDockSurfaceColor)
         }
     }
-    val webDockEdgeLight = rememberDefaultEdgeLight(baseColor = webDockSurfaceColor)
+    val webDockEdgeLight = rememberDefaultEdgeLight(degradedBaseColor = webDockSurfaceColor)
     var importCompleted by remember { mutableStateOf(false) }
 
     val currentOnImportComplete by rememberUpdatedState(onImportComplete)

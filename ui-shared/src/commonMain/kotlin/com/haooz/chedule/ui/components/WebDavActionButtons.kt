@@ -1,5 +1,9 @@
 package com.haooz.chedule.ui.components
 
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -59,6 +63,7 @@ import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.tanh
 import top.yukonga.miuix.kmp.interactive.computeDragTransform
 import top.yukonga.miuix.kmp.layout.isTabletWidth
+import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -70,6 +75,9 @@ internal const val GlassDragTranslationDamping = 0.032f
 
 /**
  * 这两颗按钮的融球手感。
+ *
+ * 并体走的是 [LiquidFusion.weldRadiusDp] 那条场融合；[LiquidFusion.neckStrength] 只给底栏的
+ * 贝塞尔颈用，对这对按钮不起作用（字段保留是为了和 [LiquidFusion.Default] 同一套参数）。
  */
 val WebDavButtonFusion: LiquidFusion = LiquidFusion.Default.copy(
     neckStrength = 0.22f,
@@ -88,7 +96,8 @@ val WebDavButtonFusion: LiquidFusion = LiquidFusion.Default.copy(
  * 这块材质自己 `drawBackdrop` 采样同一层 backdrop，一旦放进页面内容里就会采样到自己 —— 自采自，直接崩。
  *
  * @param backdrop 宿主页面层的采样源；不能用这块材质所在的那层录制 backdrop。
- * @param fusionGap 两半的间距。小于 `2 × bulgeMaxDp`（这里是 6dp）才会拉出颈。
+ * @param fusionGap 两半的间距。小于 `2 × bulgeMaxDp`（这里是 6dp）山丘就会碰在一起，
+ *   再近一点（约 `bulgeMaxDp` 量级）两团的距离场就被焊缝焊成一片。
  */
 @Composable
 fun WebDavActionButtons(
@@ -137,13 +146,79 @@ fun WebDavActionButtons(
     }
     // 描边底色给白：`highlightTint` 会按底色染成同色系，蓝底上等于自己描自己 —— 整圈看不见。
     // 给白（饱和度 0）才走「白色高光」那条分支，两套主题下都亮。
-    val edgeLight = rememberDefaultEdgeLight(baseColor = Color.White)
+    // 正常档走通用高光色；降级档按按钮底色同色系提亮（白描边在彩色按钮上很突兀）
+    val edgeLight = rememberDefaultEdgeLight(degradedBaseColor = surfaceColor)
+
+    // 下方投影：参数与 LiquidGlassTextButton 一致（下沉 4dp / 模糊 10 / primary 0.4）。
+    // 这块材质浮在页面底栏上方，没有投影会像一张平贴的贴纸。
+    val shadowColor = MiuixTheme.colorScheme.primary
+    val shadowAlpha = 0.4f
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = horizontalPadding)
             .navigationBarsPadding()
+            // 下发光：与 LiquidGlassTextButton 逐字一致（下沉 4dp / 模糊 10 / primary 0.4）。
+            // ⚠ 必须挂在 bottom padding **之前**：模糊会向下溢出节点，挂在后面会被那 20dp 的
+            //   内边距之外裁掉，只剩上沿一条亮边 —— 看起来就是「没有下发光」。
+            // 高度用参数 height 而不是 size.height：节点含 20dp 内边距，圆角半径会算错。
+            .drawBehind {
+                val offsetY = 4.dp.toPx()
+                val blurRadius = 10.dp.toPx()
+                val buttonHeight = height.toPx()
+                val radius = buttonHeight / 2f
+                val halfWidth = (size.width - gapPx) / 2f
+                // 与 ActionHalf 的 translationOf 同一条公式、同一个 minDim：
+                // 两半等宽等高，所以同样的拖动量得到同样的位移 —— 阴影不会一半跟得紧一半松
+                val minDim = minOf(halfWidth, heightPx).coerceAtLeast(1f)
+                fun shiftOf(highlight: InteractiveHighlight): Offset {
+                    val d = highlight.offset
+                    return Offset(
+                        minDim * tanh(GlassDragTranslationDamping * d.x / minDim),
+                        minDim * tanh(GlassDragTranslationDamping * d.y / minDim),
+                    )
+                }
+                // 两个胶囊各画一份、各跟各的位移：整块画一个圆角矩形会在中间 gap 处堆出一坨蓝影
+                val shift = shiftOf(leftHighlight)
+                val leftPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(
+                                shift.x,
+                                offsetY + shift.y,
+                                halfWidth + shift.x,
+                                buttonHeight + offsetY + shift.y,
+                            ),
+                            cornerRadius = CornerRadius(radius, radius),
+                        ),
+                    )
+                }
+                drawBlurredPathShadow(
+                    path = leftPath,
+                    color = shadowColor.copy(alpha = shadowAlpha),
+                    blurRadius = blurRadius.coerceAtLeast(0.1f),
+                )
+                val rightShift = shiftOf(rightHighlight)
+                val rightPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(
+                                halfWidth + gapPx + rightShift.x,
+                                offsetY + rightShift.y,
+                                size.width + rightShift.x,
+                                buttonHeight + offsetY + rightShift.y,
+                            ),
+                            cornerRadius = CornerRadius(radius, radius),
+                        ),
+                    )
+                }
+                drawBlurredPathShadow(
+                    path = rightPath,
+                    color = shadowColor.copy(alpha = shadowAlpha),
+                    blurRadius = blurRadius.coerceAtLeast(0.1f),
+                )
+            }
             .padding(bottom = 20.dp)
     ) {
         val halfPx = with(density) { (maxWidth.toPx() - gapPx) / 2f }
@@ -246,19 +321,8 @@ fun WebDavActionButtons(
                     sh.setFloatUniform("bulgePhiR", n?.phiCircle ?: 0f)
                     sh.setFloatUniform("bulgeGaussEdge", n?.gaussEdge ?: 0f)
                     sh.setFloatUniform("bulgeSigma", fusion.bulgeSigma)
-                    if (n != null && n.hasNeck) {
-                        sh.setFloatUniform("pu", n.pu.x * scale, n.pu.y * scale)
-                        sh.setFloatUniform("c1u", n.c1u.x * scale, n.c1u.y * scale)
-                        sh.setFloatUniform("c2u", n.c2u.x * scale, n.c2u.y * scale)
-                        sh.setFloatUniform("cu", n.cu.x * scale, n.cu.y * scale)
-                        sh.setFloatUniform("pl", n.pl.x * scale, n.pl.y * scale)
-                        sh.setFloatUniform("c1l", n.c1l.x * scale, n.c1l.y * scale)
-                        sh.setFloatUniform("c2l", n.c2l.x * scale, n.c2l.y * scale)
-                        sh.setFloatUniform("cl", n.cl.x * scale, n.cl.y * scale)
-                        sh.setFloatUniform("neckRadius", 1f)
-                    } else {
-                        sh.setFloatUniform("neckRadius", 0f)
-                    }
+                    // 焊缝：与形状同一个场融合半径，轮廓和折射才不会错开
+                    sh.setFloatUniform("weldK", f.weldK * scale)
                     sh.setFloatUniform("refractionHeight", refractionHeightPx * scale)
                     sh.setFloatUniform("refractionAmount", -refractionAmountPx * scale)
                 }
@@ -313,6 +377,9 @@ fun WebDavActionButtons(
                         shape = shapeFactory,
                         effects = pairEffects,
                         highlight = null,
+                        // 关掉库自带的黑阴影：下发光改用与 LiquidGlassTextButton 完全一致的那一层
+                        // （drawBehind + drawBlurredPathShadow，下沉 4dp / 模糊 10 / primary 0.4）
+                        shadow = null,
                         onDrawSurface = surface,
                         // 每帧刷折射几何：拖动 / 按压 / 拉伸时形状在变，updateEffects 不会重跑
                         onDrawBackdrop = { drawBackdrop ->
