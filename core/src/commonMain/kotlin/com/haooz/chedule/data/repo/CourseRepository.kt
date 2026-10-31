@@ -1,20 +1,13 @@
 package com.haooz.chedule.data.repo
 
-import com.haooz.chedule.data.appearance.AppearancePrefs
 import com.haooz.chedule.data.backup.decodeCourses
 import com.haooz.chedule.data.backup.decodeScheduleFolders
 import com.haooz.chedule.data.backup.decodeStringList
 import com.haooz.chedule.data.backup.encodeCourses
-import com.haooz.chedule.data.backup.encodeScheduleFolders
 import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.backup.encodeTimeConfig
-import com.haooz.chedule.data.backup.ensureEmptyScheduleCourseEntries
-import com.haooz.chedule.data.backup.normalizeFullScheduleBackup
 import com.haooz.chedule.data.backup.parseTimeConfigSnapshotOrNull
-import com.haooz.chedule.data.backup.shouldPreserveRestoredFolderMembership
-import com.haooz.chedule.data.backup.validateSingleScheduleCourseData
 import com.haooz.chedule.data.backup.weekNotes
-import com.haooz.chedule.data.backup.withValidatedFullScheduleBackup
 import com.haooz.chedule.data.holiday.HolidayEntry
 import com.haooz.chedule.data.holiday.HolidayManager
 import com.haooz.chedule.data.holiday.TeachingWeekPosition
@@ -42,9 +35,7 @@ import com.haooz.chedule.data.storage.StoredTimeConfig
 import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.data.util.CourseTimeSpan
 import com.haooz.chedule.data.util.formatSlashDate
-import com.haooz.chedule.data.util.toJsonElement
 import com.haooz.chedule.data.util.todayLocalDate
-import kotlin.collections.iterator
 import kotlin.concurrent.Volatile
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
@@ -160,6 +151,88 @@ class CourseRepository private constructor() : PeriodTimeSource {
         override fun folders() = getScheduleFolders()
 
         override fun saveFolders(folders: List<ScheduleFolder>) = saveScheduleFolders(folders)
+    }
+
+    /**
+     * 协作者（[BackupTransfer] 等）看到的仓库。
+     *
+     * 只递出去它们真正需要的动作：键名规则、缓存失效、变更通知都只有这一份实现。
+     * 声明必须在 [init] 之前 —— init 里就会用到协作者（默认文件夹归档）。
+     */
+    private val host: RepoHost = object : RepoHost {
+        override val prefs: KeyValueStore get() = this@CourseRepository.prefs
+
+        override fun rowStore(): CourseRowStore? = CourseStorage.rows
+
+        override fun getScheduleNames(): List<String> = this@CourseRepository.getScheduleNames()
+
+        override fun saveScheduleNames(names: List<String>) =
+            this@CourseRepository.saveScheduleNames(names)
+
+        override fun getCurrentScheduleId(): String = this@CourseRepository.getCurrentScheduleId()
+
+        override fun getScheduleKeyPrefix(scheduleId: String): String =
+            this@CourseRepository.getScheduleKeyPrefix(scheduleId)
+
+        override fun getScheduleFolders(): List<ScheduleFolder> =
+            this@CourseRepository.getScheduleFolders()
+
+        override fun rowSettingsOf(scheduleId: String): ScheduleRowSettings? =
+            this@CourseRepository.rowSettingsOf(scheduleId)
+
+        override fun writeRowSettings(
+            scheduleId: String,
+            currentWeek: Int?,
+            totalWeeks: Int?,
+            classStart: String?,
+        ): Boolean = this@CourseRepository.writeRowSettings(
+            scheduleId = scheduleId,
+            currentWeek = currentWeek,
+            totalWeeks = totalWeeks,
+            classStart = classStart,
+        )
+
+        override fun teachingWeekReorganizationsRawOf(scheduleId: String): String? =
+            this@CourseRepository.teachingWeekReorganizationsRawOf(scheduleId)
+
+        override fun writeTeachingWeekReorganizationsRaw(scheduleId: String, raw: String): Boolean =
+            this@CourseRepository.writeTeachingWeekReorganizationsRaw(scheduleId, raw)
+
+        override fun setSmartWeekendFor(scheduleId: String, smart: Boolean) =
+            this@CourseRepository.setSmartWeekendFor(scheduleId, smart)
+
+        override fun setShowNonCurrentWeekFor(scheduleId: String, show: Boolean) =
+            this@CourseRepository.setShowNonCurrentWeekFor(scheduleId, show)
+
+        override fun readCoursesFromBlob(scheduleId: String): List<Course>? =
+            this@CourseRepository.readCoursesFromBlob(scheduleId)
+
+        override fun courseRowAnchor(scheduleId: String): CourseRowAnchor? =
+            this@CourseRepository.courseRowAnchor(scheduleId)
+
+        override fun boundTimeConfigIdOrNull(scheduleId: String): Long? =
+            this@CourseRepository.boundTimeConfigIdOrNull(scheduleId)
+
+        override fun resolveLegacyCurrentTimeConfigId(): Long =
+            this@CourseRepository.resolveLegacyCurrentTimeConfigId()
+
+        override fun getTimeConfig(id: Long): TimeConfig = this@CourseRepository.getTimeConfig(id)
+
+        override fun addTimeConfig(config: TimeConfig): Long =
+            this@CourseRepository.addTimeConfig(config)
+
+        override fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) =
+            this@CourseRepository.setScheduleTimeConfigId(scheduleId, timeConfigId)
+
+        override fun invalidateAllCaches() = this@CourseRepository.invalidateAllCaches()
+
+        override fun dispatchCourseChanged(action: String, courseId: String) =
+            this@CourseRepository.dispatchCourseChanged(action, courseId)
+
+        override fun migrateIntoDefaultFolder() = newMigration().migrateIntoDefaultFolder()
+
+        override fun migrateLegacyEntitiesOnce(): MigrationOutcome =
+            this@CourseRepository.migrateLegacyEntitiesOnce()
     }
 
     init {
@@ -343,29 +416,29 @@ class CourseRepository private constructor() : PeriodTimeSource {
         internal const val KEY_TEACHING_WEEK_REORGANIZATIONS = "teaching_week_reorganizations"
         internal const val KEY_SMART_WEEKEND = "smart_weekend"
         internal const val KEY_SHOW_NON_CURRENT_WEEK = "show_non_current_week"
-        private const val KEY_CURRENT_SCHEDULE_ID = "current_schedule_id"
-        private const val KEY_SCHEDULE_NAMES = "schedule_names"
+        internal const val KEY_CURRENT_SCHEDULE_ID = "current_schedule_id"
+        internal const val KEY_SCHEDULE_NAMES = "schedule_names"
         internal const val KEY_SCHEDULE_FOLDERS = "schedule_folders"
         /** 首次引入文件夹时的归档标记；只跑一次 */
         internal const val KEY_DEFAULT_FOLDER_MIGRATED = "default_folder_migrated"
         internal const val DEFAULT_FOLDER_NAME = "默认文件夹"
         internal const val DEFAULT_FOLDER_ID = "folder_default"
-        private const val KEY_PRE_CLASS_REMINDER = "pre_class_reminder"
-        private const val KEY_PRE_CLASS_REMINDER_MINUTES = "pre_class_reminder_minutes"
-        private const val KEY_NEXT_DAY_REMINDER = "next_day_reminder"
-        private const val KEY_NEXT_DAY_REMINDER_HOUR = "next_day_reminder_hour"
-        private const val KEY_NEXT_DAY_REMINDER_MINUTE = "next_day_reminder_minute"
-        private const val KEY_ISLAND_NOTIFICATION = "island_notification"
-        private const val KEY_CLASS_DND = "class_dnd_enabled"
+        internal const val KEY_PRE_CLASS_REMINDER = "pre_class_reminder"
+        internal const val KEY_PRE_CLASS_REMINDER_MINUTES = "pre_class_reminder_minutes"
+        internal const val KEY_NEXT_DAY_REMINDER = "next_day_reminder"
+        internal const val KEY_NEXT_DAY_REMINDER_HOUR = "next_day_reminder_hour"
+        internal const val KEY_NEXT_DAY_REMINDER_MINUTE = "next_day_reminder_minute"
+        internal const val KEY_ISLAND_NOTIFICATION = "island_notification"
+        internal const val KEY_CLASS_DND = "class_dnd_enabled"
         /** 上课时启用的系统勿扰档位：0=勿扰模式 (DND, NONE)，1=静音模式 (SILENT, PRIORITY，闹钟仍响) */
-        private const val KEY_CLASS_DND_MODE = "class_dnd_mode"
-        private const val KEY_SHIFT_MODE = "shift_mode_enabled"
-        private const val KEY_SHIFT_SELECTED_SCHEDULES = "shift_selected_schedules"
-        private const val KEY_DEFAULT_HOMEPAGE = "default_homepage"
-        private const val KEY_WIDGET_PADDING_MODE = "widget_padding_mode"
+        internal const val KEY_CLASS_DND_MODE = "class_dnd_mode"
+        internal const val KEY_SHIFT_MODE = "shift_mode_enabled"
+        internal const val KEY_SHIFT_SELECTED_SCHEDULES = "shift_selected_schedules"
+        internal const val KEY_DEFAULT_HOMEPAGE = "default_homepage"
+        internal const val KEY_WIDGET_PADDING_MODE = "widget_padding_mode"
         internal const val SCHEDULE_KEY_PREFIX = "schedule_"
         internal const val KEY_TIME_CONFIG_IDS = "time_config_ids"
-        private const val KEY_CURRENT_TIME_CONFIG_ID = "current_time_config_id"
+        internal const val KEY_CURRENT_TIME_CONFIG_ID = "current_time_config_id"
         internal const val TIME_CONFIG_PREFIX = "time_config_"
         // 不匹配 schedule_{name}_ 前缀，删/迁课表时需单独处理
         internal const val SCHEDULE_TIME_CONFIG_PREFIX = "schedule_time_config_"
@@ -2850,302 +2923,20 @@ class CourseRepository private constructor() : PeriodTimeSource {
         commitSettingsChanged()
     }
 
-    /**
-     * 外观键不进全量备份。外观已整体迁到 [com.haooz.chedule.data.appearance.AppearancePrefs] 的独立 prefs 文件，
-     * 这里保留判定是为兜住历史备份里混入的旧外观键（`combination_*` / `comb_*` / `wallpaper_*`）。
-     */
-    private fun isCombinationBackupKey(key: String): Boolean {
-        return key == AppearancePrefs.FILE_STYLE_KEY ||
-            key.startsWith("combination_") ||
-            key.startsWith("comb_") ||
-            key.startsWith("wallpaper_")
-    }
-
-    /** 提醒、勿扰、小组件等应用功能设置不进全量备份 */
-    private fun isAppFeatureBackupKey(key: String): Boolean {
-        return key == KEY_PRE_CLASS_REMINDER ||
-            key == KEY_PRE_CLASS_REMINDER_MINUTES ||
-            key == KEY_NEXT_DAY_REMINDER ||
-            key == KEY_NEXT_DAY_REMINDER_HOUR ||
-            key == KEY_NEXT_DAY_REMINDER_MINUTE ||
-            key == KEY_ISLAND_NOTIFICATION ||
-            key == KEY_CLASS_DND ||
-            key == KEY_CLASS_DND_MODE ||
-            key == KEY_WIDGET_PADDING_MODE
-    }
-
-    /** 全量备份：课表数据 + 节假日/调休；不含搭配、提醒等应用功能设置与主题等应用偏好。 */
-    fun exportAllPreferences(): Map<String, Any> {
-        val names = getScheduleNames()
-        val result = mutableMapOf<String, Any>()
-        for ((key, value) in prefs.all()) {
-            if (isCombinationBackupKey(key) || isAppFeatureBackupKey(key)) continue
-            // 先原样带上镜像，再由 [materializeRowBackedKeys] 用表里的值覆盖。
-            // 反过来（跳过镜像 + 无条件物化）会让「表答不出」的键直接消失。
-            when (value) {
-                is String -> result[key] = value
-                is Int -> result[key] = value
-                is Boolean -> result[key] = value
-                is Float -> result[key] = value
-                is Long -> result[key] = value
-                is Set<*> -> {
-                    @Suppress("UNCHECKED_CAST")
-                    result[key] = (value as Set<String>).toList()
-                }
-            }
-        }
-        if (KEY_SCHEDULE_NAMES !in result) {
-            result[KEY_SCHEDULE_NAMES] =
-                encodeStringList(names)
-        }
-        if (KEY_CURRENT_SCHEDULE_ID !in result) {
-            result[KEY_CURRENT_SCHEDULE_ID] = getCurrentScheduleId()
-        }
-        ensureEmptyScheduleCourseEntries(result, names)
-        materializeRowBackedKeys(result, names)
-        result.putAll(HolidayManager.exportBackupData())
-        // 文件夹用清洗后的结果导出：历史坏数据里的幽灵课表名不应进备份
-        result[KEY_SCHEDULE_FOLDERS] =
-            encodeScheduleFolders(getScheduleFolders())
-        return result
-    }
-
-    /**
-     * 备份以表为准：课程、作息、设置字段、显示开关、重组规则、绑定都从表物化。
-     *
-     * 顺序是「先带镜像、再让表覆盖」：表答不出（行还没建 / 还没迁移）时备份里保留镜像，
-     * 答得出时以表为准。反过来做（先跳过镜像、再无脑物化）需要维护一份「哪些键归表管」
-     * 的手工清单 —— 加字段忘了改就是静默丢数据。
-     */
-    private fun materializeRowBackedKeys(result: MutableMap<String, Any>, names: List<String>) {
-        val rows = CourseStorage.rows
-
-        // 只保留当前课表集合的键：已删课表的残留键会被恢复校验判成
-        // 「course data belongs to an unknown schedule」，整份备份都被拒。
-        if (names.isNotEmpty()) {
-            val kept = setOf(KEY_SCHEDULE_NAMES, KEY_SCHEDULE_FOLDERS, "schedule_folder_map")
-            result.keys
-                .filter { key ->
-                    key.startsWith("schedule_") && key !in kept &&
-                        !key.startsWith("schedule_time_config_") &&
-                        names.none { key.startsWith("schedule_${it}_") }
-                }
-                .forEach { result.remove(it) }
-        }
-
-        names.forEach { name ->
-            val key = getScheduleKeyPrefix(name) + KEY_COURSES
-            val courses = readCoursesForBackup(name)
-            if (courses != null) {
-                result[key] = encodeCourses(courses)
-            } else {
-                val mirror = prefs.getStringOrNull(key)
-                NexioLog.e(
-                    TAG,
-                    "备份导出：$name 的课程行表读不出来，改用镜像（有镜像=${mirror != null}）",
-                )
-                if (mirror != null) result[key] = mirror
-            }
-        }
-
-        // 作息：ids 与 payload 一起物化，顺手清掉表里已没有的残留键
-        val configs = runCatching { rows?.timeConfigs() }.getOrNull()
-        val liveIds = configs.orEmpty().map { it.id }.filter { it > 0 }
-        if (liveIds.isNotEmpty()) {
-            result[KEY_TIME_CONFIG_IDS] = liveIds.joinToString(",")
-            val live = configs.orEmpty().mapNotNull { row ->
-                val parsed = runCatching {
-                    parseTimeConfigSnapshotOrNull(
-                        row.payload
-                    )
-                }.getOrNull()
-                    ?: return@mapNotNull null
-                "$TIME_CONFIG_PREFIX${row.id}" to encodeTimeConfig(
-                    TimeConfig.sanitize(row.id, parsed)
-                )
-            }.toMap()
-            result.keys
-                .filter { it.startsWith(TIME_CONFIG_PREFIX) && it != KEY_TIME_CONFIG_IDS }
-                .forEach { result.remove(it) }
-            result.putAll(live)
-        } else if (rows != null) {
-            NexioLog.w(TAG, "备份导出：作息表读不出配置，作息条目沿用镜像")
-        }
-
-        // 绑定：schedule.time_config_id 是真相，物化成备份要的扁平键
-        val bindings = runCatching { rows?.bindings() }.getOrNull()
-        if (bindings != null) {
-            // 先清掉现有绑定键再整体写：已删课表的残留留着会被恢复校验当成未知课表
-            result.keys
-                .filter { it.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) }
-                .forEach { result.remove(it) }
-            bindings.forEach { (name, id) ->
-                result["$SCHEDULE_TIME_CONFIG_PREFIX$name"] = id
-            }
-        } else if (rows != null) {
-            NexioLog.w(TAG, "备份导出：绑定表读不出来，绑定条目沿用镜像")
-        }
-
-        // 三个设置字段：只用行里的值覆盖，**不走 getClassStartTime**（它缺值时会写今天并建行，
-        // 导出过程一旦建行，下面物化到的就是默认列，等于把用户设置改成默认值）。行不存在就保留镜像。
-        names.forEach { name ->
-            val row = rowSettingsOf(name) ?: return@forEach
-            val prefix = getScheduleKeyPrefix(name)
-            result["${prefix}$KEY_CURRENT_WEEK"] = row.currentWeek
-            result["${prefix}$KEY_TOTAL_WEEKS"] = row.totalWeeks
-            row.classStart?.let { result["${prefix}$KEY_CLASS_START_TIME"] = it }
-        }
-
-        // 两个显示开关：行是真相。行不存在就不写 —— 导出默认值等于替用户伪造一次设置，
-        // 而 prefs 里如果还留着镜像，上面的遍历已经把它带进来了。
-        names.forEach { name ->
-            val display = runCatching { rows?.displaySettingsOf(name) }.getOrNull() ?: return@forEach
-            val prefix = getScheduleKeyPrefix(name)
-            result["${prefix}$KEY_SMART_WEEKEND"] = display.smartWeekend
-            result["${prefix}$KEY_SHOW_NON_CURRENT_WEEK"] = display.showNonCurrentWeek
-        }
-
-        // 教学周重组规则：必须走读路径。迁移会把 prefs 里的副本删掉，
-        // 这里再自己拼键就是「备份里永远没有这一块」，恢复后整份规则消失。
-        names.forEach { name ->
-            val raw = teachingWeekReorganizationsRawOf(name) ?: return@forEach
-            result["${getScheduleKeyPrefix(name)}$KEY_TEACHING_WEEK_REORGANIZATIONS"] = raw
-        }
-    }
-
-    /**
-     * 备份导出专用的课程读法。返回 null 表示「读不出来」，调用方回落镜像。
-     *
-     * 与 [loadCourses] 的差别：后者把「表读失败」当空表返回（界面宁可空也不能崩），
-     * 备份不能跟着当空表 —— 那会把一张有课的课表导成 `[]`，恢复时直接清空。
-     * 未导入的课表在这里完成导入，所以正常路径不需要碰镜像。
-     */
-    private fun readCoursesForBackup(scheduleId: String): List<Course>? {
-        val rows = CourseStorage.rows ?: return readCoursesFromBlob(scheduleId)
-        return runCatching {
-            // 未导入就返回 null（调用方回落镜像），**不在这里顺手导入**：
-            // 导出过程中建行会把「刚建出来的默认列」当成用户设置写进备份。
-            if (rows.isImported(scheduleId)) rows.load(scheduleId) else null
-        }.getOrNull()
-    }
-
-    fun importAllPreferences(data: Map<String, Any>) {
-        val normalizedData =
-            normalizeFullScheduleBackup(data)
-        withValidatedFullScheduleBackup(normalizedData) { holidayBackup ->
-            restoreAllPreferences(
-                normalizedData,
-                holidayBackup,
-                shouldPreserveRestoredFolderMembership(
-                    normalizedData
-                ),
-            )
-        }
-    }
-
-    private fun restoreAllPreferences(
-        data: Map<String, Any>,
-        holidayBackup: HolidayManager.BackupData,
-        preserveFolderMembership: Boolean,
-    ) {
-        prefs.edit {
-            for ((key) in prefs.all()) {
-                if (key.startsWith(SCHEDULE_KEY_PREFIX) || key.startsWith(TIME_CONFIG_PREFIX) ||
-                    key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX)) {
-                    remove(key)
-                }
-            }
-            remove(KEY_SCHEDULE_NAMES)
-            remove(KEY_SCHEDULE_FOLDERS)
-            // Preserve root-level schedules in new backups; migrate only legacy backups.
-            if (preserveFolderMembership) putBoolean(KEY_DEFAULT_FOLDER_MIGRATED, true)
-            else remove(KEY_DEFAULT_FOLDER_MIGRATED)
-            remove(KEY_CURRENT_SCHEDULE_ID)
-            remove(KEY_SHIFT_MODE)
-            remove(KEY_SHIFT_SELECTED_SCHEDULES)
-            remove(KEY_TIME_CONFIG_IDS)
-            remove(KEY_CURRENT_TIME_CONFIG_ID)
-            remove(KEY_DEFAULT_HOMEPAGE)
-
-            for ((key, value) in data) {
-                if (key == HolidayManager.BACKUP_KEY ||
-                    key == HolidayManager.BACKUP_EXCLUSION_KEY ||
-                    key == HolidayManager.BACKUP_BEFORE_EXCLUSION_KEY
-                ) continue
-                // 搭配、提醒等应用功能设置不进备份，恢复时也不覆盖设备上的对应配置
-                if (isCombinationBackupKey(key) || isAppFeatureBackupKey(key)) continue
-                when (value) {
-                    is String -> putString(key, value)
-                    is Boolean -> putBoolean(key, value)
-                    is Number -> {
-                        val numVal = value.toDouble()
-                        val longVal = numVal.toLong()
-                        val intVal = numVal.toInt()
-                        // 时间配置/绑定 ID 与时间戳必须按 Long 恢复
-                        if (key == KEY_CURRENT_TIME_CONFIG_ID || key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) ||
-                            key.endsWith("_last_modified")) {
-                            putLong(key, longVal)
-                        } else if (numVal == intVal.toDouble()) {
-                            putInt(key, intVal)
-                        } else {
-                            putFloat(key, numVal.toFloat())
-                        }
-                    }
-
-                    is List<*> -> {
-                        // Set<String> 导出为 List，还原为 StringSet（不能再写成 JSON 字符串）
-                        putStringSet(key, value.filterIsInstance<String>().toSet())
-                    }
-                }
-            }
-        }
-        HolidayManager.restoreBackupData(holidayBackup)
-        // 备份会换掉整套课表，行表必须整体作废：带导入标记的行表是真相，不会回头看刚写入的 JSON
-        CourseStorage.rows?.let { rows ->
-            runCatching { rows.invalidateAll() }
-                .onFailure { NexioLog.e(TAG, "恢复备份后作废课程行表失败，可能读到恢复前的课表", it) }
-        }
-        invalidateAllCaches()
-        if (!preserveFolderMembership) newMigration().migrateIntoDefaultFolder()
-        // 恢复出的是另一套数据：立刻重建成实体表并删掉 prefs 副本。
-        // 不留「等下次启动再迁」的窗口 —— 那段窗口里读表会读到刚被清空的行。
-        if (CourseStorage.rows != null) {
-            when (val outcome = migrateLegacyEntitiesOnce()) {
-                is MigrationOutcome.Incomplete ->
-                    NexioLog.e(TAG, "恢复备份后重建实体表未完成，下次启动重试：${outcome.failed}")
-                MigrationOutcome.NoRowStore ->
-                    NexioLog.e(TAG, "恢复备份后重建实体表失败：课程行表没有接线")
-                else -> Unit
-            }
-        }
-        dispatchCourseChanged("restore", "")
-    }
-
     fun getSectionsForSchedule(scheduleId: String): Triple<Int, Int, Int> {
         val configId = getScheduleTimeConfigId(scheduleId)
         val config = getTimeConfig(configId)
         return Triple(config.morningSections, config.afternoonSections, config.eveningSections)
     }
 
-    /**
-     * 从单课表备份还原时间配置；认不出格式时返回 null（调用方退回复制当前课表）。
-     * 两种形态都收：整份 JSON **字符串**，或扁平 **Map**（当前导出格式）。
-     */
-    private fun buildImportedTimeConfig(scheduleName: String, raw: Any): TimeConfig? =
-        parseTimeConfigSnapshot(raw)?.copy(name = scheduleName, id = 0L)
+    // ── 备份与恢复（实现在 [BackupTransfer]）─────────────────────────────────
 
-    private fun parseTimeConfigSnapshot(raw: Any): TimeConfig? {
-        // 字符串要按「它就是 JSON 文本」解析。走 toJsonElement 会被包成 JSON 字符串字面量
-        // （`"{\"name\":…}"`），解析出来是个 primitive、不是对象，于是所有字符串形态的作息
-        // 都被判成损坏，静默退回复制当前配置 —— 用户看到的是「导入后作息变了」。
-        val json = if (raw is String) {
-            raw
-        } else {
-            runCatching { toJsonElement(raw).toString() }.getOrNull() ?: return null
-        }
-        val parsed = parseTimeConfigSnapshotOrNull(json)
-            ?: return null
-        return TimeConfig.sanitize(0L, parsed)
+    private val backup by lazy { BackupTransfer(host) }
+
+    fun exportAllPreferences(): Map<String, Any> = backup.exportAllPreferences()
+
+    fun importAllPreferences(data: Map<String, Any>) {
+        backup.importAllPreferences(data)
     }
 
     fun importSingleSchedule(
@@ -3159,123 +2950,17 @@ class CourseRepository private constructor() : PeriodTimeSource {
         smartWeekend: Boolean? = null,
         showNonCurrentWeek: Boolean? = null,
     ) {
-        val normalizedClassStart = classStartTime?.let {
-            normalizeClassStartDate(it)
-                ?: throw IllegalArgumentException("Invalid single-schedule semester start date")
-        }
-        val importedTotalWeeks = totalWeeks ?: 20
-        require(importedTotalWeeks in 1..MAX_TOTAL_WEEKS) {
-            "Invalid single-schedule semester week count"
-        }
-        teachingWeekReorganizations?.let { rules ->
-            val error = TeachingWeekReorganization.validationError(rules, Int.MAX_VALUE)
-            require(error == null) { error ?: "Invalid single-schedule teaching-week rules" }
-            require(rules.isEmpty() || normalizedClassStart != null) {
-                "A single-schedule reorganization requires a valid semester start date"
-            }
-        }
-        // Lowering a schedule's horizon does not delete its stored course selections; backups preserve them.
-        validateSingleScheduleCourseData(
-            coursesData,
-            MAX_TOTAL_WEEKS
+        backup.importSingleSchedule(
+            scheduleName = scheduleName,
+            coursesData = coursesData,
+            timeConfigData = timeConfigData,
+            classStartTime = classStartTime,
+            currentWeek = currentWeek,
+            totalWeeks = totalWeeks,
+            teachingWeekReorganizations = teachingWeekReorganizations,
+            smartWeekend = smartWeekend,
+            showNonCurrentWeek = showNonCurrentWeek,
         )
-
-        val names = getScheduleNames().toMutableList()
-        if (scheduleName !in names) {
-            names.add(scheduleName)
-            saveScheduleNames(names)
-        }
-
-        var colorIndex = 0
-        val courses = coursesData.mapNotNull { courseMap ->
-            val name = courseMap["name"] as? String ?: return@mapNotNull null
-            val classroom = courseMap["classroom"] as? String ?: ""
-            val teacher = courseMap["teacher"] as? String ?: ""
-            val dayOfWeek = (courseMap["dayOfWeek"] as? Number)?.toInt() ?: return@mapNotNull null
-            val startSection = (courseMap["startSection"] as? Number)?.toInt() ?: return@mapNotNull null
-            val endSection = (courseMap["endSection"] as? Number)?.toInt() ?: return@mapNotNull null
-            // JSON 数组元素可能是 Double/Integer，as? Number 更稳
-            val selectedWeeks = (courseMap["selectedWeeks"] as? List<*>)
-                ?.mapNotNull { (it as? Number)?.toInt() }
-                ?: emptyList()
-            // 旧备份只有 selectedWeeks：用 min/max 推断，weekType 无从还原保持 0
-            val explicitStartWeek = (courseMap["startWeek"] as? Number)?.toInt()
-            val explicitEndWeek = (courseMap["endWeek"] as? Number)?.toInt()
-            val weekType = (courseMap["weekType"] as? Number)?.toInt() ?: 0
-            val startWeek = explicitStartWeek ?: selectedWeeks.minOrNull() ?: 1
-            val endWeek = maxOf(startWeek, explicitEndWeek ?: selectedWeeks.maxOrNull() ?: 20)
-
-            val exportedColor = (courseMap["colorRes"] as? Number)?.toLong()
-            val color = exportedColor ?: run {
-                val c = Course.courseColors[colorIndex % Course.courseColors.size]
-                colorIndex++
-                c
-            }
-            Course(
-                id = "${scheduleName}_${name}_${dayOfWeek}_$startSection",
-                scheduleId = scheduleName,
-                name = name,
-                classroom = classroom,
-                teacher = teacher,
-                dayOfWeek = dayOfWeek,
-                startSection = startSection,
-                endSection = endSection,
-                isCustomTime = (courseMap["isCustomTime"] as? Boolean) ?: false,
-                customStartTime = courseMap["customStartTime"] as? String,
-                customEndTime = courseMap["customEndTime"] as? String,
-                startWeek = startWeek,
-                endWeek = endWeek,
-                weekType = weekType,
-                colorRes = color,
-                selectedWeeks = selectedWeeks,
-                // 备注是后加字段：旧备份没有就按「无备注」处理；长度上限与入口保持一致
-                note = ((courseMap["note"] as? String) ?: "").trim().truncateNote(),
-                weekNotes = courseMap.weekNotes("weekNotes"),
-            )
-        }
-
-        // ── 先定作息绑定，再落课程 ───────────────────────────────────────────
-        // `schedule.time_config_id` 是 NOT NULL 外键：锚点行必须先有合法作息可指，
-        // 课程行才写得进去。以前是先写 blob + 清标记，让下次读取顺带建行 —— 那条路径
-        // 正是「迁移和业务写混在一起」的来源，现在直接写表。
-        val alreadyBound = boundTimeConfigIdOrNull(scheduleName)
-        val importedConfig = timeConfigData?.let { buildImportedTimeConfig(scheduleName, it) }
-        if (importedConfig != null || alreadyBound == null) {
-            // 备份带了作息 → 用它建一份新配置；没带 → 复制当前生效的作息
-            // （解析不出来的退化路径：课表不至于没有时间配置）
-            val newConfig = importedConfig
-                ?: getTimeConfig(resolveLegacyCurrentTimeConfigId()).copy(name = scheduleName, id = 0L)
-            setScheduleTimeConfigId(scheduleName, addTimeConfig(newConfig))
-        }
-
-        val rows = CourseStorage.rows
-            ?: error("单课表导入失败：课程行表没有接线 schedule=$scheduleName")
-        val anchor = courseRowAnchor(scheduleName)
-            ?: error("单课表导入拿不到锚点行：schedule=$scheduleName")
-        // importAll 自带校验与导入标记，写完就是唯一真相，没有 blob 残留
-        rows.importAll(anchor, courses)
-
-        // 设置写行，不写 prefs 镜像：读路径只认行，写镜像就是造第二真相
-        if (normalizedClassStart != null || currentWeek != null || totalWeeks != null) {
-            writeRowSettings(
-                scheduleId = scheduleName,
-                currentWeek = currentWeek,
-                totalWeeks = totalWeeks,
-                classStart = normalizedClassStart,
-            )
-        }
-        teachingWeekReorganizations?.let { rules ->
-            writeTeachingWeekReorganizationsRaw(
-                scheduleName,
-                TeachingWeekReorganization.encode(rules, Int.MAX_VALUE),
-            )
-        }
-        smartWeekend?.let { setSmartWeekendFor(scheduleName, it) }
-        showNonCurrentWeek?.let { setShowNonCurrentWeekFor(scheduleName, it) }
-
-        // 全部写完之后再统一失效：中途失效会让后面的写读到刚清空的缓存再回填一次
-        invalidateAllCaches()
-        dispatchCourseChanged("restore", "")
     }
 }
 
