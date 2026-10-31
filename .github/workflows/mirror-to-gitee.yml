@@ -55,12 +55,16 @@ jobs:
             '+refs/heads/*:refs/heads/*' \
             '+refs/tags/*:refs/tags/*'
 
-          git remote add gitee "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
-
           # --prune：GitHub 上删掉的分支，Gitee 上一起删；--force：允许改写历史
-          git push --quiet --prune --force gitee \
-            '+refs/heads/*:refs/heads/*' \
-            '+refs/tags/*:refs/tags/*'
+          URL="https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
+          if ! git push --quiet --prune --force "$URL" \
+               '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
+            # 少数账号不接受「登录名 + 令牌」认证，Gitee 同时支持把 oauth2 当用户名
+            echo "::warning::用用户名认证被拒，改用 oauth2 重试"
+            git push --quiet --prune --force \
+              "https://oauth2:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" \
+              '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          fi
 
           echo "### 已同步到 https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}" >> "$GITHUB_STEP_SUMMARY"
           echo "同步的引用：" >> "$GITHUB_STEP_SUMMARY"
