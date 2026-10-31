@@ -1,7 +1,7 @@
 /** 下课庆祝效果偏好（烟花开关）。跨平台：只走 :core 的 AppStorage，原 Context 参数从未使用。 */
 package com.haooz.chedule.ui.activities.today
 
-import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.storage.AppStorage
 import com.haooz.chedule.ui.theme.KEY_HAPTIC_FEEDBACK
 
 /** 下课烟花 / 爆炸震动偏好。 */

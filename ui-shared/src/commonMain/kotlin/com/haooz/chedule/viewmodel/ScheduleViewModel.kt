@@ -2,13 +2,15 @@ package com.haooz.chedule.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.ScheduleEffects
-import com.haooz.chedule.data.ioDispatcher
-import kotlinx.coroutines.launch
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.platform.ScheduleEffects
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.repo.CourseRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * ⚠ 原继承 `AndroidViewModel(application)` 只为拿 `Context` 调 `CourseReminderHelper`，现重排提醒走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入 `AndroidScheduleEffects`）。保持无参构造：调用点用 AndroidX `viewModel()`，默认工厂只认无参构造。
@@ -73,7 +75,7 @@ class ScheduleViewModel : ViewModel() {
         repository.setScheduleTimeConfigId(scheduleId, timeConfigId)
     }
 
-    fun addTimeConfig(config: com.haooz.chedule.data.TimeConfig): Long {
+    fun addTimeConfig(config: TimeConfig): Long {
         return repository.addTimeConfig(config)
     }
 
@@ -98,7 +100,7 @@ class ScheduleViewModel : ViewModel() {
     }
 
     // 临时切到目标课表写入再恢复，对外表现为不切换
-    fun saveCoursesToSchedule(scheduleId: String, courses: List<com.haooz.chedule.data.Course>) {
+    fun saveCoursesToSchedule(scheduleId: String, courses: List<Course>) {
         val oldScheduleId = repository.getCurrentScheduleId()
         repository.setCurrentScheduleId(scheduleId)
         repository.saveCourses(courses)
@@ -109,7 +111,7 @@ class ScheduleViewModel : ViewModel() {
         return repository.getScheduleTimeConfigId(scheduleId)
     }
 
-    fun getTimeConfig(configId: Long): com.haooz.chedule.data.TimeConfig {
+    fun getTimeConfig(configId: Long): TimeConfig {
         return repository.getTimeConfig(configId)
     }
 }

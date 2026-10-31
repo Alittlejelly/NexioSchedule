@@ -1,11 +1,14 @@
 package com.haooz.chedule.data
 
-import kotlinx.coroutines.test.runTest
+import com.haooz.chedule.data.platform.HttpResult
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.HttpTimeouts
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 /**
  * [HttpService] 的契约测试。

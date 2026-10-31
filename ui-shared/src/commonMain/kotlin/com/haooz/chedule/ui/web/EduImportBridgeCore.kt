@@ -1,15 +1,15 @@
 package com.haooz.chedule.ui.web
 
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.KeyValueEditor
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.optInt
-import com.haooz.chedule.data.optBoolean
-import com.haooz.chedule.data.optString
-import com.haooz.chedule.data.parseJsonArray
-import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.KeyValueEditor
+import com.haooz.chedule.data.util.optBoolean
+import com.haooz.chedule.data.util.optInt
+import com.haooz.chedule.data.util.optString
+import com.haooz.chedule.data.util.parseJsonArray
+import com.haooz.chedule.data.util.parseJsonObject
 import com.haooz.chedule.i18n.ImportStr
 import kotlin.random.Random
 import kotlinx.serialization.json.JsonArray

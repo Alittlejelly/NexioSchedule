@@ -32,8 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.google.gson.Gson
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.platform.PrivacyConsent
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.ui.activities.today.WeatherData
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -193,7 +194,7 @@ fun rememberWeather(): Triple<WeatherData, Boolean, () -> Unit> {
     val weatherPrefs = remember { AppStorage.store("weather_prefs") }
     val weatherSource = weatherPrefs.getString("weather_source", "caiyun")
     // 合规：可观察的隐私同意状态；未同意前不定位/不查询，同意后自动重新执行
-    val privacyConsented by com.haooz.chedule.data.PrivacyConsent.consented.collectAsState()
+    val privacyConsented by com.haooz.chedule.data.platform.PrivacyConsent.consented.collectAsState()
 
     var weather by remember { mutableStateOf(cachedWeather ?: WeatherData()) }
     var hasLocationPermission by remember {

@@ -11,28 +11,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.AppInfo
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.CourseStorage
-import com.haooz.chedule.data.DesktopSqlStorage
-import com.haooz.chedule.data.FileAppFile
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.AppInfo
+import com.haooz.chedule.data.platform.FileAppFile
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.DesktopSqlStorage
+import com.haooz.chedule.i18n.DesktopStr
 import com.haooz.chedule.ui.activities.AppreciateAuthorScreen
 import com.haooz.chedule.ui.activities.ChangelogScreen
 import com.haooz.chedule.ui.activities.CommunicationScreen
@@ -40,20 +40,20 @@ import com.haooz.chedule.ui.activities.CourseTimeSettingsScreen
 import com.haooz.chedule.ui.activities.LicenseScreen
 import com.haooz.chedule.ui.activities.PrivacyPolicyScreen
 import com.haooz.chedule.ui.activities.WebDavSettingsScreen
+import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.components.DocumentPageScaffold
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import com.haooz.chedule.ui.screens.AddCourseDialog
 import com.haooz.chedule.ui.screens.CourseDetailScreen
 import com.haooz.chedule.ui.screens.CourseEditScreen
-import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.screens.SchoolSelectionScreen
 import com.haooz.chedule.ui.theme.CourseScheduleTheme
-import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.AppMaterialSettings
+import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.io.File
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Scaffold
-import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -84,7 +84,7 @@ fun main() {
         root = FileAppFile(dataDir),
         readAsset = { path ->
             val stream = object {}.javaClass.classLoader.getResourceAsStream(path)
-                ?: throw IllegalArgumentException(com.haooz.chedule.i18n.DesktopStr.missingResource(path))
+                ?: throw IllegalArgumentException(DesktopStr.missingResource(path))
             stream.use { it.readBytes() }
         },
     )

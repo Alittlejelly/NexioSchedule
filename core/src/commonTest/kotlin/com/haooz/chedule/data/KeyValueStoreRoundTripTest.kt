@@ -1,5 +1,6 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

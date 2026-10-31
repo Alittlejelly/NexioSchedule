@@ -1,11 +1,13 @@
 package com.haooz.chedule.data
 
-import kotlinx.coroutines.runBlocking
+import com.haooz.chedule.data.platform.HttpTimeouts
+import com.haooz.chedule.data.platform.createHttpService
 import java.net.ServerSocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * **真实平台实现**的 `maxBytes` 行为验证（不是假实现）。
@@ -21,7 +23,7 @@ import kotlin.test.assertTrue
  * - 正好等于上限 → **不算截断**（off-by-one 的经典坑）
  *
  * Android 侧本机跑不了宿主测试（缺 Robolectric / 真机），仍需真机回归；但两端走同一份
- * [readAtMost] 语义，这里的边界结论可直接参考。
+ * [com.haooz.chedule.data.platform.readAtMost] 语义，这里的边界结论可直接参考。
  */
 class HttpServiceRealImplTest {
 

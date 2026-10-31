@@ -1,15 +1,5 @@
 package com.haooz.chedule.reminder
 
-import com.haooz.chedule.data.HolidayEntry
-
-import com.haooz.chedule.data.localDateTimeAt
-
-import com.haooz.chedule.data.minusDays
-import com.haooz.chedule.data.plusDays
-import com.haooz.chedule.data.todayLocalDate
-import kotlinx.datetime.isoDayNumber
-import com.haooz.chedule.ui.utils.ApiCompat
-
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
@@ -21,27 +11,34 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.haooz.chedule.R
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.CourseScheduleDateBounds
-import com.haooz.chedule.data.CourseTimeSpan
-import com.haooz.chedule.data.DayScheduleResolver
-import com.haooz.chedule.data.DayScheduleResolver.DayScheduleResolution
-import com.haooz.chedule.data.HolidayCourseExclusion
-import com.haooz.chedule.data.HolidayBeforeCourseExclusion
-import com.haooz.chedule.data.HolidayEndCourseExclusion
-import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.data.TeachingWeekPosition
-import com.haooz.chedule.ui.activities.MainActivity
-import com.haooz.chedule.widget.WidgetUpdateCache
-import kotlinx.datetime.LocalDate
-import java.util.Calendar
-import com.haooz.chedule.data.LOG_LEVEL_DEBUG
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.logMinLevel
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.holiday.HolidayBeforeCourseExclusion
+import com.haooz.chedule.data.holiday.HolidayEndCourseExclusion
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.TeachingWeekPosition
+import com.haooz.chedule.data.holiday.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.CourseScheduleDateBounds
+import com.haooz.chedule.data.model.CourseTimeResolver
+import com.haooz.chedule.data.platform.LOG_LEVEL_DEBUG
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.logMinLevel
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.repo.DayScheduleResolver
+import com.haooz.chedule.data.repo.DayScheduleResolver.DayScheduleResolution
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.getStringOrNull
+import com.haooz.chedule.data.util.CourseTimeSpan
+import com.haooz.chedule.data.util.localDateTimeAt
+import com.haooz.chedule.data.util.minusDays
+import com.haooz.chedule.data.util.plusDays
+import com.haooz.chedule.data.util.todayLocalDate
 import com.haooz.chedule.i18n.AndroidNotifStr
+import com.haooz.chedule.ui.activities.MainActivity
+import com.haooz.chedule.ui.utils.ApiCompat
+import com.haooz.chedule.widget.WidgetUpdateCache
+import java.util.Calendar
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
 
 object CourseReminderHelper {
 
@@ -963,10 +960,10 @@ object CourseReminderHelper {
 
     // 新代码直接用 CourseTimeResolver
     fun getCourseStartTime(course: Course, repository: CourseRepository): String? =
-        com.haooz.chedule.data.CourseTimeResolver.getStartTime(course, repository)
+        CourseTimeResolver.getStartTime(course, repository)
 
     fun getCourseEndTime(course: Course, repository: CourseRepository): String? =
-        com.haooz.chedule.data.CourseTimeResolver.getEndTime(course, repository)
+        CourseTimeResolver.getEndTime(course, repository)
 
     fun getLatestCourseEndTime(courses: List<Course>, repository: CourseRepository): String? =
         latestCourseEndTime(courses) { getCourseEndTime(it, repository) }
@@ -1016,7 +1013,7 @@ object CourseReminderHelper {
     fun effectiveWeekendDays(
         semesterStartDate: LocalDate,
         week: Int,
-        rules: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
+        rules: List<TeachingWeekReorganizationRule>,
         hasCoursesOnDate: (LocalDate) -> Boolean,
     ): Set<Int> = DayScheduleResolver.effectiveWeekendDays(
         semesterStartDate = semesterStartDate,

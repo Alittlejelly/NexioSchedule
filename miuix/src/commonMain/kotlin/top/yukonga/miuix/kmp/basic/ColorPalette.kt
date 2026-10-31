@@ -39,13 +39,13 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.color.api.toHsv
 import top.yukonga.miuix.kmp.color.space.Hsv
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import kotlin.math.abs
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 /** Color palette for selecting a color from a grid of HSV values. */
 @Composable

@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.model.Course
 import com.haooz.chedule.ui.activities.classschedule.MIN_CARD_HEIGHT_DP
 import com.haooz.chedule.ui.activities.classschedule.MinuteHeight
 import com.haooz.chedule.ui.activities.classschedule.TimelineAxis
@@ -43,9 +43,9 @@ import com.haooz.chedule.ui.activities.classschedule.parseHmMinutes
 import com.haooz.chedule.ui.components.text.material.Text
 import com.haooz.chedule.ui.theme.rememberCourseColors
 import com.kyant.backdrop.Backdrop
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.time.Duration.Companion.milliseconds
 
 /** 今日页时间轴的刻度列宽：与课表页手机端一致，两页观感对齐。 */
 private val TodayTimelineAxisWidth = 36.dp

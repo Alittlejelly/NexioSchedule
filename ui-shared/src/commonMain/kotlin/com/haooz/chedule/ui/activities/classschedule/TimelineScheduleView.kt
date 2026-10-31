@@ -18,8 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -39,23 +39,23 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.CardContentAlignment
-import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.CardTextColor
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.HolidayCourseExclusion
-import com.haooz.chedule.data.nowLocalTime
-import com.haooz.chedule.data.pickNonCurrentWeekCourse
+import com.haooz.chedule.data.appearance.CardContentAlignment
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.appearance.CardTextColor
+import com.haooz.chedule.data.holiday.HolidayCourseExclusion
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.pickNonCurrentWeekCourse
+import com.haooz.chedule.data.util.nowLocalTime
 import com.haooz.chedule.ui.components.text.material.Text
 import com.haooz.chedule.ui.theme.scheduleAccentColor
 import com.kyant.backdrop.Backdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 课表页的呈现方式。

@@ -1,13 +1,15 @@
 package com.haooz.chedule.data
 
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.storage.SqlDriverBackend
+import com.haooz.chedule.data.storage.SqliteKeyValueStore
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * [SqliteKeyValueStore] 的并发读：**读完全不进锁**，靠「不可变快照 + 整份换指针」。
+ * [com.haooz.chedule.data.storage.SqliteKeyValueStore] 的并发读：**读完全不进锁**，靠「不可变快照 + 整份换指针」。
  *
  * 三条不变量：
  * 1. 一次 `edit{}` 里的多个键**一起可见** —— 同一份快照里不可能出现「a 是新值、b 还是旧值」；

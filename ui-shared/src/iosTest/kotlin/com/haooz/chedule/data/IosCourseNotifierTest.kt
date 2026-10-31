@@ -2,6 +2,10 @@
 
 package com.haooz.chedule.data
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.TimeZone
@@ -11,10 +15,6 @@ import kotlinx.datetime.todayIn
 import platform.Foundation.NSThread
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_sync
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class IosCourseNotifierTest {
     @Test

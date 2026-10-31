@@ -1,5 +1,15 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.AppInfo
+import com.haooz.chedule.data.platform.DeviceInfo
+import com.haooz.chedule.data.platform.StatsReporter
+import com.haooz.chedule.data.platform.currentDeviceInfo
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.util.optInt
+import com.haooz.chedule.data.util.optLong
+import com.haooz.chedule.data.util.optString
+import com.haooz.chedule.data.util.parseJsonObject
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,8 +27,8 @@ import kotlin.test.assertTrue
  *
  * ## 测试隔离说明
  *
- * [StatsReporter] 是 object，内部 `deviceId` 有内存缓存且不可清空。
- * 因此这里**整个测试类共用一个 [InMemoryKeyValueStore] 实例**，
+ * [com.haooz.chedule.data.platform.StatsReporter] 是 object，内部 `deviceId` 有内存缓存且不可清空。
+ * 因此这里**整个测试类共用一个 [com.haooz.chedule.data.storage.InMemoryKeyValueStore] 实例**，
  * 保证「内存缓存」与「落盘数据」始终指向同一份，不会被 @BeforeTest 重置搞得不一致。
  */
 class StatsReporterPayloadTest {

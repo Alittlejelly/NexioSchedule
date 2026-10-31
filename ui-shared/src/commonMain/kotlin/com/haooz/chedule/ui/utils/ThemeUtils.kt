@@ -6,15 +6,15 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.KEY_CHANGED_ANYWHERE
-import com.haooz.chedule.data.ThemeMode
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.appearance.ThemeMode
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.KEY_CHANGED_ANYWHERE
+import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
 import top.yukonga.miuix.kmp.theme.AppSettingDarkBridge
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
 import top.yukonga.miuix.kmp.theme.platformDynamicColors
+import top.yukonga.miuix.kmp.theme.rememberAppSettingDark as miuixRememberAppSettingDark
 
 // 壁纸强制主题：非 null 时 isAppDarkTheme 直接用该值，今日页/课程表页按壁纸亮暗锁定。
 // 别名指向 :miuix 里的同一个 CompositionLocal 实例，调用方无需改动。

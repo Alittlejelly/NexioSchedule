@@ -1,8 +1,8 @@
 /** 按站点记录「普通静态资源是否走 OkHttp 转发」 */
 package com.haooz.chedule.ui.web
 
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.storage.AppStorage
 import com.haooz.chedule.i18n.AndroidMiscStr
 
 /**

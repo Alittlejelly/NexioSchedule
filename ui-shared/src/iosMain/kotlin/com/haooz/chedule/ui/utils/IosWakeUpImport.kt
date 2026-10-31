@@ -2,15 +2,17 @@
 
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.NexioLog
 import com.haooz.chedule.data.optBoolean
 import com.haooz.chedule.data.optJsonArray
 import com.haooz.chedule.data.optJsonObject
 import com.haooz.chedule.data.optString
-import com.haooz.chedule.data.parseJsonArray
-import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.util.parseJsonArray
+import com.haooz.chedule.data.util.parseJsonObject
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.web.JS_PROMISE_BRIDGE
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -18,8 +20,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSError
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
@@ -29,8 +31,6 @@ import platform.WebKit.WKUserContentController
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * iOS 的 WakeUp 课表导入：**无头 WKWebView 跑云端适配脚本**，对应 Android

@@ -5,8 +5,8 @@ package com.haooz.chedule.ui.utils
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.showToast
 import com.haooz.chedule.data.toByteArray
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.ui.components.SharedFileIntent

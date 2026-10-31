@@ -3,7 +3,7 @@ package com.haooz.chedule.data
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
-import com.haooz.chedule.data.AppFiles
+import com.haooz.chedule.data.platform.AppFiles
 
 /**
  * 壁纸后端能力 —— 平台实现需提供四项能力。

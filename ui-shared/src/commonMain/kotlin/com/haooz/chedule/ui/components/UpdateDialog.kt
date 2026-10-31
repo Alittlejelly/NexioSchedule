@@ -1,10 +1,5 @@
 package com.haooz.chedule.ui.components
 
-import androidx.compose.ui.text.style.TextAlign
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.i18n.AboutStr
-import com.haooz.chedule.i18n.CommonStr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,25 +21,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.NoopUpdateController
+import com.haooz.chedule.data.platform.UpdateController
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.platform.isNewerVersion
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.util.todayLocalDate
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.time.Duration.Companion.milliseconds
-import com.haooz.chedule.data.NoopUpdateController
-import com.haooz.chedule.data.UpdateController
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.isNewerVersion
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.data.todayLocalDate
 
 /**
  * 更新弹窗：每天启动时检查一次更新，有新版本则弹窗提示。

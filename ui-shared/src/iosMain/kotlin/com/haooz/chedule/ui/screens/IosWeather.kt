@@ -10,19 +10,20 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.HttpService
-import com.haooz.chedule.data.HttpTimeouts
-import com.haooz.chedule.data.PrivacyConsent
 import com.haooz.chedule.data.createHttpService
-import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.data.optDouble
 import com.haooz.chedule.data.optInt
 import com.haooz.chedule.data.optJsonArray
 import com.haooz.chedule.data.optJsonObject
 import com.haooz.chedule.data.optString
-import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.HttpTimeouts
+import com.haooz.chedule.data.platform.PrivacyConsent
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.util.parseJsonObject
 import com.haooz.chedule.ui.activities.today.WeatherData
+import kotlin.coroutines.resume
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -35,7 +36,6 @@ import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
 import platform.CoreLocation.kCLLocationAccuracyKilometer
 import platform.Foundation.NSError
 import platform.darwin.NSObject
-import kotlin.coroutines.resume
 
 /**
  * iOS 的今日助手天气 + 定位（对应 Android `TodayAssistant.kt` 里的 `rememberWeather`）。

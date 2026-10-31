@@ -2,7 +2,7 @@
 package com.haooz.chedule.shizuku
 
 import android.os.IBinder
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 

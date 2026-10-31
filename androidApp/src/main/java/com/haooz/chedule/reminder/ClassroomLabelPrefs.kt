@@ -1,8 +1,8 @@
 package com.haooz.chedule.reminder
 
-import com.haooz.chedule.data.ClassroomLabel
-import com.haooz.chedule.data.ClassroomLabelRule
-import com.haooz.chedule.data.KeyValueStore
+import com.haooz.chedule.data.model.ClassroomLabel
+import com.haooz.chedule.data.model.ClassroomLabelRule
+import com.haooz.chedule.data.storage.KeyValueStore
 
 /**
  * 缩略态地点 / 课程名精简规则的读取口。规则在 :core 的 [ClassroomLabel]，这里只提供 store。

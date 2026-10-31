@@ -28,10 +28,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.text.style.TextAlign
-import com.haooz.chedule.ui.components.CardExpand
-import com.haooz.chedule.ui.components.WebDavActionButtons
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -46,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -56,6 +51,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
@@ -63,10 +59,12 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.data.todayLocalDate
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.util.todayLocalDate
 import com.haooz.chedule.i18n.AppLanguage
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SettingsStr
@@ -78,7 +76,10 @@ import com.haooz.chedule.ui.activities.WebDavSettingsScreen
 import com.haooz.chedule.ui.activities.WidgetIntroScreen
 import com.haooz.chedule.ui.basic.LiquidGlassTextButton
 import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.WebDavActionButtons
 import com.haooz.chedule.ui.components.tabletNavChromeTitleSlot
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import com.haooz.chedule.ui.navigation.AppRoute
 import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.utils.screenWidthDp
@@ -88,6 +89,7 @@ import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.ShiftViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -114,7 +116,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.LocalOverScrollState
 import top.yukonga.miuix.kmp.utils.OverScrollState
 import top.yukonga.miuix.kmp.utils.overScrollVertical
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 平板设置页目的地：全部入口平铺在左栏，右栏直接渲染内容，全程不跳 Activity。
@@ -395,7 +396,7 @@ fun TabletSettingsScreen(
     /** 节假日数据变更副作用（重排提醒+刷小部件） */
     onHolidayDataChanged: () -> Unit = {},
     /** 节假日 API 拉取（Android 宿主实现）；null 时返回 emptyList */
-    fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
+    fetchHolidayEntries: (suspend (year: Int) -> List<HolidayEntry>)? = null,
     /** 是否显示「更新设置」入口（iOS 走 App Store → false，左栏那一项整个不渲染） */
     showUpdateSettings: Boolean = true,
 ) {
@@ -420,8 +421,8 @@ fun TabletSettingsScreen(
     var holidayLoading by remember { mutableStateOf(false) }
     var onHolidayUpdate by remember { mutableStateOf({}) }
     // 课程时间管理：右栏叠编辑屏
-    val courseRepository = remember { com.haooz.chedule.data.CourseRepository() }
-    var editingTimeConfig by remember { mutableStateOf<com.haooz.chedule.data.TimeConfig?>(null) }
+    val courseRepository = remember { com.haooz.chedule.data.repo.CourseRepository() }
+    var editingTimeConfig by remember { mutableStateOf<TimeConfig?>(null) }
     var editingTimeRoutineId by remember { mutableStateOf<Long?>(null) }
     var timeConfigRefreshTrigger by remember { mutableIntStateOf(0) }
     val uiScope = rememberCoroutineScope()
@@ -1543,7 +1544,7 @@ private fun TabletHolidayPane(
     // 节假日数据变更是 Android 专有的平台副作用（提醒 / 勿扰 / 小组件），由宿主注入
     onHolidayDataChanged: () -> Unit = {},
     // 节假日 API 拉取由宿主实现（Android 联网，10s 超时）；null 时返回 emptyList
-    fetchHolidayEntries: (suspend (year: Int) -> List<com.haooz.chedule.data.HolidayEntry>)? = null,
+    fetchHolidayEntries: (suspend (year: Int) -> List<HolidayEntry>)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val currentDate = remember { todayLocalDate() }

@@ -1,6 +1,14 @@
 package com.haooz.chedule.data
 
-import kotlinx.coroutines.test.runTest
+import com.haooz.chedule.data.platform.AppInfo
+import com.haooz.chedule.data.platform.AppreciationFetcher
+import com.haooz.chedule.data.platform.HttpResult
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.Notice
+import com.haooz.chedule.data.platform.NoticeFetcher
+import com.haooz.chedule.data.platform.StatsReporter
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -8,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 /**
  * 三个数据对象的**网络逻辑**验证。

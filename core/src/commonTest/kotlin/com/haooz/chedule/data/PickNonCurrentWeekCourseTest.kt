@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.nextActiveWeekAfter
+import com.haooz.chedule.data.model.pickNonCurrentWeekCourse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

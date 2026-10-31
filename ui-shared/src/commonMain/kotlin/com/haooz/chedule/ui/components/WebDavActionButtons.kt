@@ -56,10 +56,10 @@ import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.runtimeShaderEffect
 import com.kyant.backdrop.effects.vibrancy
+import kotlin.math.tanh
 import top.yukonga.miuix.kmp.interactive.computeDragTransform
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.math.tanh
 
 /**
  * 这两颗按钮的拖动手感，与 [com.haooz.chedule.ui.basic.LiquidGlassTextButton] 共用。

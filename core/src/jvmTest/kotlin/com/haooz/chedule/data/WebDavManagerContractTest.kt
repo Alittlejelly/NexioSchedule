@@ -1,6 +1,22 @@
 package com.haooz.chedule.data
 
-import kotlinx.coroutines.test.runTest
+import com.haooz.chedule.data.backup.BackupInfo
+import com.haooz.chedule.data.backup.BackupResult
+import com.haooz.chedule.data.backup.RestoreResult
+import com.haooz.chedule.data.backup.WebDavManager
+import com.haooz.chedule.data.backup.basicAuthHeader
+import com.haooz.chedule.data.backup.encodePathSegment
+import com.haooz.chedule.data.backup.normalizeRemotePath
+import com.haooz.chedule.data.backup.resolveWebDavDirUrl
+import com.haooz.chedule.data.platform.HttpResult
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.util.formatCompactStamp
+import com.haooz.chedule.data.util.formatDisplayDateTime
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseCompactStamp
+import com.haooz.chedule.data.util.parseJsonObject
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.test.BeforeTest
@@ -8,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 /**
  * `WebDavManager` 的**请求契约**测试。
@@ -18,7 +35,7 @@ import kotlin.test.assertTrue
  * 「编译全绿、真机才发现」那类：方法名写错（PROPFIND vs POST）、少一个 `Depth` 头、
  * 认证头拼错 —— 全部只在连真服务器时才暴露。
  *
- * 所以塞一个**记录请求的假 [HttpService]**，把「发出去的请求长什么样」逐条钉死：
+ * 所以塞一个**记录请求的假 [com.haooz.chedule.data.platform.HttpService]**，把「发出去的请求长什么样」逐条钉死：
  * 方法 / URL / `Authorization` / `Depth` / body / contentType。
  */
 class WebDavManagerContractTest {
@@ -41,7 +58,7 @@ class WebDavManagerContractTest {
         fun on(method: String, urlSuffix: String = "", code: Int, body: String = "") {
             responses.add(
                 ({ r: Recorded -> r.method == method && (urlSuffix.isEmpty() || r.url.endsWith(urlSuffix)) }) to
-                    HttpResult(code, body.encodeToByteArray()),
+                        HttpResult(code, body.encodeToByteArray()),
             )
         }
 
@@ -165,7 +182,7 @@ class WebDavManagerContractTest {
         http.on("PROPFIND", code = 207)
         http.on("PUT", code = 201)
 
-        val result = manager.backupAllData(CourseRepository.getInstance())
+        val result = manager.backupAllData(com.haooz.chedule.data.repo.CourseRepository.getInstance())
         assertTrue(result is BackupResult.Success, "实际: $result")
 
         // 根目录 + 每一级子目录各探一次（已在 → 不 MKCOL），最后 PUT
@@ -192,7 +209,7 @@ class WebDavManagerContractTest {
         http.on("MKCOL", code = 409)
         http.on("PUT", code = 409)
 
-        val result = manager.backupAllData(CourseRepository.getInstance())
+        val result = manager.backupAllData(com.haooz.chedule.data.repo.CourseRepository.getInstance())
         assertTrue(result is BackupResult.Error, "实际: $result")
         val message = (result as BackupResult.Error).message
         assertTrue(message.contains("409"), "实际: $message")
@@ -243,7 +260,7 @@ class WebDavManagerContractTest {
         http.on("PROPFIND", code = 207)
         http.on("PUT", code = 201)
 
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val result = manager.backupAllData(repository)
         assertTrue(result is BackupResult.Success, "实际: $result")
 
@@ -286,7 +303,7 @@ class WebDavManagerContractTest {
         http.on("MKCOL", code = 405)
         http.on("PUT", code = 201)
 
-        val result = manager.backupAllData(CourseRepository.getInstance())
+        val result = manager.backupAllData(com.haooz.chedule.data.repo.CourseRepository.getInstance())
         assertTrue(result is BackupResult.Success, "实际: $result")
 
         // 逐级：根 → NexioSchedule → backups，每级「探不到就 MKCOL」
@@ -369,7 +386,7 @@ class WebDavManagerContractTest {
         """.trimIndent()
         http.on("GET", code = 200, body = payload)
 
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val result = manager.restoreLatestBackup(repository)
         assertTrue(result is RestoreResult.Success, "实际: $result")
         assertEquals("2026-10-01 12:00:00", (result as RestoreResult.Success).backupTime)
@@ -419,7 +436,7 @@ class WebDavManagerContractTest {
         """.trimIndent()
         http.on("GET", code = 200, body = payload)
 
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val result = manager.restoreLatestBackup(repository)
         assertTrue(result is RestoreResult.Success, "实际: $result")
 
@@ -438,12 +455,12 @@ class WebDavManagerContractTest {
     fun `restoreLatestBackup 的 404 与空列表分支`() = runTest {
         http.on("PROPFIND", urlSuffix = "/backups", code = 207, body = propfindBody)
         http.on("GET", code = 404)
-        val r404 = manager.restoreLatestBackup(CourseRepository.getInstance())
+        val r404 = manager.restoreLatestBackup(com.haooz.chedule.data.repo.CourseRepository.getInstance())
         assertTrue(r404 is RestoreResult.Error && r404.message.contains("不存在"))
 
         http = FakeHttp().also { manager.http = it }
         http.on("PROPFIND", urlSuffix = "/backups", code = 207, body = "<d:multistatus/>")
-        val empty = manager.restoreLatestBackup(CourseRepository.getInstance())
+        val empty = manager.restoreLatestBackup(com.haooz.chedule.data.repo.CourseRepository.getInstance())
         assertTrue(empty is RestoreResult.Error && empty.message.contains("没有备份"))
     }
 

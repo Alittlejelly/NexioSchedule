@@ -1,16 +1,16 @@
 package com.haooz.chedule.data.school
 
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.HttpResult
-import com.haooz.chedule.data.HttpService
 import com.haooz.chedule.data.InMemoryAppFile
-import com.haooz.chedule.data.InMemoryKeyValueStore
-import kotlinx.coroutines.runBlocking
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.HttpResult
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * [ScriptRepository] 迁移等价性验证：验证的不是「能编译」，而是**分支行为没变**。

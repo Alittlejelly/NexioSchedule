@@ -1,25 +1,38 @@
 package com.haooz.chedule.data
 
-import kotlinx.datetime.LocalDate
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.holiday.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.CourseTimeResolver
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.model.TimeRoutine
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
+import com.haooz.chedule.data.util.todayLocalDate
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.datetime.LocalDate
 
 /**
  * 读取缓存的失效回归。
  *
- * [CourseRepository] 里新增了一批「热路径读取结果」缓存（生效作息、教学周规则、开学日、
+ * [com.haooz.chedule.data.repo.CourseRepository] 里新增了一批「热路径读取结果」缓存（生效作息、教学周规则、开学日、
  * 作息 JSON）。缓存没跟写入一起失效的表现是「设置改了但界面还是旧值，只有重启才恢复」——
  * 正是这轮优化最容易引入、也最难在真机上手测出来的问题。
  */
 class RepositoryCacheInvalidationTest {
 
-    private lateinit var repository: CourseRepository
+    private lateinit var repository: com.haooz.chedule.data.repo.CourseRepository
     private lateinit var driver: JdbcSqliteDriver
 
     @BeforeTest
@@ -30,7 +43,7 @@ class RepositoryCacheInvalidationTest {
         driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
         CourseStorage.install { SqliteCourseRowStore(NexioDatabase(driver)) }
-        repository = CourseRepository.getInstance()
+        repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         repository.invalidateAllCaches()
     }
 
@@ -143,7 +156,7 @@ class RepositoryCacheInvalidationTest {
             InMemoryKeyValueStore(
                 mapOf(
                     "entries_2026" to
-                        """[{"date":"2026-01-01","endDate":"","name":"元旦","type":0}]""",
+                            """[{"date":"2026-01-01","endDate":"","name":"元旦","type":0}]""",
                 )
             )
         }
@@ -217,7 +230,12 @@ class RepositoryCacheInvalidationTest {
         repository.setScheduleTimeConfigId(name, bound)
         // 孤儿放在最大 id 上：prune 之后 addTimeConfig 正好把它复用
         val orphan = repository.addTimeConfig(
-            TimeConfig(name = "没人要的", morningSections = 5, afternoonSections = 5, eveningSections = 5)
+            TimeConfig(
+                name = "没人要的",
+                morningSections = 5,
+                afternoonSections = 5,
+                eveningSections = 5
+            )
         )
         // 先把孤儿的生效作息灌进缓存
         repository.effectiveConfigOn(orphan, todayLocalDate())
@@ -225,7 +243,12 @@ class RepositoryCacheInvalidationTest {
 
         repository.pruneOrphanTimeConfigsIfNeeded()
         val reused = repository.addTimeConfig(
-            TimeConfig(name = "新的", morningSections = 3, afternoonSections = 3, eveningSections = 3)
+            TimeConfig(
+                name = "新的",
+                morningSections = 3,
+                afternoonSections = 3,
+                eveningSections = 3
+            )
         )
         assertEquals(orphan, reused, "前置条件：prune 掉的是最大 id，新配置应当复用它")
         assertEquals(

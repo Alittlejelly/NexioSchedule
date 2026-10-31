@@ -6,15 +6,15 @@ import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.i18n.AndroidMiscStr
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import rikka.sui.Sui
-import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 object ShizukuManager {
     private const val TAG = "ShizukuManager"

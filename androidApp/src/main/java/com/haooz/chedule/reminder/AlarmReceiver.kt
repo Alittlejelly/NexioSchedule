@@ -1,23 +1,24 @@
 /** 课程提醒闹钟接收器 */
 package com.haooz.chedule.reminder
 
-import com.haooz.chedule.data.HolidayEntry
-
-import com.haooz.chedule.data.plusDays
-import com.haooz.chedule.data.todayLocalDate
-import kotlinx.datetime.daysUntil
-
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayCountdown
-import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.holiday.HolidayCountdown
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.util.plusDays
+import com.haooz.chedule.data.util.todayLocalDate
 import com.haooz.chedule.i18n.AndroidNotifStr
 import com.haooz.chedule.i18n.AndroidWidgetStr
 import com.haooz.chedule.i18n.AppLanguage
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.daysUntil
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -57,7 +58,10 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val type = intent.getIntExtra(CourseReminderHelper.EXTRA_REMINDER_TYPE, 0)
-        NexioLog.d("CourseReminder", "AlarmReceiver: type=$type ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+        NexioLog.d("CourseReminder", "AlarmReceiver: type=$type ${
+            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(
+                Date()
+            )}")
         val repository = CourseRepository()
         val useIsland = repository.getIslandNotification() && IslandNotificationHelper.isIslandSupported(context)
 

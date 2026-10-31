@@ -1,10 +1,10 @@
 package com.haooz.chedule.i18n
 
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.getStringOrNull
 
 /**
- * 语言偏好的持久化，独立偏好文件（与 [com.haooz.chedule.data.AppearanceStore] 同一套惯例）。
+ * 语言偏好的持久化，独立偏好文件（与 [com.haooz.chedule.data.appearance.AppearanceStore] 同一套惯例）。
  * 只存用户的 [LanguagePref] 选择；「跟随系统」的解析结果不落盘，每次启动重新探测。
  *
  * 公开给宿主模块：进程启动（Application/main/bootstrap）时先恢复一次，

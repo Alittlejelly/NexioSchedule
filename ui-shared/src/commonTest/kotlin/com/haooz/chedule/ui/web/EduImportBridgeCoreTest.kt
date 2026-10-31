@@ -1,9 +1,9 @@
 package com.haooz.chedule.ui.web
 
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.InMemoryKeyValueStore
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.getStringOrNull
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

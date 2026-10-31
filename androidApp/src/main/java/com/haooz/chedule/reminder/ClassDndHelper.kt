@@ -14,12 +14,15 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.widget.Toast
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.KeyValueStore
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.KeyValueStore
 import com.haooz.chedule.i18n.AndroidNotifStr
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 object ClassDndHelper {
 
@@ -640,7 +643,7 @@ object ClassDndHelper {
             alarmManager, triggerAt, dndPendingIntent(context, requestCode, action)
         )
         NexioLog.d(TAG, "scheduleOne OK action=$action at=" +
-            java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(triggerAt)) +
+            SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(triggerAt)) +
             " rc=$requestCode")
     }
 

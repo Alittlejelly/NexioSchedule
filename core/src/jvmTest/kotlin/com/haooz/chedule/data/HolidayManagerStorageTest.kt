@@ -1,5 +1,12 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.holiday.HolidayBeforeCourseExclusion
+import com.haooz.chedule.data.holiday.HolidayEndCourseExclusion
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.holiday.toJson
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

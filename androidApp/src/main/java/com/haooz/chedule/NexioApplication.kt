@@ -1,19 +1,29 @@
 package com.haooz.chedule
 
 import android.app.Application
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.SqliteStorage
+import com.haooz.chedule.data.appearance.AppearanceStore
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.AppInfo
+import com.haooz.chedule.data.platform.FileAppFile
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.ScheduleEffects
+import com.haooz.chedule.data.platform.initToast
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.LegacyStorageMigration
+import com.haooz.chedule.data.storage.SqliteStorage
 import com.haooz.chedule.platform.AndroidScheduleEffects
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.File
 
 /**
  * 存储与平台能力接线。运行时只有 `nexio.db` 一份数据：SharedPreferences 只在
- * [com.haooz.chedule.data.LegacyStorageMigration] 里作为迁移源出现一次，迁完即删。
+ * [com.haooz.chedule.data.storage.LegacyStorageMigration] 里作为迁移源出现一次，迁完即删。
  */
 class NexioApplication : Application() {
 
@@ -21,17 +31,17 @@ class NexioApplication : Application() {
         super.onCreate()
         // 必须最先初始化。工厂按名转发命名空间，不在此汇总键名。
         // 没有第二套存储：库不可用时直接抛，不静默降级。
-        com.haooz.chedule.data.AppStorage.init { name ->
+        AppStorage.init { name ->
             SqliteStorage.store(context = this, namespace = name)
         }
         // 课程行表接线。取不到就抛，不再退回 JSON。
-        com.haooz.chedule.data.CourseStorage.install { SqliteStorage.courseRows(this) }
+        CourseStorage.install { SqliteStorage.courseRows(this) }
         // 旧数据全部搬进 nexio.db，然后删光旧存储。同步做完：这里返回时 shared_prefs 已不存在。
-        com.haooz.chedule.data.LegacyStorageMigration.run(this)
+        com.haooz.chedule.data.storage.LegacyStorageMigration.run(this)
         // 小部件/通知在首帧前取词依赖它。
         com.haooz.chedule.i18n.AppLanguage.init(com.haooz.chedule.i18n.LanguageStore.load())
         // :core 只认 showToast(...)，Android 在此接线。用 applicationContext 避免 Toast 挂住 Activity 实例；时长语义与迁移前一致。
-        com.haooz.chedule.data.initToast { message, long ->
+        com.haooz.chedule.data.platform.initToast { message, long ->
             android.widget.Toast.makeText(
                 this,
                 message,
@@ -39,14 +49,14 @@ class NexioApplication : Application() {
             ).show()
         }
         // :core 无法读 PackageManager，启动时注入版本号；上报负载的 app_version 依赖它，漏掉会成 "unknown"。
-        com.haooz.chedule.data.AppInfo.init(
+        AppInfo.init(
             runCatching {
                 packageManager.getPackageInfo(packageName, 0).versionName
             }.getOrNull() ?: "unknown",
         )
         // :core 只认接口，Android 用 File 实现。readAsset 走 assets 供内置学校索引首启引导；失败让它抛，由 SchoolRepository 打日志跳过引导。
-        com.haooz.chedule.data.AppFiles.init(
-            root = com.haooz.chedule.data.FileAppFile(filesDir),
+        AppFiles.init(
+            root = com.haooz.chedule.data.platform.FileAppFile(filesDir),
             readAsset = { name -> assets.open(name).use { it.readBytes() } },
         )
         // 尽早初始化，主界面首帧可读取壁纸与卡片参数。
@@ -57,14 +67,14 @@ class NexioApplication : Application() {
         val wallpaperPreload = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
             Thread(r, "nexio-wallpaper-preload")
         }.submit(java.util.concurrent.Callable {
-            com.haooz.chedule.data.AppearanceStore.currentStyle()
+            AppearanceStore.currentStyle()
             runCatching { wallpaperBackend.loadNow() }.getOrNull()
         })
         com.haooz.chedule.data.WallpaperStore.synchronousLoader = {
             runCatching { wallpaperPreload.get(3, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()
         }
         // 课程变更后的平台副作用
-        com.haooz.chedule.data.ScheduleEffects.init(AndroidScheduleEffects(this))
+        ScheduleEffects.init(AndroidScheduleEffects(this))
         // 同步预测性返回动画开关到全局单例。
         PredictiveBackSettings.enabled = AppStorage.store("app_preferences")
             .getBoolean(PredictiveBackSettings.KEY_PREDICTIVE_BACK_ANIMATION, true)
@@ -89,8 +99,8 @@ class NexioApplication : Application() {
         Thread {
             // 日期解析在此注入（:core 不能反向依赖 :app 的 CourseRepository）。仓储构造失败则整段跳过，与原实现一致。
             runCatching {
-                val repository = com.haooz.chedule.data.CourseRepository()
-                com.haooz.chedule.data.HolidayManager.migrateLegacyFollowDates { week, weekday ->
+                val repository = CourseRepository()
+                HolidayManager.migrateLegacyFollowDates { week, weekday ->
                     runCatching { repository.dateForTeachingWeekDay(week, weekday) }.getOrNull()
                 }
             }
@@ -110,7 +120,7 @@ class NexioApplication : Application() {
     private fun initWearableSync() {
         runCatching {
             com.haooz.chedule.wearable.WearableScheduleSync.init(this)
-            val repo = com.haooz.chedule.data.CourseRepository.getInstance()
+            val repo = CourseRepository.getInstance()
             repo.addCourseChangedListener { _, _ ->
                 com.haooz.chedule.wearable.WearableScheduleSync.onScheduleChanged("course-change")
             }
@@ -127,7 +137,7 @@ class NexioApplication : Application() {
 
             // 课程读取预热（行表已在迁移里建好，这里只是把首屏要用的数据读进缓存）
             runCatching {
-                val repository = com.haooz.chedule.data.CourseRepository()
+                val repository = CourseRepository()
                 repository.getScheduleNames().forEach { schedule ->
                     runCatching { repository.getCoursesForSchedule(schedule) }
                 }
@@ -136,7 +146,7 @@ class NexioApplication : Application() {
             // 课表设置：首帧要用的周次 / 开学日 / 重组规则才会第一次碰行表（settingsOf + 同步标记），
             // 在这里读掉，主线程首次组合就只剩查缓存。
             runCatching {
-                val repository = com.haooz.chedule.data.CourseRepository()
+                val repository = CourseRepository()
                 repository.getTeachingWeekReorganizations()
                 repository.getTotalWeeks()
                 repository.getCurrentWeek()
@@ -147,7 +157,7 @@ class NexioApplication : Application() {
             // 节假日：首帧的 holidayEntriesByYear 是「整份偏好快照 + 逐年反序列化」，
             // 预热后直接命中它的快照缓存。两级剔除配置没有缓存（几次内存读），不值得预热。
             runCatching {
-                com.haooz.chedule.data.HolidayManager.loadAllByYear()
+                HolidayManager.loadAllByYear()
             }.onFailure { NexioLog.w(TAG, "节假日预热失败（首屏会再读一次）", it) }
         }
     }

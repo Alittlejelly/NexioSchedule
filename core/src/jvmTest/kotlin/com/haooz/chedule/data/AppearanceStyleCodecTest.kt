@@ -1,5 +1,10 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.appearance.AppearanceStyle
+import com.haooz.chedule.data.appearance.AppearanceStyleCodec
+import com.haooz.chedule.data.appearance.CardContentAlignment
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.appearance.CardTextColor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -7,10 +12,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * [AppearanceStyleCodec] 与 **真实 Gson** 的差分基准（数据兼容红线的直接证明）。
+ * [com.haooz.chedule.data.appearance.AppearanceStyleCodec] 与 **真实 Gson** 的差分基准（数据兼容红线的直接证明）。
  *
  * 存量用户 `appearance_settings` 里的外观快照是 `Gson().toJson(CombinationStyle)`
- * 写的（键名 = 字段名，枚举存 ordinal，null 字段跳过）。读写换成 [AppearanceStyleCodec]
+ * 写的（键名 = 字段名，枚举存 ordinal，null 字段跳过）。读写换成 [com.haooz.chedule.data.appearance.AppearanceStyleCodec]
  * （kotlinx-serialization 手写映射）后**输出必须与 Gson 一致**，光靠手写字面量不够，
  * 所以拉真实 Gson 对拍。
  *

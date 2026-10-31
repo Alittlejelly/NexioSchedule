@@ -3,7 +3,7 @@ package com.haooz.chedule.ui.utils
 import android.app.Activity
 import android.content.res.Configuration
 import android.view.WindowInsetsController
-import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.storage.AppStorage
 
 // ⚠ 本文件只剩 **Android 专有**部分（2026-10-10 拆分）。
 // 跨平台的核心（isAppDarkTheme / rememberAppSettingDark / schedulePageBackgroundColor /

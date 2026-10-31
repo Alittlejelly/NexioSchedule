@@ -2,9 +2,9 @@ package com.haooz.chedule.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.repo.CourseRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

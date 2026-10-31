@@ -1,7 +1,5 @@
 package com.haooz.chedule.ui.utils
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -11,19 +9,15 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.text.TextPaint
-import android.view.View
 import androidx.core.content.FileProvider
-import java.io.File
-import java.io.FileOutputStream
 import com.google.gson.GsonBuilder
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.repo.CourseRepository
 import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.i18n.BackupStr
-
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.data.TimeRoutine
+import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,9 +27,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.util.concurrent.TimeUnit
-import com.haooz.chedule.data.showToast
 
 // ════════════════════════════════════════════════════════════════════════
 //  课表导出 —— 单文件全包（分享给其他 App / 分享口令）

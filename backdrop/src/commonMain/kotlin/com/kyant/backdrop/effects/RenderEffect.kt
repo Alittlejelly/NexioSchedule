@@ -7,8 +7,8 @@ import com.kyant.backdrop.internal.RuntimeShaderEffect
 import com.kyant.backdrop.internal.chain
 import com.kyant.backdrop.isRenderEffectSupported
 import com.kyant.backdrop.isRuntimeShaderSupported
-import org.intellij.lang.annotations.Language
 import kotlin.contracts.ExperimentalContracts
+import org.intellij.lang.annotations.Language
 
 fun BackdropEffectScope.effect(effect: RenderEffect) {
     if (!isRenderEffectSupported()) return

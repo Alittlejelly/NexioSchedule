@@ -24,9 +24,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import com.haooz.chedule.ui.utils.PredictiveBackSettings
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.toShape
+import kotlin.math.abs
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import top.yukonga.miuix.kmp.utils.rememberNavigationBack
 
 /**

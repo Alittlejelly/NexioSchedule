@@ -1,5 +1,12 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.backup.decodeCourses
+import com.haooz.chedule.data.backup.encodeCourses
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.util.CourseTimeSpan
+import com.haooz.chedule.data.util.coursePeriodCompleted
+import com.haooz.chedule.data.util.coursePeriodOngoing
+import com.haooz.chedule.data.util.millisBetween
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

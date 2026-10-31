@@ -29,9 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
-import com.kyant.backdrop.isRenderEffectSupported
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.isRenderEffectSupported
 import kotlinx.coroutines.delay
 
 /** [CardReveal] 的统一参数，改这里即全站生效。 */

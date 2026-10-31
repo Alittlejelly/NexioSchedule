@@ -1,5 +1,11 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.backup.BackupPayload
+import com.haooz.chedule.data.backup.encodeBackupJson
+import com.haooz.chedule.data.backup.parseBackupPayload
+import com.haooz.chedule.data.backup.timeConfigFromJsonMap
+import com.haooz.chedule.data.backup.toJsonMap
+import com.haooz.chedule.data.model.TimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -7,15 +13,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * 本地备份「恢复门禁」[parseBackupPayload] 的**真实备份**回归测试。
+ * 本地备份「恢复门禁」[com.haooz.chedule.data.backup.parseBackupPayload] 的**真实备份**回归测试。
  *
- * [parseBackupPayload] 原用 Gson，2026-10-11 换 kotlinx-serialization。它是**恢复门禁**：
+ * [com.haooz.chedule.data.backup.parseBackupPayload] 原用 Gson，2026-10-11 换 kotlinx-serialization。它是**恢复门禁**：
  * 全量恢复会先清空全部课表再写入，若门禁误放行无关 JSON，用户课表会被清空。
  * 本测试用两份**用户真实备份**固化「换库后门禁行为不变」—— 数据兼容的直接证明。
  *
  * 夹具（`core/src/jvmTest/resources/`，2026-10-11 从本机导出的冻结快照）：
- * - `backup_full_export.json`：全量备份（扁平 `schedule_*` 键值）→ 应识别为 [BackupPayload.Full]
- * - `backup_single_schedule.json`：单课表备份「数字经济3」（23 门课）→ 应识别为 [BackupPayload.Single]
+ * - `backup_full_export.json`：全量备份（扁平 `schedule_*` 键值）→ 应识别为 [com.haooz.chedule.data.backup.BackupPayload.Full]
+ * - `backup_single_schedule.json`：单课表备份「数字经济3」（23 门课）→ 应识别为 [com.haooz.chedule.data.backup.BackupPayload.Single]
  */
 class BackupCodecTest {
 

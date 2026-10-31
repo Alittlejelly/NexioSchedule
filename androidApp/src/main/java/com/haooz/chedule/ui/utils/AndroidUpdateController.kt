@@ -1,8 +1,8 @@
 package com.haooz.chedule.ui.utils
 
 import android.content.Context
-import com.haooz.chedule.data.UpdateController
-import com.haooz.chedule.data.UpdateRelease
+import com.haooz.chedule.data.platform.UpdateController
+import com.haooz.chedule.data.platform.UpdateRelease
 import com.haooz.chedule.i18n.CommonStr
 import java.io.File
 

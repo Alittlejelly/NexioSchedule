@@ -68,14 +68,14 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.haooz.chedule.data.AppearanceConfig
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.NoopUpdateController
-import com.haooz.chedule.data.Notice
-import com.haooz.chedule.data.NoticeFetcher
-import com.haooz.chedule.data.randomUuidV4
-import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.appearance.AppearanceConfig
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.NoopUpdateController
+import com.haooz.chedule.data.platform.Notice
+import com.haooz.chedule.data.platform.NoticeFetcher
+import com.haooz.chedule.data.platform.randomUuidV4
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.repo.CourseRepository
 import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.classschedule.LandRippleSpec
@@ -106,13 +106,17 @@ import com.haooz.chedule.ui.utils.LocalHostNavigation
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.addScreenCornerRect
 import com.haooz.chedule.ui.utils.bottomFloatingPadding
-import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.rememberAppSettingDark
+import com.haooz.chedule.ui.utils.rememberPagerTakeoverGestureState
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.isRenderEffectSupported
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -124,10 +128,6 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.MiuixPopupUtils.Companion.MiuixPopupHost
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 
 /**
  * 「更多」菜单收起动画播到这个 fraction 就摘掉「比底栏更高一层」的采样层。

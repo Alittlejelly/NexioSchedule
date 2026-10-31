@@ -1,5 +1,6 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.synchronizedOn
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -7,15 +8,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * [synchronizedOn] 的语义验证。
+ * [com.haooz.chedule.data.platform.synchronizedOn] 的语义验证。
  *
  * `HolidayManager` 原来用 `@Synchronized` 保护「读 prefs → 算 → 写 prefs」的复合操作
  * （真实场景：`NexioApplication.onCreate` 起后台 `Thread` 跑旧调休映射迁移，同时主线程
- * 可能正在保存节假日设置）。下沉 `:core` 时换成了 [synchronizedOn]。
+ * 可能正在保存节假日设置）。下沉 `:core` 时换成了 [com.haooz.chedule.data.platform.synchronizedOn]。
  *
  * **Android 行为零变化是本项目的红线**，所以必须证明 JVM/Android 的 actual 确实提供了
  * 「互斥 + 可重入」，而不是一个看起来像锁的空壳。（Native 侧目前是直通，那是已知缺口，
- * 见 [synchronizedOn] 的 KDoc。）
+ * 见 [com.haooz.chedule.data.platform.synchronizedOn] 的 KDoc。）
  *
  * ⚠ 本文件不入库（用户长期要求）。
  */

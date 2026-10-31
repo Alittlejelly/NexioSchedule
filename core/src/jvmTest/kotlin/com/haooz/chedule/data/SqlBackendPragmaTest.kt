@@ -3,13 +3,15 @@ package com.haooz.chedule.data
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.storage.DesktopSqlStorage
+import com.haooz.chedule.data.storage.SqlDriverBackend
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * [SqlDriverBackend] 开库时钉住的三条 pragma。
+ * [com.haooz.chedule.data.storage.SqlDriverBackend] 开库时钉住的三条 pragma。
  *
  * 这三条都是**连接级**的、且 schema 迁移带不上，只能靠「建完 driver 立刻设」：
  * - `foreign_keys` 漏了 → 所有外键约束静默失效（级联删不发生，孤儿行开始堆积）；
@@ -18,7 +20,7 @@ import kotlin.test.assertEquals
  *
  * 用真文件库（`:memory:` 不支持 WAL），并且读的是驱动自己回出来的值 ——
  * 这条链上最容易犯的错就是「以为设上了」（sqlite-jdbc 对 `PRAGMA synchronous` 的
- * `execute` 就是静默无效的，所以桌面端必须靠连接属性，见 [DesktopSqlStorage.openDriver]）。
+ * `execute` 就是静默无效的，所以桌面端必须靠连接属性，见 [com.haooz.chedule.data.storage.DesktopSqlStorage.openDriver]）。
  */
 class SqlBackendPragmaTest {
 

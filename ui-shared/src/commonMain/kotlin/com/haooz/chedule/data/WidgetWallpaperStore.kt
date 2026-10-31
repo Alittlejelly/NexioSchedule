@@ -6,6 +6,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
+import com.haooz.chedule.data.appearance.ThemeMode
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.storage.AppStorage
 
 /**
  * 小部件壁纸。

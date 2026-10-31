@@ -1,11 +1,13 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 /**
- * [AppStorage] 实例唯一性：同名只创建一个实例（两份内存快照会互相看不见）。
+ * [com.haooz.chedule.data.storage.AppStorage] 实例唯一性：同名只创建一个实例（两份内存快照会互相看不见）。
  */
 class AppStorageInstanceTest {
 

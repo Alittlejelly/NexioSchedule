@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.randomUuidV4
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.randomUuidV4
 import com.haooz.chedule.i18n.MiscStr
 
 // 第三方 App 课表导入（WakeUp / 星链）的数据契约。

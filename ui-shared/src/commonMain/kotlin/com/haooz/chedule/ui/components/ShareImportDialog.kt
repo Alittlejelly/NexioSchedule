@@ -7,9 +7,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.haooz.chedule.data.parseFullScheduleJson
-import com.haooz.chedule.data.parseIcsFile
-import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.backup.parseFullScheduleJson
+import com.haooz.chedule.data.backup.parseIcsFile
+import com.haooz.chedule.data.platform.showToast
 import com.haooz.chedule.i18n.BackupStr
 import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.screens.applyScheduleData

@@ -3,6 +3,7 @@
 package com.haooz.chedule.data
 
 import com.haooz.chedule.i18n.L
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
@@ -17,7 +18,6 @@ import platform.Foundation.NSThread
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_global_queue
 import platform.darwin.dispatch_get_main_queue
-import kotlin.concurrent.Volatile
 
 /**
  * Course reminder scheduling for iOS: pre-class notices and tomorrow's summary.

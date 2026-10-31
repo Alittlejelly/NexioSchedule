@@ -16,9 +16,8 @@ import android.webkit.WebViewClient
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.i18n.AndroidMiscStr
-import com.haooz.chedule.ui.utils.screenWidthDp
 
 private const val TAG = "WebCompatDelegate"
 

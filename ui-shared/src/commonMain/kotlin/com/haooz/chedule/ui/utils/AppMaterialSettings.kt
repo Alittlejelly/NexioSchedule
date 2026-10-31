@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.storage.AppStorage
 import com.haooz.chedule.i18n.MiscStr
 import com.kyant.backdrop.isRenderEffectSupported
 

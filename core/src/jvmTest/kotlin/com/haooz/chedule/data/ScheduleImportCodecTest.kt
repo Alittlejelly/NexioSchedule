@@ -1,5 +1,9 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.backup.parseFullScheduleJson
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseJsonObject
+import com.haooz.chedule.data.util.toJsonElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -7,9 +11,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 「导入课表」JSON 解析（[parseFullScheduleJson]）的**真实备份**回归测试。
+ * 「导入课表」JSON 解析（[com.haooz.chedule.data.backup.parseFullScheduleJson]）的**真实备份**回归测试。
  *
- * [parseFullScheduleJson] 原用 `Gson().fromJson(text, TypeToken<Map<String,Any>>)`；
+ * [com.haooz.chedule.data.backup.parseFullScheduleJson] 原用 `Gson().fromJson(text, TypeToken<Map<String,Any>>)`；
  * Gson 走运行时反射，Kotlin/Native（iOS）上不存在 —— 2026-10-11 换成
  * `kotlinx-serialization`（`JsonSupport.parseJsonObject` + `jsonToPlainValue`）。
  * **落盘/输入格式一字节未改**，只换了库；本测试用两份**用户真实备份文件**固化

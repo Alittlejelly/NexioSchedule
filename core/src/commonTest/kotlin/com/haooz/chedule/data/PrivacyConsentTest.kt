@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.PrivacyConsent
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

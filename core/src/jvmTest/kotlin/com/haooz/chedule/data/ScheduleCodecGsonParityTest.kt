@@ -2,6 +2,23 @@ package com.haooz.chedule.data
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.haooz.chedule.data.backup.decodeCourses
+import com.haooz.chedule.data.backup.decodeLongList
+import com.haooz.chedule.data.backup.decodeScheduleFolders
+import com.haooz.chedule.data.backup.decodeStringList
+import com.haooz.chedule.data.backup.decodeTimeConfig
+import com.haooz.chedule.data.backup.encodeCourses
+import com.haooz.chedule.data.backup.encodeLongList
+import com.haooz.chedule.data.backup.encodeScheduleFolders
+import com.haooz.chedule.data.backup.encodeStringList
+import com.haooz.chedule.data.backup.encodeTimeConfig
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.SpecialBlock
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.storage.ScheduleFolder
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseJsonElement
+import com.haooz.chedule.data.util.parseJsonObject
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -171,7 +188,15 @@ class ScheduleCodecGsonParityTest {
         val ids = listOf(1L, 4L, 8L, 1234567890123L)
         assertEquals(semantic(gson.toJson(ids)), semantic(encodeLongList(ids)))
         assertEquals(ids, decodeLongList(encodeLongList(ids)))
-        assertEquals(semantic(gson.toJson(ids)), semantic(encodeLongList(decodeLongList(gson.toJson(ids)))))
+        assertEquals(semantic(gson.toJson(ids)), semantic(
+            encodeLongList(
+                decodeLongList(
+                    gson.toJson(
+                        ids
+                    )
+                )
+            )
+        ))
     }
 
     // ── TimeConfig（R2 里最微妙的一族）─────────────

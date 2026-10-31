@@ -1,9 +1,9 @@
 /** 学校信息仓库 - 管理学校列表和索引数据 */
 package com.haooz.chedule.data.school
 
-import com.haooz.chedule.data.AppFile
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.AppFile
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.NexioLog
 
 private const val TAG = "SchoolRepository"
 

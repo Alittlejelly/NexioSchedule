@@ -1,7 +1,20 @@
 package com.haooz.chedule.data
 
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.haooz.chedule.data.backup.decodeCourses
+import com.haooz.chedule.data.backup.decodeLongList
+import com.haooz.chedule.data.backup.decodeScheduleFolders
+import com.haooz.chedule.data.backup.decodeStringList
+import com.haooz.chedule.data.backup.encodeCourses
+import com.haooz.chedule.data.backup.encodeScheduleFolders
+import com.haooz.chedule.data.backup.encodeStringList
+import com.haooz.chedule.data.backup.encodeTimeConfig
+import com.haooz.chedule.data.backup.parseTimeConfigSnapshotOrNull
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.storage.ScheduleFolder
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseJsonElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -12,13 +12,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.haooz.chedule.ui.utils.isAppDarkTheme
+import kotlin.math.floor
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.math.floor
-import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun BgEffectBackground(

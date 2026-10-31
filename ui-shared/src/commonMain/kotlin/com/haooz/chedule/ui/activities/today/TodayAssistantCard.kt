@@ -19,10 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,19 +28,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.coursePeriodCompleted
-import com.haooz.chedule.data.coursePeriodOngoing
-import com.haooz.chedule.data.millisBetween
-import com.haooz.chedule.data.nowLocalTime
-import com.haooz.chedule.data.parseHourMinute
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.util.coursePeriodCompleted
+import com.haooz.chedule.data.util.coursePeriodOngoing
+import com.haooz.chedule.data.util.millisBetween
+import com.haooz.chedule.data.util.nowLocalTime
+import com.haooz.chedule.data.util.parseHourMinute
 import com.haooz.chedule.i18n.AssistantStr
 import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import com.haooz.chedule.uishared.resources.Res
 import com.haooz.chedule.uishared.resources.ic_widget_location
 import com.haooz.chedule.uishared.resources.icon_cloudy

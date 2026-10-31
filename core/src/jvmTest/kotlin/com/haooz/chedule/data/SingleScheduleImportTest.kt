@@ -2,6 +2,10 @@ package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -17,14 +21,14 @@ import kotlin.test.assertTrue
  */
 class SingleScheduleImportTest {
 
-    private lateinit var repository: CourseRepository
+    private lateinit var repository: com.haooz.chedule.data.repo.CourseRepository
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var store: SqliteCourseRowStore
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        repository = CourseRepository.getInstance()
+        repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         repository.invalidateAllCaches()
         driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)

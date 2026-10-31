@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.TextStyle
@@ -35,13 +35,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.SyncManager
-import com.haooz.chedule.data.WebDavManager
-import com.haooz.chedule.data.formatDateTimeMinute
-import com.haooz.chedule.data.localDateTimeAt
-import com.haooz.chedule.data.resolveWebDavDirUrl
+import com.haooz.chedule.data.backup.SyncManager
+import com.haooz.chedule.data.backup.WebDavManager
+import com.haooz.chedule.data.backup.resolveWebDavDirUrl
+import com.haooz.chedule.data.util.formatDateTimeMinute
+import com.haooz.chedule.data.util.localDateTimeAt
 import com.haooz.chedule.i18n.AppLanguage
 import com.haooz.chedule.i18n.MiscStr
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import com.haooz.chedule.viewmodel.courseViewModel
 import com.haooz.chedule.viewmodel.scheduleViewModel
 import com.haooz.chedule.viewmodel.settingsViewModel
@@ -58,7 +59,6 @@ import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import androidx.compose.ui.graphics.Color as ComposeColor
 
 @Composable
 fun WebDavSettingsScreen(

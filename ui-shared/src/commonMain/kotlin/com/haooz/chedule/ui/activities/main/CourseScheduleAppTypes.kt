@@ -11,12 +11,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
-import com.haooz.chedule.data.AppearanceConfig
-import com.haooz.chedule.data.CardContentAlignment
-import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.CardTextColor
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.WallpaperTransform
+import com.haooz.chedule.data.appearance.AppearanceConfig
+import com.haooz.chedule.data.appearance.CardContentAlignment
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.appearance.CardTextColor
 import com.haooz.chedule.ui.screens.SettingsScreen
 import com.haooz.chedule.ui.utils.PagerTakeoverGestureState
 import com.haooz.chedule.viewmodel.CourseViewModel
@@ -24,11 +24,11 @@ import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
 import com.haooz.chedule.viewmodel.ShiftViewModel
 import com.kyant.backdrop.Backdrop
-import kotlinx.coroutines.CancellationException
-import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
+import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 
 /**
  * 课表主界面用到的运行期数据模型、位图工具与几何小工具。

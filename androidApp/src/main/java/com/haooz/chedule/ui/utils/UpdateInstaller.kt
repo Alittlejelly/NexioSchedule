@@ -2,20 +2,20 @@ package com.haooz.chedule.ui.utils
 
 import android.content.Context
 import android.content.Intent
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.shizuku.ShizukuManager
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import com.haooz.chedule.data.showToast
 
 /** 应用更新：下载与安装的公共入口，弹窗与设置页共用 */
 internal object UpdateInstaller {

@@ -6,7 +6,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.haooz.chedule.data.NexioLog
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -14,27 +13,23 @@ import android.webkit.WebViewClient
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.data.school.ScriptRepository
 import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.i18n.BackupStr
 import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.web.JS_PROMISE_BRIDGE
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalTime
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 // ════════════════════════════════════════════════════════════════════════
 //  课表导入 —— 单文件全包

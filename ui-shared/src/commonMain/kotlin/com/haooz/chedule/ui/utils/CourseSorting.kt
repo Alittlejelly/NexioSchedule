@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.compareByChineseCollator
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.compareByChineseCollator
 
 /**
  * 课程排序规则。

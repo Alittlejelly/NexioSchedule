@@ -22,16 +22,16 @@ import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Velocity
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.round
+import kotlin.math.sign
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.LocalPullToRefreshState
 import top.yukonga.miuix.kmp.basic.PullToRefreshState
 import top.yukonga.miuix.kmp.basic.RefreshState
-import kotlin.math.abs
-import kotlin.math.min
-import kotlin.math.round
-import kotlin.math.sign
 
 /**
  * A Miuix implementation of [OverscrollFactory] that creates [OverscrollEffect] instances

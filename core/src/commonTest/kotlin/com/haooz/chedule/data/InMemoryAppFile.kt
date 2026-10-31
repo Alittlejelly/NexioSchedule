@@ -1,5 +1,7 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.AppFile
+
 /**
  * 内存版 [AppFile]，供测试与非持久化场景使用。
  *

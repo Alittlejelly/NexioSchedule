@@ -1,11 +1,11 @@
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.TeachingWeekReorganizationRule
-import com.haooz.chedule.data.TimeRoutine
-import com.haooz.chedule.data.truncateNote
+import com.haooz.chedule.data.holiday.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.model.TimeRoutine
+import com.haooz.chedule.data.model.truncateNote
+import com.haooz.chedule.data.repo.CourseRepository
 import com.haooz.chedule.i18n.MiscStr
 
 // 分享/导出课表的**数据契约**：组装（写出）与解析（读入）两半。

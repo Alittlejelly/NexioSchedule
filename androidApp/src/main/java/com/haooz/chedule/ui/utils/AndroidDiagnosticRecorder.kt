@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.utils
 
 import android.content.Context
-import com.haooz.chedule.data.DiagnosticRecorder
+import com.haooz.chedule.data.platform.DiagnosticRecorder
 
 /**
  * [DiagnosticRecorder] 的 Android 实现 —— 包装全局单例 [CrashLogHelper]。

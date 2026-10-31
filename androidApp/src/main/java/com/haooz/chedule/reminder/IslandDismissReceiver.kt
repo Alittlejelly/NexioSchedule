@@ -3,7 +3,7 @@ package com.haooz.chedule.reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
 /**
  * 超级岛"已上课"自动收起触发器。
  * 之前只靠每分钟刷新链收起，最坏等一整分钟；进程被杀未重启就永远收不起。改用精确闹钟，时长一到立即收起。

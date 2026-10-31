@@ -3,7 +3,7 @@ package com.haooz.chedule.reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.platform.NexioLog
 /**
  * 超级岛展开态触发器：倒计时结束后发广播触发展开态弹出。
  */

@@ -1,19 +1,19 @@
 package com.haooz.chedule.wearable
 
 import android.content.Context
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.CourseRepository
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
 import com.xiaomi.xms.wearable.Wearable
 import com.xiaomi.xms.wearable.auth.AuthApi
 import com.xiaomi.xms.wearable.auth.Permission
 import com.xiaomi.xms.wearable.message.MessageApi
 import com.xiaomi.xms.wearable.message.OnMessageReceivedListener
 import com.xiaomi.xms.wearable.node.NodeApi
-import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONObject
 
 /**
  * 小米穿戴（手表 rpk）课表推送。

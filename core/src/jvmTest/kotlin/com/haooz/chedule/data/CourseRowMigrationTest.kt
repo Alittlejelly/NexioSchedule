@@ -1,7 +1,15 @@
 package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.backup.encodeCourses
+import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
+import com.haooz.chedule.data.storage.sameCourseContent
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -11,7 +19,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * JSON blob → 课程行表 的端到端回归。测 [CourseRepository] 的切换逻辑（何时认行表、
+ * JSON blob → 课程行表 的端到端回归。测 [com.haooz.chedule.data.repo.CourseRepository] 的切换逻辑（何时认行表、
  * 迁移完 blob 的归宿、没有行表时怎么办），而不是表本身。
  *
  * blob 的合法身份只有一个：**待迁移的旧数据**。导入成功后它必须消失；
@@ -26,7 +34,7 @@ class CourseRowMigrationTest {
         AppStorage.init { InMemoryKeyValueStore() }
         // 起点是「只有 prefs、没有行表」的老状态
         CourseStorage.install { null }
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         repository.saveScheduleNames(listOf(SCHEDULE))
         repository.setCurrentScheduleId(SCHEDULE)
         repository.invalidateAllCaches()
@@ -39,13 +47,13 @@ class CourseRowMigrationTest {
     fun tearDown() {
         // 必须拆掉：CourseStorage 是全局单例，留着指向已关闭的连接会毒到后面的测试
         CourseStorage.install { null }
-        CourseRepository.getInstance().invalidateAllCaches()
+        com.haooz.chedule.data.repo.CourseRepository.getInstance().invalidateAllCaches()
         driver.close()
     }
 
     @Test
     fun `首次读取把 JSON 迁入行表，之后写只碰行表`() {
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val math = course(id = "c1", name = "高等数学", selectedWeeks = listOf(1, 2, 3))
         val english = course(id = "c2", name = "英语", dayOfWeek = 3)
 
@@ -100,7 +108,7 @@ class CourseRowMigrationTest {
      */
     @Test
     fun `没有行表时保存直接抛，不写第二份 JSON`() {
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         CourseStorage.install { null }
         repository.invalidateAllCaches()
 
@@ -116,7 +124,7 @@ class CourseRowMigrationTest {
 
     @Test
     fun `整库恢复作废行表后立刻重建，课程不丢`() {
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
@@ -145,7 +153,7 @@ class CourseRowMigrationTest {
      */
     @Test
     fun `备份导出的是行表当前内容，恢复后课程还在`() {
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
         repository.invalidateAllCaches()
@@ -173,7 +181,7 @@ class CourseRowMigrationTest {
     // ── 工具 ──────────────────────────────────────────────────────────────────
 
     /** 造「老用户升级前」的形态：只有 prefs 里的课程 JSON，行表还没接。 */
-    private fun restoreLegacyJson(repository: CourseRepository, courses: List<Course>) {
+    private fun restoreLegacyJson(repository: com.haooz.chedule.data.repo.CourseRepository, courses: List<Course>) {
         repository.importAllPreferences(
             mapOf(
                 "schedule_names" to encodeStringList(listOf(SCHEDULE)),
@@ -185,7 +193,7 @@ class CourseRowMigrationTest {
 
     /** 备份里该课表那一段。行表没装时它就是 prefs 里那份原始 JSON。 */
     private fun blobOf(): String? =
-        CourseRepository.getInstance().exportAllPreferences()["schedule_${SCHEDULE}_courses"] as? String
+        com.haooz.chedule.data.repo.CourseRepository.getInstance().exportAllPreferences()["schedule_${SCHEDULE}_courses"] as? String
 
     private fun course(
         id: String,

@@ -5,7 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.Course
+import com.haooz.chedule.data.model.Course
 
 // ════════════════════════════════════════════════════════════════════════
 //  网页内容宿主 —— 教务导入用的 WebView 的平台无关契约

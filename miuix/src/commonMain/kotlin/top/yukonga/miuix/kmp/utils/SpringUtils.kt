@@ -4,14 +4,14 @@
 package top.yukonga.miuix.kmp.utils
 
 import androidx.compose.runtime.withFrameNanos
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sign
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 internal object SpringMath {
     const val MAX_FRAME_DELTA_SECONDS = 0.016f

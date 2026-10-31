@@ -1,11 +1,13 @@
 package com.haooz.chedule.data
 
-import kotlinx.datetime.LocalDate
+import com.haooz.chedule.data.holiday.HolidayEntries
+import com.haooz.chedule.data.holiday.HolidayEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.datetime.LocalDate
 
 /**
- * [HolidayEntries.forFlatPush] 与**手环端真实算法**的对拍。
+ * [com.haooz.chedule.data.holiday.HolidayEntries.forFlatPush] 与**手环端真实算法**的对拍。
  *
  * 与 [HolidayEntriesForFlatPushTest] 的区别：那份按「数组首条命中」建模，而手环
  * `src/common/schedule.js` 实际是两条独立扫描：

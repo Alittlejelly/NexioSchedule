@@ -1,7 +1,12 @@
 package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -14,7 +19,7 @@ import kotlin.test.assertNotEquals
  * ## 背景
  *
  * 课表与作息是「一个课表绑一个 TimeConfig」，绑定键为 `schedule_time_config_{课表名}`。
- * 问题在于 [CourseRepository.getScheduleTimeConfigId] 对**未绑定**的课表会回退到
+ * 问题在于 [com.haooz.chedule.data.repo.CourseRepository.getScheduleTimeConfigId] 对**未绑定**的课表会回退到
  * 旧全局指针 / 第一个配置 —— 这是给升级老数据兜底的读取语义，但写入路径当年也复用了它：
  * 于是任何未绑定的课表改节次、改时间、删作息时，改的都是它回退到的那套配置，
  * 也就是**另一张课表的作息**（2026-10-28/29 用户反馈的「传到平板后只有作息变了」）。
@@ -27,7 +32,7 @@ import kotlin.test.assertNotEquals
  */
 class TimeConfigBindingIsolationTest {
 
-    private lateinit var repository: CourseRepository
+    private lateinit var repository: com.haooz.chedule.data.repo.CourseRepository
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var store: SqliteCourseRowStore
 
@@ -39,7 +44,7 @@ class TimeConfigBindingIsolationTest {
         NexioDatabase.Schema.create(driver)
         store = SqliteCourseRowStore(NexioDatabase(driver))
         CourseStorage.install { store }
-        repository = CourseRepository.getInstance()
+        repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         repository.invalidateAllCaches()
     }
 

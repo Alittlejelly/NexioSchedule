@@ -61,11 +61,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.WIDGET_WALLPAPER_BLUR_DEFAULT
 import com.haooz.chedule.data.WidgetAppearance
 import com.haooz.chedule.data.WidgetWallpaperCrop
 import com.haooz.chedule.data.WidgetWallpaperStore
+import com.haooz.chedule.data.appearance.ThemeMode
 import com.haooz.chedule.data.updateWidgetCropForGesture
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
@@ -77,6 +77,7 @@ import com.haooz.chedule.ui.utils.isAppDarkTheme
 import com.haooz.chedule.ui.utils.rememberDefaultEdgeLight
 import com.kyant.backdrop.edgelight.edgeLight
 import com.kyant.capsule.ContinuousCapsule
+import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
@@ -89,7 +90,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.platformDynamicColors
 import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
-import kotlin.math.roundToInt
 
 /**
  * 进入自定义浮层需要的现场信息。

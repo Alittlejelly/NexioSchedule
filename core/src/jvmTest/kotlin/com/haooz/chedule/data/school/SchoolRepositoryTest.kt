@@ -1,7 +1,7 @@
 package com.haooz.chedule.data.school
 
-import com.haooz.chedule.data.AppFiles
 import com.haooz.chedule.data.InMemoryAppFile
+import com.haooz.chedule.data.platform.AppFiles
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals

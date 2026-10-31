@@ -10,25 +10,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.text.style.TextAlign
-import com.haooz.chedule.ui.components.CardExpand
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,9 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.ColorFilter
-import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
-import com.haooz.chedule.ui.utils.TransitionLayerImage
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -55,26 +51,38 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.SpecialBlock
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.model.TimeRoutine
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.i18n.AppLanguage
+import com.haooz.chedule.i18n.CommonStr
+import com.haooz.chedule.i18n.CourseEditStr
+import com.haooz.chedule.i18n.ImportStr
+import com.haooz.chedule.i18n.TimeCfgStr
+import com.haooz.chedule.i18n.TimeEditStr
+import com.haooz.chedule.i18n.orDefaultName
+import com.haooz.chedule.ui.activities.classschedule.SpecialItemsEditorSection
+import com.haooz.chedule.ui.activities.classschedule.describeSpecialDays
+import com.haooz.chedule.ui.basic.LiquidTopBarButton
+import com.haooz.chedule.ui.components.CardExpand
+import com.haooz.chedule.ui.components.text.material.Text as Text
+import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 import com.haooz.chedule.ui.utils.LocalNativeDocumentChrome
-import com.haooz.chedule.ui.utils.hostVerticalBarEdge
 import com.haooz.chedule.ui.utils.NativeDocumentAction
 import com.haooz.chedule.ui.utils.NativeDocumentEditorChrome
 import com.haooz.chedule.ui.utils.NativeDocumentEditorEffect
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.SpecialBlock
-import com.haooz.chedule.data.TimeConfig
-import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
-import com.haooz.chedule.ui.basic.LiquidTopBarButton
-import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
-import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
-import com.haooz.chedule.ui.activities.classschedule.SpecialItemsEditorSection
-import com.haooz.chedule.ui.activities.classschedule.describeSpecialDays
-import com.haooz.chedule.ui.utils.isAppDarkTheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.haooz.chedule.ui.utils.ScreenCornerRadiiPx
+import com.haooz.chedule.ui.utils.TransitionLayerImage
+import com.haooz.chedule.ui.utils.TransitionLayerSnapshot
+import com.haooz.chedule.ui.utils.hostVerticalBarEdge
+import com.haooz.chedule.ui.utils.isAppDarkTheme
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
 import kotlinx.datetime.Clock
 import top.yukonga.miuix.kmp.basic.Button
@@ -92,23 +100,16 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBar
+import top.yukonga.miuix.kmp.layout.ProgressiveBlurTopBar
+import top.yukonga.miuix.kmp.layout.isTabletWidth
+import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import androidx.compose.ui.graphics.Color as ComposeColor
-import com.kyant.backdrop.backdrops.layerBackdrop as liquidGlassLayerBackdrop
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.i18n.AppLanguage
-import com.haooz.chedule.i18n.CommonStr
-import com.haooz.chedule.i18n.CourseEditStr
-import com.haooz.chedule.i18n.TimeCfgStr
-import com.haooz.chedule.i18n.ImportStr
-import com.haooz.chedule.i18n.TimeEditStr
-import com.haooz.chedule.i18n.orDefaultName
-import top.yukonga.miuix.kmp.layout.isTabletWidth
-import com.haooz.chedule.ui.effects.motion.rememberMorphTransition
 
 private fun parseTimeRange(timeStr: String): Pair<Pair<Int, Int>, Pair<Int, Int>> {
     return try {
@@ -1900,7 +1901,7 @@ fun TimeConfigEditScreen(
                                         // 切月时把日一起夹住：1/31 切到 2 月会变成 2/28
                                         onValueChange = {
                                             tempRoutineMonth = it
-                                            tempRoutineDay = com.haooz.chedule.data.TimeRoutine
+                                            tempRoutineDay = TimeRoutine
                                                 .clampDayOfMonth(it, tempRoutineDay)
                                         },
                                         range = 1..12,
@@ -1915,7 +1916,7 @@ fun TimeConfigEditScreen(
                                         value = tempRoutineDay,
                                         onValueChange = { tempRoutineDay = it },
                                         // 上限跟随月份，否则能选出「2 月 31 日」—— 这样的作息永远不会生效
-                                        range = 1..com.haooz.chedule.data.TimeRoutine
+                                        range = 1..TimeRoutine
                                             .daysInMonth(tempRoutineMonth),
                                         visibleItemCount = 3,
                                         itemHeight = 60.dp,

@@ -1,5 +1,7 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.storage.deletePrefFiles
+import com.haooz.chedule.data.storage.legacyPrefNames
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test

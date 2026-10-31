@@ -9,22 +9,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.uikit.LocalUIViewController
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSSelectorFromString
-import platform.UIKit.UIDevice
 import platform.UIKit.UICornerConfiguration
 import platform.UIKit.UICornerRadius
-import platform.UIKit.UIView
-import platform.UIKit.UIWindow
-import platform.UIKit.setCornerConfiguration
-import platform.UIKit.UIUserInterfaceIdiomPad
+import platform.UIKit.UIDevice
+import platform.UIKit.UIRectCornerBottomLeft
+import platform.UIKit.UIRectCornerBottomRight
 import platform.UIKit.UIRectCornerTopLeft
 import platform.UIKit.UIRectCornerTopRight
-import platform.UIKit.UIRectCornerBottomRight
-import platform.UIKit.UIRectCornerBottomLeft
+import platform.UIKit.UIUserInterfaceIdiomPad
+import platform.UIKit.UIView
+import platform.UIKit.UIWindow
 import platform.UIKit.effectiveRadiusForCorner
+import platform.UIKit.setCornerConfiguration
 
 /**
  * Returns the window's effective corner radius in pixels using public UIKit APIs:

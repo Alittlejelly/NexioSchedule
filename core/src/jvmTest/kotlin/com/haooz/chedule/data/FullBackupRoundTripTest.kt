@@ -1,5 +1,9 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseJsonObject
 import java.io.File
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -109,7 +113,7 @@ class FullBackupRoundTripTest {
         val root = loadBackup() ?: run { println("⚠ 跳过：本机没有 $BACKUP_PATH"); return }
         seedStoreFrom(root)
 
-        val exported = CourseRepository.getInstance().exportAllPreferences()
+        val exported = com.haooz.chedule.data.repo.CourseRepository.getInstance().exportAllPreferences()
         assertSameBackup(root, exported, "首次导出")
         // 课程串必须是**逐字透传**（没有被重新序列化）
         assertEquals(root["schedule_数字经济_courses"], exported["schedule_数字经济_courses"])
@@ -120,7 +124,7 @@ class FullBackupRoundTripTest {
     fun `导出导入导出 二次导出与首次完全一致`() {
         val root = loadBackup() ?: run { println("⚠ 跳过：本机没有 $BACKUP_PATH"); return }
         seedStoreFrom(root)
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
 
         val first = repository.exportAllPreferences()
         repository.importAllPreferences(first)
@@ -136,7 +140,7 @@ class FullBackupRoundTripTest {
     fun `导入真实备份后课程与时间配置都读得出来`() {
         val root = loadBackup() ?: run { println("⚠ 跳过：本机没有 $BACKUP_PATH"); return }
         seedStoreFrom(root)
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         repository.importAllPreferences(repository.exportAllPreferences())
 
         val names = repository.getScheduleNames()

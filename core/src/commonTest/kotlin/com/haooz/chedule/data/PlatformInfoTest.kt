@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.AppInfo
+import com.haooz.chedule.data.platform.currentDeviceInfo
+import com.haooz.chedule.data.platform.randomUuidV4
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

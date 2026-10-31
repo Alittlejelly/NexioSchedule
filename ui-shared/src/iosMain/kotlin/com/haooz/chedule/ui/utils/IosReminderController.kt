@@ -2,7 +2,7 @@ package com.haooz.chedule.ui.utils
 
 import com.haooz.chedule.data.IosCourseLiveActivity
 import com.haooz.chedule.data.IosCourseNotifier
-import com.haooz.chedule.data.ReminderController
+import com.haooz.chedule.data.platform.ReminderController
 
 /**
  * iOS [ReminderController] over local notifications and the Live Activity island.

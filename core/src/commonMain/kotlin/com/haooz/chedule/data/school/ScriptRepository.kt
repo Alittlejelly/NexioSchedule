@@ -1,12 +1,12 @@
 package com.haooz.chedule.data.school
 
-import com.haooz.chedule.data.AppFile
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.HttpService
-import com.haooz.chedule.data.HttpTimeouts
-import com.haooz.chedule.data.createHttpService
-import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.platform.AppFile
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.HttpTimeouts
+import com.haooz.chedule.data.platform.createHttpService
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.storage.AppStorage
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.withContext
 
@@ -29,7 +29,7 @@ class ScriptRepository(
     private val repoUrl: String? = null,
     /**
      * 可注入，供测试替换 —— 防盗链跟随、版本比较、协议版本校验这些分支
-     * 全靠它才能离线覆盖（与 [com.haooz.chedule.data.NoticeFetcher] 等同一手法）。
+     * 全靠它才能离线覆盖（与 [com.haooz.chedule.data.platform.NoticeFetcher] 等同一手法）。
      * 默认按迁移前的超时（connect / read 各 30s）创建。
      */
     private val http: HttpService = createHttpService(

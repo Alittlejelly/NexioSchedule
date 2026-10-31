@@ -1,12 +1,15 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.model.ClassroomLabel
+import com.haooz.chedule.data.model.ClassroomLabelRule
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * [ClassroomLabel] 的行为锁定。
+ * [com.haooz.chedule.data.model.ClassroomLabel] 的行为锁定。
  *
  * 两组真实反馈串是重点：`2号综合楼B3027` 被系统截成 `2号综合楼B3`（issue #69），
  * `新校区J02西414` 被截成 `新校区J02西4`（前缀把房号挤出去了）。

@@ -1,13 +1,13 @@
 package com.haooz.chedule.data.ai
 
-import com.haooz.chedule.data.HttpService
-import com.haooz.chedule.data.StatsReporter
-import com.haooz.chedule.data.jsonToPlainValue
-import com.haooz.chedule.data.optInt
-import com.haooz.chedule.data.optJsonArray
-import com.haooz.chedule.data.optJsonObject
-import com.haooz.chedule.data.optString
-import com.haooz.chedule.data.parseJsonObject
+import com.haooz.chedule.data.platform.HttpService
+import com.haooz.chedule.data.platform.StatsReporter
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.optInt
+import com.haooz.chedule.data.util.optJsonArray
+import com.haooz.chedule.data.util.optJsonObject
+import com.haooz.chedule.data.util.optString
+import com.haooz.chedule.data.util.parseJsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray

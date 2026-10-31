@@ -10,8 +10,8 @@ import android.widget.Toast
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.NexioLog
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.i18n.ImportStr
 

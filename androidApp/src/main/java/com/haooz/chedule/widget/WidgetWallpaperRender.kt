@@ -11,18 +11,16 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Build
 import android.os.Bundle
-import android.view.View
 import android.util.SizeF
+import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.asImageBitmap
 import com.haooz.chedule.R
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.ThemeMode
 import com.haooz.chedule.data.WallpaperStore
 import com.haooz.chedule.data.WidgetWallpaperStore
+import com.haooz.chedule.data.appearance.ThemeMode
 import com.haooz.chedule.data.calculateWidgetCropRect
-import kotlin.math.max
-import kotlin.math.min
+import com.haooz.chedule.data.platform.AppFiles
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 

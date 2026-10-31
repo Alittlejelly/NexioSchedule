@@ -6,10 +6,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import com.haooz.chedule.data.CardTextColor
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.hsvToRgb
-import com.haooz.chedule.data.rgbToHsv
+import com.haooz.chedule.data.appearance.CardTextColor
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.util.hsvToRgb
+import com.haooz.chedule.data.util.rgbToHsv
 import com.materialkolor.hct.Hct
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

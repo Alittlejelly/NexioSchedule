@@ -2,6 +2,10 @@ package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.storage.CourseRowAnchor
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
+import com.haooz.chedule.data.storage.sameCourseContent
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

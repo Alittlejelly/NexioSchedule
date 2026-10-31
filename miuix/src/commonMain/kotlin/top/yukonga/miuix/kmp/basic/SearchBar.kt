@@ -64,29 +64,29 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kyant.backdrop.edgelight.edgeLight
-import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
-import com.kyant.backdrop.edgelight.isSystemLightTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
-import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
-import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
-import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
+import com.kyant.backdrop.edgelight.edgeLight
+import com.kyant.backdrop.edgelight.isSystemLightTheme
+import com.kyant.backdrop.edgelight.rememberDefaultEdgeLight
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.capsule.ContinuousCapsule
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.internal.drawBlurredPathShadow
-import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
+import top.yukonga.miuix.kmp.material.LocalChromeLensEnabled
+import top.yukonga.miuix.kmp.material.LocalGlassBlurDp
+import top.yukonga.miuix.kmp.material.LocalMaterialNoneEnabled
 import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.NavigationBackHandlerFor
 import top.yukonga.miuix.kmp.utils.hasFocusReassignBug
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 搜索框组件

@@ -1,9 +1,14 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.backup.normalizeFullScheduleBackup
+import com.haooz.chedule.data.backup.validateFullScheduleBackupStructure
+import com.haooz.chedule.data.backup.withValidatedFullScheduleBackup
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.util.jsonToPlainValue
+import com.haooz.chedule.data.util.parseJsonObject
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * 「孤儿时间配置绑定」备份的恢复回归 —— 用户真实踩坑（2026-10-10 报障）。
@@ -24,7 +29,7 @@ import kotlin.test.assertTrue
  *
  * ## 为什么只断言纯函数层
  *
- * 修复点就在 [validateFullScheduleBackupStructure] —— 把孤儿校验拿掉这里立刻红，
+ * 修复点就在 [com.haooz.chedule.data.backup.validateFullScheduleBackupStructure] —— 把孤儿校验拿掉这里立刻红，
  * 覆盖完整。刻意**不碰 CourseRepository / AppStorage**：`CourseRepository()` 实为
  * `getInstance()` 单例，其 prefs 在 JVM 内首次构造时就钉死当时的 AppStorage store；
  * 本类若在别的测试类之前构造它，会污染它们的 store（实测：FullBackupRoundTripTest

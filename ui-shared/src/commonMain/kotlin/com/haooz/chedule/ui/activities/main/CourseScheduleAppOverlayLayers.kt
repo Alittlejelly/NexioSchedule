@@ -18,12 +18,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,21 +41,21 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.AppearanceConfig
-import com.haooz.chedule.data.AppearanceStore
-import com.haooz.chedule.data.CourseRepository
 import com.haooz.chedule.data.SwitchCardSnapshotStore
 import com.haooz.chedule.data.WallpaperStore
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.appearance.AppearanceConfig
+import com.haooz.chedule.data.appearance.AppearanceStore
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.data.repo.CourseRepository
 import com.haooz.chedule.i18n.ChromeStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.ui.activities.SwitchScheduleScreen
-import com.haooz.chedule.ui.basic.ShortcutMenu
-import com.haooz.chedule.ui.basic.ShortcutMenuShadowPadding
-import com.haooz.chedule.ui.basic.ShortcutMenuItem
 import com.haooz.chedule.ui.activities.classschedule.CourseCard
 import com.haooz.chedule.ui.activities.classschedule.ScheduleViewMode
+import com.haooz.chedule.ui.basic.ShortcutMenu
+import com.haooz.chedule.ui.basic.ShortcutMenuItem
+import com.haooz.chedule.ui.basic.ShortcutMenuShadowPadding
 import com.haooz.chedule.ui.components.CrossWeekDropHint
 import com.haooz.chedule.ui.components.EdgeAutoPageIndicator
 import com.haooz.chedule.ui.effects.liquidglass.InteractiveHighlight
@@ -77,6 +77,7 @@ import com.haooz.chedule.ui.utils.buildShareScheduleMap
 import com.haooz.chedule.ui.utils.courseCardSolidBacking
 import com.haooz.chedule.ui.utils.loadScheduleThemeMode
 import com.haooz.chedule.ui.utils.saveScheduleThemeMode
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,7 +88,6 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.icon.extended.Paste
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 课表主界面「浮层组」：浮动卡片/交换飞行、快捷菜单、课表外观页、详情页、切换课表、排班 loading。

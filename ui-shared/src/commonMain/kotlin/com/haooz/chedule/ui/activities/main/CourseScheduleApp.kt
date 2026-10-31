@@ -40,19 +40,19 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.AppearanceConfig
-import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.SwitchCardSnapshotStore
+import com.haooz.chedule.data.WallpaperStore
+import com.haooz.chedule.data.appearance.AppearanceConfig
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.backup.SyncManager
+import com.haooz.chedule.data.backup.WebDavManager
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.platform.UpdateController
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.repo.CourseRepository
 import com.haooz.chedule.i18n.AppLanguage
 import com.haooz.chedule.i18n.LanguageStore
-import com.haooz.chedule.data.SwitchCardSnapshotStore
-import com.haooz.chedule.data.SyncManager
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.UpdateController
-import com.haooz.chedule.data.WallpaperStore
-import com.haooz.chedule.data.WebDavManager
-import com.haooz.chedule.data.ioDispatcher
 import com.haooz.chedule.ui.activities.today.TodayAssistantCardData
 import com.haooz.chedule.ui.components.SharedFileIntent
 import com.haooz.chedule.ui.components.TabletNavSideState
@@ -70,7 +70,6 @@ import com.haooz.chedule.ui.utils.rememberScheduleThemeMode
 import com.haooz.chedule.ui.utils.rememberScreenCornerRadiiPx
 import com.haooz.chedule.ui.utils.screenHeightDp
 import com.haooz.chedule.ui.utils.screenWidthDp
-import com.haooz.chedule.ui.utils.toShape
 import com.haooz.chedule.viewmodel.CourseViewModel
 import com.haooz.chedule.viewmodel.ScheduleViewModel
 import com.haooz.chedule.viewmodel.SettingsViewModel
@@ -86,6 +85,9 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.isRenderEffectSupported
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,9 +95,6 @@ import kotlinx.datetime.LocalDate
 import top.yukonga.miuix.kmp.layout.isTabletWidth
 import top.yukonga.miuix.kmp.layout.rememberSharedScrollBehavior
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 真课表主界面。平台能力全部走注入参数，缺能力的入口不渲染；

@@ -1,7 +1,7 @@
 package com.haooz.chedule.ui.utils
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.truncateNote
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.truncateNote
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -14,8 +14,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import com.haooz.chedule.data.HolidayManager
-import com.haooz.chedule.ui.navigation.LocalAppRouter
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.platform.showToast
+import com.haooz.chedule.i18n.AboutStr
+import com.haooz.chedule.i18n.AndroidMiscStr
+import com.haooz.chedule.i18n.AppLanguage
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.reminder.IslandNotificationHelper
 import com.haooz.chedule.ui.activities.AboutScreen
@@ -27,12 +30,12 @@ import com.haooz.chedule.ui.activities.MainActivity
 import com.haooz.chedule.ui.activities.PreferenceSettingsScreen
 import com.haooz.chedule.ui.activities.ScheduleDataManageMode
 import com.haooz.chedule.ui.activities.UpdateSettingsScreen
+import com.haooz.chedule.ui.navigation.LocalAppRouter
 import com.haooz.chedule.ui.utils.AndroidBackupFileController
 import com.haooz.chedule.ui.utils.AndroidDiagnosticRecorder
 import com.haooz.chedule.ui.utils.AndroidReminderController
 import com.haooz.chedule.ui.utils.AndroidScheduleFileController
 import com.haooz.chedule.ui.utils.AndroidUpdateController
-import com.haooz.chedule.ui.utils.FeatureLog
 import com.haooz.chedule.ui.utils.ShareCodeApi
 import com.haooz.chedule.ui.utils.ShareCodeFetchResult
 import com.haooz.chedule.ui.utils.ThirdPartyShareImporter
@@ -45,10 +48,6 @@ import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.widget.WidgetUpdateCache
 import java.net.HttpURLConnection
 import java.net.URL
-import com.haooz.chedule.data.showToast
-import com.haooz.chedule.i18n.AboutStr
-import com.haooz.chedule.i18n.AndroidMiscStr
-import com.haooz.chedule.i18n.AppLanguage
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 
 /**

@@ -1,7 +1,20 @@
 package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.backup.encodeCourses
+import com.haooz.chedule.data.backup.encodeScheduleFolders
+import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseRowAnchor
+import com.haooz.chedule.data.storage.CourseRowStore
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.MigrationOutcome
+import com.haooz.chedule.data.storage.ScheduleFolder
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -11,7 +24,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * 一次性迁移（标记 `entity_tables_version`，见 [SqliteCourseRowStore.ENTITY_MIGRATION_VERSION]）：
+ * 一次性迁移（标记 `entity_tables_version`，见 [com.haooz.chedule.data.storage.SqliteCourseRowStore.ENTITY_MIGRATION_VERSION]）：
  * 三端启动各调一次，跑完写全局标记。
  *
  * 标记写下的意义：懒迁移路径（blob 导入 / prefs→行 同步 / prefs→表 同步）从此只会空转，
@@ -19,14 +32,14 @@ import kotlin.test.assertTrue
  */
 class EntityTableMigrationTest {
 
-    private lateinit var repository: CourseRepository
+    private lateinit var repository: com.haooz.chedule.data.repo.CourseRepository
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var store: SqliteCourseRowStore
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        repository = CourseRepository.getInstance()
+        repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
         store = SqliteCourseRowStore(NexioDatabase(driver))

@@ -1,7 +1,5 @@
 package com.haooz.chedule.ui.activities.classschedule
 
-import com.haooz.chedule.data.nowLocalTime
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,35 +42,36 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.CardContentAlignment
-import com.haooz.chedule.data.CardRefractionLevel
-import com.haooz.chedule.data.CardTextColor
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseTimeSpan
-import com.haooz.chedule.data.pickNonCurrentWeekCourse
-import kotlinx.coroutines.delay
-import kotlin.math.roundToInt
-import com.haooz.chedule.data.HolidayCourseExclusion
-import com.haooz.chedule.data.SpecialBlock
-import com.haooz.chedule.data.SpecialItem
+import com.haooz.chedule.data.appearance.CardContentAlignment
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.appearance.CardTextColor
+import com.haooz.chedule.data.holiday.HolidayCourseExclusion
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.SpecialBlock
+import com.haooz.chedule.data.model.SpecialItem
+import com.haooz.chedule.data.model.pickNonCurrentWeekCourse
+import com.haooz.chedule.data.util.CourseTimeSpan
+import com.haooz.chedule.data.util.nowLocalTime
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
-import com.kyant.backdrop.edgelight.edgeLight
+import com.haooz.chedule.ui.components.text.material.Text as Text
+import com.haooz.chedule.ui.theme.scheduleAccentColor
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.BackdropEffectScope
+import com.kyant.backdrop.LocalBackdropViewport
 import com.kyant.backdrop.backdrops.SharedBlurBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.capsule.ContinuousRoundedRectangle
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.haooz.chedule.ui.theme.scheduleAccentColor
-import com.kyant.backdrop.BackdropEffectScope
-import com.kyant.backdrop.LocalBackdropViewport
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 
 // 包在 remember 里，避免每次重组重跑 groupBy/分段

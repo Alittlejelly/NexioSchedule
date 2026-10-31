@@ -5,19 +5,19 @@ import android.content.ContentValues
 import android.content.UriMatcher
 import android.database.Cursor
 import android.database.MatrixCursor
-import android.net.Uri
 import android.graphics.Paint
 import android.graphics.Typeface
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.CourseTimeSpan
+import android.net.Uri
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.util.CourseTimeSpan
 import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.i18n.CommonStr
 import com.haooz.chedule.i18n.SchedStr
 import com.haooz.chedule.i18n.SettingsStr
 import com.haooz.chedule.reminder.CourseReminderHelper
 import java.util.Calendar
-import com.haooz.chedule.data.NexioLog
 
 class TodayCoursesProvider : ContentProvider() {
 

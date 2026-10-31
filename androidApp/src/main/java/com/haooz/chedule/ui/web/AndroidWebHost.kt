@@ -36,13 +36,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.showToast
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.showToast
 import com.haooz.chedule.i18n.AndroidMiscStr
 import com.haooz.chedule.i18n.SchedStr
-import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlinx.coroutines.delay
 
 /** 顶栏色条采样高度：只取页面最顶部几行，用来统计主导底色 */
 private const val TOP_MIRROR_SAMPLE_HEIGHT_PX = 12

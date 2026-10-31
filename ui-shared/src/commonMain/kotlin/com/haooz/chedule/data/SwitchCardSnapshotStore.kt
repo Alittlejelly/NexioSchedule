@@ -1,6 +1,7 @@
 package com.haooz.chedule.data
 
 import androidx.compose.ui.graphics.ImageBitmap
+import com.haooz.chedule.data.platform.AppFiles
 import com.haooz.chedule.ui.utils.decodeImageBitmapPng
 import com.haooz.chedule.ui.utils.encodeImageBitmapPng
 

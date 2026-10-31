@@ -1,20 +1,20 @@
 package com.haooz.chedule.ui.screens
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.TimeConfig
-import com.haooz.chedule.data.minusDays
-import com.haooz.chedule.data.minusWeeks
-import com.haooz.chedule.data.randomUuidV4
-import com.haooz.chedule.data.todayLocalDate
-import com.haooz.chedule.data.weeksBetween
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.model.TimeRoutine
+import com.haooz.chedule.data.platform.randomUuidV4
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.util.minusDays
+import com.haooz.chedule.data.util.minusWeeks
+import com.haooz.chedule.data.util.todayLocalDate
+import com.haooz.chedule.data.util.weeksBetween
 import com.haooz.chedule.i18n.ImportStr
 import com.haooz.chedule.ui.utils.ThirdPartySharePayload
-import com.haooz.chedule.ui.utils.ThirdPartyShareSource
 import com.haooz.chedule.ui.utils.parseShareCourseNote
-import com.haooz.chedule.ui.utils.parseShareCourseWeekNotes
 import com.haooz.chedule.ui.utils.parseShareCourseWeekModel
+import com.haooz.chedule.ui.utils.parseShareCourseWeekNotes
 import com.haooz.chedule.ui.utils.parseShareCourses
 import com.haooz.chedule.ui.utils.parseShareSelectedWeeks
 import com.haooz.chedule.ui.utils.parseShareSettings
@@ -285,7 +285,7 @@ fun applyScheduleData(
         // 由 addTimeConfig 播种单作息，并走下面那段「按 times 写时间」的兼容路径
         val importedRoutines = (data["routines"] as? List<*>)
             ?.mapIndexedNotNull { index, raw ->
-                com.haooz.chedule.data.TimeRoutine.fromRaw(raw, fallbackId = index + 1L)
+                TimeRoutine.fromRaw(raw, fallbackId = index + 1L)
             }
             // 一律按顺序重排 id：payload 自带的 id 可能和 fallback 撞上（A 的 id=2、B 缺 id 落在
             // index=1 就都是 2），重复 id 会让按 id 查找/删除的逻辑行为不确定。这里是全新配置、

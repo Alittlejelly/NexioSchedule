@@ -1,31 +1,33 @@
 package com.haooz.chedule.viewmodel
 
-import com.haooz.chedule.data.todayLocalDate
-import kotlinx.datetime.isoDayNumber
-
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.DayScheduleResolver
-import com.haooz.chedule.data.HolidayCourseExclusion
-import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.holiday.HolidayCourseExclusion
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.holiday.TeachingWeekReorganizationRule
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.SpecialBlock
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.repo.DayScheduleResolver
+import com.haooz.chedule.data.util.todayLocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
 
 internal fun shouldAdvanceForReorganizedWeekend(
     today: LocalDate,
     semesterStartDate: LocalDate?,
-    rules: List<com.haooz.chedule.data.TeachingWeekReorganizationRule>,
+    rules: List<TeachingWeekReorganizationRule>,
     hasCoursesToday: () -> Boolean,
 ): Boolean {
     if (today.dayOfWeek.isoDayNumber !in 6..7) return false
     if (semesterStartDate != null &&
-        com.haooz.chedule.data.TeachingWeekReorganization
+        TeachingWeekReorganization
             .hasFutureTeachingWeekDates(semesterStartDate, today, rules)
     ) return false
     return !hasCoursesToday()
@@ -59,7 +61,7 @@ class SettingsViewModel : ViewModel() {
                 for (weekday in 6..7) {
                     val date = runCatching {
                         val start = LocalDate.parse(repository.getClassStartTime().replace('/', '-'))
-                        com.haooz.chedule.data.TeachingWeekReorganization
+                        TeachingWeekReorganization
                             .dateForPosition(start, week, weekday, emptyList())
                     }.getOrNull()
                     val hasCourses = if (date != null && isBeforeHolidayExclusionActive(date)) {
@@ -153,7 +155,7 @@ class SettingsViewModel : ViewModel() {
 
     // 无编号特殊块（早读/大课间等），来自当前时间配置
     private val _specialBlocks = MutableStateFlow(repository.getEffectiveTimeConfig().safeSpecialBlocks)
-    val specialBlocks: StateFlow<List<com.haooz.chedule.data.SpecialBlock>> = _specialBlocks.asStateFlow()
+    val specialBlocks: StateFlow<List<SpecialBlock>> = _specialBlocks.asStateFlow()
 
     private val _preClassReminder = MutableStateFlow(repository.getPreClassReminder())
     val preClassReminder: StateFlow<Boolean> = _preClassReminder.asStateFlow()
@@ -310,7 +312,7 @@ class SettingsViewModel : ViewModel() {
     fun getAfternoonTimes(): Map<Int, String> = _afternoonTimes.value
     fun getEveningTimes(): Map<Int, String> = _eveningTimes.value
 
-    fun updateSpecialBlocks(blocks: List<com.haooz.chedule.data.SpecialBlock>) {
+    fun updateSpecialBlocks(blocks: List<SpecialBlock>) {
         // 用「可写」入口：未绑定的课表先补绑，否则特殊时段块会写进别人的配置
         val base = repository.getWritableCurrentTimeConfig()
         val config = base.effective()
@@ -350,7 +352,7 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun resetSectionTimes() {
-        val defaults = com.haooz.chedule.data.Course
+        val defaults = Course
         _morningTimes.value = defaults.defaultMorningTimes
         _afternoonTimes.value = defaults.defaultAfternoonTimes
         _eveningTimes.value = defaults.defaultEveningTimes

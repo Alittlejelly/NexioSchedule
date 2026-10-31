@@ -6,11 +6,16 @@ import android.graphics.Bitmap.CompressFormat
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.LruCache
-import androidx.core.content.edit
 import androidx.core.graphics.scale
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import com.haooz.chedule.data.ScheduleAppearance.FILE_STYLE_KEY
+import com.haooz.chedule.data.appearance.AppearancePrefs
+import com.haooz.chedule.data.appearance.CardContentAlignment
+import com.haooz.chedule.data.appearance.CardRefractionLevel
+import com.haooz.chedule.data.appearance.CardTextColor
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.KeyValueStore
+import com.haooz.chedule.data.storage.getStringOrNull
 import java.io.File
 import java.io.FileOutputStream
 

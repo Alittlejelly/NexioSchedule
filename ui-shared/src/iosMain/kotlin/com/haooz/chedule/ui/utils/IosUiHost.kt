@@ -8,11 +8,11 @@ import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTimer
 import platform.QuartzCore.kCACornerCurveContinuous
+import platform.UIKit.NSTextAlignmentCenter
 import platform.UIKit.UIApplication
 import platform.UIKit.UIColor
 import platform.UIKit.UIFont
 import platform.UIKit.UILabel
-import platform.UIKit.NSTextAlignmentCenter
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
@@ -46,7 +46,7 @@ internal object IosUiHost {
 /**
  * iOS 提示条的**接线与兜底**（正式渲染在 Swift 侧 `NativeToast`，见 `iosApp/iosApp/ContentView.swift`）。
  *
- * 只做两件事：1. 启动时把 [com.haooz.chedule.data.showToast] 接到 [nativeShow]（Swift 启动注入）；
+ * 只做两件事：1. 启动时把 [com.haooz.chedule.data.platform.showToast] 接到 [nativeShow]（Swift 启动注入）；
  * 2. Swift 未注入时的**极早期调用**，用半透明黑底提示兜底。
  *
  * ⚠ 液态玻璃刻意不在这里做：`UIGlassEffect` 在 Kotlin/Native 绑定里编译得过但运行期行为不可控，
@@ -78,9 +78,9 @@ object IosToast {
      */
     var nativeShow: ((message: String, longDuration: Boolean) -> Unit)? = null
 
-    /** 启动注入：把 [com.haooz.chedule.data.showToast] 接到原生提示条上。 */
+    /** 启动注入：把 [com.haooz.chedule.data.platform.showToast] 接到原生提示条上。 */
     fun install() {
-        com.haooz.chedule.data.toastHandler = { message, longDuration ->
+        com.haooz.chedule.data.platform.toastHandler = { message, longDuration ->
             val native = nativeShow
             if (native != null) native(message, longDuration) else show(message, longDuration)
         }

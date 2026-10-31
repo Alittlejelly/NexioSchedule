@@ -1,14 +1,22 @@
 package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.haooz.chedule.data.backup.encodeStringList
+import com.haooz.chedule.data.backup.encodeTimeConfig
+import com.haooz.chedule.data.backup.parseTimeConfigSnapshotOrNull
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
+import com.haooz.chedule.data.storage.StoredTimeConfig
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * 作息配置：`time_config` 表是真相，prefs 的 `time_config_{id}` 与 `time_config_ids` 是镜像。
@@ -16,14 +24,14 @@ import kotlin.test.assertTrue
  */
 class TimeConfigRowTest {
 
-    private lateinit var repository: CourseRepository
+    private lateinit var repository: com.haooz.chedule.data.repo.CourseRepository
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var store: SqliteCourseRowStore
 
     @BeforeTest
     fun setUp() {
         AppStorage.init { InMemoryKeyValueStore() }
-        repository = CourseRepository.getInstance()
+        repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
         store = SqliteCourseRowStore(NexioDatabase(driver))
@@ -59,7 +67,13 @@ class TimeConfigRowTest {
         val id = repository.addTimeConfig(config(name, morning = 6))
 
         // 直接改表，镜像不动；读路径若回头信镜像就会拿到 6
-        store.upsertTimeConfig(StoredTimeConfig(id, name, encodeTimeConfig(config(name, morning = 5))))
+        store.upsertTimeConfig(
+            StoredTimeConfig(
+                id,
+                name,
+                encodeTimeConfig(config(name, morning = 5))
+            )
+        )
         repository.invalidateAllCaches()
 
         assertEquals(5, repository.getTimeConfig(id).morningSections)
@@ -82,7 +96,13 @@ class TimeConfigRowTest {
     fun `恢复备份时把 prefs 里的作息搬进表`() {
         val name = schedule("老作息")
         // 表里先放一份过期快照（建锚点那一刻写进去的）
-        store.upsertTimeConfig(StoredTimeConfig(SEED_ID, name, encodeTimeConfig(config(name, morning = 1))))
+        store.upsertTimeConfig(
+            StoredTimeConfig(
+                SEED_ID,
+                name,
+                encodeTimeConfig(config(name, morning = 1))
+            )
+        )
         // prefs 里是用户后来改过的值。importAllPreferences 恢复完会当场重建表
         writeOnlyPrefs(name, morning = 6)
 
@@ -115,7 +135,13 @@ class TimeConfigRowTest {
 
     @Test
     fun `hydrate 直读表`() {
-        store.upsertTimeConfig(StoredTimeConfig(SEED_ID, "x", encodeTimeConfig(config("x", morning = 5))))
+        store.upsertTimeConfig(
+            StoredTimeConfig(
+                SEED_ID,
+                "x",
+                encodeTimeConfig(config("x", morning = 5))
+            )
+        )
 
         repository.invalidateAllCaches()
 

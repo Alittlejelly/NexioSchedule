@@ -32,10 +32,10 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * A [LinearProgressIndicator] with Miuix style.

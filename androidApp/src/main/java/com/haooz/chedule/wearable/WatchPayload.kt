@@ -1,25 +1,24 @@
 package com.haooz.chedule.wearable
 
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseTimeResolver
-import com.haooz.chedule.data.DayScheduleResolver
-import com.haooz.chedule.data.HolidayEntries
-import com.haooz.chedule.data.HolidayEntry
-import com.haooz.chedule.data.PeriodTimeSource
-import com.haooz.chedule.data.TimeConfig
-import com.haooz.chedule.data.minusDays
-import com.haooz.chedule.data.plusDays
-import com.haooz.chedule.data.plusWeeks
-import com.haooz.chedule.data.todayLocalDate
-import com.haooz.chedule.data.toJson
-import kotlinx.datetime.LocalDate
-
 import android.content.Context
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.HolidayManager
+import com.haooz.chedule.data.holiday.HolidayEntries
+import com.haooz.chedule.data.holiday.HolidayEntry
+import com.haooz.chedule.data.holiday.HolidayManager
+import com.haooz.chedule.data.holiday.toJson
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.CourseTimeResolver
+import com.haooz.chedule.data.model.PeriodTimeSource
+import com.haooz.chedule.data.model.TimeConfig
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.repo.DayScheduleResolver
+import com.haooz.chedule.data.util.minusDays
+import com.haooz.chedule.data.util.plusDays
+import com.haooz.chedule.data.util.plusWeeks
+import com.haooz.chedule.data.util.todayLocalDate
+import kotlinx.datetime.LocalDate
 import org.json.JSONArray
 import org.json.JSONObject
-import com.haooz.chedule.data.NexioLog
 
 /**
  * 手机端 → 手表端 课表 JSON 组装，协议 version=4 整表推送。

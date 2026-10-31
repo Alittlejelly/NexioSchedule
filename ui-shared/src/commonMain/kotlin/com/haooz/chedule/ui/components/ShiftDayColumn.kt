@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.TeachingWeekPosition
+import com.haooz.chedule.data.holiday.TeachingWeekPosition
+import com.haooz.chedule.data.model.Course
 
 internal fun shiftCoursesOnDate(
     allScheduleCourses: Map<String, List<Course>>,

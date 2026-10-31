@@ -28,14 +28,15 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.AppFiles
-import com.haooz.chedule.data.ioDispatcher
+import com.haooz.chedule.data.platform.AppFiles
+import com.haooz.chedule.data.platform.DisplayLang
+import com.haooz.chedule.data.platform.ioDispatcher
 import com.haooz.chedule.i18n.L
 import com.haooz.chedule.i18n.L10n
+import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import com.haooz.chedule.ui.utils.screenWidthDp
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
-import com.haooz.chedule.ui.components.text.miuix.Text as Text
 import top.yukonga.miuix.kmp.layout.CollapsibleTopAppBarDefaults
 import top.yukonga.miuix.kmp.layout.SharedScrollBehavior
 import top.yukonga.miuix.kmp.layout.collapsibleTopInset
@@ -191,7 +192,7 @@ private suspend fun loadLicenseSections(): List<PolicySection> =
  */
 private fun fillLicensePlaceholders(text: String): String {
     // 模板是英文原文；应用名/作者占位符按当前语言填入（中文侧与官网 license.html 一致）
-    val zh = com.haooz.chedule.data.DisplayLang.isZh
+    val zh = DisplayLang.isZh
     return text
         .replace(
             "<one line to give the program's name and a brief idea of what it does.>",

@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.storage.KvRow
+import com.haooz.chedule.data.storage.SqlBackend
+import com.haooz.chedule.data.storage.SqliteKeyValueStore
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -10,7 +13,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * [SqliteKeyValueStore] 的语义回归：原子性、回滚、按类型窄化。
+ * [com.haooz.chedule.data.storage.SqliteKeyValueStore] 的语义回归：原子性、回滚、按类型窄化。
  * 这些破掉都是静默丢数据，真机手测测不出来。
  */
 class SqliteKeyValueStoreTest {

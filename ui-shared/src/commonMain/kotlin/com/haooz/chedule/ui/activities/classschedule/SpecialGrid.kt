@@ -1,6 +1,6 @@
 package com.haooz.chedule.ui.activities.classschedule
 
-import com.haooz.chedule.data.SpecialBlock
+import com.haooz.chedule.data.model.SpecialBlock
 
 data class SpecialGridBand(
     val top: Float,

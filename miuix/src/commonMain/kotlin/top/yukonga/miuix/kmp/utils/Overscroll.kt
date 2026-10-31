@@ -30,12 +30,6 @@ import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Velocity
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.utils.Platform
-import top.yukonga.miuix.kmp.utils.platform
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.max
@@ -43,6 +37,10 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sign
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 // SpringMath / SpringEngine / runSettleAnimation 统一在同包的 SpringUtils.kt
 // （Miuix 原版即如此）；本文件曾另抄一份 private 版本，重复且 PullToRefresh / OverscrollFactory 访问不到，已删除。

@@ -7,22 +7,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.text.style.TextAlign
-import com.haooz.chedule.ui.components.text.material.Text as Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.SpecialBlock
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.SpecialBlock
 import com.haooz.chedule.ui.components.text.LocalTextMotionInstant
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import com.haooz.chedule.ui.components.text.material.Text as Text
 import com.haooz.chedule.ui.theme.scheduleAccentColor
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 左侧时间列宽度。横带要自己留出同样宽的起始边，子块才能和 DayColumn 逐列对齐，

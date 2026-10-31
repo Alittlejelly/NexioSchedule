@@ -1,26 +1,25 @@
 package com.haooz.chedule.viewmodel
 
-import com.haooz.chedule.data.formatSlashDate
-
-import com.haooz.chedule.data.minusDays
-import com.haooz.chedule.data.todayLocalDate
-import kotlinx.datetime.isoDayNumber
-
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.haooz.chedule.data.Course
-import com.haooz.chedule.data.CourseRepository
-import com.haooz.chedule.data.TeachingWeekReorganization
-import com.haooz.chedule.data.ScheduleEffects
-import com.haooz.chedule.data.ioDispatcher
-import com.haooz.chedule.data.randomUuidV4
-import com.haooz.chedule.data.synchronizedOn
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.model.TeachingWeekReorganization
+import com.haooz.chedule.data.platform.ScheduleEffects
+import com.haooz.chedule.data.platform.ioDispatcher
+import com.haooz.chedule.data.platform.randomUuidV4
+import com.haooz.chedule.data.platform.synchronizedOn
+import com.haooz.chedule.data.repo.CourseRepository
+import com.haooz.chedule.data.util.formatSlashDate
+import com.haooz.chedule.data.util.minusDays
+import com.haooz.chedule.data.util.todayLocalDate
+import com.haooz.chedule.ui.utils.FeatureLog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
 
 /**
  * ⚠ 原继承 `AndroidViewModel(application)` 只为拿 `Context` 调提醒/小组件/手表，现三者全走 `:core` 的 [ScheduleEffects] 出口（由 `NexioApplication` 注入 `AndroidScheduleEffects`），不再需要 Application。
@@ -240,7 +239,7 @@ class CourseViewModel : ViewModel() {
     // Rebase the semester start so the selected teaching week remains stable under merge rules.
     fun setCurrentWeek(week: Int) {
         synchronizedOn(courseRefreshLock) {
-            com.haooz.chedule.ui.utils.FeatureLog.t("课表", "set_week", "week=$week")
+            FeatureLog.t("课表", "set_week", "week=$week")
             val oldWeek = _currentWeek.value
             val newStartDate = if (week != oldWeek) {
                 val semesterStartDate = LocalDate.parse(_classStartTime.value.replace("/", "-"))

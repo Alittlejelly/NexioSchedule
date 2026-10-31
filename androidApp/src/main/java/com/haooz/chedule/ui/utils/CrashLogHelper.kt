@@ -14,12 +14,12 @@ package com.haooz.chedule.ui.utils
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.KeyValueStore
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.getStringOrNull
-import com.haooz.chedule.i18n.AndroidMiscStr
 import androidx.core.content.FileProvider
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.KeyValueStore
+import com.haooz.chedule.data.storage.getStringOrNull
+import com.haooz.chedule.i18n.AndroidMiscStr
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter

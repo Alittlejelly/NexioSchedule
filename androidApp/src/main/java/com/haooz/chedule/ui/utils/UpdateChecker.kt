@@ -1,17 +1,15 @@
 package com.haooz.chedule.ui.utils
 
 import android.content.Context
-import com.haooz.chedule.data.isBetaVersion
-import com.haooz.chedule.data.isNewerVersion
-import com.haooz.chedule.data.parseVersion
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
-import com.haooz.chedule.data.AppStorage
-import com.haooz.chedule.data.NexioLog
-import com.haooz.chedule.data.getStringOrNull
+import com.haooz.chedule.data.platform.NexioLog
+import com.haooz.chedule.data.platform.isBetaVersion
+import com.haooz.chedule.data.platform.isNewerVersion
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.i18n.AndroidMiscStr
-import androidx.core.content.edit
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.zip.ZipFile

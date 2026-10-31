@@ -2,6 +2,11 @@ package com.haooz.chedule.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.haooz.chedule.data.db.NexioDatabase
+import com.haooz.chedule.data.model.Course
+import com.haooz.chedule.data.storage.AppStorage
+import com.haooz.chedule.data.storage.CourseStorage
+import com.haooz.chedule.data.storage.InMemoryKeyValueStore
+import com.haooz.chedule.data.storage.SqliteCourseRowStore
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -10,7 +15,7 @@ import kotlin.test.assertEquals
 /**
  * 课程备注的持久化回归。
  *
- * 备注是 `Course` 的后加字段，而 [CourseRepository] 读盘时会用 `sanitizeCourses` **显式构造**
+ * 备注是 `Course` 的后加字段，而 [com.haooz.chedule.data.repo.CourseRepository] 读盘时会用 `sanitizeCourses` **显式构造**
  * 重建对象（UnsafeAllocator 可能给出 null 字段）。那里漏一个字段，表现就是
  * 「重启后备注全丢」—— 2026-10-29 实际踩过一次。
  *
@@ -26,19 +31,19 @@ class NotePersistenceTest {
         driver = openInMemoryDriver()
         NexioDatabase.Schema.create(driver)
         CourseStorage.install { SqliteCourseRowStore(NexioDatabase(driver)) }
-        CourseRepository.getInstance().invalidateAllCaches()
+        com.haooz.chedule.data.repo.CourseRepository.getInstance().invalidateAllCaches()
     }
 
     @AfterTest
     fun tearDown() {
         CourseStorage.install { null }
-        CourseRepository.getInstance().invalidateAllCaches()
+        com.haooz.chedule.data.repo.CourseRepository.getInstance().invalidateAllCaches()
         driver.close()
     }
 
     @Test
     fun `备注与单周备注经过一次读盘后仍在`() {
-        val repository = CourseRepository.getInstance()
+        val repository = com.haooz.chedule.data.repo.CourseRepository.getInstance()
         val course = Course(
             id = "c1",
             name = "高等数学",

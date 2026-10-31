@@ -1,7 +1,7 @@
 package com.haooz.chedule.platform
 
 import android.app.Application
-import com.haooz.chedule.data.ScheduleChangeSink
+import com.haooz.chedule.data.platform.ScheduleChangeSink
 import com.haooz.chedule.reminder.CourseReminderHelper
 import com.haooz.chedule.wearable.WearableScheduleSync
 import com.haooz.chedule.widget.WidgetUpdateCache

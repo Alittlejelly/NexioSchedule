@@ -3,6 +3,7 @@ package com.haooz.chedule.i18n
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.haooz.chedule.data.platform.DisplayLang
 
 /** 语言偏好：跟随系统，或强制指定。 */
 enum class LanguagePref {
@@ -59,6 +60,6 @@ object AppLanguage {
 
     /** core 层（通知/小部件/数据类显示变体）读不到 Compose 状态，用镜像同步结果。 */
     private fun syncCoreMirror() {
-        com.haooz.chedule.data.DisplayLang.isZh = resolved == AppLang.ZH
+        DisplayLang.isZh = resolved == AppLang.ZH
     }
 }

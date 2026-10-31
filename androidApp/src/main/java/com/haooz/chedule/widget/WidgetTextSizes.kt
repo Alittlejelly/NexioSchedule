@@ -9,7 +9,7 @@ import android.util.TypedValue
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import com.haooz.chedule.R
-import com.haooz.chedule.data.AppStorage
+import com.haooz.chedule.data.storage.AppStorage
 import java.util.Locale
 
 object WidgetTextSizes {
