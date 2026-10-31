@@ -1,9 +1,7 @@
 package com.haooz.chedule.data.repo
 
 import com.haooz.chedule.data.backup.decodeCourses
-import com.haooz.chedule.data.backup.decodeScheduleFolders
 import com.haooz.chedule.data.backup.decodeStringList
-import com.haooz.chedule.data.backup.encodeCourses
 import com.haooz.chedule.data.backup.encodeStringList
 import com.haooz.chedule.data.backup.encodeTimeConfig
 import com.haooz.chedule.data.backup.parseTimeConfigSnapshotOrNull
@@ -30,7 +28,6 @@ import com.haooz.chedule.data.storage.LegacyEntityMigration
 import com.haooz.chedule.data.storage.MigrationOutcome
 import com.haooz.chedule.data.storage.ScheduleFolder
 import com.haooz.chedule.data.storage.ScheduleRowSettings
-import com.haooz.chedule.data.storage.StoredFolder
 import com.haooz.chedule.data.storage.StoredTimeConfig
 import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.data.util.CourseTimeSpan
@@ -59,13 +56,6 @@ class CourseRepository private constructor() : PeriodTimeSource {
     private var timeConfigCache: Map<Long, TimeConfig> = emptyMap()
     @Volatile
     private var timeConfigIdsCache: List<Long>? = null
-    // 几乎所有 key 拼接都经过它，全类最热路径
-    @Volatile
-    private var currentScheduleIdCache: String? = null
-    @Volatile
-    private var scheduleNamesCache: List<String>? = null
-    @Volatile
-    private var scheduleFoldersCache: List<ScheduleFolder>? = null
     @Volatile
     private var globalSectionTimesCache: Map<Int, String>? = null
 
@@ -235,6 +225,44 @@ class CourseRepository private constructor() : PeriodTimeSource {
             this@CourseRepository.migrateLegacyEntitiesOnce()
     }
 
+    /**
+     * 目录协作者。`by lazy` 是因为它自己的 Host 引用了本类的成员，
+     * 而 [init] 里的默认文件夹归档就要用它。
+     */
+    private val catalog by lazy { ScheduleCatalog(catalogHost) }
+
+    private val catalogHost = object : ScheduleCatalog.Host {
+        override val prefs: KeyValueStore get() = this@CourseRepository.prefs
+
+        override fun rowStore(): CourseRowStore? = CourseStorage.rows
+
+        override fun invalidateAllCaches() = this@CourseRepository.invalidateAllCaches()
+
+        override fun invalidateTimeCaches() = this@CourseRepository.invalidateTimeCaches()
+
+        override fun notifySettingsChanged() = notifyCourseChanged("settings")
+
+        override fun boundTimeConfigIdOrNull(scheduleId: String): Long? =
+            this@CourseRepository.boundTimeConfigIdOrNull(scheduleId)
+
+        override fun addTimeConfig(config: TimeConfig): Long =
+            this@CourseRepository.addTimeConfig(config)
+
+        override fun setScheduleTimeConfigId(scheduleId: String, timeConfigId: Long) =
+            this@CourseRepository.setScheduleTimeConfigId(scheduleId, timeConfigId)
+
+        override fun getTimeConfig(id: Long): TimeConfig = this@CourseRepository.getTimeConfig(id)
+
+        override fun getScheduleTimeConfigId(scheduleId: String): Long =
+            this@CourseRepository.getScheduleTimeConfigId(scheduleId)
+
+        override fun coursesJsonLooksValid(json: String): Boolean =
+            this@CourseRepository.coursesJsonLooksValid(json)
+
+        override fun sanitizeCourses(courses: List<Course>): List<Course> =
+            this@CourseRepository.sanitizeCourses(courses)
+    }
+
     init {
         // 启动清理，均幂等：课表收进默认文件夹；清理闲置 time_config（判据不足时跳过）。
         // 不在这里补绑 —— 补绑会让只在旧指针里的配置被误判成孤儿。
@@ -274,9 +302,8 @@ class CourseRepository private constructor() : PeriodTimeSource {
         occupiedWeeksCache = emptyMap()
         timeConfigCache = emptyMap()
         timeConfigIdsCache = null
-        currentScheduleIdCache = null
-        scheduleNamesCache = null
-        scheduleFoldersCache = null
+        // 目录的缓存也在这里一起清：仓库是「全库失效」的唯一入口
+        catalog.invalidateCaches()
         globalSectionTimesCache = null
         effectiveConfigCache = emptyMap()
         reorganizationCache = emptyMap()
@@ -1855,419 +1882,49 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }.sortedBy { it.startSection }
     }
 
-    fun getScheduleNames(): List<String> {
-        scheduleNamesCache?.let { return it }
-        val json = prefs.getStringOrNull(KEY_SCHEDULE_NAMES)
-        val names = try {
-            if (json.isNullOrBlank()) listOf("默认课表")
-            else {
-                val parsed: List<String>? = runCatching {
-                    decodeStringList(
-                        json
-                    )
-                }.getOrNull()
-                parsed?.takeIf { it.isNotEmpty() } ?: listOf("默认课表")
-            }
-        } catch (_: Exception) {
-            listOf("默认课表")
-        }
-        scheduleNamesCache = names
-        return names
-    }
+    // ── 课表目录与文件夹（实现在 [ScheduleCatalog]）──────────────────────────
 
-    internal fun saveScheduleNames(names: List<String>) {
-        val json = encodeStringList(names)
-        prefs.edit { putString(KEY_SCHEDULE_NAMES, json) }
-        // 课表列表变化会让"当前课表 ID 是否仍有效"的结论失效
-        scheduleNamesCache = names
-        currentScheduleIdCache = null
-    }
+    fun getScheduleNames(): List<String> = catalog.getScheduleNames()
 
-    fun getCurrentScheduleId(): String {
-        currentScheduleIdCache?.let { return it }
-        val saved = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表")
-        // 不在列表中则回退第一个
-        val names = getScheduleNames()
-        val resolved = if (saved in names) saved else names.first()
-        currentScheduleIdCache = resolved
-        return resolved
-    }
+    internal fun saveScheduleNames(names: List<String>) = catalog.saveScheduleNames(names)
 
-    fun setCurrentScheduleId(scheduleId: String) {
-        prefs.edit { putString(KEY_CURRENT_SCHEDULE_ID, scheduleId) }
-        currentScheduleIdCache = scheduleId
-        // 占用周次与全局节次时间都基于当前课表
-        invalidateTimeCaches()
-        notifyCourseChanged("settings", "current_schedule")
-    }
+    fun getCurrentScheduleId(): String = catalog.getCurrentScheduleId()
 
-    fun addSchedule(name: String): List<String> {
-        val names = getScheduleNames().toMutableList()
-        if (name !in names) {
-            names.add(name)
-            saveScheduleNames(names)
-            // 必须绑独立时间配置，否则会回退共享第一个，改一个课表会波及其他课表
-            createDefaultTimeConfigForSchedule(name)
-        }
-        notifyCourseChanged("settings")
-        return names
-    }
+    fun setCurrentScheduleId(scheduleId: String) = catalog.setCurrentScheduleId(scheduleId)
 
-    /** 为课表新建默认 4/4/4 专属时间配置并绑定，避免多课表共享 */
-    fun createDefaultTimeConfigForSchedule(name: String) {
-        // 不能用 getScheduleTimeConfigId 判断：它对未绑定会回退到第一个配置 id。
-        // 也不能只看 prefs 键：真相在行表，镜像键可能指向已删配置。
-        if (boundTimeConfigIdOrNull(name) != null) return
-        val newId = addTimeConfig(
-            TimeConfig(
-                name = name,
-                morningSections = 4,
-                afternoonSections = 4,
-                eveningSections = 4
-            )
-        )
-        setScheduleTimeConfigId(name, newId)
-    }
+    fun addSchedule(name: String): List<String> = catalog.addSchedule(name)
 
-    /** 复制当前课表设置（不含课程）；开课日重置为今天、当前周为第 1 周 */
-    fun createNewSemesterSchedule(name: String): List<String> {
-        val currentId = getCurrentScheduleId()
-        val names = getScheduleNames().toMutableList()
-        if (name !in names) {
-            // 追加到末尾，保持「添加时间」顺序，不因新建/选中而重排
-            names.add(name)
-            saveScheduleNames(names)
-        }
-        val currentPrefix = "$SCHEDULE_KEY_PREFIX${currentId}_"
-        val newPrefix = "$SCHEDULE_KEY_PREFIX${name}_"
-        // 必须先复制再进 edit 块：addTimeConfig 自身会提交 prefs，嵌套 edit 会打乱写入顺序
-        val duplicatedTimeConfigId = addTimeConfig(
-            getTimeConfig(getScheduleTimeConfigId(currentId)).copy(id = 0L, name = name)
-        )
-        prefs.edit {
-            for ((key, value) in prefs.all()) {
-                if (key.startsWith(currentPrefix)) {
-                    val settingName = key.removePrefix(currentPrefix)
-                    if (settingName == KEY_COURSES ||
-                        settingName == KEY_TEACHING_WEEK_REORGANIZATIONS
-                    ) continue
-                    val newKey = "$newPrefix$settingName"
-                    when (value) {
-                        is Int -> putInt(newKey, value)
-                        is Boolean -> putBoolean(newKey, value)
-                        is String -> putString(newKey, value)
-                        is Float -> putFloat(newKey, value)
-                        is Long -> putLong(newKey, value)
-                        is Set<*> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            putStringSet(newKey, value as Set<String>)
-                        }
-                    }
-                }
-            }
-            // 新学期要的是独立副本（含全部作息方案），沿用旧绑定会让两个课表互相影响。
-            // 绑定写在 edit 块**外面**：它要落行表（另一个事务），嵌套进 prefs.edit 会打乱提交顺序。
-            val today = todayLocalDate()
-            val todayStr =
-                today.formatSlashDate()
-            putString("$newPrefix$KEY_CLASS_START_TIME", todayStr)
-            putInt("$newPrefix$KEY_CURRENT_WEEK", 1)
-            remove("$newPrefix$KEY_TEACHING_WEEK_REORGANIZATIONS")
-        }
-        setScheduleTimeConfigId(name, duplicatedTimeConfigId)
-        return names
-    }
+    fun createDefaultTimeConfigForSchedule(name: String) =
+        catalog.createDefaultTimeConfigForSchedule(name)
 
-    /**
-     * 从文件夹原始数据里去掉（或改名）某个课表引用，并落盘。
-     * 不能用 getScheduleFolders() 判断：缓存冷时它已剔除刚删的名字、条件恒为 false，
-     * 幽灵引用会留在 prefs 并被备份导出。
-     */
-    private fun rewriteScheduleNameInFolders(oldName: String, newName: String?) {
-        val json = prefs.getStringOrNull(KEY_SCHEDULE_FOLDERS) ?: return
-        val folders = try {
-            decodeScheduleFolders(json)
-        } catch (_: Exception) {
-            return
-        }
-        if (folders.none { oldName in it.schedules }) return
-        saveScheduleFolders(
-            folders.map { folder ->
-                if (oldName !in folder.schedules) folder
-                else folder.copy(
-                    schedules = folder.schedules.map { if (it == oldName) newName else it }
-                        .filterNotNull()
-                )
-            }
-        )
-    }
+    fun createNewSemesterSchedule(name: String): List<String> = catalog.createNewSemesterSchedule(name)
 
-    private fun removeScheduleNameFromFolders(name: String) =
-        rewriteScheduleNameInFolders(name, newName = null)
+    fun deleteSchedule(name: String): List<String> = catalog.deleteSchedule(name)
 
-    fun deleteSchedule(name: String): List<String> {
-        // 行表先删：这一步可能失败（库异常 / 外键），失败必须让调用方看见而不是吞掉 ——
-        // 吞掉的后果是「界面说删了，课程还在库里」，同名课表一建就「自动复活」。
-        // 放在最前面是为了失败时 prefs 一个键都没动，状态还是旧的。
-        val rows = CourseStorage.rows ?: error("删除课表失败：课程行表没有接线 schedule=$name")
-        runCatching { rows.deleteSchedule(name) }
-            .onFailure { NexioLog.e(TAG, "删除课程行表失败：schedule=$name", it) }
-            .getOrThrow()
+    fun renameSchedule(oldName: String, newName: String): List<String> =
+        catalog.renameSchedule(oldName, newName)
 
-        val names = getScheduleNames().toMutableList()
-        names.remove(name)
-        // 删光后自动补默认课表，避免应用无法启动
-        val replacedLastSchedule = names.isEmpty()
-        if (replacedLastSchedule) {
-            names.add("默认课表")
-        }
-        saveScheduleNames(names)
-        // 课表没了，文件夹里的引用必须同步清掉，否则会留下幽灵条目
-        removeScheduleNameFromFolders(name)
-        val prefix = "$SCHEDULE_KEY_PREFIX${name}_"
-        prefs.edit {
-            for (key in prefs.all().keys) {
-                if (key.startsWith(prefix)) {
-                    remove(key)
-                }
-            }
-            // 绑定键不匹配 schedule_{name}_ 前缀，必须单独删镜像；
-            // 权威绑定在 schedule 行上，已随上面的 rows.deleteSchedule 级联带走
-            remove("$SCHEDULE_TIME_CONFIG_PREFIX$name")
-        }
-        // 直接改写了 prefs，必须失效否则同名重建会读到旧数据
-        invalidateAllCaches()
-        if (getCurrentScheduleId() == name) {
-            setCurrentScheduleId(names.first())
-        }
-        notifyCourseChanged("settings")
-        return names
-    }
+    fun getScheduleFolders(): List<ScheduleFolder> = catalog.getScheduleFolders()
 
-    fun renameSchedule(oldName: String, newName: String): List<String> {
-        // 同名短路：下面那段 prefs 搬运会把每个键 put 到新键名再 remove 旧键，新旧同名时
-        // 等于「写完自己删掉」—— 一次同名改名就能清空这张课表的所有键。
-        if (oldName == newName) return getScheduleNames()
-        val names = getScheduleNames().toMutableList()
-        val index = names.indexOf(oldName)
-        if (index != -1) {
-            // 行表以课表名为主键，先搬行：失败就直接抛，此刻 prefs 一个键都没动，状态还是旧的。
-            // 反过来的顺序（先改 prefs 再搬行）在搬行失败时会留下「新名字下既没行也没课程」的空壳。
-            val rows = CourseStorage.rows
-                ?: error("改名失败：课程行表没有接线 $oldName → $newName")
-            runCatching { rows.renameSchedule(oldName, newName) }
-                .onFailure { NexioLog.e(TAG, "改名搬行失败：$oldName → $newName", it) }
-                .getOrThrow()
+    internal fun saveScheduleFolders(folders: List<ScheduleFolder>) =
+        catalog.saveScheduleFolders(folders)
 
-            // 先更新当前课表 ID，再改名称列表
-            val savedCurrentId = prefs.getString(KEY_CURRENT_SCHEDULE_ID, "默认课表")
-            if (savedCurrentId == oldName) {
-                setCurrentScheduleId(newName)
-            }
-            names[index] = newName
-            saveScheduleNames(names)
-            // 文件夹里的旧名跟着改，否则会留下幽灵条目且新名跑到根目录
-            rewriteScheduleNameInFolders(oldName, newName)
-            // 迁移 schedule_{old}_* → schedule_{new}_*
-            val oldPrefix = "$SCHEDULE_KEY_PREFIX${oldName}_"
-            val newPrefix = "$SCHEDULE_KEY_PREFIX${newName}_"
-            prefs.edit {
-                for ((key, value) in prefs.all()) {
-                    if (key.startsWith(oldPrefix)) {
-                        val suffix = key.removePrefix(oldPrefix)
-                        val newKey = "$newPrefix$suffix"
-                        when (value) {
-                            is Int -> putInt(newKey, value)
-                            is Boolean -> putBoolean(newKey, value)
-                            is String -> {
-                                if (suffix == KEY_COURSES) {
-                                    // 坏 JSON 不能 sanitize 后写回，否则变成空壳课并永久盖掉原数据
-                                    if (!coursesJsonLooksValid(value)) {
-                                        putString(newKey, value)
-                                    } else {
-                                        try {
-                                            // 旧 JSON 字段可能为 null，直接 copy() 会 NPE
-                                            val courses =
-                                                sanitizeCourses(
-                                                    decodeCourses(
-                                                        value
-                                                    )
-                                                )
-                                            val updated = courses.map { it.copy(scheduleId = newName) }
-                                            putString(newKey,
-                                                encodeCourses(
-                                                    updated
-                                                )
-                                            )
-                                        } catch (_: Exception) {
-                                            putString(newKey, value)
-                                        }
-                                    }
-                                } else {
-                                    putString(newKey, value)
-                                }
-                            }
-                            is Float -> putFloat(newKey, value)
-                            is Long -> putLong(newKey, value)
-                            is Set<*> -> {
-                                @Suppress("UNCHECKED_CAST")
-                                putStringSet(newKey, value as Set<String>)
-                            }
-                        }
-                        remove(key)
-                    }
-                }
-            }
-            // 镜像键不匹配上面前缀，单独搬；权威绑定由上面那次 renameSchedule 连行带走
-            val oldBoundKey = "$SCHEDULE_TIME_CONFIG_PREFIX$oldName"
-            if (prefs.contains(oldBoundKey)) {
-                val boundId = prefs.getLong(oldBoundKey, 0L)
-                prefs.edit {
-                    putLong("$SCHEDULE_TIME_CONFIG_PREFIX$newName", boundId)
-                    remove(oldBoundKey)
-                }
-            }
-            invalidateAllCaches()
-        }
-        notifyCourseChanged("settings")
-        return names
-    }
+    fun addScheduleFolder(name: String): List<ScheduleFolder> = catalog.addScheduleFolder(name)
 
-    // ---------- 课表文件夹 ----------
+    fun renameScheduleFolder(id: String, newName: String): List<ScheduleFolder> =
+        catalog.renameScheduleFolder(id, newName)
 
-    /**
-     * 读取课表文件夹，顺带清洗：剔除已删除的课表名，保证一个课表只出现在一个文件夹里
-     *（保留靠前的那个），并合并重复的文件夹 id（坏备份会让 LazyColumn key 冲突闪退）。
-     */
-    fun getScheduleFolders(): List<ScheduleFolder> {
-        scheduleFoldersCache?.let { return it }
-        val allNames = getScheduleNames()
-        // 只认表。迁移会把 prefs 里的文件夹 JSON 删掉，回看那边只会读到空。
-        val stored = CourseStorage.rows?.let { rows ->
-            runCatching { rows.folders() }.getOrNull()
-        }.orEmpty()
-        val parsed = stored.map {
-            ScheduleFolder(
-                id = it.id,
-                name = it.name,
-                schedules = it.schedules
-            )
-        }
-        val seen = mutableSetOf<String>()
-        val byId = linkedMapOf<String, ScheduleFolder>()
-        parsed
-            .filter { it.id.isNotBlank() }
-            .forEach { folder ->
-                val kept = folder.schedules
-                    .filter { name -> name in allNames && seen.add(name) }
-                // 文件夹内部按全局课表顺序展示
-                val ordered = allNames.filter { it in kept }
-                val existing = byId[folder.id]
-                if (existing == null) {
-                    byId[folder.id] = folder.copy(schedules = ordered)
-                } else {
-                    // 同 id 并入第一个：坏备份/重复迁移会写进重复 id，UI Lazy key 会闪退
-                    val merged = (existing.schedules + ordered).distinct()
-                    byId[folder.id] = existing.copy(
-                        schedules = allNames.filter { it in merged }
-                    )
-                }
-            }
-        val result = byId.values.toList()
-        scheduleFoldersCache = result
-        return result
-    }
+    fun disbandScheduleFolder(id: String): List<ScheduleFolder> = catalog.disbandScheduleFolder(id)
 
-    private fun saveScheduleFolders(folders: List<ScheduleFolder>) {
-        val rows = CourseStorage.rows
-        if (rows == null) {
-            NexioLog.e(TAG, "文件夹写失败：课程行表没有接线")
-        } else {
-            runCatching {
-                val live = folders.map { it.id }.toSet()
-                folders.forEachIndexed { index, folder ->
-                    rows.upsertFolder(
-                        StoredFolder(
-                            id = folder.id,
-                            name = folder.name,
-                            schedules = folder.schedules,
-                            sortOrder = index,
-                        ),
-                    )
-                }
-                // 表里多出来的行（用户删掉的文件夹）一起清掉
-                rows.folders().map { it.id }.filter { it !in live }.forEach { rows.deleteFolder(it) }
-            }.onFailure { NexioLog.e(TAG, "文件夹写表失败", it) }
-        }
-        scheduleFoldersCache = folders
-    }
+    fun moveSchedulesToFolder(
+        scheduleNames: List<String>,
+        folderId: String?,
+    ): List<ScheduleFolder> = catalog.moveSchedulesToFolder(scheduleNames, folderId)
 
-    /** 新建空文件夹，追加到末尾 */
-    fun addScheduleFolder(name: String): List<ScheduleFolder> {
-        val folders = getScheduleFolders().toMutableList()
-        folders.add(
-            ScheduleFolder(
-                id = "folder_${Clock.System.now().toEpochMilliseconds()}_${folders.size}",
-                name = name
-            )
-        )
-        saveScheduleFolders(folders)
-        return folders
-    }
+    fun getFolderIdOfSchedule(scheduleName: String): String? =
+        catalog.getFolderIdOfSchedule(scheduleName)
 
-    fun renameScheduleFolder(id: String, newName: String): List<ScheduleFolder> {
-        val folders = getScheduleFolders().toMutableList()
-        val index = folders.indexOfFirst { it.id == id }
-        if (index != -1) {
-            folders[index] = folders[index].copy(name = newName)
-            saveScheduleFolders(folders)
-        }
-        return folders
-    }
-
-    /** 解散文件夹：文件夹内的课表回到根目录，课表本身不删除（只删文件夹壳）。 */
-    fun disbandScheduleFolder(id: String): List<ScheduleFolder> {
-        val folders = getScheduleFolders()
-        if (folders.none { it.id == id }) return folders
-        saveScheduleFolders(folders.filter { it.id != id })
-        return getScheduleFolders()
-    }
-
-    /** 把课表移动到文件夹；folderId 为 null 表示移回根目录 */
-    fun moveSchedulesToFolder(scheduleNames: List<String>, folderId: String?): List<ScheduleFolder> {
-        if (scheduleNames.isEmpty()) return getScheduleFolders()
-        val moving = scheduleNames.distinct()
-        // 先从所有文件夹摘出来，避免同一课表同时挂在两个文件夹下
-        val folders = getScheduleFolders()
-            .map { it.copy(schedules = it.schedules.filter { name -> name !in moving }) }
-            .toMutableList()
-        if (folderId != null) {
-            val index = folders.indexOfFirst { it.id == folderId }
-            if (index != -1) {
-                val merged = (folders[index].schedules + moving).distinct()
-                // 文件夹内部仍按全局课表顺序
-                val ordered = getScheduleNames().filter { it in merged }
-                folders[index] = folders[index].copy(schedules = ordered)
-            }
-        }
-        saveScheduleFolders(folders)
-        return folders
-    }
-
-    /** 课表所属文件夹 id，不在任何文件夹时返回 null */
-    fun getFolderIdOfSchedule(scheduleName: String): String? {
-        for (folder in getScheduleFolders()) {
-            if (scheduleName in folder.schedules) return folder.id
-        }
-        return null
-    }
-
-    /** 未归入任何文件夹的课表（切换页根目录） */
-    fun getRootScheduleNames(): List<String> {
-        val folders = getScheduleFolders()
-        if (folders.isEmpty()) return getScheduleNames()
-        return getScheduleNames().filter { name -> folders.none { name in it.schedules } }
-    }
+    fun getRootScheduleNames(): List<String> = catalog.getRootScheduleNames()
 
     /** 绑定失效时必须回退到旧全局指针的解析值，不能 `firstOrNull()` —— 见 [pruneOrphanTimeConfigsIfNeeded] */
     fun getScheduleTimeConfigId(scheduleId: String): Long {

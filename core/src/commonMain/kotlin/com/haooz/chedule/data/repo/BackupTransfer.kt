@@ -50,7 +50,6 @@ import com.haooz.chedule.data.repo.CourseRepository.Companion.SCHEDULE_TIME_CONF
 import com.haooz.chedule.data.repo.CourseRepository.Companion.TIME_CONFIG_PREFIX
 import com.haooz.chedule.data.repo.CourseRepository.Companion.normalizeClassStartDate
 import com.haooz.chedule.data.storage.MigrationOutcome
-import com.haooz.chedule.data.storage.getStringOrNull
 import com.haooz.chedule.data.util.toJsonElement
 
 /**
