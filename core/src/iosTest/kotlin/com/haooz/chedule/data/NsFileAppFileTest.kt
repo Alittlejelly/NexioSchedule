@@ -1,5 +1,8 @@
 package com.haooz.chedule.data
 
+import com.haooz.chedule.data.platform.AppFile
+import com.haooz.chedule.data.platform.NsFileAppFile
+import com.haooz.chedule.data.platform.defaultDocumentsDir
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals

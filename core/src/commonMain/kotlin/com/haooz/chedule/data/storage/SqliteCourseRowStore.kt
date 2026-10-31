@@ -25,21 +25,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
     override fun isImported(scheduleId: String): Boolean =
         q.readMeta(importKey(scheduleId)).executeAsOneOrNull() != null
 
-    override fun load(scheduleId: String): List<Course> {
-        val courses = q.selectCoursesOf(scheduleId).executeAsList()
-        if (courses.isEmpty()) return emptyList()
-        // 周次 / 周备注各一条查询取整表再分组，不按课循环查
-        val weeks = q.selectWeeksOfSchedule(scheduleId).executeAsList()
-            .groupBy({ it.course_id }, { it.week.toInt() })
-        val notes = q.selectWeekNotesOfSchedule(scheduleId).executeAsList()
-            .groupBy({ it.course_id }, { it.week.toInt() to it.note })
-        return courses.map { row ->
-            row.toCourse(
-                weeks = weeks[row.id].orEmpty(),
-                weekNotes = notes[row.id].orEmpty().toMap(),
-            )
-        }
-    }
+    override fun load(scheduleId: String): List<Course> = loadInTx(scheduleId)
 
     override fun importAll(anchor: CourseRowAnchor, courses: List<Course>) {
         database.transactionWithResult {
@@ -49,7 +35,7 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
             courses.forEach { writeCourse(anchor.scheduleId, it) }
 
             // 自校验：对拍不过就抛异常，事务回滚且不写导入标记，读取继续走 JSON
-            val readBack = readInTx(anchor.scheduleId)
+            val readBack = loadInTx(anchor.scheduleId)
             if (!sameCourseContent(courses, readBack)) {
                 val lost = courses.size - readBack.size
                 error(
@@ -246,15 +232,25 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
 
     // ── 内部 ──────────────────────────────────────────────────────────────────
 
-    /** 事务内回读，读同一事务快照。 */
-    private fun readInTx(scheduleId: String): List<Course> {
+    /**
+     * 读一个课表的全部课程（含周次 / 周备注）。
+     *
+     * 事务内外都可用：读的是当前连接快照，事务内调用看到的就是该事务已写入的内容 ——
+     * [importAll] 的自校验依赖这一点。周次 / 周备注各一条查询取整表再分组，不按课循环查。
+     */
+    private fun loadInTx(scheduleId: String): List<Course> {
         val courses = q.selectCoursesOf(scheduleId).executeAsList()
+        // 空表省掉两次查询：大多数课表没有课程时这是首屏路径
+        if (courses.isEmpty()) return emptyList()
         val weeks = q.selectWeeksOfSchedule(scheduleId).executeAsList()
             .groupBy({ it.course_id }, { it.week.toInt() })
         val notes = q.selectWeekNotesOfSchedule(scheduleId).executeAsList()
             .groupBy({ it.course_id }, { it.week.toInt() to it.note })
-        return courses.map {
-            it.toCourse(weeks[it.id].orEmpty(), notes[it.id].orEmpty().toMap())
+        return courses.map { row ->
+            row.toCourse(
+                weeks = weeks[row.id].orEmpty(),
+                weekNotes = notes[row.id].orEmpty().toMap(),
+            )
         }
     }
 

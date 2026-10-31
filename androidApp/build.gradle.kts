@@ -11,12 +11,6 @@ plugins {
 }
 
 // ===== 本地签名（不进版本库）=====
-// 取值优先级：`-P` 参数 > 环境变量 > 仓库根目录的 `keystore.properties`。
-// `keystore.properties` 与 `keystore/` 都在 .gitignore 里 —— 钥匙和密码都不许提交。
-//
-// ⚠ **debug 变体也用这把钥匙**：测试机装的是 release 签名（CN=王凯哲）的正式包，
-//   签名不一致的 APK 装不上去，也就没法「覆盖安装 + 保留 data」来验升级迁移。
-//   没有 `keystore.properties` 时自动退回 Android 默认 debug 签名，日常开发不受影响。
 val keystorePropertiesProvider = providers.fileContents(
     rootProject.layout.projectDirectory.file("keystore.properties"),
 ).asText.map { text -> Properties().apply { text.reader().use { load(it) } } }

@@ -11,8 +11,8 @@ data class ChangelogEntry(
 )
 val changelogData = listOf(
     ChangelogEntry(
-        version = "v1.6.8-1030",
-        date = "2026-10-30",
+        version = "v1.6.8-1031",
+        date = "2026-10-31",
         changes = listOf(
             L("新增课表页与今日页的时间轴视图，可在课表外观里切换", "Add a timeline view for the timetable and Today pages, switchable in Appearance"),
             L("新增课程备注，可按周单独填写", "Add course notes, with per-week notes supported"),

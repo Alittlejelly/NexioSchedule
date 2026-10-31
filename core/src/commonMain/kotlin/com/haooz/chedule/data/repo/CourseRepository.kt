@@ -79,9 +79,17 @@ class CourseRepository private constructor() : PeriodTimeSource {
     @Volatile
     private var encodedTimeConfigCache: Map<Long, EncodedTimeConfig> = emptyMap()
 
-    /** 「课表 → 绑定配置 id」，0 表示未绑定。[getScheduleTimeConfigId] 在 draw 期被反复调用。 */
+    /**
+     * 「课表 → 绑定配置 id」，0 表示未绑定。[getScheduleTimeConfigId] 在 draw 期被反复调用。
+     *
+     * 和代次绑成一个不可变快照，不能只存 Map：读线程查表期间写线程改了绑定并清空缓存，
+     * 读线程回来把旧值写回，缓存就永久脏了（表现：改了绑定界面一直显示旧的，重启才好）。
+     * 写入换代次，读线程只在代次没变时落值。
+     */
     @Volatile
-    private var bindingCache: Map<String, Long> = emptyMap()
+    private var bindingSnapshot = BindingSnapshot(0L, emptyMap())
+
+    private data class BindingSnapshot(val generation: Long, val values: Map<String, Long>)
 
     /** 「课表 → 当前周 / 总周数 / 开课日」。只有 `schedule` 行一个来源。 */
     @Volatile
@@ -133,9 +141,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         }
 
         override fun onBindingsWritten() {
-            synchronizedOn(cacheLock) {
-                bindingCache = emptyMap()
-            }
+            invalidateBindingCache()
         }
 
         override fun folders() = getScheduleFolders()
@@ -309,7 +315,7 @@ class CourseRepository private constructor() : PeriodTimeSource {
         reorganizationCache = emptyMap()
         classStartCache = emptyMap()
         encodedTimeConfigCache = emptyMap()
-        bindingCache = emptyMap()
+        invalidateBindingCache()
         scheduleSettingsCache = emptyMap()
         timeConfigsHydrated = false
         blobImportFailed = emptySet()
@@ -1939,13 +1945,31 @@ class CourseRepository private constructor() : PeriodTimeSource {
      * 迁移成功后就删了 —— 再回看它就是读一份会过期的旧值。
      */
     private fun boundTimeConfigIdOrNull(scheduleId: String): Long? {
+        val snapshot = bindingSnapshot
         // 按 id 集合校验：删配置后旧缓存自动判成未绑定，无需手动失效
-        val resolved = bindingCache[scheduleId] ?: resolveBoundTimeConfigId(scheduleId).also {
-            synchronizedOn(cacheLock) {
-                bindingCache = bindingCache + (scheduleId to it)
+        snapshot.values[scheduleId]?.let { return it.takeIf { id -> id != 0L && id in getTimeConfigIds() } }
+
+        val resolved = resolveBoundTimeConfigId(scheduleId)
+        synchronizedOn(cacheLock) {
+            val current = bindingSnapshot
+            // 查表期间有人写过绑定（代次变了）：这次结果可能是旧的，不落缓存
+            if (current.generation == snapshot.generation) {
+                bindingSnapshot = current.copy(values = current.values + (scheduleId to resolved))
             }
         }
         return resolved.takeIf { it != 0L && it in getTimeConfigIds() }
+    }
+
+    /**
+     * 绑定可能变了：换一代，旧值全部作废。
+     *
+     * 所有会改 `schedule.time_config_id` 的路径都要走这里 —— 不只是「记得清缓存」，
+     * 代次还负责让「查表期间被写入」的读线程丢弃自己那份过期结果。
+     */
+    private fun invalidateBindingCache() {
+        synchronizedOn(cacheLock) {
+            bindingSnapshot = BindingSnapshot(bindingSnapshot.generation + 1, emptyMap())
+        }
     }
 
     /** 真正的存储查询：只认 `schedule.time_config_id`。0 表示未绑定。 */
@@ -2019,9 +2043,12 @@ class CourseRepository private constructor() : PeriodTimeSource {
             .isSuccess
         if (!written) return
 
-        // 写穿缓存：改绑后就地更新，比整体清空更省（清空会让下一次读多打一次库）
+        // 写穿：换代次并只放这一条 —— 其他条目可能是在这次写入之前查的，一起作废
         synchronizedOn(cacheLock) {
-            bindingCache = bindingCache + (scheduleId to timeConfigId)
+            bindingSnapshot = BindingSnapshot(
+                generation = bindingSnapshot.generation + 1,
+                values = mapOf(scheduleId to timeConfigId),
+            )
         }
         invalidateTimeCaches()
     }

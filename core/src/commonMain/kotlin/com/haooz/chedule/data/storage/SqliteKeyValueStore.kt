@@ -2,6 +2,7 @@ package com.haooz.chedule.data.storage
 
 import com.haooz.chedule.data.platform.NexioLog
 import com.haooz.chedule.data.platform.synchronizedOn
+import kotlin.concurrent.Volatile
 
 /**
  * 键值表的一行。[type] 取 `s`/`i`/`l`/`f`/`b`/`ss`，与 [FileKeyValueStore] 的落盘标签一致。
