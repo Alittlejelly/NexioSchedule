@@ -1,0 +1,70 @@
+name: Mirror to Gitee
+
+# GitHub 每次 push / 删分支 / 打 tag 后，把仓库整体镜像到 Gitee。
+# 另外每天定时全量兜底一次，防止某次 Actions 失败导致 Gitee 落后。
+on:
+  push:
+  delete:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *" # 每天 03:17 UTC = 11:17 (UTC+8)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-to-gitee
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 读取配置
+        id: cfg
+        env:
+          TOKEN: ${{ secrets.GITEE_TOKEN }}
+          REPO: ${{ secrets.GITEE_REPO }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "::warning::未配置 GITEE_TOKEN，本次镜像已跳过（配置方法见 README / 提交说明）。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # GITEE_REPO 可留空，格式为「Gitee 用户名/仓库名」，留空则用默认值
+          echo "target=${REPO:-HaoZai000/NexioSchedule}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: 镜像到 Gitee
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TARGET: ${{ steps.cfg.outputs.target }}
+        run: |
+          set -euo pipefail
+          GITEE_OWNER="${TARGET%%/*}"
+          GITEE_REPO="${TARGET##*/}"
+
+          # 只抓 heads + tags。不用 clone --mirror，否则会把 refs/pull/* 一起搬到 Gitee。
+          git init --quiet --bare repo.git
+          cd repo.git
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch --quiet --prune origin \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
+
+          git remote add gitee "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
+
+          # --prune：GitHub 上删掉的分支，Gitee 上一起删；--force：允许改写历史
+          git push --quiet --prune --force gitee \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
+
+          echo "### 已同步到 https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}" >> "$GITHUB_STEP_SUMMARY"
+          echo "同步的引用：" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          git for-each-ref --format='%(refname)' refs/heads refs/tags >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
