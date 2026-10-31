@@ -7,6 +7,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -191,6 +192,78 @@ class EntityTableMigrationTest {
                 key == "time_config_ids"
         }
         assertTrue(leftovers.isEmpty(), "迁移完成后这些键不该还在：$leftovers")
+    }
+
+    /**
+     * 1.6.7 的「课表级作息」键（`morning_start` / `long_break_*` / `section_times` …）在作息搬进
+     * `time_config` 表之后就没有读者了，迁移时顺手清掉 —— 不清就会跟着备份一起导出、恢复时再写回来。
+     *
+     * 但 `active_routine` 还活着（`syncRoutineAfterDateChange` 记上次生效的作息），不能误删。
+     */
+    @Test
+    fun `迁移顺手清掉课表级作息的死键，活键保留`() {
+        val name = schedule()
+        val deadKeys = listOf(
+            "morning_start",
+            "long_break_morning_section",
+            "section_times",
+            "today_show_wallpaper",
+        )
+        repository.importAllPreferences(
+            backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
+                "schedule_${name}_morning_start" to 8,
+                "schedule_${name}_long_break_morning_section" to 2,
+                "schedule_${name}_section_times" to "{}",
+                "schedule_${name}_today_show_wallpaper" to true,
+                "schedule_${name}_active_routine" to "1:1",
+                "schedule_${name}__settings_last_modified" to 123L,
+            ),
+        )
+        CourseStorage.install { store }
+
+        repository.migrateLegacyEntitiesOnce()
+
+        // 用导出代替直读 prefs：仓库单例的 prefs 在首次构造时钉死，@BeforeTest 里
+        // AppStorage.init 之后 store(name) 拿到的是另一个空实例（见测试陷阱）。
+        // 死键和 active_routine 都不在「从表物化」的清单里，导出看到的就是 prefs 原样。
+        val keys = repository.exportAllPreferences().keys
+        val leftovers = deadKeys.map { "schedule_${name}_$it" }.filter { it in keys }
+        assertTrue(leftovers.isEmpty(), "死键没清干净：$leftovers（全部键=$keys）")
+        assertTrue(
+            "schedule_${name}_active_routine" in keys,
+            "active_routine 是活键（跨日期切换要读它），不能当死键删",
+        )
+        assertTrue(
+            "schedule_${name}__settings_last_modified" in keys,
+            "设置时间戳是活键",
+        )
+    }
+
+    /**
+     * 迁移是**幂等**的：`ENTITY_MIGRATION_VERSION` +1 会让所有用户重跑一遍，
+     * 已经绑好作息的课表不能因此多出一份作息、也不该被改绑。
+     */
+    @Test
+    fun `重跑迁移不会给已绑定的课表再发一套作息`() {
+        val name = schedule()
+        repository.importAllPreferences(
+            backupOf(name, listOf(course("c1", "高等数学", name))) + mapOf(
+                "schedule_${name}_current_week" to 5,
+            ),
+        )
+        CourseStorage.install { store }
+        repository.migrateLegacyEntitiesOnce()
+        val configsBefore = store.timeConfigs().map { it.id }.sorted()
+        val bindingBefore = store.bindingOf(name)
+        assertNotNull(bindingBefore, "先决条件：迁移后该课表已有绑定")
+
+        // 模拟「版本 +1 之后老用户重跑」：只抹掉版本标记，其余数据不动
+        NexioDatabase(driver).scheduleQueries.deleteMeta("entity_tables_version")
+        val outcome = repository.migrateLegacyEntitiesOnce()
+
+        assertTrue(outcome is MigrationOutcome.Done, "重跑必须成功：$outcome")
+        assertEquals(configsBefore, store.timeConfigs().map { it.id }.sorted(), "重跑不该再复制一份作息")
+        assertEquals(bindingBefore, store.bindingOf(name), "重跑不该把绑定改到别的配置上")
     }
 
     /**

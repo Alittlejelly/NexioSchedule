@@ -339,6 +339,6 @@ class SqliteCourseRowStore(private val database: NexioDatabase) : CourseRowStore
          */
         const val META_ENTITY_VERSION = "entity_tables_version"
         /** 迁移块版本。新增一块要搬的数据就 +1。 */
-        const val ENTITY_MIGRATION_VERSION = 2
+        const val ENTITY_MIGRATION_VERSION = 3
     }
 }

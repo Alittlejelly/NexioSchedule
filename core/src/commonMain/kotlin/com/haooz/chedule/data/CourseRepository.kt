@@ -650,10 +650,19 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 giveOwnTimeConfig(name, rows)
             }
         }
+        // 绑定是直接写行的（没走 [setScheduleTimeConfigId]），缓存必须整体作废：
+        // 课程导入时已经先把「未绑定」读成 0 缓存住了，不作废的话本次进程内的
+        // getScheduleTimeConfigId 会一直回退到旧全局指针 —— 就是「改一套另一套跟着变」。
+        synchronizedOn(cacheLock) { bindingCache = emptyMap() }
     }
 
     /** 复制一套只属于这张课表的作息配置并绑定。迁移专用（旧版共用配置的课表各自独立）。 */
     private fun giveOwnTimeConfig(scheduleId: String, rows: CourseRowStore) {
+        // 已经绑过就别再发一套：迁移是**幂等**的（版本 +1 会重跑、恢复备份也会重跑），
+        // 每跑一次复制一份作息并把绑定改过去，作息表就会越滚越多、用户改的那套悄悄换了人。
+        // 直接读行、不走 bindingCache：迁移期间课程导入会先把「未绑定」缓存成 0，读缓存会判错。
+        val alreadyBound = runCatching { rows.bindingOf(scheduleId) }.getOrNull()
+        if (alreadyBound != null && alreadyBound > 0L) return
         runCatching {
             val base = getTimeConfig(resolveLegacyCurrentTimeConfigId())
             val newId = addTimeConfig(base.copy(id = 0L, name = scheduleId))
@@ -662,6 +671,30 @@ class CourseRepository private constructor() : PeriodTimeSource {
             rows.setBinding(anchor)
         }.onFailure { NexioLog.e(TAG, "迁移：$scheduleId 复制独立作息失败", it) }
     }
+
+    /**
+     * 1.6.7 及更早的「课表级作息」键后缀：作息搬进 `time_config` 表之后，这些键再也没有读者
+     * （`morning_start` / `long_break_*` / `section_times` 那一整套）。
+     *
+     * 不删的代价是它们会跟着备份一起导出、恢复时原样写回来，永远滚在库里看着像数据。
+     *
+     * ⚠ `active_routine` **不在这个表里**：`syncRoutineAfterDateChange` 还在读写它
+     * （记录上次生效的作息，跨日期切换才广播重排）。`today_show_wallpaper` 是已删功能的开关，
+     * 全仓无引用，可以清。
+     */
+    private val DEAD_SCHEDULE_KEY_SUFFIXES = setOf(
+        "morning_start", "morning_start_min",
+        "afternoon_start", "afternoon_start_min",
+        "evening_start", "evening_start_min",
+        "morning_sections", "afternoon_sections", "evening_sections",
+        "class_duration", "short_break", "section_times",
+        "long_break_enabled",
+        "long_break_morning", "long_break_morning_section",
+        "long_break_afternoon", "long_break_afternoon_section",
+        "long_break_evening", "long_break_evening_section",
+        "quick_time_enabled",
+        "today_show_wallpaper",
+    )
 
     /**
      * 迁移确认完成后，把 prefs 里的实体残留键全部删掉。
@@ -682,6 +715,9 @@ class CourseRepository private constructor() : PeriodTimeSource {
                 key.startsWith(TIME_CONFIG_PREFIX) ->
                     key.removePrefix(TIME_CONFIG_PREFIX).toLongOrNull() != null
                 key.startsWith(SCHEDULE_TIME_CONFIG_PREFIX) -> true
+                // 死键按后缀匹配，不按课表名：已删课表留下的那批同样该清（它们没有任何读者）
+                key.startsWith(SCHEDULE_KEY_PREFIX) &&
+                    DEAD_SCHEDULE_KEY_SUFFIXES.any { suffix -> key.endsWith("_$suffix") } -> true
                 else -> prefixes.any { prefix ->
                     key == "${prefix}$KEY_COURSES" ||
                         key == "${prefix}$KEY_CURRENT_WEEK" ||
